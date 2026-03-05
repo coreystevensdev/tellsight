@@ -7,7 +7,6 @@ interface SidebarState {
   setOpen: (open: boolean) => void;
   orgName: string;
   setOrgName: (name: string) => void;
-  isAdmin: boolean;
 }
 
 const SidebarContext = createContext<SidebarState>({
@@ -15,20 +14,14 @@ const SidebarContext = createContext<SidebarState>({
   setOpen: () => {},
   orgName: '',
   setOrgName: () => {},
-  isAdmin: false,
 });
 
-interface SidebarProviderProps {
-  children: ReactNode;
-  isAdmin?: boolean;
-}
-
-export function SidebarProvider({ children, isAdmin = false }: SidebarProviderProps) {
+export function SidebarProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [orgName, setOrgName] = useState('');
 
   return (
-    <SidebarContext value={{ open, setOpen, orgName, setOrgName, isAdmin }}>
+    <SidebarContext value={{ open, setOpen, orgName, setOrgName }}>
       {children}
     </SidebarContext>
   );

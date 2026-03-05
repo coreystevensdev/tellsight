@@ -36,6 +36,20 @@
       "when": 1772074800000,
       "tag": "0004_add-rls-analytics-invites",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1772127100903,
+      "tag": "0005_graceful_betty_ross",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1772127200000,
+      "tag": "0006_add-rls-datasets-datarows",
+      "breakpoints": true
     }
   ]
 }

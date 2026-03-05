@@ -12,9 +12,9 @@ interface CsvPreviewProps {
 }
 
 const typeBadgeColors: Record<string, string> = {
-  date: 'bg-info/10 text-info',
-  number: 'bg-success/10 text-success',
-  text: 'bg-muted text-muted-foreground',
+  date: 'bg-blue-100 text-blue-700',
+  number: 'bg-green-100 text-green-700',
+  text: 'bg-gray-100 text-gray-700',
 };
 
 export function CsvPreview({ previewData, onConfirm, onCancel, isConfirming }: CsvPreviewProps) {
@@ -23,7 +23,7 @@ export function CsvPreview({ previewData, onConfirm, onCancel, isConfirming }: C
   return (
     <div className="w-full space-y-4">
       {warnings.length > 0 && (
-        <div className="rounded-md border border-warning/50 bg-warning/10 px-4 py-3 text-sm text-warning-foreground">
+        <div className="rounded-md border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
           <ul className="space-y-1">
             {warnings.map((w, i) => (
               <li key={i}>{w}</li>

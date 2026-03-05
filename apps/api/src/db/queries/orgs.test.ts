@@ -15,11 +15,13 @@ vi.mock('../../lib/db.js', () => ({
   },
 }));
 
-const { createOrg, findOrgBySlug, findOrgById } = await import('./orgs.js');
+const { createOrg, findOrgBySlug, findOrgById, getSeedOrgId, resetSeedOrgCache } =
+  await import('./orgs.js');
 
 describe('orgs queries', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetSeedOrgCache();
   });
 
   describe('createOrg', () => {
@@ -68,6 +70,45 @@ describe('orgs queries', () => {
 
       expect(mockFindFirst).toHaveBeenCalledOnce();
       expect(result).toEqual({ id: 42, name: 'Test Org' });
+    });
+  });
+
+  describe('getSeedOrgId', () => {
+    it('returns org id when seed org exists', async () => {
+      mockFindFirst.mockResolvedValueOnce({ id: 99, slug: 'seed-demo' });
+
+      const result = await getSeedOrgId();
+
+      expect(result).toBe(99);
+    });
+
+    it('caches the result — second call does not hit DB', async () => {
+      mockFindFirst.mockResolvedValueOnce({ id: 99, slug: 'seed-demo' });
+
+      await getSeedOrgId();
+      const second = await getSeedOrgId();
+
+      expect(mockFindFirst).toHaveBeenCalledTimes(1);
+      expect(second).toBe(99);
+    });
+
+    it('throws when seed org does not exist', async () => {
+      mockFindFirst.mockResolvedValueOnce(undefined);
+
+      await expect(getSeedOrgId()).rejects.toThrow('Seed org "seed-demo" not found');
+    });
+
+    it('resetSeedOrgCache clears cached value', async () => {
+      mockFindFirst.mockResolvedValueOnce({ id: 99, slug: 'seed-demo' });
+      await getSeedOrgId();
+
+      resetSeedOrgCache();
+
+      mockFindFirst.mockResolvedValueOnce({ id: 101, slug: 'seed-demo' });
+      const result = await getSeedOrgId();
+
+      expect(mockFindFirst).toHaveBeenCalledTimes(2);
+      expect(result).toBe(101);
     });
   });
 });

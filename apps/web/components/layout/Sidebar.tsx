@@ -3,10 +3,9 @@
 import { useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BarChart3, Upload, Settings, ShieldCheck, Activity, X } from 'lucide-react';
+import { BarChart3, Upload, Settings, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebar } from '@/app/dashboard/contexts/SidebarContext';
-import { ThemeToggle } from '@/components/common/ThemeToggle';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: BarChart3 },
@@ -14,11 +13,11 @@ const NAV_ITEMS = [
   { href: '/settings/invites', label: 'Settings', icon: Settings },
 ] as const;
 
-function SidebarNav({ orgName, isAdmin, onNavigate }: { orgName?: string; isAdmin?: boolean; onNavigate?: () => void }) {
+function SidebarNav({ orgName, onNavigate }: { orgName?: string; onNavigate?: () => void }) {
   const pathname = usePathname();
 
   return (
-    <div className="flex h-full flex-col">
+    <>
       <div className="flex h-14 items-center justify-between border-b border-border px-6">
         <Link
           href="/dashboard"
@@ -66,49 +65,13 @@ function SidebarNav({ orgName, isAdmin, onNavigate }: { orgName?: string; isAdmi
             </Link>
           );
         })}
-        {isAdmin && (
-          <>
-            <Link
-              href="/admin"
-              onClick={onNavigate}
-              className={cn(
-                'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                pathname === '/admin'
-                  ? 'border-l-4 border-primary bg-accent text-foreground'
-                  : 'border-l-4 border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
-              )}
-              aria-current={pathname === '/admin' ? 'page' : undefined}
-            >
-              <ShieldCheck className="h-4 w-4 shrink-0" />
-              Admin
-            </Link>
-            <Link
-              href="/admin/analytics"
-              onClick={onNavigate}
-              className={cn(
-                'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                pathname === '/admin/analytics'
-                  ? 'border-l-4 border-primary bg-accent text-foreground'
-                  : 'border-l-4 border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
-              )}
-              aria-current={pathname === '/admin/analytics' ? 'page' : undefined}
-            >
-              <Activity className="h-4 w-4 shrink-0" />
-              Analytics
-            </Link>
-          </>
-        )}
       </nav>
-
-      <div className="mt-auto border-t border-border px-3 py-3">
-        <ThemeToggle />
-      </div>
-    </div>
+    </>
   );
 }
 
 export function Sidebar() {
-  const { open, setOpen, orgName, isAdmin } = useSidebar();
+  const { open, setOpen, orgName } = useSidebar();
   const pathname = usePathname();
   const close = useCallback(() => setOpen(false), [setOpen]);
   const dialogRef = useRef<HTMLElement>(null);
@@ -156,7 +119,7 @@ export function Sidebar() {
   return (
     <>
       <aside className="hidden lg:flex lg:w-60 lg:flex-col lg:border-r lg:border-border lg:bg-background">
-        <SidebarNav orgName={orgName} isAdmin={isAdmin} />
+        <SidebarNav orgName={orgName} />
       </aside>
 
       {open && (
@@ -173,7 +136,7 @@ export function Sidebar() {
             aria-label="Navigation menu"
             className="fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-background shadow-xl animate-slide-in-left"
           >
-            <SidebarNav orgName={orgName} isAdmin={isAdmin} onNavigate={close} />
+            <SidebarNav orgName={orgName} onNavigate={close} />
           </aside>
         </div>
       )}

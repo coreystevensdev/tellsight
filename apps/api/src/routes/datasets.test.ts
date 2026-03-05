@@ -30,17 +30,8 @@ vi.mock('../lib/logger.js', () => ({
   },
 }));
 
-vi.mock('../db/queries/index.js', () => ({
-  datasetsQueries: {
-    persistUpload: (...args: unknown[]) => mockPersistUpload(...args),
-  },
-  subscriptionsQueries: {
-    getActiveTier: vi.fn().mockResolvedValue('free'),
-  },
-}));
-
-vi.mock('../lib/rls.js', () => ({
-  withRlsContext: vi.fn((_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({})),
+vi.mock('../db/queries/datasets.js', () => ({
+  persistUpload: mockPersistUpload,
 }));
 
 const { createTestApp } = await import('../test/helpers/testApp.js');
@@ -273,7 +264,6 @@ describe('POST /datasets/confirm', () => {
       expect.arrayContaining([
         expect.objectContaining({ category: 'Revenue' }),
       ]),
-      expect.anything(),
     );
     expect(mockPersistUpload.mock.calls[0]![3]).toHaveLength(3);
   });

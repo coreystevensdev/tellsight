@@ -3,7 +3,6 @@ import { AUTH } from 'shared/constants';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { SidebarProvider } from './contexts/SidebarContext';
-import { extractIsAdmin } from '@/lib/auth-utils';
 
 export default async function DashboardLayout({
   children,
@@ -11,12 +10,10 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const cookieStore = await cookies();
-  const accessToken = cookieStore.get(AUTH.COOKIE_NAMES.ACCESS_TOKEN)?.value;
-  const isAuthenticated = !!accessToken;
-  const isAdmin = extractIsAdmin(accessToken);
+  const isAuthenticated = !!cookieStore.get(AUTH.COOKIE_NAMES.ACCESS_TOKEN)?.value;
 
   return (
-    <SidebarProvider isAdmin={isAdmin}>
+    <SidebarProvider>
       <div className="flex h-screen overflow-hidden bg-background">
         <a
           href="#main-content"

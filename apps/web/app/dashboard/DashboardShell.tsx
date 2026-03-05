@@ -1,38 +1,23 @@
 'use client';
 
-import { Component, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { Component, type ReactNode, useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import useSWR from 'swr';
 import { Upload, Filter } from 'lucide-react';
-import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
-import type { ChartData, SubscriptionTier, TransparencyMetadata } from 'shared/types';
-import { ANALYTICS_EVENTS } from 'shared/constants';
+import type { ChartData } from 'shared/types';
 import { apiClient } from '@/lib/api-client';
-import { trackClientEvent } from '@/lib/analytics';
-import { useIsMobile } from '@/lib/hooks/useIsMobile';
-import { useSubscription } from '@/lib/hooks/useSubscription';
 import { useSidebar } from './contexts/SidebarContext';
 import { RevenueChart } from './charts/RevenueChart';
 import { ExpenseChart } from './charts/ExpenseChart';
 import { ChartSkeleton } from './charts/ChartSkeleton';
 import { LazyChart } from './charts/LazyChart';
 import { FilterBar, computeDateRange, type FilterState } from './FilterBar';
-import { AiSummaryCard } from './AiSummaryCard';
-import { AiSummaryErrorBoundary } from './AiSummaryErrorBoundary';
-import { TransparencyPanel } from './TransparencyPanel';
-import { ShareFab } from './ShareMenu';
-import { useShareInsight } from '@/lib/hooks/useShareInsight';
-import { useCreateShareLink } from '@/lib/hooks/useCreateShareLink';
-import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { AiSummarySkeleton } from './AiSummarySkeleton';
 import { DemoModeBanner } from '@/components/common/DemoModeBanner';
 
 interface DashboardShellProps {
   initialData: ChartData;
-  cachedSummary?: string;
-  cachedMetadata?: TransparencyMetadata | null;
-  tier?: SubscriptionTier;
 }
 
 const EMPTY_FILTERS: FilterState = { datePreset: null, category: null };
@@ -121,25 +106,10 @@ function FilteredEmptyState({ onReset }: { onReset: () => void }) {
   );
 }
 
-export function DashboardShell({ initialData, cachedSummary, cachedMetadata, tier: serverTier }: DashboardShellProps) {
+export function DashboardShell({ initialData }: DashboardShellProps) {
   const router = useRouter();
   const { setOrgName } = useSidebar();
-  const isMobile = useIsMobile();
-  const hasAuth = serverTier !== undefined;
-  const { tier } = useSubscription({ enabled: hasAuth, fallbackData: serverTier });
-
-  const prevTierRef = useRef(tier);
-  useEffect(() => {
-    if (prevTierRef.current === 'pro' && tier === 'free') {
-      toast.warning("Your Pro subscription has ended. You're now on the free plan.");
-    }
-    prevTierRef.current = tier;
-  }, [tier]);
-
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
-  const [transparencyOpen, setTransparencyOpen] = useState(false);
-  const [metadata, setMetadata] = useState<TransparencyMetadata | null>(cachedMetadata ?? null);
-  const firedRef = useRef(false);
   const swrKey = buildSwrKey(filters);
   const hasActiveFilters = filters.datePreset !== null || filters.category !== null;
 
@@ -170,64 +140,10 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, tie
     router.push('/upload');
   }, [router]);
 
-  const handleToggleTransparency = useCallback(() => {
-    setTransparencyOpen((prev) => {
-      const opening = !prev;
-      if (opening && !firedRef.current) {
-        firedRef.current = true;
-        trackClientEvent(ANALYTICS_EVENTS.TRANSPARENCY_PANEL_OPENED, {
-          datasetId: data.datasetId,
-        });
-        // reset after a tick to allow re-firing on future opens
-        setTimeout(() => { firedRef.current = false; }, 300);
-      }
-      return opening;
-    });
-  }, [data.datasetId]);
-
-  const handleCloseTransparency = useCallback(() => {
-    setTransparencyOpen(false);
-  }, []);
-
-  const handleMetadataReady = useCallback((meta: TransparencyMetadata | null) => {
-    setMetadata(meta);
-  }, []);
-
-  const [aiDone, setAiDone] = useState(false);
-  const handleStreamComplete = useCallback(() => setAiDone(true), []);
-
-  const captureRef = useRef<HTMLDivElement>(null);
-  const { status: shareStatus, generatePng, downloadPng, copyToClipboard } = useShareInsight(captureRef);
-  const { status: linkStatus, clipboardFailed: linkClipboardFailed, createLink } = useCreateShareLink();
-
-  const handleCopyLink = useCallback(async () => {
-    if (data.datasetId != null) await createLink(data.datasetId);
-  }, [data.datasetId, createLink]);
-
   const hasRevenue = data.revenueTrend.length > 0;
   const hasExpenses = data.expenseBreakdown.length > 0;
   const hasData = hasRevenue || hasExpenses;
   const hasAnyData = initialData.revenueTrend.length > 0 || initialData.expenseBreakdown.length > 0;
-
-  const aiSummaryCard = (
-    <AiSummaryCard
-      datasetId={data.datasetId}
-      cachedContent={cachedSummary}
-      cachedMetadata={cachedMetadata}
-      tier={tier}
-      onToggleTransparency={handleToggleTransparency}
-      transparencyOpen={transparencyOpen}
-      onMetadataReady={handleMetadataReady}
-      onStreamComplete={handleStreamComplete}
-      onShare={generatePng}
-      onShareDownload={downloadPng}
-      onShareCopy={copyToClipboard}
-      shareState={shareStatus}
-      onShareCopyLink={handleCopyLink}
-      shareLinkStatus={linkStatus}
-      shareLinkClipboardFailed={linkClipboardFailed}
-    />
-  );
 
   return (
     <>
@@ -257,87 +173,33 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, tie
           <h1 id="dashboard-heading" className="text-2xl font-semibold text-foreground">{data.orgName}</h1>
         </div>
 
-        <div ref={captureRef}>
-          <AiSummaryErrorBoundary className="mb-6">
-            {isMobile ? (
-              // mobile: AI card full-width, transparency in bottom sheet
-              <div className="mb-6">
-                {aiSummaryCard}
-                <Sheet open={transparencyOpen} onOpenChange={(open) => !open && handleCloseTransparency()}>
-                  <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto rounded-t-xl">
-                    <SheetTitle className="sr-only">How I reached this conclusion</SheetTitle>
-                    <TransparencyPanel
-                      metadata={metadata}
-                      isOpen={transparencyOpen}
-                      onClose={handleCloseTransparency}
-                    />
-                  </SheetContent>
-                </Sheet>
-              </div>
-            ) : (
-              // desktop: CSS Grid with animated transparency column
-              <div
-                className={cn(
-                  'mb-6 md:grid md:grid-cols-12 md:gap-6',
-                )}
-              >
-                <div className="md:col-span-8">
-                  <div
-                    className={cn(
-                      'grid transition-[grid-template-columns] duration-200 ease-in-out motion-reduce:duration-0',
-                      transparencyOpen ? 'grid-cols-[1fr_320px]' : 'grid-cols-[1fr_0fr]',
-                    )}
-                  >
-                    {aiSummaryCard}
-                    <TransparencyPanel
-                      metadata={metadata}
-                      isOpen={transparencyOpen}
-                      onClose={handleCloseTransparency}
-                      className="overflow-hidden min-w-0"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-          </AiSummaryErrorBoundary>
+        {isLoading && !hasData && <AiSummarySkeleton className="mb-6" />}
 
-          <ChartErrorBoundary onRetry={() => mutate()}>
-            {isLoading && !hasData ? (
-              <div className="grid gap-4 md:grid-cols-2 md:gap-6">
-                <ChartSkeleton variant="line" />
-                <ChartSkeleton variant="bar" />
-              </div>
-            ) : !hasData && hasActiveFilters ? (
-              <FilteredEmptyState onReset={handleResetFilters} />
-            ) : !hasData ? (
-              <EmptyState />
-            ) : (
-              <div className="grid gap-4 md:grid-cols-2 md:gap-6">
-                {hasRevenue && (
-                  <LazyChart skeletonVariant="line">
-                    <RevenueChart data={data.revenueTrend} />
-                  </LazyChart>
-                )}
-                {hasExpenses && (
-                  <LazyChart skeletonVariant="bar">
-                    <ExpenseChart data={data.expenseBreakdown} />
-                  </LazyChart>
-                )}
-              </div>
-            )}
-          </ChartErrorBoundary>
-        </div>
-
-        <ShareFab
-          visible={hasData && aiDone}
-          status={shareStatus}
-          onGenerate={generatePng}
-          onDownload={downloadPng}
-          onCopy={copyToClipboard}
-          onCopyLink={handleCopyLink}
-          linkStatus={linkStatus}
-          linkClipboardFailed={linkClipboardFailed}
-        />
+        <ChartErrorBoundary onRetry={() => mutate()}>
+          {isLoading && !hasData ? (
+            <div className="grid gap-4 md:grid-cols-2 md:gap-6">
+              <ChartSkeleton variant="line" />
+              <ChartSkeleton variant="bar" />
+            </div>
+          ) : !hasData && hasActiveFilters ? (
+            <FilteredEmptyState onReset={handleResetFilters} />
+          ) : !hasData ? (
+            <EmptyState />
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 md:gap-6">
+              {hasRevenue && (
+                <LazyChart skeletonVariant="line">
+                  <RevenueChart data={data.revenueTrend} />
+                </LazyChart>
+              )}
+              {hasExpenses && (
+                <LazyChart skeletonVariant="bar">
+                  <ExpenseChart data={data.expenseBreakdown} />
+                </LazyChart>
+              )}
+            </div>
+          )}
+        </ChartErrorBoundary>
       </section>
     </>
   );

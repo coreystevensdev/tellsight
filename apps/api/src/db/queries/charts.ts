@@ -1,14 +1,12 @@
 import { eq, asc } from 'drizzle-orm';
 import type { ChartFilters } from 'shared/types';
-import { db, type DbTransaction } from '../../lib/db.js';
+import { db } from '../../lib/db.js';
 import { dataRows } from '../schema.js';
 
 const MONTH_LABELS = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
 ] as const;
-
-const DEFAULT_CHART_ROW_LIMIT = 2000;
 
 function toISODate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -28,20 +26,13 @@ function isInDateRange(rowDate: Date, from?: Date, to?: Date): boolean {
  * so filter controls show all options regardless of current filter state.
  * Actual chart data is filtered by the provided params.
  *
- * Runs a single query, filters + aggregates in JS.
- * Capped at `limit` rows (default 2,000) — enough for chart visualization.
- * The curation pipeline uses getRowsByDataset() which stays unlimited.
+ * Runs a single query, filters + aggregates in JS. Good enough for <50k rows;
+ * move to SQL GROUP BY if this becomes a bottleneck.
  */
-export async function getChartData(
-  orgId: number,
-  filters?: ChartFilters,
-  limit = DEFAULT_CHART_ROW_LIMIT,
-  client: typeof db | DbTransaction = db,
-) {
-  const rows = await client.query.dataRows.findMany({
+export async function getChartData(orgId: number, filters?: ChartFilters) {
+  const rows = await db.query.dataRows.findMany({
     where: eq(dataRows.orgId, orgId),
     orderBy: asc(dataRows.date),
-    limit,
   });
 
   // metadata from full dataset — available options for the filter UI

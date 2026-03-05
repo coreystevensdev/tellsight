@@ -12,29 +12,14 @@ vi.mock('../services/auth/tokenService.js', () => ({
   verifyAccessToken: mockVerifyAccessToken,
 }));
 
-const mockGetDatasetsByOrg = vi.fn();
-const mockGetCachedSummary = vi.fn();
-
 vi.mock('../db/queries/index.js', () => ({
   chartsQueries: { getChartData: mockGetChartData },
-  datasetsQueries: { getUserOrgDemoState: mockGetUserOrgDemoState, getDatasetsByOrg: mockGetDatasetsByOrg },
+  datasetsQueries: { getUserOrgDemoState: mockGetUserOrgDemoState },
   orgsQueries: { getSeedOrgId: mockGetSeedOrgId, findOrgById: mockFindOrgById },
-  aiSummariesQueries: { getCachedSummary: mockGetCachedSummary },
 }));
 
 vi.mock('../services/analytics/trackEvent.js', () => ({
   trackEvent: mockTrackEvent,
-}));
-
-const mockWithRlsContext = vi.fn();
-
-vi.mock('../lib/db.js', () => ({
-  db: {},
-  dbAdmin: { _tag: 'dbAdmin' },
-}));
-
-vi.mock('../lib/rls.js', () => ({
-  withRlsContext: (...args: unknown[]) => mockWithRlsContext(...args),
 }));
 
 vi.mock('../config.js', () => ({
@@ -67,7 +52,6 @@ vi.mock('../middleware/rateLimiter.js', () => ({
   rateLimitAi: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
-const { AuthenticationError } = await import('../lib/appError.js');
 const { createTestApp } = await import('../test/helpers/testApp.js');
 const { default: dashboardRouter } = await import('./dashboard.js');
 
@@ -95,10 +79,6 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockGetChartData.mockResolvedValue(chartFixture);
   mockGetSeedOrgId.mockResolvedValue(99);
-  mockGetDatasetsByOrg.mockResolvedValue([{ id: 1 }]);
-  mockGetCachedSummary.mockResolvedValue(null);
-  // withRlsContext executes the callback with a mock tx — query mocks intercept regardless
-  mockWithRlsContext.mockImplementation(async (_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({ _tag: 'tx' }));
 });
 
 describe('GET /dashboard/charts', () => {
@@ -111,7 +91,7 @@ describe('GET /dashboard/charts', () => {
     expect(body.data.orgName).toBe('Sunrise Cafe');
     expect(body.data.demoState).toBe('seed_only');
     expect(mockGetSeedOrgId).toHaveBeenCalledOnce();
-    expect(mockGetChartData).toHaveBeenCalledWith(99, undefined, undefined, expect.anything());
+    expect(mockGetChartData).toHaveBeenCalledWith(99, undefined);
   });
 
   it('returns user org data for valid JWT', async () => {
@@ -133,13 +113,12 @@ describe('GET /dashboard/charts', () => {
     expect(body.data.isDemo).toBe(false);
     expect(body.data.orgName).toBe('Acme Corp');
     expect(body.data.demoState).toBe('user_only');
-    expect(mockWithRlsContext).toHaveBeenCalledWith(10, false, expect.any(Function));
-    expect(mockGetChartData).toHaveBeenCalledWith(10, undefined, undefined, expect.anything());
+    expect(mockGetChartData).toHaveBeenCalledWith(10, undefined);
     expect(mockGetSeedOrgId).not.toHaveBeenCalled();
   });
 
   it('falls back to seed data on invalid JWT', async () => {
-    mockVerifyAccessToken.mockRejectedValueOnce(new AuthenticationError('expired'));
+    mockVerifyAccessToken.mockRejectedValueOnce(new Error('expired'));
 
     const res = await fetch(`${baseUrl}/dashboard/charts`, {
       headers: { Cookie: 'access_token=expired-jwt' },
@@ -161,8 +140,6 @@ describe('GET /dashboard/charts', () => {
     vi.clearAllMocks();
     mockGetChartData.mockResolvedValue(chartFixture);
     mockGetSeedOrgId.mockResolvedValue(99);
-    mockGetDatasetsByOrg.mockResolvedValue([{ id: 1 }]);
-    mockWithRlsContext.mockImplementation(async (_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({ _tag: 'tx' }));
 
     // authenticated request — should track
     mockVerifyAccessToken.mockResolvedValueOnce({
@@ -205,8 +182,6 @@ describe('GET /dashboard/charts', () => {
         dateTo: expect.any(Date),
         categories: ['Payroll', 'Rent'],
       }),
-      undefined,
-      expect.anything(),
     );
   });
 
@@ -214,7 +189,7 @@ describe('GET /dashboard/charts', () => {
     const res = await fetch(`${baseUrl}/dashboard/charts?from=not-a-date&to=also-bad`);
 
     expect(res.status).toBe(200);
-    expect(mockGetChartData).toHaveBeenCalledWith(99, undefined, undefined, expect.anything());
+    expect(mockGetChartData).toHaveBeenCalledWith(99, undefined);
   });
 
   it('falls back to demoState empty when getUserOrgDemoState fails', async () => {
@@ -238,7 +213,7 @@ describe('GET /dashboard/charts', () => {
     expect(body.data.demoState).toBe('empty');
   });
 
-  it('does not fire chart.filtered server-side (moved to client FilterBar)', async () => {
+  it('fires chart.filtered event when filters are present', async () => {
     mockVerifyAccessToken.mockResolvedValueOnce({
       sub: '42',
       org_id: 10,
@@ -252,48 +227,10 @@ describe('GET /dashboard/charts', () => {
       headers: { Cookie: 'access_token=valid-jwt' },
     });
 
-    const chartFilteredCalls = mockTrackEvent.mock.calls.filter(
-      (c: unknown[]) => c[2] === 'chart.filtered',
-    );
-    expect(chartFilteredCalls).toHaveLength(0);
-  });
-});
-
-describe('GET /ai-summaries/:datasetId/cached', () => {
-  it('returns cached summary for valid datasetId', async () => {
-    mockGetCachedSummary.mockResolvedValueOnce({ content: 'Revenue grew 12% month over month.' });
-
-    const res = await fetch(`${baseUrl}/ai-summaries/1/cached`);
-    const body = await res.json() as { data: { content: string } };
-
-    expect(res.status).toBe(200);
-    expect(body.data.content).toBe('Revenue grew 12% month over month.');
-    expect(mockGetCachedSummary).toHaveBeenCalledWith(99, 1, expect.anything());
-  });
-
-  it('returns 404 when no cached summary exists', async () => {
-    mockGetCachedSummary.mockResolvedValueOnce(null);
-
-    const res = await fetch(`${baseUrl}/ai-summaries/1/cached`);
-    const body = await res.json() as { error: { code: string } };
-
-    expect(res.status).toBe(404);
-    expect(body.error.code).toBe('NOT_FOUND');
-  });
-
-  it('returns 400 for invalid datasetId', async () => {
-    const res = await fetch(`${baseUrl}/ai-summaries/abc/cached`);
-    const body = await res.json() as { error: { code: string } };
-
-    expect(res.status).toBe(400);
-    expect(body.error.code).toBe('VALIDATION_ERROR');
-  });
-
-  it('returns 400 for negative datasetId', async () => {
-    const res = await fetch(`${baseUrl}/ai-summaries/-5/cached`);
-    const body = await res.json() as { error: { code: string } };
-
-    expect(res.status).toBe(400);
-    expect(body.error.code).toBe('VALIDATION_ERROR');
+    expect(mockTrackEvent).toHaveBeenCalledWith(10, 42, 'chart.filtered', {
+      dateFrom: expect.any(String),
+      dateTo: undefined,
+      categories: ['Rent'],
+    });
   });
 });

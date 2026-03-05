@@ -184,18 +184,24 @@ describe('seed data generation', () => {
 
   describe('seed idempotency', () => {
     it('skips insert when seed org + seed dataset already exist inside the transaction', async () => {
+      // After CRITICAL-3 fix: idempotency check runs INSIDE the transaction
+      // (after RLS bypass), so the datasets query actually sees existing data.
       mockOrgsFindFirst.mockResolvedValueOnce({ id: 1, slug: 'seed-demo' });
       mockDatasetsFindFirst.mockResolvedValueOnce({ id: 5, orgId: 1, isSeedData: true });
 
       await mockTransaction(async (tx) => {
+        await tx.execute('SET LOCAL app.is_admin = \'true\'');
+
         const existing = await tx.query.orgs.findFirst({});
         if (existing) {
           const seedDataset = await tx.query.datasets.findFirst({});
-          if (seedDataset) return;
+          if (seedDataset) return; // skip — this is the early exit path
         }
+        // Should NOT reach here
         throw new Error('Should have returned early');
       });
 
+      expect(mockExecute).toHaveBeenCalledOnce();
       expect(mockOrgsFindFirst).toHaveBeenCalledOnce();
       expect(mockDatasetsFindFirst).toHaveBeenCalledOnce();
       expect(mockInsert).not.toHaveBeenCalled();
@@ -208,6 +214,8 @@ describe('seed data generation', () => {
 
       let inserted = false;
       await mockTransaction(async (tx) => {
+        await tx.execute('SET LOCAL app.is_admin = \'true\'');
+
         const existing = await tx.query.orgs.findFirst({});
         if (existing) {
           const seedDataset = await tx.query.datasets.findFirst({});
@@ -220,22 +228,23 @@ describe('seed data generation', () => {
     });
   });
 
-  describe('admin role connection', () => {
-    it('no longer calls SET LOCAL — app_admin role has BYPASSRLS', async () => {
-      // With the dual-role pattern, seed.ts connects as app_admin (BYPASSRLS).
-      // Verify that tx.execute is NOT called — no SET LOCAL needed.
-      mockOrgsFindFirst.mockResolvedValueOnce({ id: 1, slug: 'seed-demo' });
-      mockDatasetsFindFirst.mockResolvedValueOnce({ id: 5, orgId: 1, isSeedData: true });
+  describe('RLS bypass', () => {
+    it('SET LOCAL is first statement in the transaction', async () => {
+      const callOrder: string[] = [];
+      mockExecute.mockImplementation(() => { callOrder.push('execute'); });
+      mockOrgsFindFirst.mockImplementation(() => {
+        callOrder.push('orgQuery');
+        return undefined;
+      });
+      mockReturning.mockResolvedValue([{ id: 1 }]);
 
       await mockTransaction(async (tx) => {
-        const existing = await tx.query.orgs.findFirst({});
-        if (existing) {
-          const seedDataset = await tx.query.datasets.findFirst({});
-          if (seedDataset) return;
-        }
+        await tx.execute('SET LOCAL app.is_admin = \'true\'');
+        await tx.query.orgs.findFirst({});
       });
 
-      expect(mockExecute).not.toHaveBeenCalled();
+      expect(callOrder[0]).toBe('execute');
+      expect(callOrder[1]).toBe('orgQuery');
     });
   });
 });

@@ -66,12 +66,8 @@ export async function getByCategory(
   });
 }
 
-export async function getRowsByDataset(
-  orgId: number,
-  datasetId: number,
-  client: typeof db | DbTransaction = db,
-) {
-  return client.query.dataRows.findMany({
+export async function getRowsByDataset(orgId: number, datasetId: number) {
+  return db.query.dataRows.findMany({
     where: and(eq(dataRows.orgId, orgId), eq(dataRows.datasetId, datasetId)),
     orderBy: asc(dataRows.date),
   });

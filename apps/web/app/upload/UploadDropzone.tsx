@@ -261,12 +261,12 @@ export function UploadDropzone() {
 
   if (state === 'success') {
     return (
-      <div className="flex min-h-[240px] flex-col items-center justify-center rounded-lg border-2 border-success/50 bg-success/10 p-8 text-center">
-        <CheckCircle2 className="mb-3 h-12 w-12 text-success" />
-        <p className="text-lg font-medium text-foreground">
+      <div className="flex min-h-[240px] flex-col items-center justify-center rounded-lg border-2 border-green-300 bg-green-50 p-8 text-center">
+        <CheckCircle2 className="mb-3 h-12 w-12 text-green-600" />
+        <p className="text-lg font-medium text-green-800">
           {confirmedRowCount.toLocaleString()} transactions uploaded!
         </p>
-        <p className="mt-1 text-sm text-success">
+        <p className="mt-1 text-sm text-green-600">
           Redirecting to dashboard in {countdown}...
         </p>
       </div>

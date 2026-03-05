@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import multer from 'multer';
-import { MAX_FILE_SIZE, CSV_MAX_ROWS, ANALYTICS_EVENTS } from 'shared/constants';
+import { MAX_FILE_SIZE, ANALYTICS_EVENTS } from 'shared/constants';
 import type { AuthenticatedRequest } from '../middleware/authMiddleware.js';
 import { ValidationError } from '../lib/appError.js';
 import { csvAdapter } from '../services/dataIngestion/index.js';
@@ -12,7 +12,6 @@ import { logger } from '../lib/logger.js';
 import type { PreviewData, ParsedRow } from '../services/adapters/index.js';
 import { normalizeHeader } from '../services/dataIngestion/index.js';
 import { datasetsQueries } from '../db/queries/index.js';
-import { withRlsContext } from '../lib/rls.js';
 import { env } from '../config.js';
 
 const upload = multer({
@@ -151,13 +150,6 @@ datasetsRouter.post(
 
     const parseResult = csvAdapter.parse(req.file.buffer);
 
-    if (parseResult.rowCount > CSV_MAX_ROWS) {
-      throw new ValidationError(
-        `File has ${parseResult.rowCount.toLocaleString()} rows, but the maximum is ${CSV_MAX_ROWS.toLocaleString()}. Split your data into smaller files.`,
-        { fileName, rowCount: parseResult.rowCount, maxRows: CSV_MAX_ROWS },
-      );
-    }
-
     if (parseResult.rows.length === 0 && parseResult.warnings.length > 0) {
       throw new ValidationError(parseResult.warnings[0] ?? 'Validation failed', { fileName });
     }
@@ -250,9 +242,7 @@ datasetsRouter.post(
     }
 
     const normalizedRows = normalizeRows(parseResult.rows, parseResult.headers);
-    const result = await withRlsContext(orgId, user.isAdmin, (tx) =>
-      datasetsQueries.persistUpload(orgId, userId, fileName, normalizedRows, tx),
-    );
+    const result = await datasetsQueries.persistUpload(orgId, userId, fileName, normalizedRows);
 
     trackEvent(orgId, userId, ANALYTICS_EVENTS.DATASET_CONFIRMED, {
       datasetId: result.datasetId,

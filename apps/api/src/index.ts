@@ -10,6 +10,7 @@ import healthRouter from './routes/health.js';
 import authRouter from './routes/auth.js';
 import { publicInviteRouter } from './routes/invites.js';
 import protectedRouter from './routes/protected.js';
+import dashboardRouter from './routes/dashboard.js';
 import { redis } from './lib/redis.js';
 
 const app = express();
@@ -30,6 +31,7 @@ app.use(
 app.use(healthRouter);
 app.use(authRouter);
 app.use(rateLimitPublic, publicInviteRouter);
+app.use(rateLimitPublic, dashboardRouter);
 app.use(rateLimitPublic, protectedRouter);
 app.use(errorHandler);
 

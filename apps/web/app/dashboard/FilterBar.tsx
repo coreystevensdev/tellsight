@@ -2,8 +2,6 @@
 
 import { useState, useRef, useEffect, useCallback, useId, type KeyboardEvent } from 'react';
 import { Calendar, Tag, X, RotateCcw, ChevronDown } from 'lucide-react';
-import { trackClientEvent } from '@/lib/analytics';
-import { ANALYTICS_EVENTS } from 'shared/constants';
 
 export interface FilterState {
   datePreset: string | null;
@@ -267,16 +265,10 @@ export function FilterBar({
   const selectedPresetLabel = DATE_PRESETS.find((p) => p.value === filters.datePreset)?.label;
 
   const handleDateChange = (value: string | null) => {
-    if (value) {
-      trackClientEvent(ANALYTICS_EVENTS.CHART_FILTERED, { filterType: 'date_range', value });
-    }
     onFilterChange({ ...filters, datePreset: value });
   };
 
   const handleCategoryChange = (value: string | null) => {
-    if (value) {
-      trackClientEvent(ANALYTICS_EVENTS.CHART_FILTERED, { filterType: 'category', value });
-    }
     onFilterChange({ ...filters, category: value });
   };
 

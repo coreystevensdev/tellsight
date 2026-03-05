@@ -3,21 +3,18 @@ import type { DemoModeState } from 'shared/types';
 import { db, type DbTransaction } from '../../lib/db.js';
 import { datasets } from '../schema.js';
 import type { NormalizedRow } from '../../services/dataIngestion/normalizer.js';
-// Deliberate cross-query imports — persistUpload orchestrates both query modules.
+// Deliberate cross-query import — persistUpload orchestrates both query modules.
 // Do NOT add imports from datasets.ts into dataRows.ts (circular dependency risk).
 import { insertBatch } from './dataRows.js';
-import { markStale } from './aiSummaries.js';
 
-/** Atomic upload: delete seed data, insert dataset + rows, compute demo state.
- *  When called within withRlsContext, pass the outer tx to reuse its RLS session. */
+/** Atomic upload: delete seed data, insert dataset + rows, compute demo state. */
 export async function persistUpload(
   orgId: number,
   userId: number,
   fileName: string,
   normalizedRows: NormalizedRow[],
-  outerTx?: DbTransaction,
 ) {
-  const run = async (tx: DbTransaction) => {
+  return db.transaction(async (tx) => {
     await deleteSeedDatasets(orgId, tx);
 
     const dataset = await createDataset(orgId, {
@@ -27,13 +24,10 @@ export async function persistUpload(
     }, tx);
     await insertBatch(orgId, dataset.id, normalizedRows, tx);
 
-    await markStale(orgId, tx);
-
+    // TODO(epic-3): invalidate ai_summaries for orgId — stale on data upload per architecture
     const demoState = await getUserOrgDemoState(orgId, tx);
     return { datasetId: dataset.id, rowCount: normalizedRows.length, demoState };
-  };
-
-  return outerTx ? run(outerTx) : db.transaction(run);
+  });
 }
 
 export async function createDataset(
@@ -49,11 +43,8 @@ export async function createDataset(
   return dataset;
 }
 
-export async function getDatasetsByOrg(
-  orgId: number,
-  client: typeof db | DbTransaction = db,
-) {
-  return client.query.datasets.findMany({
+export async function getDatasetsByOrg(orgId: number) {
+  return db.query.datasets.findMany({
     where: eq(datasets.orgId, orgId),
     orderBy: desc(datasets.createdAt),
   });

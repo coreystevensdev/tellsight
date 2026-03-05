@@ -68,8 +68,14 @@ export async function apiClient<T>(
   }
 
   if (!response.ok) {
-    const errorBody = (await response.json()) as ApiError;
-    throw new Error(errorBody.error?.message ?? `API error: ${response.status}`);
+    let msg = `API error: ${response.status}`;
+    try {
+      const errorBody = (await response.json()) as ApiError;
+      if (errorBody.error?.message) msg = errorBody.error.message;
+    } catch {
+      // non-JSON response from proxy errors, gateway timeouts
+    }
+    throw new Error(msg);
   }
 
   return response.json() as Promise<ApiResponse<T>>;

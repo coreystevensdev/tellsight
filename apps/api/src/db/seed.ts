@@ -5,15 +5,15 @@
 //   - Raw Drizzle calls: query functions import lib/db.ts → config.ts → crash.
 //     Seed script uses its own drizzle instance directly inside a transaction.
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import { SEED_ORG } from 'shared/constants';
 
 import * as schema from './schema.js';
 
-const dbUrl = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
+const dbUrl = process.env.DATABASE_URL;
 if (!dbUrl) {
-  console.error('DATABASE_ADMIN_URL (or DATABASE_URL) is required for seeding');
+  console.error('DATABASE_URL is required for seeding');
   process.exit(1);
 }
 
@@ -104,8 +104,11 @@ function lerp(minVal: string, maxVal: string, monthIndex: number): string {
 }
 
 async function seed() {
-  // app_admin role has BYPASSRLS — no SET LOCAL needed
+  // Everything inside the transaction — RLS bypass must be active
+  // before we can query datasets (RLS blocks visibility without it)
   await db.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL app.is_admin = 'true'`);
+
     // Idempotency: check if seed org + seed dataset already exist
     const existing = await tx.query.orgs.findFirst({
       where: eq(schema.orgs.slug, SEED_ORG.slug),
@@ -154,66 +157,6 @@ async function seed() {
     await tx.insert(schema.dataRows).values(rows);
 
     console.info(`Seeded "${SEED_ORG.name}" org (id=${orgId}) with ${rows.length} data rows`);
-
-    // Bypasses runFullPipeline because seed uses its own Drizzle instance (standalone
-    // postgres connection), not lib/db.ts which pulls in config.ts env validation.
-    // Duplicates the pipeline steps manually so seed can run without full app config.
-    if (!process.env.CLAUDE_API_KEY) {
-      console.warn('CLAUDE_API_KEY not set — skipping seed summary generation');
-    } else {
-      try {
-        const { computeStats } = await import('../services/curation/computation.js');
-        const { scoreInsights } = await import('../services/curation/scoring.js');
-        const { assemblePrompt } = await import('../services/curation/assembly.js');
-
-        const Anthropic = (await import('@anthropic-ai/sdk')).default;
-        const claude = new Anthropic({
-          apiKey: process.env.CLAUDE_API_KEY,
-          maxRetries: 2,
-          timeout: 30_000, // longer timeout for seed — runs once, not on hot path
-        });
-
-        const dbRows = rows.map((r, i) => ({
-          id: i + 1,
-          orgId: r.orgId,
-          datasetId: r.datasetId,
-          sourceType: r.sourceType as 'csv',
-          category: r.category,
-          parentCategory: r.parentCategory,
-          date: r.date,
-          amount: r.amount,
-          label: r.label,
-          metadata: null,
-          createdAt: new Date(),
-        }));
-
-        const stats = computeStats(dbRows, { trendMinPoints: 3 });
-        const scored = scoreInsights(stats);
-        const { prompt, metadata } = assemblePrompt(scored);
-
-        const model = process.env.CLAUDE_MODEL ?? 'claude-sonnet-4-5-20250929';
-        const message = await claude.messages.create({
-          model,
-          max_tokens: 1024,
-          messages: [{ role: 'user', content: prompt }],
-        });
-
-        const content = message.content[0]?.type === 'text' ? message.content[0].text : '';
-
-        await tx.insert(schema.aiSummaries).values({
-          orgId,
-          datasetId: dataset.id,
-          content,
-          transparencyMetadata: metadata,
-          promptVersion: metadata.promptVersion,
-          isSeed: true,
-        });
-
-        console.info(`Seed AI summary generated (${content.length} chars, ${message.usage.output_tokens} tokens)`);
-      } catch (err) {
-        console.warn('Seed summary generation failed — continuing without it:', (err as Error).message);
-      }
-    }
   });
 }
 

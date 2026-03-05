@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
-import { toast } from 'sonner';
 
 const mockMutate = vi.fn();
 const mockPush = vi.fn();
@@ -57,74 +56,10 @@ vi.mock('./FilterBar', () => ({
   computeDateRange: () => null,
 }));
 
-vi.mock('./AiSummaryCard', () => ({
-  AiSummaryCard: ({ datasetId, cachedContent, className }: { datasetId: number | null; cachedContent?: string; className?: string }) => (
-    <div data-testid="ai-summary-card" data-dataset-id={datasetId} className={className}>
-      {cachedContent ?? 'AI Summary'}
-    </div>
+vi.mock('./AiSummarySkeleton', () => ({
+  AiSummarySkeleton: ({ className }: { className?: string }) => (
+    <div data-testid="ai-summary-skeleton" className={className}>AI Skeleton</div>
   ),
-}));
-
-vi.mock('./AiSummaryErrorBoundary', () => ({
-  AiSummaryErrorBoundary: ({ children, className }: { children: React.ReactNode; className?: string }) => (
-    <div data-testid="ai-summary-error-boundary" className={className}>{children}</div>
-  ),
-}));
-
-vi.mock('./TransparencyPanel', () => ({
-  TransparencyPanel: () => <div data-testid="transparency-panel" />,
-}));
-
-vi.mock('./ShareMenu', () => ({
-  ShareFab: () => <div data-testid="share-fab" />,
-}));
-
-vi.mock('@/lib/hooks/useShareInsight', () => ({
-  useShareInsight: () => ({
-    status: 'idle',
-    generatePng: vi.fn(),
-    downloadPng: vi.fn(),
-    copyToClipboard: vi.fn(),
-  }),
-}));
-
-vi.mock('@/components/ui/sheet', () => ({
-  Sheet: ({ children, open }: { children: React.ReactNode; open: boolean }) =>
-    open ? <div data-testid="bottom-sheet">{children}</div> : null,
-  SheetContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  SheetTitle: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
-}));
-
-let mockIsMobile = false;
-vi.mock('@/lib/hooks/useIsMobile', () => ({
-  useIsMobile: () => mockIsMobile,
-}));
-
-vi.mock('@/lib/analytics', () => ({
-  trackClientEvent: vi.fn(),
-}));
-
-vi.mock('sonner', () => ({
-  toast: { warning: vi.fn() },
-  Toaster: () => null,
-}));
-
-vi.mock('@/lib/hooks/useCreateShareLink', () => ({
-  useCreateShareLink: () => ({
-    status: 'idle',
-    clipboardFailed: false,
-    createLink: vi.fn(),
-  }),
-}));
-
-let mockTier = 'free' as 'free' | 'pro';
-vi.mock('@/lib/hooks/useSubscription', () => ({
-  useSubscription: () => ({
-    tier: mockTier,
-    isPro: mockTier === 'pro',
-    isLoading: false,
-    mutate: vi.fn(),
-  }),
 }));
 
 vi.mock('@/components/common/DemoModeBanner', () => ({
@@ -152,7 +87,6 @@ const fullData: ChartData = {
   availableCategories: ['Payroll', 'Rent'],
   dateRange: { min: '2025-01-01', max: '2025-12-31' },
   demoState: 'user_only',
-  datasetId: 42,
 };
 
 const emptyData: ChartData = {
@@ -163,15 +97,12 @@ const emptyData: ChartData = {
   availableCategories: [],
   dateRange: null,
   demoState: 'seed_only',
-  datasetId: null,
 };
 
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   shouldThrow = false;
-  mockIsMobile = false;
-  mockTier = 'free';
   mockSwrReturn = { data: undefined as unknown, isLoading: false, mutate: mockMutate };
 });
 
@@ -245,19 +176,18 @@ describe('DashboardShell', () => {
     expect(screen.getByTestId('skeleton-bar')).toBeInTheDocument();
   });
 
-  it('renders AiSummaryCard with datasetId', () => {
-    render(<DashboardShell initialData={fullData} />);
+  it('shows AI summary skeleton during loading with no data', () => {
+    mockSwrReturn = { data: emptyData, isLoading: true, mutate: mockMutate };
 
-    const card = screen.getByTestId('ai-summary-card');
-    expect(card).toBeInTheDocument();
-    expect(card).toHaveAttribute('data-dataset-id', '42');
-  });
-
-  it('renders AiSummaryCard with null datasetId when no data', () => {
     render(<DashboardShell initialData={emptyData} />);
 
-    const card = screen.getByTestId('ai-summary-card');
-    expect(card).toBeInTheDocument();
+    expect(screen.getByTestId('ai-summary-skeleton')).toBeInTheDocument();
+  });
+
+  it('hides AI summary skeleton when data is loaded', () => {
+    render(<DashboardShell initialData={fullData} />);
+
+    expect(screen.queryByTestId('ai-summary-skeleton')).not.toBeInTheDocument();
   });
 
   it('only renders revenue chart when expense data is empty', () => {
@@ -276,42 +206,6 @@ describe('DashboardShell', () => {
 
     expect(screen.queryByTestId('revenue-chart')).not.toBeInTheDocument();
     expect(screen.getByTestId('expense-chart')).toBeInTheDocument();
-  });
-
-  describe('downgrade toast', () => {
-    it('shows toast when tier transitions from pro to free', () => {
-      mockTier = 'pro';
-      const { rerender } = render(
-        <DashboardShell initialData={fullData} tier="pro" />,
-      );
-
-      expect(toast.warning).not.toHaveBeenCalled();
-
-      mockTier = 'free';
-      rerender(<DashboardShell initialData={fullData} tier="free" />);
-
-      expect(toast.warning).toHaveBeenCalledWith(
-        "Your Pro subscription has ended. You're now on the free plan.",
-      );
-    });
-
-    it('does not show toast on initial load as free', () => {
-      mockTier = 'free';
-      render(<DashboardShell initialData={fullData} />);
-
-      expect(toast.warning).not.toHaveBeenCalled();
-    });
-
-    it('does not show toast when tier stays pro', () => {
-      mockTier = 'pro';
-      const { rerender } = render(
-        <DashboardShell initialData={fullData} tier="pro" />,
-      );
-
-      rerender(<DashboardShell initialData={fullData} tier="pro" />);
-
-      expect(toast.warning).not.toHaveBeenCalled();
-    });
   });
 
   describe('error boundary', () => {

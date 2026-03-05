@@ -34,6 +34,9 @@ export async function proxy(request: NextRequest) {
         loginUrl.searchParams.set('redirect', pathname);
         return NextResponse.redirect(loginUrl);
       }
+    } else if (webEnv.NODE_ENV === 'production') {
+      // JWT_SECRET must be set in production — never skip verification
+      return new NextResponse('Server configuration error', { status: 500 });
     }
   }
 

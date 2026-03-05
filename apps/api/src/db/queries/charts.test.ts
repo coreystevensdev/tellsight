@@ -127,24 +127,6 @@ describe('getChartData', () => {
     ]);
   });
 
-  it('passes default limit to findMany', async () => {
-    mockFindMany.mockResolvedValueOnce([]);
-    await getChartData(1);
-
-    expect(mockFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ limit: 2000 }),
-    );
-  });
-
-  it('accepts custom limit override', async () => {
-    mockFindMany.mockResolvedValueOnce([]);
-    await getChartData(1, undefined, 500);
-
-    expect(mockFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ limit: 500 }),
-    );
-  });
-
   describe('metadata', () => {
     it('returns sorted availableCategories from expense rows', async () => {
       mockFindMany.mockResolvedValueOnce([

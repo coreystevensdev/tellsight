@@ -24,5 +24,4 @@ export const chartDataSchema = z.object({
   availableCategories: z.array(z.string()),
   dateRange: datasetDateRangeSchema.nullable(),
   demoState: demoModeStateSchema,
-  datasetId: z.number().nullable(),
 });

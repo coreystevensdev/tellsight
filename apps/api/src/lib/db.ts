@@ -11,3 +11,6 @@ const queryClient = postgres(env.DATABASE_URL, {
 });
 
 export const db = drizzle(queryClient, { schema });
+
+/** Transaction client type — use for query functions that optionally accept a tx */
+export type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
