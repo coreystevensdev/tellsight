@@ -32,3 +32,11 @@ export {
 export {
   chartFiltersSchema,
 } from './filters.js';
+
+export {
+  createShareSchema,
+  insightSnapshotSchema,
+  shareResponseSchema,
+} from './sharing.js';
+
+export type { CreateShareInput, InsightSnapshot, ShareResponse } from './sharing.js';

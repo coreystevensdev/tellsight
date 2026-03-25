@@ -193,6 +193,32 @@ export const aiSummaries = pgTable(
   ],
 );
 
+export const shares = pgTable(
+  'shares',
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    orgId: integer('org_id')
+      .notNull()
+      .references(() => orgs.id, { onDelete: 'cascade' }),
+    datasetId: integer('dataset_id')
+      .notNull()
+      .references(() => datasets.id, { onDelete: 'cascade' }),
+    tokenHash: varchar('token_hash', { length: 255 }).notNull().unique(),
+    insightSnapshot: jsonb('insight_snapshot').notNull(),
+    chartSnapshotUrl: varchar('chart_snapshot_url', { length: 2048 }),
+    createdBy: integer('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    viewCount: integer('view_count').default(0).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('idx_shares_org_id').on(table.orgId),
+    uniqueIndex('idx_shares_token_hash').on(table.tokenHash),
+  ],
+);
+
 export const subscriptions = pgTable(
   'subscriptions',
   {
@@ -215,6 +241,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   userOrgs: many(userOrgs),
   refreshTokens: many(refreshTokens),
   createdInvites: many(orgInvites, { relationName: 'inviteCreator' }),
+  createdShares: many(shares, { relationName: 'shareCreator' }),
   analyticsEvents: many(analyticsEvents),
   uploadedDatasets: many(datasets, { relationName: 'datasetUploader' }),
 }));
@@ -223,6 +250,7 @@ export const orgsRelations = relations(orgs, ({ many }) => ({
   userOrgs: many(userOrgs),
   refreshTokens: many(refreshTokens),
   invites: many(orgInvites),
+  shares: many(shares),
   analyticsEvents: many(analyticsEvents),
   datasets: many(datasets),
   aiSummaries: many(aiSummaries),
@@ -286,6 +314,7 @@ export const datasetsRelations = relations(datasets, ({ one, many }) => ({
   }),
   rows: many(dataRows),
   aiSummaries: many(aiSummaries),
+  shares: many(shares),
 }));
 
 export const dataRowsRelations = relations(dataRows, ({ one }) => ({
@@ -307,6 +336,22 @@ export const aiSummariesRelations = relations(aiSummaries, ({ one }) => ({
   dataset: one(datasets, {
     fields: [aiSummaries.datasetId],
     references: [datasets.id],
+  }),
+}));
+
+export const sharesRelations = relations(shares, ({ one }) => ({
+  org: one(orgs, {
+    fields: [shares.orgId],
+    references: [orgs.id],
+  }),
+  dataset: one(datasets, {
+    fields: [shares.datasetId],
+    references: [datasets.id],
+  }),
+  creator: one(users, {
+    fields: [shares.createdBy],
+    references: [users.id],
+    relationName: 'shareCreator',
   }),
 }));
 

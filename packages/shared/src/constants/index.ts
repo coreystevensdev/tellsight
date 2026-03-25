@@ -19,6 +19,11 @@ export const INVITES = {
   TOKEN_BYTES: 32,
 } as const;
 
+export const SHARES = {
+  DEFAULT_EXPIRY_DAYS: 30,
+  TOKEN_BYTES: 32,
+} as const;
+
 // dot-notation past-tense — matches the pattern in analytics_events.event_name
 export const ANALYTICS_EVENTS = {
   USER_SIGNED_UP: 'user.signed_up',

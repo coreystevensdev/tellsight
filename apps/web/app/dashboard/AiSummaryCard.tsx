@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { useAiStream } from '@/lib/hooks/useAiStream';
 import { UpgradeCta } from '@/components/common/UpgradeCta';
 import { AiSummarySkeleton } from './AiSummarySkeleton';
+import { ShareMenu, type ShareStatus, type LinkStatus } from './ShareMenu';
 import { FREE_PREVIEW_WORD_LIMIT } from 'shared/constants';
 
 import type { SubscriptionTier, TransparencyMetadata } from 'shared/types';
@@ -17,6 +18,14 @@ interface AiSummaryCardProps {
   onToggleTransparency?: () => void;
   transparencyOpen?: boolean;
   onMetadataReady?: (metadata: TransparencyMetadata | null) => void;
+  onStreamComplete?: () => void;
+  onShare?: () => Promise<void>;
+  onShareDownload?: () => void;
+  onShareCopy?: () => Promise<void>;
+  shareState?: ShareStatus;
+  onShareCopyLink?: () => Promise<void>;
+  shareLinkStatus?: LinkStatus;
+  shareLinkClipboardFailed?: boolean;
   className?: string;
 }
 
@@ -83,9 +92,26 @@ function SummaryText({ text }: { text: string }) {
 interface PostCompletionFooterProps {
   onToggleTransparency?: () => void;
   transparencyOpen?: boolean;
+  onShare?: () => Promise<void>;
+  onShareDownload?: () => void;
+  onShareCopy?: () => Promise<void>;
+  shareState?: ShareStatus;
+  onShareCopyLink?: () => Promise<void>;
+  shareLinkStatus?: LinkStatus;
+  shareLinkClipboardFailed?: boolean;
 }
 
-function PostCompletionFooter({ onToggleTransparency, transparencyOpen }: PostCompletionFooterProps) {
+function PostCompletionFooter({
+  onToggleTransparency,
+  transparencyOpen,
+  onShare,
+  onShareDownload,
+  onShareCopy,
+  shareState = 'idle',
+  onShareCopyLink,
+  shareLinkStatus,
+  shareLinkClipboardFailed,
+}: PostCompletionFooterProps) {
   return (
     <div className="mt-4 flex items-center gap-3 border-t border-border pt-4 animate-fade-in">
       <span className="text-xs text-muted-foreground">Powered by AI</span>
@@ -109,13 +135,25 @@ function PostCompletionFooter({ onToggleTransparency, transparencyOpen }: PostCo
         </span>
       </button>
       <div className="ml-auto">
-        <button
-          type="button"
-          className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
-          disabled
-        >
-          Share
-        </button>
+        {onShare && onShareDownload && onShareCopy ? (
+          <ShareMenu
+            status={shareState}
+            onGenerate={onShare}
+            onDownload={onShareDownload}
+            onCopy={onShareCopy}
+            onCopyLink={onShareCopyLink}
+            linkStatus={shareLinkStatus}
+            linkClipboardFailed={shareLinkClipboardFailed}
+          />
+        ) : (
+          <button
+            type="button"
+            className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+            disabled
+          >
+            Share
+          </button>
+        )}
       </div>
     </div>
   );
@@ -157,6 +195,14 @@ export function AiSummaryCard({
   onToggleTransparency,
   transparencyOpen,
   onMetadataReady,
+  onStreamComplete,
+  onShare,
+  onShareDownload,
+  onShareCopy,
+  shareState,
+  onShareCopyLink,
+  shareLinkStatus,
+  shareLinkClipboardFailed,
   className,
 }: AiSummaryCardProps) {
   const hasCached = !!cachedContent && !datasetId;
@@ -169,29 +215,21 @@ export function AiSummaryCard({
   useEffect(() => {
     onMetadataReady?.(metadata);
   }, [metadata, onMetadataReady]);
-  const completedRef = useRef(false);
-  const [retryPending, setRetryPending] = useState(false);
+
+  useEffect(() => {
+    if (status === 'done' || status === 'timeout') onStreamComplete?.();
+  }, [status, onStreamComplete]);
+  const retryPending = status === 'connecting' && text === '';
 
   const handleUpgrade = () => {
     // pre-Epic 5: track intent only, no navigation
   };
 
+  // cached content — AI is already "done"
   useEffect(() => {
-    if (status === 'done' && !completedRef.current) {
-      completedRef.current = true;
-    }
-  }, [status]);
+    if (hasCached) onStreamComplete?.();
+  }, [hasCached, onStreamComplete]);
 
-  useEffect(() => {
-    completedRef.current = false;
-    setRetryPending(false);
-  }, [datasetId]);
-
-  useEffect(() => {
-    if (status !== 'error') setRetryPending(false);
-  }, [status]);
-
-  // cached content from RSC
   if (hasCached) {
     const isFree = tier === 'free';
     const { preview, wasTruncated } = isFree
@@ -212,7 +250,7 @@ export function AiSummaryCard({
         ) : (
           <>
             <SummaryText text={cachedContent!} />
-            <PostCompletionFooter onToggleTransparency={onToggleTransparency} transparencyOpen={transparencyOpen} />
+            <PostCompletionFooter onToggleTransparency={onToggleTransparency} transparencyOpen={transparencyOpen} onShare={onShare} onShareDownload={onShareDownload} onShareCopy={onShareCopy} shareState={shareState} onShareCopyLink={onShareCopyLink} shareLinkStatus={shareLinkStatus} shareLinkClipboardFailed={shareLinkClipboardFailed} />
           </>
         )}
       </div>
@@ -265,7 +303,7 @@ export function AiSummaryCard({
         <p className="text-sm italic text-muted-foreground">
           We focused on the most important findings to keep things quick.
         </p>
-        <PostCompletionFooter onToggleTransparency={onToggleTransparency} transparencyOpen={transparencyOpen} />
+        <PostCompletionFooter onToggleTransparency={onToggleTransparency} transparencyOpen={transparencyOpen} onShare={onShare} onShareDownload={onShareDownload} onShareCopy={onShareCopy} shareState={shareState} onShareCopyLink={onShareCopyLink} shareLinkStatus={shareLinkStatus} shareLinkClipboardFailed={shareLinkClipboardFailed} />
       </div>
     );
   }
@@ -292,10 +330,7 @@ export function AiSummaryCard({
           <button
             type="button"
             disabled={retryPending}
-            onClick={() => {
-              setRetryPending(true);
-              retry();
-            }}
+            onClick={retry}
             className="mt-3 inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
           >
             {retryPending && <RetrySpinner />}
@@ -330,7 +365,7 @@ export function AiSummaryCard({
         <SummaryText text={text} />
         {isActive && <StreamingCursor />}
       </div>
-      {isDone && <PostCompletionFooter onToggleTransparency={onToggleTransparency} transparencyOpen={transparencyOpen} />}
+      {isDone && <PostCompletionFooter onToggleTransparency={onToggleTransparency} transparencyOpen={transparencyOpen} onShare={onShare} onShareDownload={onShareDownload} onShareCopy={onShareCopy} shareState={shareState} onShareCopyLink={onShareCopyLink} shareLinkStatus={shareLinkStatus} shareLinkClipboardFailed={shareLinkClipboardFailed} />}
     </div>
   );
 }

@@ -130,7 +130,7 @@ export function useAiStream(datasetId: number | null) {
   const [state, dispatch] = useReducer(streamReducer, initialState);
   const abortRef = useRef<AbortController | null>(null);
   const statusRef = useRef(state.status);
-  statusRef.current = state.status;
+  useEffect(() => { statusRef.current = state.status; }, [state.status]);
 
   const cancel = useCallback(() => {
     abortRef.current?.abort();

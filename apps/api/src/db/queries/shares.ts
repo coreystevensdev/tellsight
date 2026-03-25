@@ -1,5 +1,5 @@
 import { eq, sql } from 'drizzle-orm';
-import { db, type DbTransaction } from '../../lib/db.js';
+import { db } from '../../lib/db.js';
 import { shares } from '../schema.js';
 
 export async function createShare(
@@ -9,9 +9,8 @@ export async function createShare(
   insightSnapshot: Record<string, unknown>,
   createdBy: number,
   expiresAt: Date,
-  client: typeof db | DbTransaction = db,
 ) {
-  const [share] = await client
+  const [share] = await db
     .insert(shares)
     .values({ orgId, datasetId, tokenHash, insightSnapshot, createdBy, expiresAt })
     .returning();
@@ -19,21 +18,15 @@ export async function createShare(
   return share;
 }
 
-export async function findByTokenHash(
-  tokenHash: string,
-  client: typeof db | DbTransaction = db,
-) {
-  return client.query.shares.findFirst({
+export async function findByTokenHash(tokenHash: string) {
+  return db.query.shares.findFirst({
     where: eq(shares.tokenHash, tokenHash),
     with: { org: true },
   });
 }
 
-export async function incrementViewCount(
-  id: number,
-  client: typeof db | DbTransaction = db,
-) {
-  const [share] = await client
+export async function incrementViewCount(id: number) {
+  const [share] = await db
     .update(shares)
     .set({ viewCount: sql`${shares.viewCount} + 1` })
     .where(eq(shares.id, id))
@@ -42,11 +35,8 @@ export async function incrementViewCount(
   return share;
 }
 
-export async function getSharesByOrg(
-  orgId: number,
-  client: typeof db | DbTransaction = db,
-) {
-  return client.query.shares.findMany({
+export async function getSharesByOrg(orgId: number) {
+  return db.query.shares.findMany({
     where: eq(shares.orgId, orgId),
   });
 }

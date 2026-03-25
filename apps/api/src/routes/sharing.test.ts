@@ -15,10 +15,6 @@ vi.mock('../services/sharing/index.js', () => ({
   getSharedInsight: mockGetSharedInsight,
 }));
 
-vi.mock('../lib/rls.js', () => ({
-  withRlsContext: vi.fn((_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({})),
-}));
-
 vi.mock('../services/analytics/trackEvent.js', () => ({
   trackEvent: mockTrackEvent,
 }));
@@ -102,10 +98,10 @@ describe('POST /shares', () => {
     expect(res.status).toBe(201);
     expect(body.data.url).toContain('/share/');
     expect(body.data.token).toBeDefined();
-    expect(mockGenerateShareLink).toHaveBeenCalledWith(10, 5, 1, expect.anything());
+    expect(mockGenerateShareLink).toHaveBeenCalledWith(10, 5, 1);
   });
 
-  it('does not fire share.created server-side (moved to client useCreateShareLink)', async () => {
+  it('fires SHARE_CREATED analytics event', async () => {
     mockVerifyAccessToken.mockResolvedValueOnce(memberPayload());
     mockGenerateShareLink.mockResolvedValueOnce({
       token: 'x'.repeat(64),
@@ -119,7 +115,12 @@ describe('POST /shares', () => {
       body: JSON.stringify({ datasetId: 7 }),
     });
 
-    expect(mockTrackEvent).not.toHaveBeenCalled();
+    expect(mockTrackEvent).toHaveBeenCalledWith(
+      10,
+      1,
+      'share.created',
+      { datasetId: 7 },
+    );
   });
 
   it('returns 400 for missing datasetId', async () => {

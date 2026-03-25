@@ -9,6 +9,7 @@ import { rateLimitPublic } from './middleware/rateLimiter.js';
 import healthRouter from './routes/health.js';
 import authRouter from './routes/auth.js';
 import { publicInviteRouter } from './routes/invites.js';
+import { publicShareRouter } from './routes/sharing.js';
 import protectedRouter from './routes/protected.js';
 import dashboardRouter from './routes/dashboard.js';
 import { redis } from './lib/redis.js';
@@ -31,6 +32,7 @@ app.use(
 app.use(healthRouter);
 app.use(authRouter);
 app.use(rateLimitPublic, publicInviteRouter);
+app.use(rateLimitPublic, publicShareRouter);
 app.use(rateLimitPublic, dashboardRouter);
 app.use(rateLimitPublic, protectedRouter);
 app.use(errorHandler);

@@ -79,8 +79,8 @@ export default async function SharePage({
   if (!result.ok) {
     const variant = result.status === 410 ? 'expired' : 'not-found';
     return (
-      <div className="flex min-h-screen flex-col bg-background">
-        <div className="px-4 py-4 text-sm font-medium text-muted-foreground">
+      <div className="flex min-h-screen flex-col bg-gray-50">
+        <div className="px-4 py-4 text-sm font-medium text-gray-500">
           SaaS Analytics Dashboard
         </div>
         <div className="flex flex-1 items-center justify-center">
@@ -93,8 +93,8 @@ export default async function SharePage({
   const { orgName, dateRange, aiSummaryContent } = result.data;
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <div className="px-4 py-4 text-sm font-medium text-muted-foreground">
+    <div className="flex min-h-screen flex-col bg-gray-50">
+      <div className="px-4 py-4 text-sm font-medium text-gray-500">
         SaaS Analytics Dashboard
       </div>
       <div className="flex flex-1 items-center justify-center px-4">

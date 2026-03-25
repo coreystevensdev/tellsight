@@ -44,7 +44,7 @@ export function useShareInsight(
 
       dataUrlRef.current = result;
       setStatus('done');
-      trackClientEvent(ANALYTICS_EVENTS.INSIGHT_EXPORTED, { format: 'png' });
+      trackClientEvent(ANALYTICS_EVENTS.SHARE_CREATED);
     } catch {
       clearTimeout(timer);
       setStatus('error');
