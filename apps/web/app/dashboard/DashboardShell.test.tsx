@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { toast } from 'sonner';
 
 const mockMutate = vi.fn();
 const mockPush = vi.fn();
@@ -103,6 +104,29 @@ vi.mock('@/lib/analytics', () => ({
   trackClientEvent: vi.fn(),
 }));
 
+vi.mock('sonner', () => ({
+  toast: { warning: vi.fn() },
+  Toaster: () => null,
+}));
+
+vi.mock('@/lib/hooks/useCreateShareLink', () => ({
+  useCreateShareLink: () => ({
+    status: 'idle',
+    clipboardFailed: false,
+    createLink: vi.fn(),
+  }),
+}));
+
+let mockTier = 'free' as 'free' | 'pro';
+vi.mock('@/lib/hooks/useSubscription', () => ({
+  useSubscription: () => ({
+    tier: mockTier,
+    isPro: mockTier === 'pro',
+    isLoading: false,
+    mutate: vi.fn(),
+  }),
+}));
+
 vi.mock('@/components/common/DemoModeBanner', () => ({
   DemoModeBanner: ({ demoState, onUploadClick }: { demoState: string; onUploadClick: () => void }) => (
     <div data-testid="demo-mode-banner" data-demo-state={demoState}>
@@ -147,6 +171,7 @@ afterEach(() => {
   vi.clearAllMocks();
   shouldThrow = false;
   mockIsMobile = false;
+  mockTier = 'free';
   mockSwrReturn = { data: undefined as unknown, isLoading: false, mutate: mockMutate };
 });
 
@@ -251,6 +276,42 @@ describe('DashboardShell', () => {
 
     expect(screen.queryByTestId('revenue-chart')).not.toBeInTheDocument();
     expect(screen.getByTestId('expense-chart')).toBeInTheDocument();
+  });
+
+  describe('downgrade toast', () => {
+    it('shows toast when tier transitions from pro to free', () => {
+      mockTier = 'pro';
+      const { rerender } = render(
+        <DashboardShell initialData={fullData} tier="pro" />,
+      );
+
+      expect(toast.warning).not.toHaveBeenCalled();
+
+      mockTier = 'free';
+      rerender(<DashboardShell initialData={fullData} tier="free" />);
+
+      expect(toast.warning).toHaveBeenCalledWith(
+        "Your Pro subscription has ended. You're now on the free plan.",
+      );
+    });
+
+    it('does not show toast on initial load as free', () => {
+      mockTier = 'free';
+      render(<DashboardShell initialData={fullData} />);
+
+      expect(toast.warning).not.toHaveBeenCalled();
+    });
+
+    it('does not show toast when tier stays pro', () => {
+      mockTier = 'pro';
+      const { rerender } = render(
+        <DashboardShell initialData={fullData} tier="pro" />,
+      );
+
+      rerender(<DashboardShell initialData={fullData} tier="pro" />);
+
+      expect(toast.warning).not.toHaveBeenCalled();
+    });
   });
 
   describe('error boundary', () => {

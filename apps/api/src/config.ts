@@ -7,6 +7,7 @@ const envSchema = z.object({
   CLAUDE_MODEL: z.string().default('claude-sonnet-4-5-20250929'),
   STRIPE_SECRET_KEY: z.string().min(1),
   STRIPE_WEBHOOK_SECRET: z.string().min(1),
+  STRIPE_PRICE_ID: z.string().min(1),
   GOOGLE_CLIENT_ID: z.string().min(1),
   GOOGLE_CLIENT_SECRET: z.string().min(1),
   JWT_SECRET: z.string().min(32),

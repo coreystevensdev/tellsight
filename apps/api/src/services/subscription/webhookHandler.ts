@@ -2,7 +2,6 @@ import type Stripe from 'stripe';
 
 import { ANALYTICS_EVENTS } from 'shared/constants';
 import { subscriptionsQueries, userOrgsQueries } from '../../db/queries/index.js';
-import { dbAdmin } from '../../lib/db.js';
 import { trackEvent } from '../analytics/trackEvent.js';
 import { logger } from '../../lib/logger.js';
 
@@ -49,8 +48,8 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     stripeSubscriptionId: subscriptionId,
     status: 'active',
     plan: 'pro',
-    currentPeriodEnd: null,
-  }, dbAdmin);
+    currentPeriodEnd: null, // populated by subscription.updated webhook in Story 5.2
+  });
 
   trackEvent(orgId, userId, ANALYTICS_EVENTS.SUBSCRIPTION_UPGRADED, {
     stripeSessionId: session.id,
@@ -71,15 +70,15 @@ async function handleSubscriptionUpdated(subscription: SubscriptionWebhookPayloa
   }
 
   // always keep period dates fresh regardless of cancellation state
-  const rowsUpdated = await subscriptionsQueries.updateSubscriptionPeriod(stripeSubscriptionId, currentPeriodEnd, dbAdmin);
+  const rowsUpdated = await subscriptionsQueries.updateSubscriptionPeriod(stripeSubscriptionId, currentPeriodEnd);
   if (rowsUpdated === 0) {
     logger.warn({ orgId, stripeSubscriptionId }, 'subscription.updated received but no matching subscription row — possible out-of-order webhook');
   }
 
   if (cancelAtPeriodEnd) {
-    await subscriptionsQueries.updateSubscriptionStatus(stripeSubscriptionId, 'canceled', currentPeriodEnd, dbAdmin);
+    await subscriptionsQueries.updateSubscriptionStatus(stripeSubscriptionId, 'canceled', currentPeriodEnd);
 
-    const ownerId = await userOrgsQueries.getOrgOwnerId(orgId, dbAdmin);
+    const ownerId = await userOrgsQueries.getOrgOwnerId(orgId);
     if (ownerId) {
       trackEvent(orgId, ownerId, ANALYTICS_EVENTS.SUBSCRIPTION_CANCELLED, { stripeSubscriptionId });
     } else {
@@ -89,11 +88,11 @@ async function handleSubscriptionUpdated(subscription: SubscriptionWebhookPayloa
     logger.info({ orgId, stripeSubscriptionId, cancelAtPeriodEnd }, 'Subscription canceled');
   } else if (subscription.status === 'active') {
     // user reactivated before period ended
-    await subscriptionsQueries.updateSubscriptionStatus(stripeSubscriptionId, 'active', currentPeriodEnd, dbAdmin);
+    await subscriptionsQueries.updateSubscriptionStatus(stripeSubscriptionId, 'active', currentPeriodEnd);
     logger.info({ orgId, stripeSubscriptionId }, 'Subscription reactivated');
   } else if (subscription.status === 'past_due') {
     // analytics fired by handleInvoicePaymentFailed — omitted here to avoid double-counting
-    await subscriptionsQueries.updateSubscriptionStatus(stripeSubscriptionId, 'past_due', currentPeriodEnd, dbAdmin);
+    await subscriptionsQueries.updateSubscriptionStatus(stripeSubscriptionId, 'past_due', currentPeriodEnd);
     logger.info({ orgId, stripeSubscriptionId }, 'Subscription past_due — payment failed');
   }
 }
@@ -113,15 +112,15 @@ async function handleInvoicePaymentFailed(invoice: InvoiceWebhookPayload) {
     return;
   }
 
-  const sub = await subscriptionsQueries.getSubscriptionByStripeId(stripeSubscriptionId, dbAdmin);
+  const sub = await subscriptionsQueries.getSubscriptionByStripeId(stripeSubscriptionId);
   if (!sub) {
     logger.warn({ stripeSubscriptionId }, 'invoice.payment_failed for unknown subscription — skipping');
     return;
   }
 
-  await subscriptionsQueries.updateSubscriptionStatus(stripeSubscriptionId, 'past_due', undefined, dbAdmin);
+  await subscriptionsQueries.updateSubscriptionStatus(stripeSubscriptionId, 'past_due');
 
-  const ownerId = await userOrgsQueries.getOrgOwnerId(sub.orgId, dbAdmin);
+  const ownerId = await userOrgsQueries.getOrgOwnerId(sub.orgId);
   if (ownerId) {
     trackEvent(sub.orgId, ownerId, ANALYTICS_EVENTS.SUBSCRIPTION_PAYMENT_FAILED, { stripeSubscriptionId });
   } else {
@@ -140,9 +139,9 @@ async function handleSubscriptionDeleted(subscription: SubscriptionWebhookPayloa
     return;
   }
 
-  await subscriptionsQueries.updateSubscriptionStatus(stripeSubscriptionId, 'expired', undefined, dbAdmin);
+  await subscriptionsQueries.updateSubscriptionStatus(stripeSubscriptionId, 'expired');
 
-  const ownerId = await userOrgsQueries.getOrgOwnerId(orgId, dbAdmin);
+  const ownerId = await userOrgsQueries.getOrgOwnerId(orgId);
   if (ownerId) {
     trackEvent(orgId, ownerId, ANALYTICS_EVENTS.SUBSCRIPTION_EXPIRED, { stripeSubscriptionId });
   } else {

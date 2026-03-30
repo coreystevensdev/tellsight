@@ -47,27 +47,27 @@ export function BillingContent() {
   if (isLoading) {
     return (
       <div className="animate-pulse space-y-4">
-        <div className="h-32 rounded-lg bg-muted" />
+        <div className="h-32 rounded-lg bg-zinc-800" />
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="rounded-lg border border-border bg-card p-6">
-        <div className="mb-1 text-sm text-muted-foreground">Current Plan</div>
-        <div className="text-xl font-semibold text-card-foreground">
+      <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-6">
+        <div className="mb-1 text-sm text-zinc-400">Current Plan</div>
+        <div className="text-xl font-semibold">
           {tier === 'pro' ? 'Pro' : 'Free'}
         </div>
         {tier === 'free' && (
-          <p className="mt-2 text-sm text-muted-foreground">
+          <p className="mt-2 text-sm text-zinc-400">
             Upgrade to Pro for full AI-powered business insights — no word limits, no blur.
           </p>
         )}
       </div>
 
       {error && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+        <div className="rounded-lg border border-red-800 bg-red-950 px-4 py-3 text-sm text-red-300">
           {error}
         </div>
       )}
@@ -76,7 +76,7 @@ export function BillingContent() {
         <button
           onClick={handleCheckout}
           disabled={loading}
-          className="w-full rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+          className="w-full rounded-lg bg-indigo-600 px-4 py-3 font-medium text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? 'Redirecting...' : 'Upgrade to Pro'}
         </button>
@@ -84,7 +84,7 @@ export function BillingContent() {
         <button
           onClick={handlePortal}
           disabled={loading}
-          className="w-full rounded-lg border border-border bg-muted px-4 py-3 font-medium text-foreground transition-colors hover:bg-muted/80 disabled:cursor-not-allowed disabled:opacity-50"
+          className="w-full rounded-lg border border-zinc-600 bg-zinc-800 px-4 py-3 font-medium text-zinc-200 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? 'Redirecting...' : 'Manage Subscription'}
         </button>

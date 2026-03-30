@@ -24,10 +24,6 @@ vi.mock('../analytics/trackEvent.js', () => ({
   trackEvent: mockTrackEvent,
 }));
 
-vi.mock('../../lib/db.js', () => ({
-  dbAdmin: {},
-}));
-
 vi.mock('../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
@@ -117,7 +113,7 @@ describe('webhookHandler', () => {
         status: 'active',
         plan: 'pro',
         currentPeriodEnd: null,
-      }, expect.anything());
+      });
 
       expect(mockTrackEvent).toHaveBeenCalledWith(
         10,
@@ -151,7 +147,6 @@ describe('webhookHandler', () => {
       expect(mockUpdateSubscriptionPeriod).toHaveBeenCalledWith(
         'sub_test_789',
         new Date(1735689600 * 1000),
-        expect.anything(),
       );
     });
 
@@ -166,7 +161,6 @@ describe('webhookHandler', () => {
         'sub_test_789',
         'canceled',
         new Date(1735689600 * 1000),
-        expect.anything(),
       );
     });
 
@@ -177,7 +171,7 @@ describe('webhookHandler', () => {
         cancel_at_period_end: true,
       }));
 
-      expect(mockGetOrgOwnerId).toHaveBeenCalledWith(10, expect.anything());
+      expect(mockGetOrgOwnerId).toHaveBeenCalledWith(10);
       expect(mockTrackEvent).toHaveBeenCalledWith(
         10,
         1,
@@ -196,7 +190,6 @@ describe('webhookHandler', () => {
         'sub_test_789',
         'active',
         new Date(1735689600 * 1000),
-        expect.anything(),
       );
     });
 
@@ -208,13 +201,11 @@ describe('webhookHandler', () => {
       expect(mockUpdateSubscriptionPeriod).toHaveBeenCalledWith(
         'sub_test_789',
         new Date(1735689600 * 1000),
-        expect.anything(),
       );
       expect(mockUpdateSubscriptionStatus).toHaveBeenCalledWith(
         'sub_test_789',
         'past_due',
         new Date(1735689600 * 1000),
-        expect.anything(),
       );
     });
 
@@ -259,8 +250,8 @@ describe('webhookHandler', () => {
 
       await handleWebhookEvent(fakeInvoicePaymentFailedEvent());
 
-      expect(mockGetSubscriptionByStripeId).toHaveBeenCalledWith('sub_test_789', expect.anything());
-      expect(mockUpdateSubscriptionStatus).toHaveBeenCalledWith('sub_test_789', 'past_due', undefined, expect.anything());
+      expect(mockGetSubscriptionByStripeId).toHaveBeenCalledWith('sub_test_789');
+      expect(mockUpdateSubscriptionStatus).toHaveBeenCalledWith('sub_test_789', 'past_due');
     });
 
     it('fires subscription.payment_failed analytics event', async () => {
@@ -303,7 +294,7 @@ describe('webhookHandler', () => {
 
       await handleWebhookEvent(fakeInvoicePaymentFailedEvent());
 
-      expect(mockUpdateSubscriptionStatus).toHaveBeenCalledWith('sub_test_789', 'past_due', undefined, expect.anything());
+      expect(mockUpdateSubscriptionStatus).toHaveBeenCalledWith('sub_test_789', 'past_due');
       expect(mockTrackEvent).not.toHaveBeenCalled();
     });
 
@@ -322,8 +313,8 @@ describe('webhookHandler', () => {
         subscription: { id: 'sub_test_789' },
       }));
 
-      expect(mockGetSubscriptionByStripeId).toHaveBeenCalledWith('sub_test_789', expect.anything());
-      expect(mockUpdateSubscriptionStatus).toHaveBeenCalledWith('sub_test_789', 'past_due', undefined, expect.anything());
+      expect(mockGetSubscriptionByStripeId).toHaveBeenCalledWith('sub_test_789');
+      expect(mockUpdateSubscriptionStatus).toHaveBeenCalledWith('sub_test_789', 'past_due');
     });
   });
 
@@ -333,7 +324,7 @@ describe('webhookHandler', () => {
 
       await handleWebhookEvent(fakeSubscriptionDeletedEvent());
 
-      expect(mockUpdateSubscriptionStatus).toHaveBeenCalledWith('sub_test_789', 'expired', undefined, expect.anything());
+      expect(mockUpdateSubscriptionStatus).toHaveBeenCalledWith('sub_test_789', 'expired');
     });
 
     it('fires subscription.expired analytics event', async () => {
@@ -341,7 +332,7 @@ describe('webhookHandler', () => {
 
       await handleWebhookEvent(fakeSubscriptionDeletedEvent());
 
-      expect(mockGetOrgOwnerId).toHaveBeenCalledWith(10, expect.anything());
+      expect(mockGetOrgOwnerId).toHaveBeenCalledWith(10);
       expect(mockTrackEvent).toHaveBeenCalledWith(
         10,
         1,

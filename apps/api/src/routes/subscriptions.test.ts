@@ -23,10 +23,6 @@ vi.mock('../services/subscription/index.js', () => ({
   createPortalSession: mockCreatePortalSession,
 }));
 
-vi.mock('../lib/rls.js', () => ({
-  withRlsContext: vi.fn((_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({})),
-}));
-
 vi.mock('../config.js', () => ({
   env: { NODE_ENV: 'test', APP_URL: 'http://localhost:3000' },
 }));
@@ -97,8 +93,7 @@ describe('GET /subscriptions/tier', () => {
     mockGetActiveTier.mockResolvedValueOnce('free');
 
     const res = await fetch(`${baseUrl}/subscriptions/tier`, { headers: authHeaders });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const json = (await res.json()) as any;
+    const json = await res.json();
 
     expect(res.status).toBe(200);
     expect(json.data.tier).toBe('free');
@@ -116,12 +111,11 @@ describe('POST /subscriptions/checkout', () => {
       method: 'POST',
       headers: authHeaders,
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const json = (await res.json()) as any;
+    const json = await res.json();
 
     expect(res.status).toBe(200);
     expect(json.data.checkoutUrl).toBe('https://checkout.stripe.com/session/cs_test');
-    expect(mockCreateCheckoutSession).toHaveBeenCalledWith(10, 1, expect.anything());
+    expect(mockCreateCheckoutSession).toHaveBeenCalledWith(10, 1);
   });
 
   it('returns 401 without auth', async () => {
@@ -156,8 +150,7 @@ describe('POST /subscriptions/portal', () => {
       method: 'POST',
       headers: authHeaders,
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const json = (await res.json()) as any;
+    const json = await res.json();
 
     expect(res.status).toBe(200);
     expect(json.data.portalUrl).toBe('https://billing.stripe.com/session/bps_test');

@@ -43,6 +43,11 @@ export const ANALYTICS_EVENTS = {
   CHART_FILTERED: 'chart.filtered',
   AI_PREVIEW_VIEWED: 'ai_preview.viewed',
   SUBSCRIPTION_UPGRADE_INTENDED: 'subscription.upgrade_intended',
+  SUBSCRIPTION_UPGRADED: 'subscription.upgraded',
+  SUBSCRIPTION_CANCELLED: 'subscription.cancelled',
+  SUBSCRIPTION_PAYMENT_FAILED: 'subscription.payment_failed',
+  SUBSCRIPTION_EXPIRED: 'subscription.expired',
+  SUBSCRIPTION_STATUS_CHECKED: 'subscription.status_checked',
   TRANSPARENCY_PANEL_OPENED: 'transparency_panel.opened',
 } as const;
 

@@ -20,11 +20,6 @@ vi.mock('../../db/queries/index.js', () => ({
   },
 }));
 
-vi.mock('../../lib/db.js', () => ({
-  db: {},
-  dbAdmin: {},
-}));
-
 vi.mock('../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));

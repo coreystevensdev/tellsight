@@ -12,7 +12,7 @@ import {
   numeric,
   date,
 } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 
 export const userRoleEnum = pgEnum('user_role', ['owner', 'member']);
 
@@ -234,7 +234,12 @@ export const subscriptions = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (table) => [index('idx_subscriptions_org_id').on(table.orgId)],
+  (table) => [
+    uniqueIndex('idx_subscriptions_org_id_unique').on(table.orgId),
+    uniqueIndex('idx_subscriptions_stripe_sub_id')
+      .on(table.stripeSubscriptionId)
+      .where(sql`${table.stripeSubscriptionId} is not null`),
+  ],
 );
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -246,7 +251,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   uploadedDatasets: many(datasets, { relationName: 'datasetUploader' }),
 }));
 
-export const orgsRelations = relations(orgs, ({ many }) => ({
+export const orgsRelations = relations(orgs, ({ many, one }) => ({
   userOrgs: many(userOrgs),
   refreshTokens: many(refreshTokens),
   invites: many(orgInvites),
@@ -254,7 +259,7 @@ export const orgsRelations = relations(orgs, ({ many }) => ({
   analyticsEvents: many(analyticsEvents),
   datasets: many(datasets),
   aiSummaries: many(aiSummaries),
-  subscriptions: many(subscriptions),
+  subscription: one(subscriptions),
 }));
 
 export const userOrgsRelations = relations(userOrgs, ({ one }) => ({

@@ -14,6 +14,11 @@ vi.mock('../db/queries/index.js', () => ({
   },
 }));
 
+const mockTrackEvent = vi.fn();
+vi.mock('../services/analytics/trackEvent.js', () => ({
+  trackEvent: (...args: unknown[]) => mockTrackEvent(...args),
+}));
+
 function makeReq(overrides = {}): TieredRequest {
   return { subscriptionTier: undefined, ...overrides } as unknown as TieredRequest;
 }
@@ -85,5 +90,31 @@ describe('subscriptionGate', () => {
     expect(res.status).not.toHaveBeenCalled();
     expect(res.json).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalledWith();
+  });
+
+  it('fires subscription.status_checked analytics event for authenticated requests', async () => {
+    mockGetActiveTier.mockResolvedValue('pro');
+    const req = makeReq({ user: { org_id: 5, sub: '42' } });
+    const res = {} as Response;
+
+    const { subscriptionGate } = await import('./subscriptionGate.js');
+    await subscriptionGate(req, res, next);
+
+    expect(mockTrackEvent).toHaveBeenCalledWith(
+      5,
+      42,
+      'subscription.status_checked',
+      { tier: 'pro', source: 'gate' },
+    );
+  });
+
+  it('skips analytics event for unauthenticated requests', async () => {
+    const req = makeReq();
+    const res = {} as Response;
+
+    const { subscriptionGate } = await import('./subscriptionGate.js');
+    await subscriptionGate(req, res, next);
+
+    expect(mockTrackEvent).not.toHaveBeenCalled();
   });
 });

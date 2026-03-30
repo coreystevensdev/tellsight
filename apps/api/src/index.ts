@@ -12,13 +12,14 @@ import { publicInviteRouter } from './routes/invites.js';
 import { publicShareRouter } from './routes/sharing.js';
 import protectedRouter from './routes/protected.js';
 import dashboardRouter from './routes/dashboard.js';
+import { stripeWebhookRouter } from './routes/stripeWebhook.js';
 import { redis } from './lib/redis.js';
 
 const app = express();
 
 app.set('trust proxy', 1); // BFF proxy is the first hop — needed for correct req.ip in rate limiting
 app.use(correlationId);
-// TODO: mount stripe webhook route here — needs raw body, must come before json parser
+app.use(stripeWebhookRouter);
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
 app.use(

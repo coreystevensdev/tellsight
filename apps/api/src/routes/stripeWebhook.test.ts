@@ -57,8 +57,7 @@ describe('POST /webhooks/stripe', () => {
     });
 
     expect(res.status).toBe(400);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const json = (await res.json()) as any;
+    const json = await res.json();
     expect(json.error.code).toBe('MISSING_SIGNATURE');
   });
 
@@ -77,8 +76,7 @@ const json = (await res.json()) as any;
     });
 
     expect(res.status).toBe(400);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const json = (await res.json()) as any;
+    const json = await res.json();
     expect(json.error.code).toBe('INVALID_SIGNATURE');
   });
 
@@ -97,8 +95,7 @@ const json = (await res.json()) as any;
     });
 
     expect(res.status).toBe(200);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const json = (await res.json()) as any;
+    const json = await res.json();
     expect(json.received).toBe(true);
     expect(mockHandleWebhookEvent).toHaveBeenCalledWith(fakeEvent);
   });

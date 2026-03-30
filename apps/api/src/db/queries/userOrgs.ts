@@ -29,6 +29,14 @@ export async function getUserOrgs(userId: number) {
   });
 }
 
+export async function getOrgOwnerId(orgId: number): Promise<number | null> {
+  const result = await db.query.userOrgs.findFirst({
+    where: and(eq(userOrgs.orgId, orgId), eq(userOrgs.role, 'owner')),
+    columns: { userId: true },
+  });
+  return result?.userId ?? null;
+}
+
 export async function getOrgMembers(orgId: number) {
   return db.query.userOrgs.findMany({
     where: eq(userOrgs.orgId, orgId),

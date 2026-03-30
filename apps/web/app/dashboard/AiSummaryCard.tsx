@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAiStream } from '@/lib/hooks/useAiStream';
 import { UpgradeCta } from '@/components/common/UpgradeCta';
@@ -179,8 +180,6 @@ function FreePreviewOverlay({ previewText, onUpgrade }: { previewText: string; o
         <UpgradeCta
           variant="overlay"
           onUpgrade={onUpgrade}
-          disabled
-          disabledTooltip="Pro plan coming soon"
         />
       </div>
     </div>
@@ -221,8 +220,9 @@ export function AiSummaryCard({
   }, [status, onStreamComplete]);
   const retryPending = status === 'connecting' && text === '';
 
+  const router = useRouter();
   const handleUpgrade = () => {
-    // pre-Epic 5: track intent only, no navigation
+    router.push('/billing');
   };
 
   // cached content — AI is already "done"

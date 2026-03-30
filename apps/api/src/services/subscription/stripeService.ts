@@ -2,7 +2,6 @@ import Stripe from 'stripe';
 
 import { env } from '../../config.js';
 import { ExternalServiceError } from '../../lib/appError.js';
-import type { db, DbTransaction } from '../../lib/db.js';
 import { subscriptionsQueries } from '../../db/queries/index.js';
 import { logger } from '../../lib/logger.js';
 
@@ -15,12 +14,8 @@ function getStripe(): Stripe {
   return _stripe;
 }
 
-export async function createCheckoutSession(
-  orgId: number,
-  userId: number,
-  client?: typeof db | DbTransaction,
-) {
-  const existing = await subscriptionsQueries.getSubscriptionByOrgId(orgId, client);
+export async function createCheckoutSession(orgId: number, userId: number) {
+  const existing = await subscriptionsQueries.getSubscriptionByOrgId(orgId);
   const customerParam = existing?.stripeCustomerId
     ? { customer: existing.stripeCustomerId }
     : {};
