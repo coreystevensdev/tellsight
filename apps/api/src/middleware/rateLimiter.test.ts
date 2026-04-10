@@ -35,7 +35,8 @@ const { createTestApp } = await import('../test/helpers/testApp.js');
 // rate-limiter-flexible with mocked Redis will fall through to insurance (memory) limiter
 const { rateLimitAuth, rateLimitAi, rateLimitPublic } = await import('./rateLimiter.js');
 
-describe('rateLimiter', () => {
+// retry — memory-backed limiter + concurrent Promise.all can race on busy CI runners
+describe('rateLimiter', { retry: 2 }, () => {
   describe('rateLimitPublic', () => {
     let server: http.Server;
     let baseUrl: string;

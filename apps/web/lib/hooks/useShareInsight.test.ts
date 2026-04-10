@@ -209,7 +209,7 @@ describe('useShareInsight', () => {
     vi.mocked(globalThis.fetch).mockRestore();
   });
 
-  it('fires share.created analytics event on successful generate', async () => {
+  it('fires insight.exported analytics event on successful generate', async () => {
     mockToPng.mockResolvedValue('data:image/png;base64,ok');
     const ref = { current: makeNode() };
 
@@ -219,6 +219,6 @@ describe('useShareInsight', () => {
       await result.current.generatePng();
     });
 
-    expect(trackClientEvent).toHaveBeenCalledWith('share.created');
+    expect(trackClientEvent).toHaveBeenCalledWith('insight.exported', { format: 'png' });
   });
 });

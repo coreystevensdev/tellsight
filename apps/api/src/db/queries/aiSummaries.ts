@@ -3,8 +3,12 @@ import { eq, and, isNull } from 'drizzle-orm';
 import { db, type DbTransaction } from '../../lib/db.js';
 import { aiSummaries } from '../schema.js';
 
-export async function getCachedSummary(orgId: number, datasetId: number) {
-  return db.query.aiSummaries.findFirst({
+export async function getCachedSummary(
+  orgId: number,
+  datasetId: number,
+  client: typeof db | DbTransaction = db,
+) {
+  return client.query.aiSummaries.findFirst({
     where: and(
       eq(aiSummaries.orgId, orgId),
       eq(aiSummaries.datasetId, datasetId),
@@ -20,8 +24,9 @@ export async function storeSummary(
   metadata: Record<string, unknown>,
   promptVersion: string,
   isSeed = false,
+  client: typeof db | DbTransaction = db,
 ) {
-  const [row] = await db
+  const [row] = await client
     .insert(aiSummaries)
     .values({
       orgId,

@@ -13,9 +13,15 @@ out/
 # Build outputs
 dist/
 .cache/
+packages/shared/src/**/*.js
+packages/shared/src/**/*.js.map
 
 # Test coverage
 coverage/
+
+# Playwright
+test-results/
+playwright-report/
 
 # Turbo
 .turbo/

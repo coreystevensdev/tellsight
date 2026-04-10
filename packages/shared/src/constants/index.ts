@@ -37,8 +37,8 @@ export const ANALYTICS_EVENTS = {
   DATASET_DELETED: 'dataset.deleted',
   AI_SUMMARY_REQUESTED: 'ai.summary_requested',
   AI_SUMMARY_COMPLETED: 'ai.summary_completed',
-  SHARE_CREATED: 'share.created',
-  SHARE_VIEWED: 'share.viewed',
+  SHARE_LINK_CREATED: 'share_link.created',
+  INSIGHT_EXPORTED: 'insight.exported',
   DASHBOARD_VIEWED: 'dashboard.viewed',
   CHART_FILTERED: 'chart.filtered',
   AI_PREVIEW_VIEWED: 'ai_preview.viewed',
@@ -72,6 +72,11 @@ export const AUTH = {
 export const SEED_ORG = {
   slug: 'seed-demo',
   name: 'Sunrise Cafe',
+} as const;
+
+export const AI_MONTHLY_QUOTA = {
+  free: 3,
+  pro: 100,
 } as const;
 
 export const CSV_REQUIRED_COLUMNS = ['date', 'amount', 'category'] as const;

@@ -55,19 +55,19 @@ export default function InviteAccept({ token }: { token: string }) {
 
   if (loading) {
     return (
-      <div className="w-full max-w-sm space-y-4 rounded-lg bg-white p-8 text-center shadow-sm">
-        <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-gray-900" />
-        <p className="text-sm text-gray-600">Checking invite...</p>
+      <div className="w-full max-w-sm space-y-4 rounded-lg bg-card p-8 text-center shadow-sm">
+        <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-border border-t-foreground" />
+        <p className="text-sm text-muted-foreground">Checking invite...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="w-full max-w-sm space-y-4 rounded-lg bg-white p-8 text-center shadow-sm">
-        <h1 className="text-lg font-semibold text-gray-900">Invite Link Invalid</h1>
-        <p className="text-sm text-red-600">{error}</p>
-        <p className="text-xs text-gray-500">
+      <div className="w-full max-w-sm space-y-4 rounded-lg bg-card p-8 text-center shadow-sm">
+        <h1 className="text-lg font-semibold text-foreground">Invite Link Invalid</h1>
+        <p className="text-sm text-destructive">{error}</p>
+        <p className="text-xs text-muted-foreground">
           Ask the organization owner to send you a new invite link.
         </p>
       </div>
@@ -75,10 +75,10 @@ export default function InviteAccept({ token }: { token: string }) {
   }
 
   return (
-    <div className="w-full max-w-sm space-y-6 rounded-lg bg-white p-8 shadow-sm">
+    <div className="w-full max-w-sm space-y-6 rounded-lg bg-card p-8 shadow-sm">
       <div className="text-center">
-        <h1 className="text-2xl font-semibold text-gray-900">Join {invite?.orgName}</h1>
-        <p className="mt-2 text-sm text-gray-600">
+        <h1 className="text-2xl font-semibold text-foreground">Join {invite?.orgName}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           You&apos;ve been invited to collaborate on this organization&apos;s analytics.
         </p>
       </div>
@@ -86,7 +86,7 @@ export default function InviteAccept({ token }: { token: string }) {
       <button
         onClick={handleJoin}
         disabled={joining}
-        className="flex w-full items-center justify-center gap-3 rounded-md border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex w-full items-center justify-center gap-3 rounded-md border border-border bg-card px-4 py-3 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
       >
         <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
           <path
@@ -109,7 +109,7 @@ export default function InviteAccept({ token }: { token: string }) {
         {joining ? 'Redirecting...' : 'Join with Google'}
       </button>
 
-      <p className="text-center text-xs text-gray-500">
+      <p className="text-center text-xs text-muted-foreground">
         Sign in with your Google account to join this organization.
       </p>
     </div>

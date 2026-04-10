@@ -142,12 +142,15 @@ describe('getActiveTier', () => {
 
     // the WHERE clause (2nd element of the `and()` array) must include an `or` with both
     // active and canceled branches — prevents silent removal of the canceled access path
-    const whereArg = mockWhere.mock.calls[0][0];
-    const orClause = whereArg[1];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const whereArg = mockWhere.mock.calls[0]![0] as any[];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const orClause = whereArg[1] as any;
     expect(orClause).toHaveProperty('or');
 
     const branches = orClause.or;
-    const statusValues = branches.map((b: unknown[]) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const statusValues = branches.map((b: any) => {
       const eqEntry = Array.isArray(b) ? b[0] : b;
       return eqEntry?.eq?.[1];
     });

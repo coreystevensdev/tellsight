@@ -43,7 +43,7 @@ export function useCreateShareLink() {
       // commit the URL before attempting clipboard — the share exists in the DB
       setShareUrl(data.url);
       setStatus('done');
-      trackClientEvent(ANALYTICS_EVENTS.SHARE_CREATED, { datasetId });
+      trackClientEvent(ANALYTICS_EVENTS.SHARE_LINK_CREATED, { datasetId });
 
       try {
         await navigator.clipboard.writeText(data.url);

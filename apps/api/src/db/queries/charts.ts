@@ -1,6 +1,6 @@
 import { eq, asc } from 'drizzle-orm';
 import type { ChartFilters } from 'shared/types';
-import { db } from '../../lib/db.js';
+import { db, type DbTransaction } from '../../lib/db.js';
 import { dataRows } from '../schema.js';
 
 const MONTH_LABELS = [
@@ -32,8 +32,13 @@ function isInDateRange(rowDate: Date, from?: Date, to?: Date): boolean {
  * Capped at `limit` rows (default 2,000) — enough for chart visualization.
  * The curation pipeline uses getRowsByDataset() which stays unlimited.
  */
-export async function getChartData(orgId: number, filters?: ChartFilters, limit = DEFAULT_CHART_ROW_LIMIT) {
-  const rows = await db.query.dataRows.findMany({
+export async function getChartData(
+  orgId: number,
+  filters?: ChartFilters,
+  limit = DEFAULT_CHART_ROW_LIMIT,
+  client: typeof db | DbTransaction = db,
+) {
+  const rows = await client.query.dataRows.findMany({
     where: eq(dataRows.orgId, orgId),
     orderBy: asc(dataRows.date),
     limit,

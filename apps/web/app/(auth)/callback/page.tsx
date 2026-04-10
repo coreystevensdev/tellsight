@@ -14,15 +14,15 @@ export default async function CallbackPage({
 
   if (params.error) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="w-full max-w-sm space-y-4 rounded-lg bg-white p-8 text-center shadow-sm">
-          <h1 className="text-lg font-semibold text-gray-900">Authentication Failed</h1>
-          <p className="text-sm text-gray-600">
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="w-full max-w-sm space-y-4 rounded-lg bg-card p-8 text-center shadow-sm">
+          <h1 className="text-lg font-semibold text-foreground">Authentication Failed</h1>
+          <p className="text-sm text-muted-foreground">
             Google denied the sign-in request. Please try again.
           </p>
           <a
             href="/login"
-            className="inline-block rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+            className="inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           >
             Back to Sign In
           </a>

@@ -60,7 +60,7 @@ describe('useCreateShareLink', () => {
     }));
   });
 
-  it('fires SHARE_CREATED analytics event on success', async () => {
+  it('fires SHARE_LINK_CREATED analytics event on success', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve({ data: { url: 'http://x/share/t' } }),
@@ -72,7 +72,7 @@ describe('useCreateShareLink', () => {
       await result.current.createLink(5);
     });
 
-    expect(trackClientEvent).toHaveBeenCalledWith('share.created', { datasetId: 5 });
+    expect(trackClientEvent).toHaveBeenCalledWith('share_link.created', { datasetId: 5 });
   });
 
   it('still transitions to done and exposes URL when clipboard fails', async () => {

@@ -34,6 +34,12 @@ export class NotFoundError extends AppError {
   }
 }
 
+export class QuotaExceededError extends AppError {
+  constructor(message: string, details?: unknown) {
+    super(message, 'QUOTA_EXCEEDED', 402, details);
+  }
+}
+
 export class ExternalServiceError extends AppError {
   constructor(service: string, details?: unknown) {
     super(`External service error: ${service}`, 'EXTERNAL_SERVICE_ERROR', 502, details);

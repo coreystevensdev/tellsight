@@ -33,7 +33,7 @@ export default function LoginButton({ redirectPath }: { redirectPath: string }) 
       <button
         onClick={handleSignIn}
         disabled={loading}
-        className="flex w-full items-center justify-center gap-3 rounded-md border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex w-full items-center justify-center gap-3 rounded-md border border-border bg-card px-4 py-3 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
       >
         <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
           <path
@@ -57,7 +57,7 @@ export default function LoginButton({ redirectPath }: { redirectPath: string }) 
       </button>
 
       {error && (
-        <p className="text-center text-sm text-red-600">{error}</p>
+        <p className="text-center text-sm text-destructive">{error}</p>
       )}
     </div>
   );

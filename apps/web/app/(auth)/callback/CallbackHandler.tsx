@@ -61,13 +61,13 @@ export default function CallbackHandler({
 
   if (error) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="w-full max-w-sm space-y-4 rounded-lg bg-white p-8 text-center shadow-sm">
-          <h1 className="text-lg font-semibold text-gray-900">Sign In Failed</h1>
-          <p className="text-sm text-red-600">{error}</p>
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="w-full max-w-sm space-y-4 rounded-lg bg-card p-8 text-center shadow-sm">
+          <h1 className="text-lg font-semibold text-foreground">Sign In Failed</h1>
+          <p className="text-sm text-destructive">{error}</p>
           <a
             href="/login"
-            className="inline-block rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+            className="inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           >
             Try Again
           </a>
@@ -77,10 +77,10 @@ export default function CallbackHandler({
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
-      <div className="w-full max-w-sm space-y-4 rounded-lg bg-white p-8 text-center shadow-sm">
-        <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-gray-900" />
-        <p className="text-sm text-gray-600">Signing you in...</p>
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="w-full max-w-sm space-y-4 rounded-lg bg-card p-8 text-center shadow-sm">
+        <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-border border-t-foreground" />
+        <p className="text-sm text-muted-foreground">Signing you in...</p>
       </div>
     </div>
   );

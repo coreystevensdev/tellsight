@@ -5,7 +5,7 @@
  * NEVER use this in Client Components — use api-client.ts instead.
  */
 
-import { webEnv } from './config.js';
+import { webEnv } from './config';
 
 const API_INTERNAL_URL = webEnv.API_INTERNAL_URL;
 

@@ -6,6 +6,7 @@ import { AuthenticationError, ExternalServiceError } from '../../lib/appError.js
 import * as usersQueries from '../../db/queries/users.js';
 import * as orgsQueries from '../../db/queries/orgs.js';
 import * as userOrgsQueries from '../../db/queries/userOrgs.js';
+import { dbAdmin } from '../../lib/db.js';
 import { validateInviteToken, redeemInvite } from './inviteService.js';
 import { AUTH } from 'shared/constants';
 
@@ -143,7 +144,7 @@ export async function handleGoogleCallback(code: string, inviteToken?: string) {
     // invited user — redeem invite, then use invite's org as primary
     if (invite) {
       await redeemInvite(invite.id, invite.orgId, existingUser.id);
-      const membership = await userOrgsQueries.findMembership(invite.orgId, existingUser.id);
+      const membership = await userOrgsQueries.findMembership(invite.orgId, existingUser.id, dbAdmin);
       if (!membership) throw new AuthenticationError('Failed to join organization');
 
       logger.info({ userId: existingUser.id, orgId: invite.orgId }, 'Existing user joined org via invite');
@@ -156,7 +157,7 @@ export async function handleGoogleCallback(code: string, inviteToken?: string) {
       };
     }
 
-    const memberships = await userOrgsQueries.getUserOrgs(existingUser.id);
+    const memberships = await userOrgsQueries.getUserOrgs(existingUser.id, dbAdmin);
     if (memberships.length === 0) {
       throw new AuthenticationError('User has no organization membership');
     }
@@ -183,7 +184,7 @@ export async function handleGoogleCallback(code: string, inviteToken?: string) {
   // invited new user — join the invite's org, skip auto-org creation
   if (invite) {
     await redeemInvite(invite.id, invite.orgId, user.id);
-    const membership = await userOrgsQueries.findMembership(invite.orgId, user.id);
+    const membership = await userOrgsQueries.findMembership(invite.orgId, user.id, dbAdmin);
     if (!membership) throw new AuthenticationError('Failed to join organization');
 
     logger.info({ userId: user.id, orgId: invite.orgId }, 'New user registered via invite');
@@ -195,7 +196,7 @@ export async function handleGoogleCallback(code: string, inviteToken?: string) {
   const orgName = `${profile.name}'s Organization`;
   const slug = await generateUniqueSlug(profile.name);
   const org = await orgsQueries.createOrg({ name: orgName, slug });
-  const membership = await userOrgsQueries.addMember(org.id, user.id, 'owner');
+  const membership = await userOrgsQueries.addMember(org.id, user.id, 'owner', dbAdmin);
 
   logger.info({ userId: user.id, orgId: org.id, slug }, 'New user registered via Google OAuth');
 

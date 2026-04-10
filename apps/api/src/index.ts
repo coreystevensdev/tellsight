@@ -14,6 +14,7 @@ import protectedRouter from './routes/protected.js';
 import dashboardRouter from './routes/dashboard.js';
 import { stripeWebhookRouter } from './routes/stripeWebhook.js';
 import { redis } from './lib/redis.js';
+import { queryClient, adminClient } from './lib/db.js';
 
 const app = express();
 
@@ -40,16 +41,48 @@ app.use(errorHandler);
 
 async function start() {
   try {
-    // redis.ts uses lazyConnect: true — explicit connect() required here
     await redis.connect();
   } catch (err) {
     logger.error({ err }, 'Redis connect failed — shutting down');
     process.exit(1);
   }
 
-  app.listen(env.PORT, () => {
+  const server = app.listen(env.PORT, () => {
     logger.info({ port: env.PORT, env: env.NODE_ENV }, 'API server started');
   });
+
+  // SSE streams can run up to 15s — give them time to finish
+  server.keepAliveTimeout = 20_000;
+
+  let shuttingDown = false;
+
+  async function shutdown(signal: string) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info({ signal }, 'Shutdown signal received — draining connections');
+
+    server.close(async () => {
+      try {
+        await redis.quit();
+        await queryClient.end({ timeout: 5 });
+        await adminClient.end({ timeout: 5 });
+        logger.info({}, 'All connections closed — exiting');
+        process.exit(0);
+      } catch (err) {
+        logger.error({ err }, 'Error during connection cleanup');
+        process.exit(1);
+      }
+    });
+
+    // hard kill if drain takes too long (30s covers worst-case SSE + query finish)
+    setTimeout(() => {
+      logger.error({}, 'Graceful shutdown timed out — forcing exit');
+      process.exit(1);
+    }, 30_000).unref();
+  }
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 start();

@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 const envSchema = z.object({
   DATABASE_URL: z.string().url(),
+  DATABASE_ADMIN_URL: z.string().url(),
   REDIS_URL: z.string().url(),
   CLAUDE_API_KEY: z.string().min(1),
   CLAUDE_MODEL: z.string().default('claude-sonnet-4-5-20250929'),

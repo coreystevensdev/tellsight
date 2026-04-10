@@ -28,6 +28,10 @@ vi.mock('../../lib/db.js', () => ({
     select: mockSelect,
     query: { orgs: { findFirst: vi.fn() } },
   },
+  dbAdmin: {
+    select: mockSelect,
+    query: { orgs: { findFirst: vi.fn() } },
+  },
 }));
 
 vi.mock('drizzle-orm', () => ({

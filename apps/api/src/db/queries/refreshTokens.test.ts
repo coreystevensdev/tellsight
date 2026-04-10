@@ -18,6 +18,7 @@ vi.mock('../../lib/db.js', () => ({
   },
 }));
 
+const { db: mockDb } = await import('../../lib/db.js');
 const { createRefreshToken, findByHash, revokeToken, revokeAllForUser } = await import(
   './refreshTokens.js'
 );
@@ -37,7 +38,7 @@ describe('refreshTokens queries', () => {
         userId: 10,
         orgId: 20,
         expiresAt: new Date('2026-03-01'),
-      });
+      }, mockDb);
 
       expect(result).toEqual(created);
     });
@@ -51,7 +52,7 @@ describe('refreshTokens queries', () => {
           userId: 1,
           orgId: 1,
           expiresAt: new Date(),
-        }),
+        }, mockDb),
       ).rejects.toThrow('Insert failed to return refresh token');
     });
   });
@@ -66,7 +67,7 @@ describe('refreshTokens queries', () => {
       };
       mockFindFirst.mockResolvedValueOnce(token);
 
-      const result = await findByHash('abc123');
+      const result = await findByHash('abc123', mockDb);
 
       expect(mockFindFirst).toHaveBeenCalledOnce();
       expect(result).toEqual(token);
@@ -75,7 +76,7 @@ describe('refreshTokens queries', () => {
     it('returns undefined when token not found', async () => {
       mockFindFirst.mockResolvedValueOnce(undefined);
 
-      const result = await findByHash('nonexistent');
+      const result = await findByHash('nonexistent', mockDb);
 
       expect(result).toBeUndefined();
     });
@@ -86,7 +87,7 @@ describe('refreshTokens queries', () => {
       const revoked = { id: 1, revokedAt: new Date() };
       mockReturning.mockResolvedValueOnce([revoked]);
 
-      const result = await revokeToken(1);
+      const result = await revokeToken(1, mockDb);
 
       expect(result).toEqual(revoked);
     });
@@ -94,7 +95,7 @@ describe('refreshTokens queries', () => {
     it('returns undefined if token not found', async () => {
       mockReturning.mockResolvedValueOnce([]);
 
-      const result = await revokeToken(999);
+      const result = await revokeToken(999, mockDb);
 
       expect(result).toBeUndefined();
     });
@@ -104,7 +105,7 @@ describe('refreshTokens queries', () => {
     it('executes without error', async () => {
       mockWhere.mockResolvedValueOnce(undefined);
 
-      await expect(revokeAllForUser(10)).resolves.not.toThrow();
+      await expect(revokeAllForUser(10, mockDb)).resolves.not.toThrow();
     });
   });
 });

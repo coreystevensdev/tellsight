@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { BarChart3, Upload, Settings, ShieldCheck, Activity, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebar } from '@/app/dashboard/contexts/SidebarContext';
+import { ThemeToggle } from '@/components/common/ThemeToggle';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: BarChart3 },
@@ -17,7 +18,7 @@ function SidebarNav({ orgName, isAdmin, onNavigate }: { orgName?: string; isAdmi
   const pathname = usePathname();
 
   return (
-    <>
+    <div className="flex h-full flex-col">
       <div className="flex h-14 items-center justify-between border-b border-border px-6">
         <Link
           href="/dashboard"
@@ -98,7 +99,11 @@ function SidebarNav({ orgName, isAdmin, onNavigate }: { orgName?: string; isAdmi
           </>
         )}
       </nav>
-    </>
+
+      <div className="mt-auto border-t border-border px-3 py-3">
+        <ThemeToggle />
+      </div>
+    </div>
   );
 }
 

@@ -39,6 +39,10 @@ vi.mock('../db/queries/index.js', () => ({
   },
 }));
 
+vi.mock('../lib/rls.js', () => ({
+  withRlsContext: vi.fn((_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({})),
+}));
+
 const { createTestApp } = await import('../test/helpers/testApp.js');
 const { authMiddleware } = await import('../middleware/authMiddleware.js');
 const { datasetsRouter } = await import('./datasets.js');
@@ -269,6 +273,7 @@ describe('POST /datasets/confirm', () => {
       expect.arrayContaining([
         expect.objectContaining({ category: 'Revenue' }),
       ]),
+      expect.anything(),
     );
     expect(mockPersistUpload.mock.calls[0]![3]).toHaveLength(3);
   });

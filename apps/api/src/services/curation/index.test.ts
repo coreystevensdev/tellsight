@@ -61,7 +61,7 @@ describe('runCurationPipeline', () => {
 
     const insights = await runCurationPipeline(1, 1);
 
-    expect(dataRowsQueries.getRowsByDataset).toHaveBeenCalledWith(1, 1);
+    expect(dataRowsQueries.getRowsByDataset).toHaveBeenCalledWith(1, 1, undefined);
     expect(insights.length).toBeGreaterThan(0);
     expect(insights.length).toBeLessThanOrEqual(8);
 
@@ -143,7 +143,7 @@ describe('runFullPipeline', () => {
 
     expect(result.content).toBe('Fresh AI analysis.');
     expect(result.fromCache).toBe(false);
-    expect(dataRowsQueries.getRowsByDataset).toHaveBeenCalledWith(1, 1);
+    expect(dataRowsQueries.getRowsByDataset).toHaveBeenCalledWith(1, 1, undefined);
     expect(generateInterpretation).toHaveBeenCalledWith(expect.stringContaining('business analyst'));
     expect(aiSummariesQueries.storeSummary).toHaveBeenCalledWith(
       1, 1,

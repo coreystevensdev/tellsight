@@ -8,9 +8,9 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
-const dbUrl = process.env.DATABASE_URL;
+const dbUrl = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 if (!dbUrl) {
-  console.error('DATABASE_URL is required for migrations');
+  console.error('DATABASE_ADMIN_URL (or DATABASE_URL) is required for migrations');
   process.exit(1);
 }
 

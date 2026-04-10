@@ -95,12 +95,12 @@ function ShareOptions({
         </p>
       )}
       {linkClipboardFailed && (
-        <p className="px-3 py-2 text-xs text-amber-600" role="status" aria-live="polite">
+        <p className="px-3 py-2 text-xs text-warning" role="status" aria-live="polite">
           Link created but clipboard unavailable — copy from the URL bar.
         </p>
       )}
       {feedback !== 'idle' && (
-        <p className="px-3 py-1.5 text-xs font-medium text-green-600" role="status" aria-live="polite">
+        <p className="px-3 py-1.5 text-xs font-medium text-success" role="status" aria-live="polite">
           {feedbackText[feedback]}
         </p>
       )}
@@ -113,7 +113,7 @@ function ShareOptions({
           aria-label="Copy link"
         >
           {feedback === 'linked' ? (
-            <Check className="h-4 w-4 text-green-500" aria-hidden="true" />
+            <Check className="h-4 w-4 text-success" aria-hidden="true" />
           ) : (
             <Link2 className="h-4 w-4" aria-hidden="true" />
           )}
@@ -128,7 +128,7 @@ function ShareOptions({
         aria-label="Download PNG"
       >
         {feedback === 'downloaded' ? (
-          <Check className="h-4 w-4 text-green-500" aria-hidden="true" />
+          <Check className="h-4 w-4 text-success" aria-hidden="true" />
         ) : (
           <Download className="h-4 w-4" aria-hidden="true" />
         )}
@@ -142,7 +142,7 @@ function ShareOptions({
         aria-label="Copy to clipboard"
       >
         {feedback === 'copied' ? (
-          <Check className="h-4 w-4 text-green-500" aria-hidden="true" />
+          <Check className="h-4 w-4 text-success" aria-hidden="true" />
         ) : (
           <Copy className="h-4 w-4" aria-hidden="true" />
         )}

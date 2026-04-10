@@ -3,17 +3,19 @@ import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../middleware/authMiddleware.js';
 import { roleGuard } from '../middleware/roleGuard.js';
 import { generateInvite, validateInviteToken, getActiveInvitesForOrg } from '../services/auth/index.js';
+import { withRlsContext } from '../lib/rls.js';
 import { env } from '../config.js';
 import { createInviteSchema, inviteTokenParamSchema } from 'shared/schemas';
 import { ValidationError } from '../lib/appError.js';
 
 export const inviteRouter = Router();
 
-// GET /invites — owner-only, lists active (unexpired, unused) invites
 inviteRouter.get('/', roleGuard('owner'), async (req, res: Response) => {
   const { user } = req as AuthenticatedRequest;
 
-  const invites = await getActiveInvitesForOrg(user.org_id);
+  const invites = await withRlsContext(user.org_id, user.isAdmin, (tx) =>
+    getActiveInvitesForOrg(user.org_id, tx),
+  );
 
   const safe = invites.map((inv) => ({
     id: inv.id,
@@ -25,7 +27,6 @@ inviteRouter.get('/', roleGuard('owner'), async (req, res: Response) => {
   res.json({ data: safe });
 });
 
-// POST /invites — owner-only, creates a new invite link
 inviteRouter.post('/', roleGuard('owner'), async (req, res: Response) => {
   const { user } = req as AuthenticatedRequest;
 
@@ -34,10 +35,8 @@ inviteRouter.post('/', roleGuard('owner'), async (req, res: Response) => {
     throw new ValidationError('Invalid invite parameters', parsed.error.format());
   }
 
-  const { token, expiresAt } = await generateInvite(
-    user.org_id,
-    parseInt(user.sub, 10),
-    parsed.data.expiresInDays,
+  const { token, expiresAt } = await withRlsContext(user.org_id, user.isAdmin, (tx) =>
+    generateInvite(user.org_id, parseInt(user.sub, 10), parsed.data.expiresInDays, tx),
   );
 
   const url = `${env.APP_URL}/invite/${token}`;

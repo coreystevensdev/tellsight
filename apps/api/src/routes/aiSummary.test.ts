@@ -21,10 +21,19 @@ vi.mock('../lib/redis.js', () => ({
   redis: { connect: vi.fn(), on: vi.fn(), ping: vi.fn() },
 }));
 
+vi.mock('../lib/db.js', () => ({
+  db: {},
+  dbAdmin: {},
+}));
+
 const mockGetCachedSummary = vi.fn();
+const mockGetMonthlyAiUsageCount = vi.fn().mockResolvedValue(0);
 vi.mock('../db/queries/index.js', () => ({
   aiSummariesQueries: {
     getCachedSummary: (...args: unknown[]) => mockGetCachedSummary(...args),
+  },
+  analyticsEventsQueries: {
+    getMonthlyAiUsageCount: (...args: unknown[]) => mockGetMonthlyAiUsageCount(...args),
   },
   subscriptionsQueries: {
     getActiveTier: vi.fn().mockResolvedValue('free'),
@@ -34,6 +43,10 @@ vi.mock('../db/queries/index.js', () => ({
 const mockTrackEvent = vi.fn();
 vi.mock('../services/analytics/trackEvent.js', () => ({
   trackEvent: (...args: unknown[]) => mockTrackEvent(...args),
+}));
+
+vi.mock('../lib/rls.js', () => ({
+  withRlsContext: vi.fn((_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({})),
 }));
 
 const mockStreamToSSE = vi.fn();
@@ -109,6 +122,7 @@ describe('GET /ai-summaries/:datasetId', () => {
     mockGetCachedSummary.mockResolvedValue(null);
     mockStreamToSSE.mockImplementation(async (_req: unknown, res: { end: () => void }) => {
       res.end();
+      return { ok: true };
     });
 
     await fetch(`${baseUrl}/ai-summaries/42`);
@@ -119,6 +133,7 @@ describe('GET /ai-summaries/:datasetId', () => {
       1,
       42,
       'free',
+      expect.anything(),
     );
   });
 

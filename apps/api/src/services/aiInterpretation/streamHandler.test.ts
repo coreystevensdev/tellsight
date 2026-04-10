@@ -171,7 +171,7 @@ describe('streamToSSE', () => {
     const { streamToSSE } = await import('./streamHandler.js');
     await streamToSSE(req, res, 1, 42);
 
-    expect(mockStoreSummary).toHaveBeenCalledWith(1, 42, 'cached text', defaultMetadata, 'v1');
+    expect(mockStoreSummary).toHaveBeenCalledWith(1, 42, 'cached text', defaultMetadata, 'v1', false, undefined);
   });
 
   it('sends error event on stream failure', async () => {
@@ -400,7 +400,7 @@ describe('streamToSSE', () => {
     // stream was delivered successfully
     const doneChunk = chunks.find((c) => c.startsWith('event: done'));
     expect(doneChunk).toBeDefined();
-    expect(result).toBe(true);
+    expect(result.ok).toBe(true);
 
     // verify warning was logged, not an unhandled rejection
     const { logger } = await import('../../lib/logger.js');
@@ -461,7 +461,7 @@ describe('streamToSSE', () => {
       expect(doneChunk).toContain('"reason":"free_preview"');
 
       expect(res.end).toHaveBeenCalled();
-      expect(result).toBe(true);
+      expect(result.ok).toBe(true);
     });
 
     it('streams fully for pro tier', async () => {

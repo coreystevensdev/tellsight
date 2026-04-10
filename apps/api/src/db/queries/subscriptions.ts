@@ -2,15 +2,18 @@ import { and, eq, gt, isNotNull, isNull, ne, or } from 'drizzle-orm';
 
 import type { SubscriptionTier } from 'shared/types';
 
-import { db } from '../../lib/db.js';
+import { db, type DbTransaction } from '../../lib/db.js';
 import { subscriptions } from '../schema.js';
 
 export type { SubscriptionTier };
 
-export async function getActiveTier(orgId: number): Promise<SubscriptionTier> {
+export async function getActiveTier(
+  orgId: number,
+  client: typeof db | DbTransaction = db,
+): Promise<SubscriptionTier> {
   try {
     const now = new Date();
-    const result = await db
+    const result = await client
       .select()
       .from(subscriptions)
       .where(
@@ -41,8 +44,11 @@ interface UpsertSubscriptionParams {
   currentPeriodEnd: Date | null;
 }
 
-export async function upsertSubscription(params: UpsertSubscriptionParams) {
-  const [result] = await db
+export async function upsertSubscription(
+  params: UpsertSubscriptionParams,
+  client: typeof db | DbTransaction = db,
+) {
+  const [result] = await client
     .insert(subscriptions)
     .values({
       orgId: params.orgId,
@@ -67,8 +73,12 @@ export async function upsertSubscription(params: UpsertSubscriptionParams) {
   return result;
 }
 
-export async function updateSubscriptionPeriod(stripeSubscriptionId: string, currentPeriodEnd: Date) {
-  const result = await db
+export async function updateSubscriptionPeriod(
+  stripeSubscriptionId: string,
+  currentPeriodEnd: Date,
+  client: typeof db | DbTransaction = db,
+) {
+  const result = await client
     .update(subscriptions)
     .set({ currentPeriodEnd, updatedAt: new Date() })
     .where(eq(subscriptions.stripeSubscriptionId, stripeSubscriptionId))
@@ -80,8 +90,9 @@ export async function updateSubscriptionStatus(
   stripeSubscriptionId: string,
   status: string,
   currentPeriodEnd?: Date,
+  client: typeof db | DbTransaction = db,
 ) {
-  await db
+  await client
     .update(subscriptions)
     .set({
       status,
@@ -97,8 +108,11 @@ export async function updateSubscriptionStatus(
     );
 }
 
-export async function getSubscriptionByStripeId(stripeSubscriptionId: string) {
-  const result = await db
+export async function getSubscriptionByStripeId(
+  stripeSubscriptionId: string,
+  client: typeof db | DbTransaction = db,
+) {
+  const result = await client
     .select()
     .from(subscriptions)
     .where(eq(subscriptions.stripeSubscriptionId, stripeSubscriptionId))
@@ -106,8 +120,11 @@ export async function getSubscriptionByStripeId(stripeSubscriptionId: string) {
   return result[0] ?? null;
 }
 
-export async function getSubscriptionByOrgId(orgId: number) {
-  const result = await db
+export async function getSubscriptionByOrgId(
+  orgId: number,
+  client: typeof db | DbTransaction = db,
+) {
+  const result = await client
     .select()
     .from(subscriptions)
     .where(eq(subscriptions.orgId, orgId))

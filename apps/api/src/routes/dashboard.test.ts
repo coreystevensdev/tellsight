@@ -26,6 +26,17 @@ vi.mock('../services/analytics/trackEvent.js', () => ({
   trackEvent: mockTrackEvent,
 }));
 
+const mockWithRlsContext = vi.fn();
+
+vi.mock('../lib/db.js', () => ({
+  db: {},
+  dbAdmin: { _tag: 'dbAdmin' },
+}));
+
+vi.mock('../lib/rls.js', () => ({
+  withRlsContext: (...args: unknown[]) => mockWithRlsContext(...args),
+}));
+
 vi.mock('../config.js', () => ({
   env: {
     NODE_ENV: 'test',
@@ -56,6 +67,7 @@ vi.mock('../middleware/rateLimiter.js', () => ({
   rateLimitAi: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
+const { AuthenticationError } = await import('../lib/appError.js');
 const { createTestApp } = await import('../test/helpers/testApp.js');
 const { default: dashboardRouter } = await import('./dashboard.js');
 
@@ -85,6 +97,8 @@ beforeEach(() => {
   mockGetSeedOrgId.mockResolvedValue(99);
   mockGetDatasetsByOrg.mockResolvedValue([{ id: 1 }]);
   mockGetCachedSummary.mockResolvedValue(null);
+  // withRlsContext executes the callback with a mock tx — query mocks intercept regardless
+  mockWithRlsContext.mockImplementation(async (_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({ _tag: 'tx' }));
 });
 
 describe('GET /dashboard/charts', () => {
@@ -97,7 +111,7 @@ describe('GET /dashboard/charts', () => {
     expect(body.data.orgName).toBe('Sunrise Cafe');
     expect(body.data.demoState).toBe('seed_only');
     expect(mockGetSeedOrgId).toHaveBeenCalledOnce();
-    expect(mockGetChartData).toHaveBeenCalledWith(99, undefined);
+    expect(mockGetChartData).toHaveBeenCalledWith(99, undefined, undefined, expect.anything());
   });
 
   it('returns user org data for valid JWT', async () => {
@@ -119,12 +133,13 @@ describe('GET /dashboard/charts', () => {
     expect(body.data.isDemo).toBe(false);
     expect(body.data.orgName).toBe('Acme Corp');
     expect(body.data.demoState).toBe('user_only');
-    expect(mockGetChartData).toHaveBeenCalledWith(10, undefined);
+    expect(mockWithRlsContext).toHaveBeenCalledWith(10, false, expect.any(Function));
+    expect(mockGetChartData).toHaveBeenCalledWith(10, undefined, undefined, expect.anything());
     expect(mockGetSeedOrgId).not.toHaveBeenCalled();
   });
 
   it('falls back to seed data on invalid JWT', async () => {
-    mockVerifyAccessToken.mockRejectedValueOnce(new Error('expired'));
+    mockVerifyAccessToken.mockRejectedValueOnce(new AuthenticationError('expired'));
 
     const res = await fetch(`${baseUrl}/dashboard/charts`, {
       headers: { Cookie: 'access_token=expired-jwt' },
@@ -146,6 +161,8 @@ describe('GET /dashboard/charts', () => {
     vi.clearAllMocks();
     mockGetChartData.mockResolvedValue(chartFixture);
     mockGetSeedOrgId.mockResolvedValue(99);
+    mockGetDatasetsByOrg.mockResolvedValue([{ id: 1 }]);
+    mockWithRlsContext.mockImplementation(async (_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({ _tag: 'tx' }));
 
     // authenticated request — should track
     mockVerifyAccessToken.mockResolvedValueOnce({
@@ -188,6 +205,8 @@ describe('GET /dashboard/charts', () => {
         dateTo: expect.any(Date),
         categories: ['Payroll', 'Rent'],
       }),
+      undefined,
+      expect.anything(),
     );
   });
 
@@ -195,7 +214,7 @@ describe('GET /dashboard/charts', () => {
     const res = await fetch(`${baseUrl}/dashboard/charts?from=not-a-date&to=also-bad`);
 
     expect(res.status).toBe(200);
-    expect(mockGetChartData).toHaveBeenCalledWith(99, undefined);
+    expect(mockGetChartData).toHaveBeenCalledWith(99, undefined, undefined, expect.anything());
   });
 
   it('falls back to demoState empty when getUserOrgDemoState fails', async () => {
@@ -219,7 +238,7 @@ describe('GET /dashboard/charts', () => {
     expect(body.data.demoState).toBe('empty');
   });
 
-  it('fires chart.filtered event when filters are present', async () => {
+  it('does not fire chart.filtered server-side (moved to client FilterBar)', async () => {
     mockVerifyAccessToken.mockResolvedValueOnce({
       sub: '42',
       org_id: 10,
@@ -233,11 +252,10 @@ describe('GET /dashboard/charts', () => {
       headers: { Cookie: 'access_token=valid-jwt' },
     });
 
-    expect(mockTrackEvent).toHaveBeenCalledWith(10, 42, 'chart.filtered', {
-      dateFrom: expect.any(String),
-      dateTo: undefined,
-      categories: ['Rent'],
-    });
+    const chartFilteredCalls = mockTrackEvent.mock.calls.filter(
+      (c: unknown[]) => c[2] === 'chart.filtered',
+    );
+    expect(chartFilteredCalls).toHaveLength(0);
   });
 });
 
@@ -250,7 +268,7 @@ describe('GET /ai-summaries/:datasetId/cached', () => {
 
     expect(res.status).toBe(200);
     expect(body.data.content).toBe('Revenue grew 12% month over month.');
-    expect(mockGetCachedSummary).toHaveBeenCalledWith(99, 1);
+    expect(mockGetCachedSummary).toHaveBeenCalledWith(99, 1, expect.anything());
   });
 
   it('returns 404 when no cached summary exists', async () => {

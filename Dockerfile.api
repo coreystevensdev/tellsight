@@ -19,17 +19,22 @@ COPY . .
 RUN pnpm --filter shared build && pnpm --filter api build
 
 FROM base AS production
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY --from=build /app/apps/api/dist ./apps/api/dist
-COPY --from=build /app/packages/shared/dist ./packages/shared/dist
+COPY --from=build /app/packages/shared ./packages/shared
 COPY --from=build /app/apps/api/package.json ./apps/api/
-COPY --from=build /app/packages/shared/package.json ./packages/shared/
 COPY --from=build /app/apps/api/drizzle ./apps/api/drizzle
+COPY --from=build /app/apps/api/src ./apps/api/src
 COPY apps/api/entrypoint.sh ./apps/api/
-RUN chmod +x ./apps/api/entrypoint.sh
+RUN chmod +x ./apps/api/entrypoint.sh && chown -R node:node /app
 
+USER node
 EXPOSE 3001
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:3001/health || exit 1
 ENTRYPOINT ["./apps/api/entrypoint.sh"]
-CMD ["node", "apps/api/dist/index.js"]
+CMD ["node", "apps/api/dist/apps/api/src/index.js"]

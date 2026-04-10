@@ -2,9 +2,8 @@ import { Router } from 'express';
 import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../middleware/authMiddleware.js';
 import { generateShareLink, getSharedInsight } from '../services/sharing/index.js';
-import { trackEvent } from '../services/analytics/trackEvent.js';
+import { withRlsContext } from '../lib/rls.js';
 import { createShareSchema } from 'shared/schemas';
-import { ANALYTICS_EVENTS } from 'shared/constants';
 import { ValidationError } from '../lib/appError.js';
 
 // mounted behind authMiddleware via protectedRouter
@@ -18,15 +17,11 @@ shareRouter.post('/', async (req, res: Response) => {
     throw new ValidationError('Invalid share parameters', parsed.error.format());
   }
 
-  const result = await generateShareLink(
-    user.org_id,
-    parsed.data.datasetId,
-    parseInt(user.sub, 10),
+  const result = await withRlsContext(user.org_id, user.isAdmin, (tx) =>
+    generateShareLink(user.org_id, parsed.data.datasetId, parseInt(user.sub, 10), tx),
   );
 
-  trackEvent(user.org_id, parseInt(user.sub, 10), ANALYTICS_EVENTS.SHARE_CREATED, {
-    datasetId: parsed.data.datasetId,
-  });
+  // share_link.created tracking moved client-side (useCreateShareLink.ts) — avoids double-counting
 
   res.status(201).json({ data: result });
 });

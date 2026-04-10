@@ -78,6 +78,27 @@
       "when": 1774675300000,
       "tag": "0010_add-rls-shares",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1774675400000,
+      "tag": "0011_add-rls-subscriptions",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1774675500000,
+      "tag": "0012_add-subscription-unique-constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1774675600000,
+      "tag": "0013_fix-ai-summaries-rls-policy",
+      "breakpoints": true
     }
   ]
 }

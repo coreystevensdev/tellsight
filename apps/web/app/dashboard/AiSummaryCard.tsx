@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAiStream } from '@/lib/hooks/useAiStream';
+import { trackClientEvent } from '@/lib/analytics';
 import { UpgradeCta } from '@/components/common/UpgradeCta';
 import { AiSummarySkeleton } from './AiSummarySkeleton';
 import { ShareMenu, type ShareStatus, type LinkStatus } from './ShareMenu';
-import { FREE_PREVIEW_WORD_LIMIT } from 'shared/constants';
+import { FREE_PREVIEW_WORD_LIMIT, ANALYTICS_EVENTS } from 'shared/constants';
 
 import type { SubscriptionTier, TransparencyMetadata } from 'shared/types';
 
@@ -161,6 +162,13 @@ function PostCompletionFooter({
 }
 
 function FreePreviewOverlay({ previewText, onUpgrade }: { previewText: string; onUpgrade: () => void }) {
+  const firedRef = useRef(false);
+  useEffect(() => {
+    if (firedRef.current) return;
+    firedRef.current = true;
+    trackClientEvent(ANALYTICS_EVENTS.AI_PREVIEW_VIEWED);
+  }, []);
+
   return (
     <div className="relative">
       <SummaryText text={previewText} />
@@ -222,6 +230,7 @@ export function AiSummaryCard({
 
   const router = useRouter();
   const handleUpgrade = () => {
+    trackClientEvent(ANALYTICS_EVENTS.SUBSCRIPTION_UPGRADE_INTENDED);
     router.push('/billing');
   };
 

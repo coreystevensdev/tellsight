@@ -21,6 +21,10 @@ vi.mock('../../db/queries/shares.js', () => ({
   incrementViewCount: mockIncrementViewCount,
 }));
 
+vi.mock('../../lib/db.js', () => ({
+  dbAdmin: {},
+}));
+
 vi.mock('../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
@@ -155,7 +159,7 @@ describe('shareService', () => {
       expect(result.aiSummaryContent).toBe('Revenue grew 12% MoM.');
       expect(result.chartConfig).toEqual({ type: 'bar' });
       expect(result.viewCount).toBe(4); // 3 + 1
-      expect(mockIncrementViewCount).toHaveBeenCalledWith(1);
+      expect(mockIncrementViewCount).toHaveBeenCalledWith(1, expect.anything());
     });
 
     it('throws NotFoundError for an unknown token', async () => {

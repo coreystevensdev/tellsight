@@ -86,14 +86,14 @@ export default function InviteManager() {
 
   if (forbidden) {
     return (
-      <div className="w-full max-w-md space-y-4 rounded-lg bg-white p-8 shadow-sm">
-        <h1 className="text-xl font-semibold text-gray-900">Invite Team Members</h1>
-        <p className="text-sm text-gray-600">
+      <div className="w-full max-w-md space-y-4 rounded-lg bg-card p-8 shadow-sm">
+        <h1 className="text-xl font-semibold text-foreground">Invite Team Members</h1>
+        <p className="text-sm text-muted-foreground">
           Only organization owners can generate invite links. Ask your org owner if you need to invite someone.
         </p>
         <a
           href="/dashboard"
-          className="inline-block text-sm text-gray-500 transition-colors hover:text-gray-700"
+          className="inline-block text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           &larr; Back to dashboard
         </a>
@@ -102,10 +102,10 @@ export default function InviteManager() {
   }
 
   return (
-    <div className="w-full max-w-md space-y-6 rounded-lg bg-white p-8 shadow-sm">
+    <div className="w-full max-w-md space-y-6 rounded-lg bg-card p-8 shadow-sm">
       <div>
-        <h1 className="text-xl font-semibold text-gray-900">Invite Team Members</h1>
-        <p className="mt-1 text-sm text-gray-600">
+        <h1 className="text-xl font-semibold text-foreground">Invite Team Members</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
           Generate a link to invite someone to your organization.
         </p>
       </div>
@@ -113,22 +113,22 @@ export default function InviteManager() {
       <button
         onClick={handleGenerate}
         disabled={loading}
-        className="w-full rounded-md bg-gray-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+        className="w-full rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {loading ? 'Generating...' : 'Generate Invite Link'}
       </button>
 
       {error && (
-        <div className="rounded-md bg-red-50 p-3">
-          <p className="text-sm text-red-700">{error}</p>
+        <div className="rounded-md bg-destructive/10 p-3">
+          <p className="text-sm text-destructive">{error}</p>
         </div>
       )}
 
       {invite && (
-        <div className="space-y-3 rounded-md border border-gray-200 bg-gray-50 p-4">
+        <div className="space-y-3 rounded-md border border-border bg-muted p-4">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-500">Invite Link</span>
-            <span className="text-xs text-gray-400">
+            <span className="text-xs font-medium text-muted-foreground">Invite Link</span>
+            <span className="text-xs text-muted-foreground">
               Expires {formatExpiry(invite.expiresAt)}
             </span>
           </div>
@@ -137,18 +137,18 @@ export default function InviteManager() {
             <input
               readOnly
               value={invite.url}
-              className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-xs text-gray-700 focus:outline-none"
+              className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground focus:outline-none"
               onClick={(e) => (e.target as HTMLInputElement).select()}
             />
             <button
               onClick={handleCopy}
-              className="shrink-0 rounded-md border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50"
+              className="shrink-0 rounded-md border border-border bg-background px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted"
             >
               {copied ? 'Copied!' : 'Copy'}
             </button>
           </div>
 
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             Anyone with this link can join your organization by signing in with Google.
           </p>
         </div>
@@ -156,14 +156,14 @@ export default function InviteManager() {
 
       {activeInvites.length > 0 && (
         <div className="space-y-3">
-          <h2 className="text-sm font-medium text-gray-700">
+          <h2 className="text-sm font-medium text-foreground">
             Active Invites ({activeInvites.length})
           </h2>
-          <ul className="divide-y divide-gray-100 rounded-md border border-gray-200">
+          <ul className="divide-y divide-border rounded-md border border-border">
             {activeInvites.map((inv) => (
               <li key={inv.id} className="flex items-center justify-between px-4 py-3">
-                <span className="text-xs text-gray-500">Invite #{inv.id}</span>
-                <span className="text-xs text-gray-400">
+                <span className="text-xs text-muted-foreground">Invite #{inv.id}</span>
+                <span className="text-xs text-muted-foreground">
                   {daysUntil(inv.expiresAt)}d left
                 </span>
               </li>
@@ -172,10 +172,10 @@ export default function InviteManager() {
         </div>
       )}
 
-      <div className="border-t border-gray-200 pt-4">
+      <div className="border-t border-border pt-4">
         <a
           href="/dashboard"
-          className="text-sm text-gray-500 transition-colors hover:text-gray-700"
+          className="text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           &larr; Back to dashboard
         </a>

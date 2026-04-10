@@ -8,6 +8,10 @@ vi.mock('../../db/queries/index.js', () => ({
   },
 }));
 
+vi.mock('../../lib/db.js', () => ({
+  dbAdmin: {},
+}));
+
 const mockLogError = vi.fn();
 vi.mock('../../lib/logger.js', () => ({
   logger: {
@@ -31,14 +35,14 @@ describe('trackEvent', () => {
     trackEvent(10, 5, 'dataset.uploaded', { rows: 42 });
     await flushPromises();
 
-    expect(mockRecordEvent).toHaveBeenCalledWith(10, 5, 'dataset.uploaded', { rows: 42 });
+    expect(mockRecordEvent).toHaveBeenCalledWith(10, 5, 'dataset.uploaded', { rows: 42 }, expect.anything());
   });
 
   it('passes undefined metadata as undefined', async () => {
     trackEvent(10, 5, 'user.signed_in');
     await flushPromises();
 
-    expect(mockRecordEvent).toHaveBeenCalledWith(10, 5, 'user.signed_in', undefined);
+    expect(mockRecordEvent).toHaveBeenCalledWith(10, 5, 'user.signed_in', undefined, expect.anything());
   });
 
   it('does not throw when recordEvent fails — fire-and-forget', async () => {

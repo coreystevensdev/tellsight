@@ -5,15 +5,15 @@
 //   - Raw Drizzle calls: query functions import lib/db.ts → config.ts → crash.
 //     Seed script uses its own drizzle instance directly inside a transaction.
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import postgres from 'postgres';
 import { SEED_ORG } from 'shared/constants';
 
 import * as schema from './schema.js';
 
-const dbUrl = process.env.DATABASE_URL;
+const dbUrl = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 if (!dbUrl) {
-  console.error('DATABASE_URL is required for seeding');
+  console.error('DATABASE_ADMIN_URL (or DATABASE_URL) is required for seeding');
   process.exit(1);
 }
 
@@ -104,11 +104,8 @@ function lerp(minVal: string, maxVal: string, monthIndex: number): string {
 }
 
 async function seed() {
-  // Everything inside the transaction — RLS bypass must be active
-  // before we can query datasets (RLS blocks visibility without it)
+  // app_admin role has BYPASSRLS — no SET LOCAL needed
   await db.transaction(async (tx) => {
-    await tx.execute(sql`SET LOCAL app.is_admin = 'true'`);
-
     // Idempotency: check if seed org + seed dataset already exist
     const existing = await tx.query.orgs.findFirst({
       where: eq(schema.orgs.slug, SEED_ORG.slug),
