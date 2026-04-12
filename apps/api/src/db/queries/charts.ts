@@ -69,6 +69,7 @@ export async function getChartData(
 
   const revenueByMonth = new Map<string, number>();
   const expenseTotals = new Map<string, number>();
+  const expenseByMonthCategory = new Map<string, Map<string, number>>();
 
   for (const row of rows) {
     if (!isInDateRange(row.date, filters?.dateFrom, filters?.dateTo)) continue;
@@ -81,6 +82,11 @@ export async function getChartData(
     } else if (row.parentCategory === 'Expenses') {
       if (activeCategories && !activeCategories.has(row.category)) continue;
       expenseTotals.set(row.category, (expenseTotals.get(row.category) ?? 0) + amount);
+
+      const monthKey = `${row.date.getFullYear()}-${String(row.date.getMonth() + 1).padStart(2, '0')}`;
+      if (!expenseByMonthCategory.has(monthKey)) expenseByMonthCategory.set(monthKey, new Map());
+      const monthMap = expenseByMonthCategory.get(monthKey)!;
+      monthMap.set(row.category, (monthMap.get(row.category) ?? 0) + amount);
     }
   }
 
@@ -99,5 +105,20 @@ export async function getChartData(
     .map(([category, total]) => ({ category, total: Math.round(total * 100) / 100 }))
     .sort((a, b) => b.total - a.total);
 
-  return { revenueTrend, expenseBreakdown, availableCategories, dateRange };
+  const allExpenseCategories = [...expenseTotals.keys()].sort();
+  const expenseTrend = [...expenseByMonthCategory.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, catMap]) => {
+      const monthIdx = parseInt(key.split('-')[1]!, 10) - 1;
+      const year = key.split('-')[0];
+      const point: Record<string, string | number> = {
+        month: `${MONTH_LABELS[monthIdx]} ${year}`,
+      };
+      for (const cat of allExpenseCategories) {
+        point[cat] = Math.round((catMap.get(cat) ?? 0) * 100) / 100;
+      }
+      return point;
+    });
+
+  return { revenueTrend, expenseBreakdown, expenseTrend, availableCategories, dateRange };
 }

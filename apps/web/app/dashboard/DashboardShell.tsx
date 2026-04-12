@@ -16,6 +16,7 @@ import { useSubscription } from '@/lib/hooks/useSubscription';
 import { useSidebar } from './contexts/SidebarContext';
 import { RevenueChart } from './charts/RevenueChart';
 import { ExpenseChart } from './charts/ExpenseChart';
+import { ExpenseTrendChart } from './charts/ExpenseTrendChart';
 import { ChartSkeleton } from './charts/ChartSkeleton';
 import { LazyChart } from './charts/LazyChart';
 import { FilterBar, computeDateRange, type FilterState } from './FilterBar';
@@ -27,6 +28,7 @@ import { useShareInsight } from '@/lib/hooks/useShareInsight';
 import { useCreateShareLink } from '@/lib/hooks/useCreateShareLink';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { DemoModeBanner } from '@/components/common/DemoModeBanner';
+import { KpiCards } from './KpiCards';
 
 interface DashboardShellProps {
   initialData: ChartData;
@@ -258,10 +260,54 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, tie
         </div>
 
         <div ref={captureRef}>
-          <AiSummaryErrorBoundary className="mb-6">
+          {hasData && (
+            <KpiCards
+              revenueTrend={data.revenueTrend}
+              expenseBreakdown={data.expenseBreakdown}
+            />
+          )}
+
+          <ChartErrorBoundary onRetry={() => mutate()}>
+            {isLoading && !hasData ? (
+              <div className="grid gap-4 md:grid-cols-2 md:gap-6">
+                <ChartSkeleton variant="line" />
+                <ChartSkeleton variant="bar" />
+              </div>
+            ) : !hasData && hasActiveFilters ? (
+              <FilteredEmptyState onReset={handleResetFilters} />
+            ) : !hasData ? (
+              <EmptyState />
+            ) : (
+              <>
+                <div className="grid gap-4 md:grid-cols-2 md:gap-6">
+                  {hasRevenue && (
+                    <LazyChart skeletonVariant="line">
+                      <RevenueChart data={data.revenueTrend} />
+                    </LazyChart>
+                  )}
+                  {hasExpenses && (
+                    <LazyChart skeletonVariant="bar">
+                      <ExpenseChart data={data.expenseBreakdown} />
+                    </LazyChart>
+                  )}
+                </div>
+                {data.expenseTrend?.length > 0 && (
+                  <div className="mt-4 md:mt-6">
+                    <LazyChart skeletonVariant="line">
+                      <ExpenseTrendChart
+                        data={data.expenseTrend}
+                        categories={data.availableCategories}
+                      />
+                    </LazyChart>
+                  </div>
+                )}
+              </>
+            )}
+          </ChartErrorBoundary>
+
+          <AiSummaryErrorBoundary className="mt-6">
             {isMobile ? (
-              // mobile: AI card full-width, transparency in bottom sheet
-              <div className="mb-6">
+              <div className="mt-6">
                 {aiSummaryCard}
                 <Sheet open={transparencyOpen} onOpenChange={(open) => !open && handleCloseTransparency()}>
                   <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto rounded-t-xl">
@@ -275,57 +321,24 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, tie
                 </Sheet>
               </div>
             ) : (
-              // desktop: CSS Grid with animated transparency column
-              <div
-                className={cn(
-                  'mb-6 md:grid md:grid-cols-12 md:gap-6',
-                )}
-              >
-                <div className="md:col-span-8">
-                  <div
-                    className={cn(
-                      'grid transition-[grid-template-columns] duration-200 ease-in-out motion-reduce:duration-0',
-                      transparencyOpen ? 'grid-cols-[1fr_320px]' : 'grid-cols-[1fr_0fr]',
-                    )}
-                  >
-                    {aiSummaryCard}
-                    <TransparencyPanel
-                      metadata={metadata}
-                      isOpen={transparencyOpen}
-                      onClose={handleCloseTransparency}
-                      className="overflow-hidden min-w-0"
-                    />
-                  </div>
+              <div className="mt-6">
+                <div
+                  className={cn(
+                    'grid transition-[grid-template-columns] duration-200 ease-in-out motion-reduce:duration-0',
+                    transparencyOpen ? 'grid-cols-[1fr_320px] gap-6' : 'grid-cols-[1fr_0fr]',
+                  )}
+                >
+                  {aiSummaryCard}
+                  <TransparencyPanel
+                    metadata={metadata}
+                    isOpen={transparencyOpen}
+                    onClose={handleCloseTransparency}
+                    className="overflow-hidden min-w-0"
+                  />
                 </div>
               </div>
             )}
           </AiSummaryErrorBoundary>
-
-          <ChartErrorBoundary onRetry={() => mutate()}>
-            {isLoading && !hasData ? (
-              <div className="grid gap-4 md:grid-cols-2 md:gap-6">
-                <ChartSkeleton variant="line" />
-                <ChartSkeleton variant="bar" />
-              </div>
-            ) : !hasData && hasActiveFilters ? (
-              <FilteredEmptyState onReset={handleResetFilters} />
-            ) : !hasData ? (
-              <EmptyState />
-            ) : (
-              <div className="grid gap-4 md:grid-cols-2 md:gap-6">
-                {hasRevenue && (
-                  <LazyChart skeletonVariant="line">
-                    <RevenueChart data={data.revenueTrend} />
-                  </LazyChart>
-                )}
-                {hasExpenses && (
-                  <LazyChart skeletonVariant="bar">
-                    <ExpenseChart data={data.expenseBreakdown} />
-                  </LazyChart>
-                )}
-              </div>
-            )}
-          </ChartErrorBoundary>
         </div>
 
         <ShareFab

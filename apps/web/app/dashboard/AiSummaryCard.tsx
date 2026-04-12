@@ -79,13 +79,22 @@ function StreamingCursor() {
   );
 }
 
+function highlightNumbers(text: string): React.ReactNode[] {
+  const parts = text.split(/(\$[\d,]+(?:\.\d{2})?|\d+(?:\.\d+)?%)/g);
+  return parts.map((part, i) =>
+    /^\$[\d,]|^\d+.*%$/.test(part)
+      ? <span key={i} className="font-semibold text-foreground">{part}</span>
+      : <span key={i}>{part}</span>
+  );
+}
+
 function SummaryText({ text }: { text: string }) {
   const paragraphs = text.split('\n\n').filter(Boolean);
 
   return (
-    <div className="max-w-prose text-base leading-[1.6] md:text-[17px] md:leading-[1.8] [&>p+p]:mt-[1.5em]">
+    <div className="max-w-prose text-[15px] leading-[1.65] text-card-foreground/85 md:text-base md:leading-[1.75] [&>p+p]:mt-[1.25em]">
       {paragraphs.map((p, i) => (
-        <p key={i}>{p}</p>
+        <p key={i}>{highlightNumbers(p)}</p>
       ))}
     </div>
   );
@@ -254,6 +263,7 @@ export function AiSummaryCard({
         role="region"
         aria-label="AI business summary"
       >
+        <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">Analysis</h3>
         {wasTruncated ? (
           <FreePreviewOverlay previewText={preview} onUpgrade={handleUpgrade} />
         ) : (
@@ -367,6 +377,7 @@ export function AiSummaryCard({
       role="region"
       aria-label="AI business summary"
     >
+      <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">Analysis</h3>
       <div
         aria-live="polite"
         aria-busy={isActive}

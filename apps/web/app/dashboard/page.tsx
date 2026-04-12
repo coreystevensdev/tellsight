@@ -7,6 +7,7 @@ import { DashboardShell } from './DashboardShell';
 const EMPTY_CHART_DATA: ChartData = {
   revenueTrend: [],
   expenseBreakdown: [],
+  expenseTrend: [],
   orgName: 'Dashboard',
   isDemo: true,
   availableCategories: [],

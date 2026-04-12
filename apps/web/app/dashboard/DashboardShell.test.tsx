@@ -147,6 +147,10 @@ const fullData: ChartData = {
     { category: 'Payroll', total: 3000 },
     { category: 'Rent', total: 1500 },
   ],
+  expenseTrend: [
+    { month: 'Jan', Payroll: 3000, Rent: 1500 },
+    { month: 'Feb', Payroll: 3200, Rent: 1500 },
+  ],
   orgName: 'Acme Corp',
   isDemo: false,
   availableCategories: ['Payroll', 'Rent'],
@@ -158,6 +162,7 @@ const fullData: ChartData = {
 const emptyData: ChartData = {
   revenueTrend: [],
   expenseBreakdown: [],
+  expenseTrend: [],
   orgName: 'Dashboard',
   isDemo: true,
   availableCategories: [],

@@ -16,6 +16,7 @@ vi.mock('recharts', () => ({
     capturedBarProps = props;
     return null;
   },
+  Cell: () => null,
   XAxis: () => null,
   YAxis: () => null,
   CartesianGrid: () => null,

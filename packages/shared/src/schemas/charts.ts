@@ -16,9 +16,12 @@ export const datasetDateRangeSchema = z.object({
   max: z.string(),
 });
 
+export const expenseTrendPointSchema = z.record(z.string(), z.union([z.string(), z.number()]));
+
 export const chartDataSchema = z.object({
   revenueTrend: z.array(revenueTrendPointSchema),
   expenseBreakdown: z.array(expenseBreakdownItemSchema),
+  expenseTrend: z.array(expenseTrendPointSchema),
   orgName: z.string(),
   isDemo: z.boolean(),
   availableCategories: z.array(z.string()),

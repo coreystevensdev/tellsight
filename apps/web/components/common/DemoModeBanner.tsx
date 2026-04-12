@@ -61,12 +61,12 @@ export function DemoModeBanner({ demoState, onUploadClick }: DemoModeBannerProps
         'motion-reduce:transition-none',
       )}
     >
-      <div className="flex items-center gap-3 rounded-lg border border-info/30 bg-info/5 px-4 py-3">
-        <p className="flex-1 text-sm text-foreground">{message}</p>
+      <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/50 px-4 py-2.5">
+        <p className="flex-1 text-xs text-muted-foreground">{message}</p>
         <button
           type="button"
           onClick={onUploadClick}
-          className="shrink-0 rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          className="shrink-0 rounded-md border border-border bg-card px-3 py-1 text-xs font-medium text-foreground hover:bg-accent"
         >
           Upload CSV
         </button>

@@ -3,6 +3,7 @@
 import {
   BarChart,
   Bar,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -36,7 +37,7 @@ export function ExpenseTooltip({ active, payload, label }: {
     >
       <p className="font-medium text-card-foreground">{label}</p>
       <p
-        className={value == null ? 'text-muted-foreground' : 'text-accent-warm'}
+        className={value == null ? 'text-muted-foreground' : 'font-semibold text-card-foreground'}
         style={{ fontFeatureSettings: '"tnum"' }}
       >
         {display}
@@ -44,6 +45,15 @@ export function ExpenseTooltip({ active, payload, label }: {
     </div>
   );
 }
+
+const CATEGORY_COLORS = [
+  'var(--color-chart-expense-1)',
+  'var(--color-chart-expense-2)',
+  'var(--color-chart-expense-3)',
+  'var(--color-chart-expense-4)',
+  'var(--color-chart-expense-5)',
+  'var(--color-chart-expense-6)',
+];
 
 export function ExpenseChart({ data }: ExpenseChartProps) {
   const reducedMotion = useReducedMotion();
@@ -53,7 +63,7 @@ export function ExpenseChart({ data }: ExpenseChartProps) {
   return (
     <figure className="rounded-lg border border-border bg-card p-4 shadow-sm transition-shadow duration-200 hover:shadow-md motion-reduce:transition-none motion-reduce:hover:shadow-sm md:p-6">
       <figcaption className="mb-4">
-        <h3 className="text-xl font-medium text-card-foreground" style={{ lineHeight: '1.4' }}>
+        <h3 className="text-base font-semibold text-card-foreground">
           Expense Breakdown
         </h3>
       </figcaption>
@@ -89,12 +99,15 @@ export function ExpenseChart({ data }: ExpenseChartProps) {
             <Tooltip content={<ExpenseTooltip />} />
             <Bar
               dataKey="total"
-              className="fill-accent-warm"
               radius={[4, 4, 0, 0]}
               animationDuration={CHART_CONFIG.ANIMATION_DURATION_MS}
               animationEasing={CHART_CONFIG.ANIMATION_EASING}
               isAnimationActive={!reducedMotion}
-            />
+            >
+              {data.map((_, i) => (
+                <Cell key={i} fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]} />
+              ))}
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>

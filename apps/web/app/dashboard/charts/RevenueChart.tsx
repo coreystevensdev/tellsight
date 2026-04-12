@@ -37,7 +37,7 @@ export function RevenueTooltip({ active, payload, label }: {
     >
       <p className="font-medium text-card-foreground">{label}</p>
       <p
-        className={value == null ? 'text-muted-foreground' : 'text-primary'}
+        className={value == null ? 'text-muted-foreground' : 'font-semibold text-card-foreground'}
         style={{ fontFeatureSettings: '"tnum"' }}
       >
         {display}
@@ -56,7 +56,7 @@ export function RevenueChart({ data }: RevenueChartProps) {
   return (
     <figure className="rounded-lg border border-border bg-card p-4 shadow-sm transition-shadow duration-200 hover:shadow-md motion-reduce:transition-none motion-reduce:hover:shadow-sm md:p-6">
       <figcaption className="mb-4 flex items-center justify-between">
-        <h3 className="text-xl font-medium text-card-foreground" style={{ lineHeight: '1.4' }}>
+        <h3 className="text-base font-semibold text-card-foreground">
           Revenue Trend
         </h3>
         <TrendBadge value={trend} label="Revenue" />
@@ -95,9 +95,9 @@ export function RevenueChart({ data }: RevenueChartProps) {
               type="monotone"
               dataKey="revenue"
               strokeWidth={2}
-              className="stroke-primary"
-              dot={{ r: 4, className: 'fill-primary stroke-background', strokeWidth: 2 }}
-              activeDot={{ r: 6, className: 'fill-primary stroke-background', strokeWidth: 2 }}
+              stroke="var(--color-chart-revenue)"
+              dot={{ r: 4, fill: 'var(--color-chart-revenue-dot)', stroke: 'var(--color-background)', strokeWidth: 2 }}
+              activeDot={{ r: 6, fill: 'var(--color-chart-revenue-dot)', stroke: 'var(--color-background)', strokeWidth: 2 }}
               animationDuration={CHART_CONFIG.ANIMATION_DURATION_MS}
               animationEasing={CHART_CONFIG.ANIMATION_EASING}
               isAnimationActive={!reducedMotion}
