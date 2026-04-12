@@ -59,7 +59,7 @@ describe('useSubscription', () => {
     const { result } = renderHook(() => useSubscription({ enabled: false }), { wrapper });
 
     expect(mockFetch).not.toHaveBeenCalled();
-    expect(result.current.tier).toBe('free');
+    expect(result.current.tier).toBeUndefined();
     expect(result.current.isPro).toBe(false);
     expect(result.current.isLoading).toBe(false);
   });

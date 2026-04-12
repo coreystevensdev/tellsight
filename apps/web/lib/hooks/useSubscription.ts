@@ -7,7 +7,7 @@ interface UseSubscriptionOptions {
 }
 
 interface UseSubscriptionResult {
-  tier: SubscriptionTier;
+  tier: SubscriptionTier | undefined;
   isPro: boolean;
   isLoading: boolean;
   mutate: () => Promise<void>;
@@ -33,7 +33,7 @@ export function useSubscription(opts: UseSubscriptionOptions = {}): UseSubscript
     },
   );
 
-  const tier = data ?? 'free';
+  const tier = enabled ? (data ?? 'free') : fallbackData;
 
   return {
     tier,
