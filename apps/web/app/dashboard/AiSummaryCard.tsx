@@ -92,7 +92,7 @@ function SummaryText({ text }: { text: string }) {
   const paragraphs = text.split('\n\n').filter(Boolean);
 
   return (
-    <div className="max-w-prose text-[15px] leading-[1.65] text-card-foreground/85 md:text-base md:leading-[1.75] [&>p+p]:mt-[1.25em]">
+    <div className="max-w-prose text-sm leading-[1.6] text-card-foreground/85 md:text-[15px] md:leading-[1.7] [&>p+p]:mt-[1em]">
       {paragraphs.map((p, i) => (
         <p key={i}>{highlightNumbers(p)}</p>
       ))}
