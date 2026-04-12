@@ -92,7 +92,7 @@ function SummaryText({ text }: { text: string }) {
   const paragraphs = text.split('\n\n').filter(Boolean);
 
   return (
-    <div className="max-w-prose text-sm leading-[1.6] text-card-foreground/85 md:text-[15px] md:leading-[1.7] [&>p+p]:mt-[1em]">
+    <div className="text-sm leading-[1.6] text-card-foreground/85 md:text-[15px] md:leading-[1.7] [&>p+p]:mt-[1em]">
       {paragraphs.map((p, i) => (
         <p key={i}>{highlightNumbers(p)}</p>
       ))}
@@ -186,7 +186,7 @@ function FreePreviewOverlay({ previewText, onUpgrade }: { previewText: string; o
       <div className="relative mt-0" aria-hidden="true">
         <div className="absolute inset-x-0 top-0 h-12 bg-gradient-to-b from-card/0 to-card z-10" />
         <div className="select-none blur-sm opacity-60">
-          <div className="max-w-prose text-base leading-[1.6] md:text-[17px] md:leading-[1.8] [&>p+p]:mt-[1.5em]">
+          <div className="text-sm leading-[1.6] md:text-[15px] md:leading-[1.7] [&>p+p]:mt-[1em]">
             <p>Continue reading to discover key trends in your revenue growth, expense patterns, and actionable recommendations for optimizing your business performance over the coming quarter.</p>
             <p>Our analysis identifies several opportunities for cost reduction and revenue acceleration based on your historical data patterns.</p>
           </div>
