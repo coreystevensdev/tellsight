@@ -1,6 +1,6 @@
 'use client';
 
-import { TrendingUp, TrendingDown, DollarSign, Receipt, PiggyBank, Crown } from 'lucide-react';
+import { TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Scale, Tag } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { RevenueTrendPoint, ExpenseBreakdownItem } from 'shared/types';
 
@@ -18,12 +18,12 @@ function formatCompact(value: number): string {
 function KpiCard({ label, value, icon: Icon, trend, iconColor }: {
   label: string;
   value: string;
-  icon: typeof DollarSign;
+  icon: typeof ArrowUpRight;
   trend?: { value: number; label: string } | null;
   iconColor: string;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+    <div className="cursor-default rounded-lg border border-border bg-card p-4 shadow-sm transition-all duration-150 hover:border-primary/30 hover:shadow-md">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
         <Icon className={cn('h-4 w-4', iconColor)} />
@@ -77,27 +77,27 @@ export function KpiCards({ revenueTrend, expenseBreakdown }: KpiCardsProps) {
       <KpiCard
         label="Total Revenue"
         value={formatCompact(totalRevenue)}
-        icon={DollarSign}
-        iconColor="text-chart-revenue"
+        icon={ArrowUpRight}
+        iconColor="text-success"
         trend={revenueTrend12 != null ? { value: revenueTrend12, label: 'vs prev month' } : null}
       />
       <KpiCard
         label="Total Expenses"
         value={formatCompact(totalExpenses)}
-        icon={Receipt}
-        iconColor="text-muted-foreground"
+        icon={ArrowDownRight}
+        iconColor="text-destructive"
       />
       <KpiCard
         label="Net Profit"
         value={formatCompact(netProfit)}
-        icon={PiggyBank}
+        icon={Scale}
         iconColor={netProfit >= 0 ? 'text-success' : 'text-destructive'}
       />
       <KpiCard
         label="Top Expense"
         value={topCategory ? topCategory.category : 'N/A'}
-        icon={Crown}
-        iconColor="text-warning"
+        icon={Tag}
+        iconColor="text-muted-foreground"
       />
     </div>
   );

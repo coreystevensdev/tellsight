@@ -103,15 +103,15 @@ function lerp(minVal: string, maxVal: string, monthIndex: number): string {
   return (min + (max - min) * t).toFixed(2);
 }
 
-const FALLBACK_SEED_SUMMARY = `Your revenue peaked in December at $14,200 — a 42% jump over November driven by holiday demand. That seasonal spike is worth planning around next year.
+const FALLBACK_SEED_SUMMARY = `Your revenue peaked in December at $14,200, a 42% jump over November driven by holiday demand. That seasonal spike is worth planning around next year.
 
 The biggest cost concern is payroll, which climbed steadily from $3,800 in January to $5,200 by December. That 37% increase outpaced revenue growth in most months. Worth reviewing whether headcount additions are translating into proportional revenue gains.
 
-Marketing spend dropped sharply in Q3 (July–September), falling to $800/month from the $1,500 range earlier in the year. Revenue held steady during that period, which suggests either the earlier marketing had lasting effects or your revenue sources aren't marketing-dependent.
+Marketing spend dropped sharply in Q3 (July through September), falling to $800/month from the $1,500 range earlier in the year. Revenue held steady during that period, which suggests either the earlier marketing had lasting effects or your revenue sources aren't marketing-dependent.
 
-October shows an unusual payroll spike to $5,800 — well above the trend line. If that was a one-time event (bonus, contractor), it's fine. If it's a new baseline, it will compress margins heading into Q1.
+October shows an unusual payroll spike to $5,800, well above the trend line. If that was a one-time event (bonus, contractor), it's fine. If it's a new baseline, it will compress margins heading into Q1.
 
-Rent and utilities remained flat throughout the year, which is exactly what you want from fixed costs. Supplies fluctuated but stayed under $400/month — not material enough to worry about.
+Rent and utilities remained flat throughout the year, which is exactly what you want from fixed costs. Supplies fluctuated but stayed under $400/month. Not material enough to worry about.
 
 The overall picture: revenue is growing but so are costs, particularly payroll. Your best month (December) produced roughly $6,800 in net margin. Your worst months barely broke even. Building a cash buffer during peak months would give you more room to absorb the slow periods.`;
 
@@ -154,7 +154,7 @@ async function seed() {
       .insert(schema.datasets)
       .values({
         orgId,
-        name: 'Sunrise Cafe — 2025 Financials',
+        name: 'Sunrise Cafe 2025 Financials',
         sourceType: 'csv',
         isSeedData: true,
       })
