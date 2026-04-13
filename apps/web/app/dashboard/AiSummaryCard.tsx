@@ -131,8 +131,6 @@ function PostCompletionFooter({
 }: PostCompletionFooterProps) {
   return (
     <div className="mt-4 flex items-center gap-3 border-t border-border pt-4 animate-fade-in">
-      <span className="text-xs text-muted-foreground">Powered by AI</span>
-      <span className="text-xs text-muted-foreground">·</span>
       <button
         type="button"
         className="min-h-11 text-xs text-muted-foreground underline-offset-2 hover:underline"

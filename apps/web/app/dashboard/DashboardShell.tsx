@@ -263,6 +263,11 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, tie
       <section className="mx-auto max-w-7xl px-4 py-6 md:px-6 lg:px-8" aria-labelledby="dashboard-heading">
         <div className="mb-6">
           <h1 id="dashboard-heading" className="text-2xl font-semibold text-foreground">{data.orgName}</h1>
+          {data.dateRange && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              {data.dateRange.min} to {data.dateRange.max}
+            </p>
+          )}
         </div>
 
         <div ref={captureRef}>

@@ -78,7 +78,7 @@ describe('AiSummaryCard', () => {
 
     render(<AiSummaryCard datasetId={42} />);
     expect(screen.getByText('Full analysis complete.')).toBeTruthy();
-    expect(screen.getByText('Powered by AI')).toBeTruthy();
+    expect(screen.getByText(/How I reached this conclusion/)).toBeTruthy();
     expect(screen.queryByText('▋')).toBeNull();
   });
 
@@ -102,7 +102,7 @@ describe('AiSummaryCard', () => {
     );
 
     render(<AiSummaryCard datasetId={42} />);
-    expect(screen.getByText('Powered by AI')).toBeTruthy();
+    expect(screen.getByText(/How I reached this conclusion/)).toBeTruthy();
   });
 
   it('renders hr divider in timeout state', () => {
@@ -233,7 +233,7 @@ describe('AiSummaryCard', () => {
     );
 
     render(<AiSummaryCard datasetId={42} />);
-    expect(screen.queryByText('Powered by AI')).toBeNull();
+    expect(screen.queryByText(/How I reached this conclusion/)).toBeNull();
   });
 
   it('renders blurred placeholder text with aria-hidden', () => {
@@ -253,7 +253,7 @@ describe('AiSummaryCard', () => {
 
     render(<AiSummaryCard datasetId={null} cachedContent={longContent} tier="free" />);
     expect(screen.getByText('Unlock full analysis')).toBeTruthy();
-    expect(screen.queryByText('Powered by AI')).toBeNull();
+    expect(screen.queryByText(/How I reached this conclusion/)).toBeNull();
   });
 
   it('renders full cached content for pro tier', () => {
@@ -262,7 +262,7 @@ describe('AiSummaryCard', () => {
 
     render(<AiSummaryCard datasetId={null} cachedContent={content} tier="pro" />);
     expect(screen.getByText('Full pro analysis content.')).toBeTruthy();
-    expect(screen.getByText('Powered by AI')).toBeTruthy();
+    expect(screen.getByText(/How I reached this conclusion/)).toBeTruthy();
     expect(screen.queryByText('Unlock full analysis')).toBeNull();
   });
 
@@ -271,7 +271,7 @@ describe('AiSummaryCard', () => {
 
     render(<AiSummaryCard datasetId={null} cachedContent="Seed summary for visitors" />);
     expect(screen.getByText('Seed summary for visitors')).toBeTruthy();
-    expect(screen.getByText('Powered by AI')).toBeTruthy();
+    expect(screen.getByText(/How I reached this conclusion/)).toBeTruthy();
     expect(screen.queryByText('Unlock full analysis')).toBeNull();
   });
 

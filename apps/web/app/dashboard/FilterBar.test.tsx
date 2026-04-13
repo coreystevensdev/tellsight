@@ -287,7 +287,7 @@ describe('FilterBar', () => {
 
       const toolbar = screen.getByRole('toolbar');
       expect(toolbar.className).toContain('sticky');
-      expect(toolbar.className).toContain('top-14');
+      expect(toolbar.className).toContain('top-0');
     });
   });
 });
