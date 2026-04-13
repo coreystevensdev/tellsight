@@ -37,11 +37,11 @@ export function DemoModeBanner({ demoState, onUploadClick }: DemoModeBannerProps
       <div
         role="status"
         aria-live="polite"
-        className="border-b border-border bg-muted/40 px-4 py-2 md:px-6 lg:px-8 animate-banner-dissolve motion-reduce:hidden"
+        className="border-b border-primary/20 bg-primary/5 px-4 py-3 md:px-6 lg:px-8 animate-banner-dissolve motion-reduce:hidden"
         onAnimationEnd={() => setDismissed(true)}
       >
-        <div className="mx-auto flex max-w-7xl items-center gap-3">
-          <p className="flex-1 text-xs text-muted-foreground">{dissolveMessage}</p>
+        <div className="mx-auto flex max-w-7xl items-center justify-center gap-3">
+          <p className="text-sm text-foreground">{dissolveMessage}</p>
         </div>
       </div>
     );
@@ -57,16 +57,16 @@ export function DemoModeBanner({ demoState, onUploadClick }: DemoModeBannerProps
       role="status"
       aria-live="polite"
       className={cn(
-        'border-b border-border bg-muted/40 px-4 py-2 md:px-6 lg:px-8',
+        'border-b border-primary/20 bg-primary/5 px-4 py-3 md:px-6 lg:px-8',
         'motion-reduce:transition-none',
       )}
     >
-      <div className="mx-auto flex max-w-7xl items-center gap-3">
-        <p className="flex-1 text-xs text-muted-foreground">{message}</p>
+      <div className="mx-auto flex max-w-7xl flex-col items-center justify-center gap-2 text-center sm:flex-row sm:gap-3 sm:text-left">
+        <p className="text-sm text-foreground">{message}</p>
         <button
           type="button"
           onClick={onUploadClick}
-          className="shrink-0 rounded-md border border-border bg-card px-3 py-1 text-xs font-medium text-foreground hover:bg-accent"
+          className="shrink-0 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
         >
           Upload CSV
         </button>
