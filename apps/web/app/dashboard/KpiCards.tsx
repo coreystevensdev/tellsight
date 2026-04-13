@@ -23,7 +23,7 @@ function KpiCard({ label, value, icon: Icon, trend, iconColor }: {
   iconColor: string;
 }) {
   return (
-    <div className="card-hover rounded-lg border border-border bg-card p-4 shadow-sm">
+    <div className="rounded-lg border border-border bg-card p-4 shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md hover:border-primary/30 motion-reduce:transition-none motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-sm">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
         <Icon className={cn('h-4 w-4', iconColor)} />

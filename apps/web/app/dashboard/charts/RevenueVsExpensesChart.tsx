@@ -57,7 +57,7 @@ export function RevenueVsExpensesChart({ data }: RevenueVsExpensesChartProps) {
   if (data.length === 0) return null;
 
   return (
-    <figure className="card-hover rounded-lg border border-border bg-card p-4 shadow-sm md:p-6">
+    <figure className="rounded-lg border border-border bg-card p-4 shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md hover:border-primary/30 motion-reduce:transition-none motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-sm md:p-6">
       <figcaption className="mb-4">
         <h3 className="text-base font-semibold text-card-foreground">
           Revenue vs Expenses
