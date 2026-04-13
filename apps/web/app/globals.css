@@ -116,3 +116,23 @@ body {
   color: var(--color-foreground);
   font-family: var(--font-sans);
 }
+
+.card-hover {
+  transition: box-shadow 200ms ease, border-color 200ms ease, transform 200ms ease;
+}
+
+.card-hover:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.04);
+  border-color: var(--color-primary);
+  border-color: color-mix(in oklch, var(--color-primary) 30%, var(--color-border));
+  transform: translateY(-1px);
+}
+
+.dark .card-hover:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-hover { transition: none; }
+  .card-hover:hover { transform: none; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); }
+}

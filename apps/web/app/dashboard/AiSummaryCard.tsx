@@ -267,7 +267,7 @@ export function AiSummaryCard({
     return (
       <div
         className={cn(
-          'rounded-lg border border-border border-l-4 border-l-primary bg-card p-4 shadow-md md:p-6',
+          'card-hover rounded-lg border border-border border-l-4 border-l-primary bg-card p-4 shadow-sm md:p-6',
           className,
         )}
         role="region"
@@ -293,7 +293,7 @@ export function AiSummaryCard({
     return (
       <div
         className={cn(
-          'rounded-lg border border-border border-l-4 border-l-primary bg-card p-4 shadow-md md:p-6',
+          'card-hover rounded-lg border border-border border-l-4 border-l-primary bg-card p-4 shadow-sm md:p-6',
           className,
         )}
         role="region"
@@ -319,7 +319,7 @@ export function AiSummaryCard({
     return (
       <div
         className={cn(
-          'rounded-lg border border-border border-l-4 border-l-primary bg-card p-4 shadow-md md:p-6',
+          'card-hover rounded-lg border border-border border-l-4 border-l-primary bg-card p-4 shadow-sm md:p-6',
           className,
         )}
         role="region"
@@ -341,7 +341,7 @@ export function AiSummaryCard({
     return (
       <div
         className={cn(
-          'rounded-lg border border-border border-l-4 border-l-destructive bg-card p-4 shadow-md md:p-6',
+          'card-hover rounded-lg border border-border border-l-4 border-l-destructive bg-card p-4 shadow-sm md:p-6',
           className,
         )}
         role="region"
@@ -381,7 +381,7 @@ export function AiSummaryCard({
   return (
     <div
       className={cn(
-        'rounded-lg border border-border border-l-4 border-l-primary bg-card p-4 shadow-md transition-opacity duration-150 md:p-6',
+        'card-hover rounded-lg border border-border border-l-4 border-l-primary bg-card p-4 shadow-sm md:p-6',
         className,
       )}
       role="region"
