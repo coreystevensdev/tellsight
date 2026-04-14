@@ -25,12 +25,14 @@ export {
 export {
   revenueTrendPointSchema,
   expenseBreakdownItemSchema,
+  yoyComparisonPointSchema,
   datasetDateRangeSchema,
   chartDataSchema,
 } from './charts.js';
 
 export {
   chartFiltersSchema,
+  granularitySchema,
 } from './filters.js';
 
 export {

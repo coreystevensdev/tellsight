@@ -21,9 +21,11 @@ export type {
 } from './datasets.js';
 
 export type {
+  Granularity,
   RevenueTrendPoint,
   ExpenseBreakdownItem,
   MonthlyComparisonPoint,
+  YoyComparisonPoint,
   DatasetDateRange,
   ChartData,
   ChartFilters,

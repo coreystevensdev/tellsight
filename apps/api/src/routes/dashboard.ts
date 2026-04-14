@@ -20,15 +20,17 @@ function parseFilterParams(query: Request['query']) {
     categories: typeof query.categories === 'string' && query.categories
       ? query.categories.split(',').slice(0, 20)
       : undefined,
+    granularity: typeof query.granularity === 'string' ? query.granularity : undefined,
   };
 
   const result = chartFiltersSchema.safeParse(raw);
-  if (!result.success) return { dateFrom: undefined, dateTo: undefined, categories: undefined };
+  if (!result.success) return { dateFrom: undefined, dateTo: undefined, categories: undefined, granularity: undefined };
 
   return {
     dateFrom: result.data.dateFrom,
     dateTo: result.data.dateTo,
     categories: result.data.categories,
+    granularity: result.data.granularity,
   };
 }
 

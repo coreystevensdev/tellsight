@@ -4,10 +4,12 @@ import { useState, useRef, useEffect, useCallback, useId, type KeyboardEvent } f
 import { Calendar, Tag, X, RotateCcw, ChevronDown } from 'lucide-react';
 import { trackClientEvent } from '@/lib/analytics';
 import { ANALYTICS_EVENTS } from 'shared/constants';
+import type { Granularity } from 'shared/types';
 
 export interface FilterState {
   datePreset: string | null;
   category: string | null;
+  granularity: Granularity;
 }
 
 export const DATE_PRESETS = [
@@ -280,8 +282,13 @@ export function FilterBar({
     onFilterChange({ ...filters, category: value });
   };
 
+  const handleGranularityChange = (value: Granularity) => {
+    trackClientEvent(ANALYTICS_EVENTS.CHART_FILTERED, { filterType: 'granularity', value });
+    onFilterChange({ ...filters, granularity: value });
+  };
+
   const handleReset = () => {
-    onFilterChange({ datePreset: null, category: null });
+    onFilterChange({ datePreset: null, category: null, granularity: 'monthly' });
   };
 
   return (
@@ -291,6 +298,32 @@ export function FilterBar({
       aria-label="Chart filters"
     >
       <div className="flex flex-wrap items-center gap-2">
+        <div
+          className="inline-flex rounded-md border border-border"
+          role="radiogroup"
+          aria-label="Time granularity"
+        >
+          {(['weekly', 'monthly'] as const).map((g) => (
+            <button
+              key={g}
+              type="button"
+              role="radio"
+              aria-checked={filters.granularity === g}
+              onClick={() => handleGranularityChange(g)}
+              disabled={disabled}
+              className={`px-3 py-1.5 text-xs font-medium capitalize transition-colors first:rounded-l-md last:rounded-r-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 ${
+                filters.granularity === g
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-card text-muted-foreground hover:bg-accent hover:text-foreground'
+              }`}
+            >
+              {g}
+            </button>
+          ))}
+        </div>
+
+        <div className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
+
         <FilterDropdown
           label="Date range"
           icon={Calendar}

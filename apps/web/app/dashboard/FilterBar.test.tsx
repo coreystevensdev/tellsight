@@ -8,7 +8,7 @@ beforeAll(() => {
 });
 
 const defaultProps = {
-  filters: { datePreset: null, category: null } as FilterState,
+  filters: { datePreset: null, category: null, granularity: 'monthly' } as FilterState,
   onFilterChange: vi.fn(),
   availableCategories: ['Payroll', 'Rent', 'Marketing'],
 };
@@ -67,6 +67,7 @@ describe('FilterBar', () => {
       expect(defaultProps.onFilterChange).toHaveBeenCalledWith({
         datePreset: 'last-3-months',
         category: null,
+        granularity: 'monthly',
       });
     });
 
@@ -74,7 +75,7 @@ describe('FilterBar', () => {
       render(
         <FilterBar
           {...defaultProps}
-          filters={{ datePreset: 'last-3-months', category: null }}
+          filters={{ datePreset: 'last-3-months', category: null, granularity: 'monthly' }}
         />,
       );
 
@@ -84,6 +85,7 @@ describe('FilterBar', () => {
       expect(defaultProps.onFilterChange).toHaveBeenCalledWith({
         datePreset: null,
         category: null,
+        granularity: 'monthly',
       });
     });
 
@@ -120,6 +122,7 @@ describe('FilterBar', () => {
       expect(defaultProps.onFilterChange).toHaveBeenCalledWith({
         datePreset: null,
         category: 'Payroll',
+        granularity: 'monthly',
       });
     });
   });
@@ -129,7 +132,7 @@ describe('FilterBar', () => {
       render(
         <FilterBar
           {...defaultProps}
-          filters={{ datePreset: 'last-3-months', category: null }}
+          filters={{ datePreset: 'last-3-months', category: null, granularity: 'monthly' }}
         />,
       );
 
@@ -143,7 +146,7 @@ describe('FilterBar', () => {
       render(
         <FilterBar
           {...defaultProps}
-          filters={{ datePreset: null, category: 'Payroll' }}
+          filters={{ datePreset: null, category: 'Payroll', granularity: 'monthly' }}
         />,
       );
 
@@ -157,7 +160,7 @@ describe('FilterBar', () => {
       render(
         <FilterBar
           {...defaultProps}
-          filters={{ datePreset: 'last-month', category: 'Rent' }}
+          filters={{ datePreset: 'last-month', category: 'Rent', granularity: 'monthly' }}
         />,
       );
 
@@ -168,6 +171,7 @@ describe('FilterBar', () => {
       expect(defaultProps.onFilterChange).toHaveBeenCalledWith({
         datePreset: null,
         category: 'Rent',
+        granularity: 'monthly',
       });
     });
 
@@ -175,7 +179,7 @@ describe('FilterBar', () => {
       render(
         <FilterBar
           {...defaultProps}
-          filters={{ datePreset: 'last-month', category: 'Rent' }}
+          filters={{ datePreset: 'last-month', category: 'Rent', granularity: 'monthly' }}
         />,
       );
 
@@ -186,6 +190,7 @@ describe('FilterBar', () => {
       expect(defaultProps.onFilterChange).toHaveBeenCalledWith({
         datePreset: 'last-month',
         category: null,
+        granularity: 'monthly',
       });
     });
   });
@@ -195,7 +200,7 @@ describe('FilterBar', () => {
       render(
         <FilterBar
           {...defaultProps}
-          filters={{ datePreset: 'last-year', category: null }}
+          filters={{ datePreset: 'last-year', category: null, granularity: 'monthly' }}
         />,
       );
 
@@ -206,7 +211,7 @@ describe('FilterBar', () => {
       render(
         <FilterBar
           {...defaultProps}
-          filters={{ datePreset: 'last-year', category: 'Payroll' }}
+          filters={{ datePreset: 'last-year', category: 'Payroll', granularity: 'monthly' }}
         />,
       );
 
@@ -215,6 +220,7 @@ describe('FilterBar', () => {
       expect(defaultProps.onFilterChange).toHaveBeenCalledWith({
         datePreset: null,
         category: null,
+        granularity: 'monthly',
       });
     });
   });
@@ -268,6 +274,7 @@ describe('FilterBar', () => {
       expect(defaultProps.onFilterChange).toHaveBeenCalledWith({
         datePreset: 'last-month',
         category: null,
+        granularity: 'monthly',
       });
     });
   });
