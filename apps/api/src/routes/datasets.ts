@@ -11,7 +11,7 @@ import { trackEvent } from '../services/analytics/trackEvent.js';
 import { logger } from '../lib/logger.js';
 import type { PreviewData, ParsedRow } from '../services/adapters/index.js';
 import { normalizeHeader } from '../services/dataIngestion/index.js';
-import { datasetsQueries } from '../db/queries/index.js';
+import { datasetsQueries, orgsQueries } from '../db/queries/index.js';
 import { withRlsContext } from '../lib/rls.js';
 import { env } from '../config.js';
 
@@ -253,6 +253,8 @@ datasetsRouter.post(
     const result = await withRlsContext(orgId, user.isAdmin, (tx) =>
       datasetsQueries.persistUpload(orgId, userId, fileName, normalizedRows, tx),
     );
+
+    await orgsQueries.setActiveDataset(orgId, result.datasetId);
 
     trackEvent(orgId, userId, ANALYTICS_EVENTS.DATASET_CONFIRMED, {
       datasetId: result.datasetId,
