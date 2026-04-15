@@ -17,9 +17,24 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(3001),
   ANALYTICS_RETENTION_DAYS: z.coerce.number().int().positive().default(90),
   METRICS_TOKEN: z.string().min(16).optional(),
+
+  QUICKBOOKS_CLIENT_ID: z.string().min(1).optional(),
+  QUICKBOOKS_CLIENT_SECRET: z.string().min(1).optional(),
+  QUICKBOOKS_REDIRECT_URI: z.string().url().optional(),
+  QUICKBOOKS_ENVIRONMENT: z.enum(['sandbox', 'production']).default('sandbox'),
+  ENCRYPTION_KEY: z.string().length(64).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
+
+export function isQbConfigured(cfg: Env): boolean {
+  return !!(
+    cfg.QUICKBOOKS_CLIENT_ID &&
+    cfg.QUICKBOOKS_CLIENT_SECRET &&
+    cfg.QUICKBOOKS_REDIRECT_URI &&
+    cfg.ENCRYPTION_KEY
+  );
+}
 
 function loadConfig(): Env {
   const result = envSchema.safeParse(process.env);
