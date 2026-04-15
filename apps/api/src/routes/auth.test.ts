@@ -37,6 +37,19 @@ vi.mock('../config.js', () => ({
   },
 }));
 
+vi.mock('../lib/db.js', () => ({
+  db: {},
+  dbAdmin: { _tag: 'dbAdmin' },
+}));
+
+vi.mock('../lib/redis.js', () => ({
+  redis: { connect: vi.fn(), on: vi.fn(), ping: vi.fn() },
+}));
+
+vi.mock('../middleware/rateLimiter.js', () => ({
+  rateLimitAuth: (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
+
 vi.mock('../lib/logger.js', () => ({
   logger: {
     info: vi.fn(),
@@ -272,8 +285,8 @@ describe('auth routes', () => {
 
       expect(res.status).toBe(200);
       expect(body.data.success).toBe(true);
-      expect(mockFindByHash).toHaveBeenCalledWith(expectedHash);
-      expect(mockRevokeToken).toHaveBeenCalledWith(5);
+      expect(mockFindByHash).toHaveBeenCalledWith(expectedHash, expect.anything());
+      expect(mockRevokeToken).toHaveBeenCalledWith(5, expect.anything());
 
       const raw = res.headers.getSetCookie?.() ?? [];
       const clearedNames = raw
