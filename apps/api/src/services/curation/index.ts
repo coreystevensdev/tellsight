@@ -1,3 +1,5 @@
+import type { BusinessProfile } from 'shared/types';
+
 import { logger } from '../../lib/logger.js';
 import { dataRowsQueries, aiSummariesQueries } from '../../db/queries/index.js';
 import type { db, DbTransaction } from '../../lib/db.js';
@@ -41,7 +43,7 @@ export interface FullPipelineResult {
 export async function runFullPipeline(
   orgId: number,
   datasetId: number,
-  businessProfile?: Record<string, unknown> | null,
+  businessProfile?: BusinessProfile | null,
 ): Promise<FullPipelineResult> {
   const cached = await aiSummariesQueries.getCachedSummary(orgId, datasetId);
   if (cached) {
@@ -52,7 +54,7 @@ export async function runFullPipeline(
   logger.warn({ orgId, datasetId }, 'ai_summaries cache miss — generating fresh summary');
 
   const insights = await runCurationPipeline(orgId, datasetId);
-  const { prompt, metadata } = assemblePrompt(insights, undefined, businessProfile as any);
+  const { prompt, metadata } = assemblePrompt(insights, undefined, businessProfile);
 
   const validatedMetadata = transparencyMetadataSchema.parse(metadata);
 

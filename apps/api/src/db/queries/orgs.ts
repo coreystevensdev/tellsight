@@ -1,5 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { SEED_ORG } from 'shared/constants';
+import { businessProfileSchema } from 'shared/schemas';
+import type { BusinessProfile } from 'shared/types';
 import { db, type DbTransaction } from '../../lib/db.js';
 import { orgs } from '../schema.js';
 
@@ -39,9 +41,11 @@ export function resetSeedOrgCache(): void {
   cachedSeedOrgId = null;
 }
 
-export async function getBusinessProfile(orgId: number) {
+export async function getBusinessProfile(orgId: number): Promise<BusinessProfile | null> {
   const org = await findOrgById(orgId);
-  return org?.businessProfile ?? null;
+  if (!org?.businessProfile) return null;
+  const result = businessProfileSchema.safeParse(org.businessProfile);
+  return result.success ? result.data : null;
 }
 
 export async function updateBusinessProfile(orgId: number, profile: Record<string, unknown>) {

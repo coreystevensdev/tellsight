@@ -5,14 +5,11 @@
  * NEVER use this in Client Components — use api-client.ts instead.
  */
 
+import type { ApiResponse } from 'shared/types';
+
 import { webEnv } from './config';
 
 const API_INTERNAL_URL = webEnv.API_INTERNAL_URL;
-
-interface ApiResponse<T> {
-  data: T;
-  meta?: Record<string, unknown>;
-}
 
 interface ApiErrorBody {
   error: {

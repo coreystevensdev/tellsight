@@ -18,27 +18,28 @@ export function useExportPdf(nodeRef: React.RefObject<HTMLElement | null>) {
     setStatus('generating');
 
     try {
-      // dynamic imports keep the bundle lean — jspdf + html2canvas are ~200KB
-      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-        import('html2canvas'),
+      const [{ toPng }, { jsPDF }] = await Promise.all([
+        import('html-to-image'),
         import('jspdf'),
       ]);
 
-      const canvas = await html2canvas(nodeRef.current, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: null,
-        logging: false,
+      const imgData = await toPng(nodeRef.current, { pixelRatio: 2 });
+
+      // decode the PNG to get dimensions for PDF layout
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = reject;
+        img.src = imgData;
       });
 
       const imgWidth = 190; // A4 width minus margins (210 - 10 - 10)
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const imgHeight = (img.height * imgWidth) / img.width;
       const pageHeight = 277; // A4 height minus margins (297 - 10 - 10)
 
       const pdf = new jsPDF('p', 'mm', 'a4');
       let yOffset = 10;
       let remainingHeight = imgHeight;
-      const imgData = canvas.toDataURL('image/png');
 
       // first page
       pdf.addImage(imgData, 'PNG', 10, yOffset, imgWidth, imgHeight);

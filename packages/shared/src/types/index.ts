@@ -46,3 +46,8 @@ export type { TransparencyMetadata } from './transparency';
 export type { ServiceStatus, SystemHealth } from './admin';
 
 export type { BusinessProfile } from '../schemas/businessProfile';
+
+export interface ApiResponse<T> {
+  data: T;
+  meta?: Record<string, unknown>;
+}

@@ -8,12 +8,9 @@
  * NEVER use this in Server Components — use api-server.ts instead.
  */
 
-const API_BASE = '/api';
+import type { ApiResponse } from 'shared/types';
 
-interface ApiResponse<T> {
-  data: T;
-  meta?: Record<string, unknown>;
-}
+const API_BASE = '/api';
 
 interface ApiError {
   error: {
