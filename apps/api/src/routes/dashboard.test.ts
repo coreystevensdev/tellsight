@@ -14,12 +14,15 @@ vi.mock('../services/auth/tokenService.js', () => ({
 
 const mockGetDatasetsByOrg = vi.fn();
 const mockGetCachedSummary = vi.fn();
+const mockGetActiveDatasetId = vi.fn();
+const mockGetRowCount = vi.fn();
 
 vi.mock('../db/queries/index.js', () => ({
   chartsQueries: { getChartData: mockGetChartData },
   datasetsQueries: { getUserOrgDemoState: mockGetUserOrgDemoState, getDatasetsByOrg: mockGetDatasetsByOrg },
-  orgsQueries: { getSeedOrgId: mockGetSeedOrgId, findOrgById: mockFindOrgById },
+  orgsQueries: { getSeedOrgId: mockGetSeedOrgId, findOrgById: mockFindOrgById, getActiveDatasetId: mockGetActiveDatasetId },
   aiSummariesQueries: { getCachedSummary: mockGetCachedSummary },
+  dataRowsQueries: { getRowCount: mockGetRowCount },
 }));
 
 vi.mock('../services/analytics/trackEvent.js', () => ({
@@ -97,6 +100,8 @@ beforeEach(() => {
   mockGetSeedOrgId.mockResolvedValue(99);
   mockGetDatasetsByOrg.mockResolvedValue([{ id: 1 }]);
   mockGetCachedSummary.mockResolvedValue(null);
+  mockGetActiveDatasetId.mockResolvedValue(null);
+  mockGetRowCount.mockResolvedValue(144);
   // withRlsContext executes the callback with a mock tx — query mocks intercept regardless
   mockWithRlsContext.mockImplementation(async (_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({ _tag: 'tx' }));
 });
@@ -256,6 +261,67 @@ describe('GET /dashboard/charts', () => {
       (c: unknown[]) => c[2] === 'chart.filtered',
     );
     expect(chartFilteredCalls).toHaveLength(0);
+  });
+});
+
+describe('dataset query param', () => {
+  function authSetup(orgId = 10) {
+    mockVerifyAccessToken.mockResolvedValueOnce({
+      sub: '42',
+      org_id: orgId,
+      role: 'owner',
+      isAdmin: false,
+    });
+    mockFindOrgById.mockResolvedValueOnce({ id: orgId, name: 'Acme Corp', slug: 'acme' });
+    mockGetUserOrgDemoState.mockResolvedValueOnce('user_only');
+  }
+
+  it('uses ?dataset= param when dataset belongs to org', async () => {
+    authSetup();
+    mockGetDatasetsByOrg.mockResolvedValue([
+      { id: 1, name: 'Old Data', isSeedData: false },
+      { id: 2, name: 'New Data', isSeedData: false },
+    ]);
+    mockGetActiveDatasetId.mockResolvedValue(1);
+
+    const res = await fetch(`${baseUrl}/dashboard/charts?dataset=2`, {
+      headers: { Cookie: 'access_token=valid-jwt' },
+    });
+    const body = await res.json() as { data: Record<string, unknown> };
+
+    expect(res.status).toBe(200);
+    expect(body.data.datasetId).toBe(2);
+  });
+
+  it('ignores invalid ?dataset=abc and falls back', async () => {
+    authSetup();
+    mockGetDatasetsByOrg.mockResolvedValue([{ id: 1, name: 'Data', isSeedData: false }]);
+    mockGetActiveDatasetId.mockResolvedValue(1);
+
+    const res = await fetch(`${baseUrl}/dashboard/charts?dataset=abc`, {
+      headers: { Cookie: 'access_token=valid-jwt' },
+    });
+    const body = await res.json() as { data: Record<string, unknown> };
+
+    expect(res.status).toBe(200);
+    expect(body.data.datasetId).toBe(1);
+  });
+
+  it('uses active_dataset_id when no query param', async () => {
+    authSetup();
+    mockGetDatasetsByOrg.mockResolvedValue([
+      { id: 3, name: 'Newest', isSeedData: false },
+      { id: 2, name: 'Active', isSeedData: false },
+    ]);
+    mockGetActiveDatasetId.mockResolvedValue(2);
+
+    const res = await fetch(`${baseUrl}/dashboard/charts`, {
+      headers: { Cookie: 'access_token=valid-jwt' },
+    });
+    const body = await res.json() as { data: Record<string, unknown> };
+
+    expect(res.status).toBe(200);
+    expect(body.data.datasetId).toBe(2);
   });
 });
 
