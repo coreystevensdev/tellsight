@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server';
+import { proxyGet } from '@/lib/bff-proxy';
 import { webEnv } from '@/lib/config';
 
 export async function POST(request: NextRequest) {
@@ -22,13 +23,4 @@ export async function POST(request: NextRequest) {
   return NextResponse.json(data, { status: response.status });
 }
 
-export async function GET(request: NextRequest) {
-  const cookieHeader = request.headers.get('cookie') ?? '';
-
-  const response = await fetch(`${webEnv.API_INTERNAL_URL}/subscriptions/tier`, {
-    headers: { Cookie: cookieHeader },
-  });
-
-  const data = await response.json();
-  return NextResponse.json(data, { status: response.status });
-}
+export const GET = proxyGet('/subscriptions/tier');
