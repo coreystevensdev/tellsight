@@ -32,6 +32,8 @@ export const orgs = pgTable('orgs', {
   name: varchar({ length: 255 }).notNull(),
   slug: varchar({ length: 255 }).notNull().unique(),
   businessProfile: jsonb('business_profile'),
+  // Circular FK with datasets — constraint lives in the migration, not here
+  activeDatasetId: integer('active_dataset_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -261,6 +263,10 @@ export const orgsRelations = relations(orgs, ({ many, one }) => ({
   datasets: many(datasets),
   aiSummaries: many(aiSummaries),
   subscription: one(subscriptions),
+  activeDataset: one(datasets, {
+    fields: [orgs.activeDatasetId],
+    references: [datasets.id],
+  }),
 }));
 
 export const userOrgsRelations = relations(userOrgs, ({ one }) => ({
