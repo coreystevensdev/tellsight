@@ -250,11 +250,11 @@ datasetsRouter.post(
     }
 
     const normalizedRows = normalizeRows(parseResult.rows, parseResult.headers);
-    const result = await withRlsContext(orgId, user.isAdmin, (tx) =>
-      datasetsQueries.persistUpload(orgId, userId, fileName, normalizedRows, tx),
-    );
-
-    await orgsQueries.setActiveDataset(orgId, result.datasetId);
+    const result = await withRlsContext(orgId, user.isAdmin, async (tx) => {
+      const persisted = await datasetsQueries.persistUpload(orgId, userId, fileName, normalizedRows, tx);
+      await orgsQueries.setActiveDataset(orgId, persisted.datasetId, tx);
+      return persisted;
+    });
 
     trackEvent(orgId, userId, ANALYTICS_EVENTS.DATASET_CONFIRMED, {
       datasetId: result.datasetId,

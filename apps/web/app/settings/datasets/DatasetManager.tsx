@@ -141,7 +141,11 @@ export default function DatasetManager() {
       });
     } catch (err) {
       patchCard(id, { saving: false, deleting: false, deleteDetail: null });
-      setError(err instanceof Error ? err.message : 'Delete failed');
+      // backend enforces owner-only — surface a clear message instead of a generic one
+      const msg = err instanceof Error ? err.message : 'Delete failed';
+      setError(msg.toLowerCase().includes('owner')
+        ? 'Only org owners can delete datasets.'
+        : msg);
     }
   }
 
@@ -285,6 +289,7 @@ function DatasetCard({
                 }}
                 onBlur={onRenameSubmit}
                 disabled={state.saving}
+                maxLength={255}
                 className="w-full rounded border border-border bg-background px-2 py-0.5 text-sm font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
               />
             ) : (

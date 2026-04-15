@@ -191,7 +191,7 @@ describe('PATCH /datasets/manage/:id', () => {
 describe('DELETE /datasets/manage/:id', () => {
   it('allows owner to delete a dataset', async () => {
     mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload);
-    mockGetDatasetById.mockResolvedValueOnce({ id: 4, name: 'Stale Data', orgId: 1 });
+    mockGetDatasetWithCounts.mockResolvedValueOnce({ id: 4, name: 'Stale Data', orgId: 1, rowCount: 50, summaryCount: 1, shareCount: 0 });
     mockDeleteDataset.mockResolvedValueOnce(undefined);
     // after delete, active is still set to something else
     mockGetActiveDatasetId.mockResolvedValueOnce(5);
@@ -206,6 +206,11 @@ describe('DELETE /datasets/manage/:id', () => {
     expect(body.data.deleted).toBe(true);
     expect(body.data.newActiveDatasetId).toBe(5);
     expect(mockDeleteDataset).toHaveBeenCalledWith(1, 4, 'mock-tx');
+    expect(mockTrackEvent).toHaveBeenCalledWith(1, 1, expect.any(String), expect.objectContaining({
+      datasetId: 4,
+      rowCount: 50,
+      hadActiveShares: false,
+    }));
   });
 
   it('rejects member delete with 403', async () => {
@@ -223,7 +228,7 @@ describe('DELETE /datasets/manage/:id', () => {
 
   it('auto-switches active dataset to next newest after delete', async () => {
     mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload);
-    mockGetDatasetById.mockResolvedValueOnce({ id: 4, name: 'Active Dataset', orgId: 1 });
+    mockGetDatasetWithCounts.mockResolvedValueOnce({ id: 4, name: 'Active Dataset', orgId: 1, rowCount: 200, summaryCount: 3, shareCount: 2 });
     mockDeleteDataset.mockResolvedValueOnce(undefined);
     // ON DELETE SET NULL cleared active_dataset_id — it's null now
     mockGetActiveDatasetId.mockResolvedValueOnce(null);
@@ -250,6 +255,7 @@ describe('POST /datasets/manage/:id/activate', () => {
   it('activates a dataset', async () => {
     mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload);
     mockGetDatasetById.mockResolvedValueOnce({ id: 9, name: 'Q2 2025', orgId: 1 });
+    mockGetActiveDatasetId.mockResolvedValueOnce(5);
     mockSetActiveDataset.mockResolvedValueOnce(undefined);
 
     const res = await fetch(`${baseUrl}/datasets/manage/9/activate`, {
@@ -261,7 +267,7 @@ describe('POST /datasets/manage/:id/activate', () => {
     expect(res.status).toBe(200);
     expect(body.data.activeDatasetId).toBe(9);
     expect(mockSetActiveDataset).toHaveBeenCalledWith(1, 9, 'mock-tx');
-    expect(mockTrackEvent).toHaveBeenCalledWith(1, 1, expect.any(String), { datasetId: 9 });
+    expect(mockTrackEvent).toHaveBeenCalledWith(1, 1, expect.any(String), { datasetId: 9, previousDatasetId: 5 });
   });
 
   it('returns 404 for dataset in another org', async () => {

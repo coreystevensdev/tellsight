@@ -96,7 +96,7 @@ datasetManagementRouter.delete('/manage/:id', roleGuard('owner'), async (req, re
   const datasetId = parseDatasetId(typeof req.params.id === 'string' ? req.params.id : undefined);
 
   const existing = await withRlsContext(orgId, isAdmin, (tx) =>
-    datasetsQueries.getDatasetById(orgId, datasetId, tx),
+    datasetsQueries.getDatasetWithCounts(orgId, datasetId, tx),
   );
   if (!existing) throw new NotFoundError('Dataset not found');
 
@@ -113,7 +113,9 @@ datasetManagementRouter.delete('/manage/:id', roleGuard('owner'), async (req, re
   );
 
   if (currentActive === null) {
-    const remaining = await datasetsQueries.getDatasetsByOrg(orgId);
+    const remaining = await withRlsContext(orgId, isAdmin, (tx) =>
+      datasetsQueries.getDatasetsByOrg(orgId, tx),
+    );
     const next = remaining.find((ds) => !ds.isSeedData) ?? null;
 
     if (next) {
@@ -130,6 +132,8 @@ datasetManagementRouter.delete('/manage/:id', roleGuard('owner'), async (req, re
 
   trackEvent(orgId, userId, ANALYTICS_EVENTS.DATASET_DELETED, {
     datasetId,
+    rowCount: existing.rowCount,
+    hadActiveShares: existing.shareCount > 0,
     newActiveDatasetId,
   });
 
@@ -148,13 +152,17 @@ datasetManagementRouter.post('/manage/:id/activate', async (req, res: Response) 
   );
   if (!dataset) throw new NotFoundError('Dataset not found');
 
+  const previousDatasetId = await withRlsContext(orgId, isAdmin, (tx) =>
+    orgsQueries.getActiveDatasetId(orgId, tx),
+  );
+
   await withRlsContext(orgId, isAdmin, (tx) =>
     orgsQueries.setActiveDataset(orgId, datasetId, tx),
   );
 
-  logger.info({ orgId, datasetId }, 'dataset activated');
+  logger.info({ orgId, datasetId, previousDatasetId }, 'dataset activated');
 
-  trackEvent(orgId, userId, ANALYTICS_EVENTS.DATASET_ACTIVATED, { datasetId });
+  trackEvent(orgId, userId, ANALYTICS_EVENTS.DATASET_ACTIVATED, { datasetId, previousDatasetId });
 
   res.json({ data: { activeDatasetId: datasetId } });
 });

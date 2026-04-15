@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Database, ChevronDown } from 'lucide-react';
+import { Database, ChevronRight } from 'lucide-react';
 
 interface DatasetChipProps {
   name: string;
@@ -15,7 +15,7 @@ export function DatasetChip({ name, rowCount }: DatasetChipProps) {
       <Database className="h-3 w-3 text-muted-foreground" />
       <span className="font-medium text-foreground">{name}</span>
       <span className="text-muted-foreground">· {rowCount} rows</span>
-      <ChevronDown className="h-3 w-3 text-muted-foreground" />
+      <ChevronRight className="h-3 w-3 text-muted-foreground" />
     </Link>
   );
 }
