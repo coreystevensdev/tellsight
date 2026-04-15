@@ -82,7 +82,7 @@ function StreamingCursor() {
 }
 
 function highlightNumbers(text: string): React.ReactNode[] {
-  const parts = text.split(/(\$[\d,]+(?:\.\d{2})?|\d+(?:\.\d+)?%)/g);
+  const parts = text.split(/(\$[\d,]+(?:\.\d+)?[KMBkmb]?|\d+(?:\.\d+)?%)/g);
   return parts.map((part, i) =>
     /^\$[\d,]|^\d+.*%$/.test(part)
       ? <span key={i} className="font-semibold text-accent-warm" style={{ fontFeatureSettings: '"tnum"' }}>{part}</span>
