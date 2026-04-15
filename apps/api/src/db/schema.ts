@@ -158,6 +158,7 @@ export const dataRows = pgTable(
       .notNull()
       .references(() => datasets.id, { onDelete: 'cascade' }),
     sourceType: sourceTypeEnum('source_type').default('csv').notNull(),
+    sourceId: varchar('source_id', { length: 255 }),
     category: varchar({ length: 255 }).notNull(),
     parentCategory: varchar('parent_category', { length: 255 }),
     date: date('date', { mode: 'date' }).notNull(),
@@ -172,6 +173,9 @@ export const dataRows = pgTable(
     index('idx_data_rows_org_id_date').on(table.orgId, table.date),
     index('idx_data_rows_dataset_id').on(table.datasetId),
     index('idx_data_rows_category').on(table.category),
+    uniqueIndex('idx_data_rows_source_id')
+      .on(table.orgId, table.sourceId)
+      .where(sql`${table.sourceId} IS NOT NULL`),
   ],
 );
 
@@ -246,6 +250,54 @@ export const subscriptions = pgTable(
   ],
 );
 
+export const integrationConnections = pgTable(
+  'integration_connections',
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    orgId: integer('org_id')
+      .notNull()
+      .references(() => orgs.id, { onDelete: 'cascade' }),
+    provider: varchar({ length: 50 }).notNull(),
+    providerTenantId: varchar('provider_tenant_id', { length: 255 }).notNull(),
+    encryptedRefreshToken: text('encrypted_refresh_token').notNull(),
+    encryptedAccessToken: text('encrypted_access_token').notNull(),
+    accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }).notNull(),
+    scope: varchar({ length: 500 }),
+    lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
+    syncStatus: varchar('sync_status', { length: 20 }).notNull().default('idle'),
+    syncError: text('sync_error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('idx_integration_connections_org_provider').on(table.orgId, table.provider),
+  ],
+);
+
+export const syncJobs = pgTable(
+  'sync_jobs',
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    orgId: integer('org_id')
+      .notNull()
+      .references(() => orgs.id, { onDelete: 'cascade' }),
+    connectionId: integer('connection_id')
+      .notNull()
+      .references(() => integrationConnections.id, { onDelete: 'cascade' }),
+    trigger: varchar({ length: 20 }).notNull(),
+    status: varchar({ length: 20 }).notNull().default('queued'),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    rowsSynced: integer('rows_synced').notNull().default(0),
+    error: text(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('idx_sync_jobs_connection_id').on(table.connectionId),
+    index('idx_sync_jobs_org_id').on(table.orgId),
+  ],
+);
+
 export const usersRelations = relations(users, ({ many }) => ({
   userOrgs: many(userOrgs),
   refreshTokens: many(refreshTokens),
@@ -264,6 +316,7 @@ export const orgsRelations = relations(orgs, ({ many, one }) => ({
   datasets: many(datasets),
   aiSummaries: many(aiSummaries),
   subscription: one(subscriptions),
+  integrationConnections: many(integrationConnections),
   activeDataset: one(datasets, {
     fields: [orgs.activeDatasetId],
     references: [datasets.id],
@@ -372,5 +425,24 @@ export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
   org: one(orgs, {
     fields: [subscriptions.orgId],
     references: [orgs.id],
+  }),
+}));
+
+export const integrationConnectionsRelations = relations(integrationConnections, ({ one, many }) => ({
+  org: one(orgs, {
+    fields: [integrationConnections.orgId],
+    references: [orgs.id],
+  }),
+  syncJobs: many(syncJobs),
+}));
+
+export const syncJobsRelations = relations(syncJobs, ({ one }) => ({
+  org: one(orgs, {
+    fields: [syncJobs.orgId],
+    references: [orgs.id],
+  }),
+  connection: one(integrationConnections, {
+    fields: [syncJobs.connectionId],
+    references: [integrationConnections.id],
   }),
 }));
