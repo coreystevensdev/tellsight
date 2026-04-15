@@ -34,6 +34,7 @@ import { DemoModeBanner } from '@/components/common/DemoModeBanner';
 import { useExportPdf } from '@/lib/hooks/useExportPdf';
 import { KpiCards } from './KpiCards';
 import { OnboardingModal } from './OnboardingModal';
+import { DatasetChip } from '@/components/datasets/DatasetChip';
 
 interface DashboardShellProps {
   initialData: ChartData;
@@ -297,6 +298,9 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, tie
             <p className="mt-1 text-sm text-muted-foreground">
               {data.dateRange.min} to {data.dateRange.max}
             </p>
+          )}
+          {hasAuth && data.datasetName && (
+            <DatasetChip name={data.datasetName} rowCount={data.datasetRowCount ?? 0} />
           )}
         </div>
 
