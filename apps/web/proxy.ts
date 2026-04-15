@@ -4,8 +4,16 @@ import { webEnv } from '@/lib/config';
 
 const PROTECTED_ROUTES = ['/upload', '/billing', '/admin', '/settings'];
 
+let jwtSecretWarned = false;
+
 function getJwtSecret(): Uint8Array | null {
-  if (!webEnv.JWT_SECRET) return null;
+  if (!webEnv.JWT_SECRET) {
+    if (!jwtSecretWarned && webEnv.NODE_ENV !== 'production') {
+      jwtSecretWarned = true;
+      console.warn('[proxy] JWT_SECRET not set — protected route verification skipped in dev');
+    }
+    return null;
+  }
   return new TextEncoder().encode(webEnv.JWT_SECRET);
 }
 

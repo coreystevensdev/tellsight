@@ -1,9 +1,11 @@
 services:
   db:
     image: postgres:18.2
+    ports:
+      - '5432:5432'
     environment:
       POSTGRES_USER: app_admin
-      POSTGRES_PASSWORD: app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
       POSTGRES_DB: analytics
     volumes:
       - pgdata:/var/lib/postgresql
@@ -16,6 +18,8 @@ services:
 
   redis:
     image: redis:7-alpine
+    ports:
+      - '6379:6379'
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
@@ -33,8 +37,8 @@ services:
         condition: service_healthy
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://app_user:app@db:5432/analytics
-      DATABASE_ADMIN_URL: postgresql://app_admin:app@db:5432/analytics
+      DATABASE_URL: postgresql://app_user:${POSTGRES_PASSWORD:-app}@db:5432/analytics
+      DATABASE_ADMIN_URL: postgresql://app_admin:${POSTGRES_PASSWORD:-app}@db:5432/analytics
       REDIS_URL: redis://redis:6379
 
   web:

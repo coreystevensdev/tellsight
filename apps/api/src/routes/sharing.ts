@@ -31,7 +31,7 @@ export const publicShareRouter = Router();
 
 publicShareRouter.get('/shares/:token', async (req, res: Response) => {
   const { token } = req.params;
-  if (!token || token.length < 16) {
+  if (!token || !/^[a-f0-9]{64}$/.test(token)) {
     throw new ValidationError('Invalid share token');
   }
 
