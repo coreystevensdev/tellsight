@@ -64,13 +64,20 @@ export function KpiCards({ revenueTrend, expenseBreakdown }: KpiCardsProps) {
   const netProfit = totalRevenue - totalExpenses;
   const topCategory = expenseBreakdown[0];
 
-  const revenueTrend12 = revenueTrend.length >= 2
+  // YoY for the most recent month — compare to same month last year if available
+  const revenueTrend12 = revenueTrend.length >= 13
     ? (() => {
         const last = revenueTrend[revenueTrend.length - 1]!.revenue;
-        const prev = revenueTrend[revenueTrend.length - 2]!.revenue;
-        return prev > 0 ? ((last - prev) / prev) * 100 : null;
+        const sameMonthLastYear = revenueTrend[revenueTrend.length - 13]!.revenue;
+        return sameMonthLastYear > 0 ? ((last - sameMonthLastYear) / sameMonthLastYear) * 100 : null;
       })()
-    : null;
+    : revenueTrend.length >= 2
+      ? (() => {
+          const last = revenueTrend[revenueTrend.length - 1]!.revenue;
+          const prev = revenueTrend[revenueTrend.length - 2]!.revenue;
+          return prev > 0 ? ((last - prev) / prev) * 100 : null;
+        })()
+      : null;
 
   return (
     <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
@@ -79,7 +86,7 @@ export function KpiCards({ revenueTrend, expenseBreakdown }: KpiCardsProps) {
         value={formatCompact(totalRevenue)}
         icon={ArrowUpRight}
         iconColor="text-success"
-        trend={revenueTrend12 != null ? { value: revenueTrend12, label: 'vs prev month' } : null}
+        trend={revenueTrend12 != null ? { value: revenueTrend12, label: revenueTrend.length >= 13 ? 'vs last year' : 'vs prev month' } : null}
       />
       <KpiCard
         label="Total Expenses"
