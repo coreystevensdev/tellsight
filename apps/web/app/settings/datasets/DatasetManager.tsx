@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Database, Check, Pencil, Trash2, Loader2 } from 'lucide-react';
+import { Database, Check, Pencil, Trash2, Loader2, AlertCircle, X } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 
@@ -176,25 +176,38 @@ export default function DatasetManager() {
         </div>
 
         {error && (
-          <div className="mb-4 rounded-md bg-destructive/10 px-4 py-3">
-            <p className="text-sm text-destructive">{error}</p>
+          <div className="mb-4 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+            <p className="flex-1 text-sm text-destructive">{error}</p>
+            <button
+              onClick={() => setError(null)}
+              className="shrink-0 rounded-md p-0.5 text-destructive/60 transition-colors hover:text-destructive"
+              aria-label="Dismiss error"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
         )}
 
         {datasets.length === 0 ? (
-          <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed border-border py-16 text-center">
-            <Database className="h-10 w-10 text-muted-foreground/50" />
-            <div>
-              <p className="text-sm font-medium text-foreground">No datasets yet</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Upload a CSV to get started with AI-powered insights.
-              </p>
-            </div>
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border/60 bg-muted/30 px-8 py-16 text-center">
+            <svg width="64" height="64" viewBox="0 0 64 64" fill="none" aria-hidden="true" className="mb-1">
+              <rect x="12" y="10" width="30" height="36" rx="3" className="stroke-muted-foreground/40" strokeWidth="1.5" fill="none" />
+              <line x1="18" y1="20" x2="36" y2="20" className="stroke-muted-foreground/30" strokeWidth="1.5" />
+              <line x1="18" y1="26" x2="32" y2="26" className="stroke-muted-foreground/30" strokeWidth="1.5" />
+              <line x1="18" y1="32" x2="34" y2="32" className="stroke-muted-foreground/30" strokeWidth="1.5" />
+              <rect x="32" y="28" width="22" height="22" rx="3" className="stroke-primary/50" strokeWidth="1.5" fill="none" />
+              <path d="M39 39h8M43 35v8" className="stroke-primary" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            <p className="text-sm font-medium text-foreground">No datasets yet</p>
+            <p className="max-w-[280px] text-sm text-muted-foreground">
+              Upload a CSV and we'll organize it here so you can manage, rename, and switch between datasets.
+            </p>
             <a
               href="/upload"
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+              className="mt-2 rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
             >
-              Upload CSV
+              Upload a CSV
             </a>
           </div>
         ) : (
