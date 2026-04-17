@@ -48,6 +48,7 @@ export const userOrgs = pgTable(
       .notNull()
       .references(() => orgs.id, { onDelete: 'cascade' }),
     role: userRoleEnum('role').default('member').notNull(),
+    digestOptIn: boolean('digest_opt_in').default(true).notNull(),
     joinedAt: timestamp('joined_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [

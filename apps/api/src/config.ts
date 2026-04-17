@@ -20,6 +20,9 @@ const envSchema = z.object({
 
   SENTRY_DSN: z.string().url().optional(),
 
+  RESEND_API_KEY: z.string().min(1).optional(),
+  DIGEST_FROM_EMAIL: z.string().email().default('insights@example.com'),
+
   QUICKBOOKS_CLIENT_ID: z.string().min(1).optional(),
   QUICKBOOKS_CLIENT_SECRET: z.string().min(1).optional(),
   QUICKBOOKS_REDIRECT_URI: z.string().url().optional(),
@@ -28,6 +31,10 @@ const envSchema = z.object({
 });
 
 export type Env = z.infer<typeof envSchema>;
+
+export function isDigestConfigured(cfg: Env): boolean {
+  return !!cfg.RESEND_API_KEY;
+}
 
 export function isQbConfigured(cfg: Env): boolean {
   return !!(

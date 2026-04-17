@@ -57,3 +57,29 @@ export async function getOrgMembers(
     with: { user: true },
   });
 }
+
+export async function getDigestOptIn(
+  orgId: number,
+  userId: number,
+  client: typeof db | DbTransaction = db,
+): Promise<boolean> {
+  const membership = await client.query.userOrgs.findFirst({
+    where: and(eq(userOrgs.orgId, orgId), eq(userOrgs.userId, userId)),
+    columns: { digestOptIn: true },
+  });
+  return membership?.digestOptIn ?? true;
+}
+
+export async function updateDigestOptIn(
+  orgId: number,
+  userId: number,
+  optIn: boolean,
+  client: typeof db | DbTransaction = db,
+) {
+  const [updated] = await client
+    .update(userOrgs)
+    .set({ digestOptIn: optIn })
+    .where(and(eq(userOrgs.orgId, orgId), eq(userOrgs.userId, userId)))
+    .returning();
+  return updated ?? null;
+}

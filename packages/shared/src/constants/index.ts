@@ -55,6 +55,10 @@ export const ANALYTICS_EVENTS = {
   INTEGRATION_DISCONNECTED: 'integration.disconnected',
   INTEGRATION_SYNCED: 'integration.synced',
   INTEGRATION_SYNC_FAILED: 'integration.sync_failed',
+  DIGEST_SENT: 'digest.sent',
+  DIGEST_FAILED: 'digest.failed',
+  DIGEST_TEASER_SENT: 'digest.teaser_sent',
+  DIGEST_PREFERENCE_CHANGED: 'digest.preference_changed',
 } as const;
 
 export type AnalyticsEventName =

@@ -4,7 +4,7 @@ import express from 'express';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import pinoHttp from 'pino-http';
-import { env, isQbConfigured } from './config.js';
+import { env, isQbConfigured, isDigestConfigured } from './config.js';
 import { logger } from './lib/logger.js';
 import { correlationId } from './middleware/correlationId.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -19,6 +19,7 @@ import { stripeWebhookRouter } from './routes/stripeWebhook.js';
 import { integrationsCallbackRouter } from './routes/integrations.js';
 import { initSyncWorker, shutdownWorker } from './services/integrations/worker.js';
 import { initScheduler } from './services/integrations/scheduler.js';
+import { initDigestWorker, initDigestScheduler, shutdownDigestWorker } from './services/emailDigest/index.js';
 import { redis } from './lib/redis.js';
 import { queryClient, adminClient } from './lib/db.js';
 import { abortAll as abortAllStreams } from './lib/activeStreams.js';
@@ -93,6 +94,13 @@ async function start() {
     logger.info({}, 'QuickBooks integration not configured — sync worker disabled');
   }
 
+  if (isDigestConfigured(env)) {
+    initDigestWorker();
+    await initDigestScheduler();
+  } else {
+    logger.info({}, 'Email digest not configured — digest worker disabled');
+  }
+
   const server = app.listen(env.PORT, () => {
     logger.info({ port: env.PORT, env: env.NODE_ENV }, 'API server started');
   });
@@ -113,6 +121,7 @@ async function start() {
         // brief pause for aborted streams to flush final SSE events
         if (aborted > 0) await new Promise((r) => setTimeout(r, 500));
         await Sentry.flush(2000);
+        await shutdownDigestWorker();
         await shutdownWorker();
         await redis.quit();
         await queryClient.end({ timeout: 5 });

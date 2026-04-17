@@ -1,8 +1,8 @@
-import { eq } from 'drizzle-orm';
+import { eq, isNotNull } from 'drizzle-orm';
 import { SEED_ORG } from 'shared/constants';
 import { businessProfileSchema } from 'shared/schemas';
 import type { BusinessProfile } from 'shared/types';
-import { db, type DbTransaction } from '../../lib/db.js';
+import { db, dbAdmin, type DbTransaction } from '../../lib/db.js';
 import { orgs } from '../schema.js';
 
 export async function createOrg(data: { name: string; slug: string }) {
@@ -63,6 +63,13 @@ export async function setActiveDataset(
     .where(eq(orgs.id, orgId))
     .returning();
   return updated ?? null;
+}
+
+/** Admin query — bypasses RLS to list all orgs that have an active dataset. */
+export async function getAllOrgsWithActiveDataset() {
+  return dbAdmin.query.orgs.findMany({
+    where: isNotNull(orgs.activeDatasetId),
+  });
 }
 
 export async function getActiveDatasetId(
