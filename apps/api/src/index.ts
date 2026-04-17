@@ -1,3 +1,5 @@
+import './lib/sentry.js'; // must be first — instruments modules before they load
+
 import express from 'express';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
@@ -20,6 +22,7 @@ import { initScheduler } from './services/integrations/scheduler.js';
 import { redis } from './lib/redis.js';
 import { queryClient, adminClient } from './lib/db.js';
 import { abortAll as abortAllStreams } from './lib/activeStreams.js';
+import { Sentry } from './lib/sentry.js';
 import { registry, httpRequestDuration } from './lib/metrics.js';
 
 const app = express();
@@ -109,6 +112,7 @@ async function start() {
       try {
         // brief pause for aborted streams to flush final SSE events
         if (aborted > 0) await new Promise((r) => setTimeout(r, 500));
+        await Sentry.flush(2000);
         await shutdownWorker();
         await redis.quit();
         await queryClient.end({ timeout: 5 });

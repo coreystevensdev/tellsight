@@ -8,7 +8,7 @@ describe('UpgradeCta', () => {
   it('renders overlay variant with headline and subtext', () => {
     render(<UpgradeCta variant="overlay" onUpgrade={() => {}} />);
     expect(screen.getByText('Unlock full analysis')).toBeInTheDocument();
-    expect(screen.getByText('Get AI-powered insights for your business')).toBeInTheDocument();
+    expect(screen.getByText(/full ai insights, no word limits/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /upgrade to pro subscription/i })).toBeInTheDocument();
   });
 

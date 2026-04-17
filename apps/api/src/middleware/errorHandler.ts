@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
+import { Sentry } from '../lib/sentry.js';
 import { AppError, ExternalServiceError } from '../lib/appError.js';
 import { logger } from '../lib/logger.js';
 
@@ -6,9 +7,16 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
   const log = req.log ?? logger;
 
   if (err instanceof AppError) {
+    // ExternalServiceErrors (Stripe down, Claude timeout) are worth tracking
+    if (err instanceof ExternalServiceError) {
+      Sentry.captureException(err, {
+        level: 'warning',
+        extra: { code: err.code, statusCode: err.statusCode },
+      });
+    }
+
     log.warn({ err, statusCode: err.statusCode }, err.message);
 
-    // don't leak internal service details (Stripe/Claude errors) to clients
     const safeDetails = err instanceof ExternalServiceError ? undefined : err.details;
 
     res.status(err.statusCode).json({
@@ -21,6 +29,8 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
     return;
   }
 
+  // unhandled errors — these are real bugs
+  Sentry.captureException(err);
   log.error({ err }, 'Unhandled error');
   res.status(500).json({
     error: {

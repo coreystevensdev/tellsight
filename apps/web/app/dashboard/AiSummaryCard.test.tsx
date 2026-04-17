@@ -224,7 +224,7 @@ describe('AiSummaryCard', () => {
     render(<AiSummaryCard datasetId={42} />);
     expect(screen.getByText('Here is a preview of your analysis')).toBeTruthy();
     expect(screen.getByText('Unlock full analysis')).toBeTruthy();
-    expect(screen.getByLabelText('Upgrade to Pro subscription')).toBeTruthy();
+    expect(screen.getByLabelText(/upgrade to pro subscription/i)).toBeTruthy();
   });
 
   it('hides PostCompletionFooter in free_preview state', () => {

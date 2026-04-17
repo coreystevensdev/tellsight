@@ -18,6 +18,8 @@ const envSchema = z.object({
   ANALYTICS_RETENTION_DAYS: z.coerce.number().int().positive().default(90),
   METRICS_TOKEN: z.string().min(16).optional(),
 
+  SENTRY_DSN: z.string().url().optional(),
+
   QUICKBOOKS_CLIENT_ID: z.string().min(1).optional(),
   QUICKBOOKS_CLIENT_SECRET: z.string().min(1).optional(),
   QUICKBOOKS_REDIRECT_URI: z.string().url().optional(),
