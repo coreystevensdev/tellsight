@@ -4,21 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./schemas": {
-      "types": "./src/schemas/index.ts",
-      "import": "./dist/schemas/index.js",
-      "default": "./src/schemas/index.ts"
-    },
-    "./types": {
-      "types": "./src/types/index.ts",
-      "import": "./dist/types/index.js",
-      "default": "./src/types/index.ts"
-    },
-    "./constants": {
-      "types": "./src/constants/index.ts",
-      "import": "./dist/constants/index.js",
-      "default": "./src/constants/index.ts"
-    }
+    "./schemas": "./src/schemas/index.ts",
+    "./types": "./src/types/index.ts",
+    "./constants": "./src/constants/index.ts"
   },
   "scripts": {
     "lint": "eslint src/",

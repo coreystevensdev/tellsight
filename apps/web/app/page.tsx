@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import Image from 'next/image';
 import { TellsightLogo } from '@/components/common/TellsightLogo';
 
 function GridBg() {
@@ -164,25 +163,6 @@ export default function LandingPage() {
                 </p>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Screenshot — full width, the real product */}
-      <section className="relative border-y border-border/40 bg-muted/20">
-        <div className="mx-auto max-w-5xl px-4 py-12 md:px-6 md:py-16">
-          <p className="mb-6 text-center text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            What it looks like
-          </p>
-          <div className="overflow-hidden rounded-xl border border-border/60 shadow-2xl">
-            <Image
-              src="/dashboard-preview.png"
-              alt="Tellsight dashboard showing revenue trends, expense breakdown, and AI-generated analysis for a small business"
-              width={1200}
-              height={720}
-              className="w-full"
-              priority
-            />
           </div>
         </div>
       </section>

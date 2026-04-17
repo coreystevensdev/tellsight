@@ -20,7 +20,7 @@ export default function GlobalError({
         <div className="text-center">
           <h2 className="text-lg font-semibold text-foreground">Something went wrong</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            We've been notified and are looking into it.
+            We&apos;ve been notified and are looking into it.
           </p>
           <button
             onClick={reset}
