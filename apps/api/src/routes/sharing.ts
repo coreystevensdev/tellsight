@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import type { Response } from 'express';
-import type { AuthenticatedRequest } from '../middleware/authMiddleware.js';
+import { requireUser } from '../lib/requireUser.js';
 import { generateShareLink, getSharedInsight } from '../services/sharing/index.js';
 import { withRlsContext } from '../lib/rls.js';
 import { createShareSchema } from 'shared/schemas';
@@ -10,7 +10,7 @@ import { ValidationError } from '../lib/appError.js';
 export const shareRouter = Router();
 
 shareRouter.post('/', async (req, res: Response) => {
-  const { user } = req as AuthenticatedRequest;
+  const user = requireUser(req);
 
   const parsed = createShareSchema.safeParse(req.body);
   if (!parsed.success) {

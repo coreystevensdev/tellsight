@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import http from 'node:http';
 import type { Response } from 'express';
-import type { AuthenticatedRequest } from './authMiddleware.js';
+import { requireUser } from '../lib/requireUser.js';
 
 const mockVerifyAccessToken = vi.fn();
 
@@ -41,7 +41,7 @@ beforeAll(async () => {
       authMiddleware,
       roleGuard('admin'),
       (req, res: Response) => {
-        const { user } = req as AuthenticatedRequest;
+        const user = requireUser(req);
         res.json({
           data: {
             userId: parseInt(user.sub, 10),

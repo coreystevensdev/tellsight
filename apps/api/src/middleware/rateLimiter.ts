@@ -4,7 +4,6 @@ import { rateLimitHits } from '../lib/metrics.js';
 import { redis } from '../lib/redis.js';
 import { logger } from '../lib/logger.js';
 import { RATE_LIMITS } from 'shared/constants';
-import type { AuthenticatedRequest } from './authMiddleware.js';
 
 // in-memory fallbacks — same limits, per-process only
 const authFallback = new RateLimiterMemory({
@@ -72,10 +71,9 @@ export function rateLimitAuth(req: Request, res: Response, next: NextFunction) {
 }
 
 export function rateLimitAi(req: Request, res: Response, next: NextFunction) {
-  const authedReq = req as AuthenticatedRequest;
-  const key = authedReq.user?.sub ?? req.ip ?? 'unknown';
+  const key = req.user?.sub ?? req.ip ?? 'unknown';
 
-  if (!authedReq.user?.sub) {
+  if (!req.user?.sub) {
     logger.warn({ path: req.path }, 'AI rate limiter missing user — falling back to IP');
   }
 

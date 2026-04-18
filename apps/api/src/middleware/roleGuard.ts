@@ -1,12 +1,11 @@
 import type { Request, Response, NextFunction } from 'express';
-import type { AuthenticatedRequest } from './authMiddleware.js';
 import { AuthenticationError, AuthorizationError } from '../lib/appError.js';
 
 type GuardRole = 'owner' | 'member' | 'admin';
 
 export function roleGuard(requiredRole: GuardRole) {
   return (req: Request, _res: Response, next: NextFunction) => {
-    const { user } = req as AuthenticatedRequest;
+    const { user } = req;
 
     // safety net — roleGuard must run after authMiddleware
     if (!user) {

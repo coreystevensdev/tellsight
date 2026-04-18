@@ -5,7 +5,7 @@ import { ANALYTICS_EVENTS } from 'shared/constants';
 
 import { env, isQbConfigured } from '../config.js';
 import { logger } from '../lib/logger.js';
-import type { AuthenticatedRequest } from '../middleware/authMiddleware.js';
+import { requireUser } from '../lib/requireUser.js';
 import { roleGuard } from '../middleware/roleGuard.js';
 import { integrationConnectionsQueries } from '../db/queries/index.js';
 import { encrypt } from '../services/integrations/encryption.js';
@@ -31,7 +31,7 @@ export const integrationsRouter = Router();
 integrationsRouter.use(qbGuard);
 
 integrationsRouter.post('/quickbooks/connect', async (req: Request, res: Response) => {
-  const { user } = req as AuthenticatedRequest;
+  const user = requireUser(req);
   const orgId = user.org_id;
 
   const existing = await integrationConnectionsQueries.getByOrgAndProvider(orgId, 'quickbooks');
@@ -60,7 +60,7 @@ integrationsRouter.post('/quickbooks/connect', async (req: Request, res: Respons
 });
 
 integrationsRouter.get('/quickbooks/status', async (req: Request, res: Response) => {
-  const { user } = req as AuthenticatedRequest;
+  const user = requireUser(req);
   const connection = await integrationConnectionsQueries.getByOrgAndProvider(user.org_id, 'quickbooks');
 
   if (!connection) {
@@ -82,7 +82,7 @@ integrationsRouter.get('/quickbooks/status', async (req: Request, res: Response)
 });
 
 integrationsRouter.post('/quickbooks/sync', async (req: Request, res: Response) => {
-  const { user } = req as AuthenticatedRequest;
+  const user = requireUser(req);
   const connection = await integrationConnectionsQueries.getByOrgAndProvider(user.org_id, 'quickbooks');
 
   if (!connection) {
@@ -104,7 +104,7 @@ integrationsRouter.post('/quickbooks/sync', async (req: Request, res: Response) 
 });
 
 integrationsRouter.delete('/quickbooks', roleGuard('owner'), async (req: Request, res: Response) => {
-  const { user } = req as AuthenticatedRequest;
+  const user = requireUser(req);
   const connection = await integrationConnectionsQueries.getByOrgAndProvider(user.org_id, 'quickbooks');
 
   if (!connection) {

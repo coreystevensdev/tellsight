@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Link2, Link2Off, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -20,30 +20,45 @@ export function QuickBooksCard() {
   const [status, setStatus] = useState<QbStatus | null>(null);
   const [connecting, setConnecting] = useState(false);
 
+  const mounted = useRef(true);
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await apiClient<QbStatus>('/integrations/quickbooks/status');
-        if (cancelled) return;
-        setStatus(res.data);
-        setView(res.data.connected ? 'connected' : 'disconnected');
-      } catch (err) {
-        if (cancelled) return;
-        // 501 means the backend has no QB env vars configured — hide the card
-        // so a demo without Intuit credentials stays clean. Other errors
-        // (network drop, 500) surface a retry affordance instead of disappearing.
-        if (err instanceof ApiClientError && err.status === 501) {
-          setView('unavailable');
-        } else {
-          setView('error');
-        }
-      }
-    })();
+    mounted.current = true;
     return () => {
-      cancelled = true;
+      mounted.current = false;
     };
   }, []);
+
+  const fetchStatus = useCallback(async () => {
+    try {
+      const res = await apiClient<QbStatus>('/integrations/quickbooks/status');
+      if (!mounted.current) return;
+      setStatus(res.data);
+      setView(res.data.connected ? 'connected' : 'disconnected');
+    } catch (err) {
+      if (!mounted.current) return;
+      // 501 means the backend has no QB env vars configured — hide the card
+      // so a demo without Intuit credentials stays clean. Other errors
+      // (network drop, 500) surface a retry affordance instead of disappearing.
+      if (err instanceof ApiClientError && err.status === 501) {
+        setView('unavailable');
+      } else {
+        setView('error');
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    // fetchStatus is reused by the Retry button; calling it here on mount is
+    // the whole point of this effect. The rule's "don't setState in effects"
+    // guidance is for synchronization, not for mount-time data fetching.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchStatus();
+  }, [fetchStatus]);
+
+  const handleRetry = useCallback(() => {
+    setView('loading');
+    void fetchStatus();
+  }, [fetchStatus]);
 
   const handleConnect = useCallback(async () => {
     setConnecting(true);
@@ -80,10 +95,7 @@ export function QuickBooksCard() {
         </p>
         <button
           type="button"
-          onClick={() => {
-            setView('loading');
-            location.reload();
-          }}
+          onClick={handleRetry}
           className="mt-4 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
         >
           Retry

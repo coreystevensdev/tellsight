@@ -3,7 +3,6 @@ import type { Request } from 'express';
 import { logger } from '../../lib/logger.js';
 import { auditLogsQueries } from '../../db/queries/index.js';
 import type { AuditEntry } from '../../db/queries/auditLogs.js';
-import type { AuthenticatedRequest } from '../../middleware/authMiddleware.js';
 
 export type { AuditEntry };
 
@@ -32,7 +31,7 @@ export function auditAuth(
   action: string,
   extra?: { targetType?: string; targetId?: string; metadata?: Record<string, unknown> },
 ): void {
-  const user = (req as AuthenticatedRequest).user;
+  const user = req.user;
   audit(req, {
     orgId: user?.org_id ?? null,
     userId: user ? Number(user.sub) : null,

@@ -2,7 +2,6 @@ import * as Sentry from '@sentry/node';
 import type { Request, Response, NextFunction } from 'express';
 
 import { env } from '../config.js';
-import type { AuthenticatedRequest } from '../middleware/authMiddleware.js';
 
 if (env.SENTRY_DSN) {
   Sentry.init({
@@ -26,7 +25,7 @@ if (env.SENTRY_DSN) {
  * Mount after authMiddleware on protected routes.
  */
 export function sentryUserContext(req: Request, _res: Response, next: NextFunction) {
-  const user = (req as AuthenticatedRequest).user;
+  const user = req.user;
   if (user) {
     Sentry.setUser({
       id: user.sub,

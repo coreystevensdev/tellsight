@@ -3,7 +3,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import multer from 'multer';
 import { MAX_FILE_SIZE, CSV_MAX_ROWS, MAX_DATASETS_PER_ORG, ANALYTICS_EVENTS } from 'shared/constants';
-import type { AuthenticatedRequest } from '../middleware/authMiddleware.js';
+import { requireUser } from '../lib/requireUser.js';
 import { ValidationError } from '../lib/appError.js';
 import { csvAdapter } from '../services/dataIngestion/index.js';
 import { normalizeRows } from '../services/dataIngestion/normalizer.js';
@@ -138,7 +138,7 @@ datasetsRouter.post(
   upload.single('file'),
   handleMulterError,
   async (req: Request, res: Response) => {
-    const { user } = req as AuthenticatedRequest;
+    const user = requireUser(req);
     const orgId = user.org_id;
     const userId = parseInt(user.sub, 10);
 
@@ -214,7 +214,7 @@ datasetsRouter.post(
   upload.single('file'),
   handleMulterError,
   async (req: Request, res: Response) => {
-    const { user } = req as AuthenticatedRequest;
+    const user = requireUser(req);
     const orgId = user.org_id;
     const userId = parseInt(user.sub, 10);
 

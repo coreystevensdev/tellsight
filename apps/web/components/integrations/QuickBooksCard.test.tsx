@@ -104,6 +104,28 @@ describe('QuickBooksCard', () => {
     });
   });
 
+  it('Retry button re-fetches status locally without reloading the page', async () => {
+    mockApiClient
+      .mockRejectedValueOnce(new ApiClientError('Internal server error', 500, null))
+      .mockResolvedValueOnce({ data: { connected: true, companyName: 'Acme Co', syncStatus: 'idle' } });
+
+    render(<QuickBooksCard />);
+
+    await waitFor(() => {
+      expect(screen.getByText('QuickBooks is temporarily unavailable')).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /retry/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('QuickBooks connected')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Acme Co')).toBeInTheDocument();
+    expect(mockApiClient).toHaveBeenCalledTimes(2);
+    expect(mockApiClient).toHaveBeenNthCalledWith(1, '/integrations/quickbooks/status');
+    expect(mockApiClient).toHaveBeenNthCalledWith(2, '/integrations/quickbooks/status');
+  });
+
   it('calls connect endpoint and redirects to authUrl on click', async () => {
     mockApiClient
       .mockResolvedValueOnce({ data: { connected: false } })

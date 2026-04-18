@@ -1,6 +1,6 @@
 import { Router, type Response } from 'express';
 
-import type { AuthenticatedRequest } from '../middleware/authMiddleware.js';
+import { requireUser } from '../lib/requireUser.js';
 import { roleGuard } from '../middleware/roleGuard.js';
 import { subscriptionsQueries } from '../db/queries/index.js';
 import { createCheckoutSession, createPortalSession } from '../services/subscription/index.js';
@@ -12,7 +12,7 @@ import { AUDIT_ACTIONS } from 'shared/constants';
 export const subscriptionsRouter = Router();
 
 subscriptionsRouter.get('/tier', async (req, res: Response) => {
-  const { user } = req as AuthenticatedRequest;
+  const user = requireUser(req);
   const tier = await withRlsContext(user.org_id, user.isAdmin, (tx) =>
     subscriptionsQueries.getActiveTier(user.org_id, tx),
   );
@@ -20,7 +20,7 @@ subscriptionsRouter.get('/tier', async (req, res: Response) => {
 });
 
 subscriptionsRouter.post('/checkout', roleGuard('owner'), async (req, res: Response) => {
-  const { user } = req as AuthenticatedRequest;
+  const user = requireUser(req);
   const result = await withRlsContext(user.org_id, user.isAdmin, (tx) =>
     createCheckoutSession(user.org_id, Number(user.sub), tx),
   );
@@ -29,7 +29,7 @@ subscriptionsRouter.post('/checkout', roleGuard('owner'), async (req, res: Respo
 });
 
 subscriptionsRouter.post('/portal', roleGuard('owner'), async (req, res: Response) => {
-  const { user } = req as AuthenticatedRequest;
+  const user = requireUser(req);
   const subscription = await withRlsContext(user.org_id, user.isAdmin, (tx) =>
     subscriptionsQueries.getSubscriptionByOrgId(user.org_id, tx),
   );

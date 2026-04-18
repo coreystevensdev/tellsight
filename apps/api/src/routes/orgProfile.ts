@@ -1,20 +1,20 @@
 import { Router } from 'express';
 import type { Response } from 'express';
 import { businessProfileSchema } from 'shared/schemas';
-import type { AuthenticatedRequest } from '../middleware/authMiddleware.js';
+import { requireUser } from '../lib/requireUser.js';
 import { orgsQueries } from '../db/queries/index.js';
 import { logger } from '../lib/logger.js';
 
 export const orgProfileRouter = Router();
 
 orgProfileRouter.get('/profile', async (req, res: Response) => {
-  const orgId = (req as AuthenticatedRequest).user.org_id;
+  const orgId = requireUser(req).org_id;
   const profile = await orgsQueries.getBusinessProfile(orgId);
   res.json({ data: profile });
 });
 
 orgProfileRouter.put('/profile', async (req, res: Response) => {
-  const orgId = (req as AuthenticatedRequest).user.org_id;
+  const orgId = requireUser(req).org_id;
   const result = businessProfileSchema.safeParse(req.body);
 
   if (!result.success) {

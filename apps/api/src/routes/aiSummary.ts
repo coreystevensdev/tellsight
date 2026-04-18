@@ -4,8 +4,8 @@ import { ANALYTICS_EVENTS, AI_MONTHLY_QUOTA } from 'shared/constants';
 
 import type { SubscriptionTier } from 'shared/types';
 
-import type { AuthenticatedRequest } from '../middleware/authMiddleware.js';
-import { subscriptionGate, type TieredRequest } from '../middleware/subscriptionGate.js';
+import { requireUser } from '../lib/requireUser.js';
+import { subscriptionGate } from '../middleware/subscriptionGate.js';
 import { rateLimitAi } from '../middleware/rateLimiter.js';
 import { aiSummariesQueries, analyticsEventsQueries, dataRowsQueries, orgsQueries } from '../db/queries/index.js';
 import { dbAdmin } from '../lib/db.js';
@@ -19,18 +19,15 @@ import { aiSummaryTotal, aiTokensUsed } from '../lib/metrics.js';
 const aiSummaryRouter = Router();
 
 aiSummaryRouter.get('/:datasetId/latest', async (req, res: Response) => {
-  // Express types `req` as `Request<{ datasetId: string }>` — narrower than the
-  // base Request that AuthenticatedRequest extends, so TS requires `unknown` to
-  // bridge the two. authMiddleware guarantees `user` is populated upstream.
-  const authedReq = req as unknown as AuthenticatedRequest;
-  const orgId = authedReq.user.org_id;
+  const user = requireUser(req);
+  const orgId = user.org_id;
   const rawId = Number(req.params.datasetId);
 
   if (!Number.isInteger(rawId) || rawId <= 0) {
     throw new ValidationError('Invalid datasetId');
   }
 
-  const latest = await withRlsContext(orgId, authedReq.user.isAdmin, (tx) =>
+  const latest = await withRlsContext(orgId, user.isAdmin, (tx) =>
     aiSummariesQueries.getLatestSummary(orgId, rawId, tx),
   );
 
@@ -51,11 +48,11 @@ aiSummaryRouter.get('/:datasetId/latest', async (req, res: Response) => {
 });
 
 aiSummaryRouter.get('/:datasetId', subscriptionGate, async (req, res: Response) => {
-  const authedReq = req as AuthenticatedRequest;
-  const orgId = authedReq.user.org_id;
-  const userId = Number(authedReq.user.sub);
+  const user = requireUser(req);
+  const orgId = user.org_id;
+  const userId = Number(user.sub);
   const rawId = Number(req.params.datasetId);
-  const tier: SubscriptionTier = (req as TieredRequest).subscriptionTier ?? 'free';
+  const tier: SubscriptionTier = req.subscriptionTier ?? 'free';
 
   if (!Number.isInteger(rawId) || rawId <= 0) {
     throw new ValidationError('Invalid datasetId');
@@ -63,7 +60,7 @@ aiSummaryRouter.get('/:datasetId', subscriptionGate, async (req, res: Response) 
 
   trackEvent(orgId, userId, ANALYTICS_EVENTS.AI_SUMMARY_REQUESTED, { datasetId: rawId });
 
-  const cached = await withRlsContext(orgId, authedReq.user.isAdmin, (tx) =>
+  const cached = await withRlsContext(orgId, user.isAdmin, (tx) =>
     aiSummariesQueries.getCachedSummary(orgId, rawId, tx),
   );
   if (cached) {

@@ -3,7 +3,7 @@ import type { Response } from 'express';
 import { z } from 'zod';
 import { ANALYTICS_EVENTS } from 'shared/constants';
 
-import type { AuthenticatedRequest } from '../middleware/authMiddleware.js';
+import { requireUser } from '../lib/requireUser.js';
 import { userOrgsQueries } from '../db/queries/index.js';
 import { logger } from '../lib/logger.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
@@ -15,13 +15,13 @@ const updateSchema = z.object({
 });
 
 digestPreferencesRouter.get('/digest', async (req, res: Response) => {
-  const { user } = req as AuthenticatedRequest;
+  const user = requireUser(req);
   const optIn = await userOrgsQueries.getDigestOptIn(user.org_id, Number(user.sub));
   res.json({ data: { digestOptIn: optIn } });
 });
 
 digestPreferencesRouter.patch('/digest', async (req, res: Response) => {
-  const { user } = req as AuthenticatedRequest;
+  const user = requireUser(req);
   const result = updateSchema.safeParse(req.body);
 
   if (!result.success) {

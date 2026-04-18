@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import type { Response } from 'express';
-import type { AuthenticatedRequest } from '../middleware/authMiddleware.js';
+import { requireUser } from '../lib/requireUser.js';
 import { roleGuard } from '../middleware/roleGuard.js';
 import { generateInvite, validateInviteToken, getActiveInvitesForOrg } from '../services/auth/index.js';
 import { withRlsContext } from '../lib/rls.js';
@@ -11,7 +11,7 @@ import { ValidationError } from '../lib/appError.js';
 export const inviteRouter = Router();
 
 inviteRouter.get('/', roleGuard('owner'), async (req, res: Response) => {
-  const { user } = req as AuthenticatedRequest;
+  const user = requireUser(req);
 
   const invites = await withRlsContext(user.org_id, user.isAdmin, (tx) =>
     getActiveInvitesForOrg(user.org_id, tx),
@@ -28,7 +28,7 @@ inviteRouter.get('/', roleGuard('owner'), async (req, res: Response) => {
 });
 
 inviteRouter.post('/', roleGuard('owner'), async (req, res: Response) => {
-  const { user } = req as AuthenticatedRequest;
+  const user = requireUser(req);
 
   const parsed = createInviteSchema.safeParse(req.body);
   if (!parsed.success) {

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import type { AuthenticatedRequest } from '../middleware/authMiddleware.js';
+import { requireUser } from '../lib/requireUser.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
 import { ANALYTICS_EVENTS, type AnalyticsEventName } from 'shared/constants';
 
@@ -9,9 +9,9 @@ const VALID_EVENTS = new Set<string>(Object.values(ANALYTICS_EVENTS));
 const analyticsRouter = Router();
 
 analyticsRouter.post('/events', (req, res) => {
-  const authedReq = req as AuthenticatedRequest;
-  const orgId = authedReq.user.org_id;
-  const userId = Number(authedReq.user.sub);
+  const user = requireUser(req);
+  const orgId = user.org_id;
+  const userId = Number(user.sub);
   const { eventName, metadata } = req.body as {
     eventName: string;
     metadata?: Record<string, unknown>;
