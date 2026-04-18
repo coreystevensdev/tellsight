@@ -50,6 +50,10 @@ vi.mock('./templates.js', () => ({
   renderFreeTeaser: vi.fn(() => '<html>teaser</html>'),
 }));
 
+vi.mock('./unsubscribeToken.js', () => ({
+  signUnsubscribeToken: vi.fn((userId: number, orgId: number) => `tok-${userId}-${orgId}`),
+}));
+
 const { processAllDigests, generateDigestForOrg } = await import('./digestService.js');
 
 beforeEach(() => vi.clearAllMocks());

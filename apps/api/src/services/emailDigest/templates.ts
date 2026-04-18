@@ -4,11 +4,13 @@ interface ProDigestProps {
   orgName: string;
   summary: string;
   dashboardUrl: string;
+  unsubscribeUrl: string;
 }
 
 interface FreeTeaserProps {
   orgName: string;
   dashboardUrl: string;
+  unsubscribeUrl: string;
 }
 
 const STYLES = {
@@ -34,7 +36,7 @@ function formatSummaryHtml(summary: string): string {
     .join('');
 }
 
-export function renderProDigest({ orgName, summary, dashboardUrl }: ProDigestProps): string {
+export function renderProDigest({ orgName, summary, dashboardUrl, unsubscribeUrl }: ProDigestProps): string {
   const weekOf = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
   return `<!DOCTYPE html>
@@ -53,14 +55,16 @@ export function renderProDigest({ orgName, summary, dashboardUrl }: ProDigestPro
     </div>
     <p style="${STYLES.footer}">
       You're receiving this because you're on the Pro plan.<br>
-      <a href="${dashboardUrl}/settings/preferences" style="color:#6b7280;">Manage email preferences</a>
+      <a href="${unsubscribeUrl}" style="color:#6b7280;">Unsubscribe from these emails</a>
+      &nbsp;·&nbsp;
+      <a href="${dashboardUrl}/settings/preferences" style="color:#6b7280;">Manage preferences</a>
     </p>
   </div>
 </body>
 </html>`;
 }
 
-export function renderFreeTeaser({ orgName, dashboardUrl }: FreeTeaserProps): string {
+export function renderFreeTeaser({ orgName, dashboardUrl, unsubscribeUrl }: FreeTeaserProps): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -78,7 +82,7 @@ export function renderFreeTeaser({ orgName, dashboardUrl }: FreeTeaserProps): st
     </div>
     <p style="${STYLES.footer}">
       You're receiving this because you have an account.<br>
-      <a href="${dashboardUrl}/settings/preferences" style="color:#6b7280;">Unsubscribe</a>
+      <a href="${unsubscribeUrl}" style="color:#6b7280;">Unsubscribe from these emails</a>
     </p>
   </div>
 </body>

@@ -6,6 +6,7 @@ describe('renderProDigest', () => {
     orgName: 'Sunrise Cafe',
     summary: '- Revenue up 12%\n- Costs stable\n- Weekend traffic increased',
     dashboardUrl: 'https://app.tellsight.com',
+    unsubscribeUrl: 'https://app.tellsight.com/unsubscribe/digest/test-token',
   };
 
   it('includes org name in heading', () => {
@@ -37,7 +38,13 @@ describe('renderProDigest', () => {
     expect(html).toContain('AI-generated analysis');
   });
 
-  it('links to preferences page for unsubscribe', () => {
+  it('includes a one-click unsubscribe link (CAN-SPAM / CASL compliance)', () => {
+    const html = renderProDigest(props);
+    expect(html).toContain('href="https://app.tellsight.com/unsubscribe/digest/test-token"');
+    expect(html).toContain('Unsubscribe');
+  });
+
+  it('also links to preferences for granular control', () => {
     const html = renderProDigest(props);
     expect(html).toContain('/settings/preferences');
   });
@@ -54,6 +61,7 @@ describe('renderFreeTeaser', () => {
   const props = {
     orgName: 'Corner Shop',
     dashboardUrl: 'https://app.tellsight.com',
+    unsubscribeUrl: 'https://app.tellsight.com/unsubscribe/digest/teaser-token',
   };
 
   it('includes org name', () => {
@@ -78,8 +86,9 @@ describe('renderFreeTeaser', () => {
     expect(html).not.toContain('AI-generated analysis');
   });
 
-  it('includes unsubscribe link', () => {
+  it('includes a one-click unsubscribe link (CAN-SPAM / CASL compliance)', () => {
     const html = renderFreeTeaser(props);
-    expect(html).toContain('/settings/preferences');
+    expect(html).toContain('href="https://app.tellsight.com/unsubscribe/digest/teaser-token"');
+    expect(html).toContain('Unsubscribe');
   });
 });

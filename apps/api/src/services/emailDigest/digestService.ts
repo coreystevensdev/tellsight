@@ -8,6 +8,7 @@ import { generateInterpretation } from '../aiInterpretation/claudeClient.js';
 import { trackEvent } from '../analytics/trackEvent.js';
 import { sendDigestEmail } from './resendClient.js';
 import { renderProDigest, renderFreeTeaser } from './templates.js';
+import { signUnsubscribeToken } from './unsubscribeToken.js';
 
 const DIGEST_PROMPT_VERSION = 'v1-digest';
 
@@ -60,10 +61,11 @@ export async function processAllDigests(): Promise<DigestResult[]> {
         );
 
         for (const membership of members) {
+          const unsubscribeUrl = `${dashboardUrl}/unsubscribe/digest/${signUnsubscribeToken(membership.user.id, org.id)}`;
           const ok = await sendDigestEmail({
             to: membership.user.email,
             subject: `${org.name} — Weekly insights`,
-            html: renderProDigest({ orgName: org.name, summary, dashboardUrl }),
+            html: renderProDigest({ orgName: org.name, summary, dashboardUrl, unsubscribeUrl }),
           });
 
           if (ok) {
@@ -81,10 +83,11 @@ export async function processAllDigests(): Promise<DigestResult[]> {
       } else {
         // free users get a teaser
         for (const membership of members) {
+          const unsubscribeUrl = `${dashboardUrl}/unsubscribe/digest/${signUnsubscribeToken(membership.user.id, org.id)}`;
           const ok = await sendDigestEmail({
             to: membership.user.email,
             subject: `${org.name} — Your weekly update is ready`,
-            html: renderFreeTeaser({ orgName: org.name, dashboardUrl }),
+            html: renderFreeTeaser({ orgName: org.name, dashboardUrl, unsubscribeUrl }),
           });
 
           if (ok) {
