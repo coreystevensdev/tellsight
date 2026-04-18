@@ -23,7 +23,7 @@ import { initDigestWorker, initDigestScheduler, shutdownDigestWorker } from './s
 import { redis } from './lib/redis.js';
 import { queryClient, adminClient } from './lib/db.js';
 import { abortAll as abortAllStreams } from './lib/activeStreams.js';
-import { Sentry } from './lib/sentry.js';
+import { Sentry, setupExpressErrorHandler } from './lib/sentry.js';
 import { registry, httpRequestDuration } from './lib/metrics.js';
 
 const app = express();
@@ -77,6 +77,7 @@ app.use(rateLimitPublic, publicInviteRouter);
 app.use(rateLimitPublic, publicShareRouter);
 app.use(rateLimitPublic, dashboardRouter);
 app.use(rateLimitPublic, protectedRouter);
+setupExpressErrorHandler(app);
 app.use(errorHandler);
 
 async function start() {

@@ -299,6 +299,39 @@ export const syncJobs = pgTable(
   ],
 );
 
+export const auditLogs = pgTable(
+  'audit_logs',
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    orgId: integer('org_id').references(() => orgs.id, { onDelete: 'cascade' }),
+    userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+    action: varchar({ length: 100 }).notNull(),
+    targetType: varchar('target_type', { length: 50 }),
+    targetId: varchar('target_id', { length: 255 }),
+    metadata: jsonb('metadata'),
+    ipAddress: varchar('ip_address', { length: 45 }),
+    userAgent: text('user_agent'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('idx_audit_logs_org_id').on(table.orgId),
+    index('idx_audit_logs_user_id').on(table.userId),
+    index('idx_audit_logs_action').on(table.action),
+    index('idx_audit_logs_created_at').on(table.createdAt),
+  ],
+);
+
+export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
+  org: one(orgs, {
+    fields: [auditLogs.orgId],
+    references: [orgs.id],
+  }),
+  user: one(users, {
+    fields: [auditLogs.userId],
+    references: [users.id],
+  }),
+}));
+
 export const usersRelations = relations(users, ({ many }) => ({
   userOrgs: many(userOrgs),
   refreshTokens: many(refreshTokens),

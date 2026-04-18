@@ -105,6 +105,27 @@ export const CHART_CONFIG = {
   SKELETON_FADE_MS: 150,
 } as const;
 
+export const AUDIT_ACTIONS = {
+  AUTH_LOGIN: 'auth.login',
+  AUTH_LOGOUT: 'auth.logout',
+  AUTH_TOKEN_REFRESHED: 'auth.token_refreshed',
+  ORG_INVITE_SENT: 'org.invite_sent',
+  ORG_INVITE_ACCEPTED: 'org.invite_accepted',
+  ORG_MEMBER_REMOVED: 'org.member_removed',
+  DATASET_UPLOADED: 'dataset.uploaded',
+  DATASET_DELETED: 'dataset.deleted',
+  DATASET_RENAMED: 'dataset.renamed',
+  SUBSCRIPTION_CHECKOUT: 'subscription.checkout',
+  SUBSCRIPTION_CANCELLED: 'subscription.cancelled',
+  INTEGRATION_CONNECTED: 'integration.connected',
+  INTEGRATION_DISCONNECTED: 'integration.disconnected',
+  ADMIN_ORG_VIEWED: 'admin.org_viewed',
+  SETTINGS_DIGEST_CHANGED: 'settings.digest_changed',
+  SHARE_CREATED: 'share.created',
+} as const;
+
+export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
+
 export const AI_DISCLAIMER =
   'AI-generated analysis — not financial advice. Verify with your accountant.' as const;
 

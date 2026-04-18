@@ -6,8 +6,9 @@ import { ValidationError, NotFoundError } from '../lib/appError.js';
 import { datasetsQueries, orgsQueries } from '../db/queries/index.js';
 import { withRlsContext } from '../lib/rls.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
-import { ANALYTICS_EVENTS } from 'shared/constants';
+import { ANALYTICS_EVENTS, AUDIT_ACTIONS } from 'shared/constants';
 import { logger } from '../lib/logger.js';
+import { auditAuth } from '../services/audit/auditService.js';
 
 export const datasetManagementRouter = Router();
 
@@ -122,6 +123,12 @@ datasetManagementRouter.delete('/manage/:id', roleGuard('owner'), async (req, re
     rowCount: existing.rowCount,
     hadActiveShares: existing.shareCount > 0,
     newActiveDatasetId,
+  });
+
+  auditAuth(req, AUDIT_ACTIONS.DATASET_DELETED, {
+    targetType: 'dataset',
+    targetId: String(datasetId),
+    metadata: { name: existing.name, rowCount: existing.rowCount },
   });
 
   res.json({ data: { deleted: true, newActiveDatasetId } });

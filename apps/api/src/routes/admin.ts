@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getOrgsWithStats, getUsers, getOrgDetail, getSystemHealth } from '../services/admin/index.js';
 import { getAllAnalyticsEvents, getAnalyticsEventsTotal, deleteOlderThan } from '../db/queries/analyticsEvents.js';
 import { deleteExpired as deleteExpiredShares } from '../db/queries/shares.js';
+import { auditLogsQueries } from '../db/queries/index.js';
 import { ValidationError } from '../lib/appError.js';
 import { env } from '../config.js';
 import { logger } from '../lib/logger.js';
@@ -77,4 +78,33 @@ adminRouter.post('/shares/cleanup', async (_req, res: Response) => {
   const deleted = await deleteExpiredShares();
   logger.info({ deleted }, 'expired shares cleanup completed');
   res.json({ data: { deleted } });
+});
+
+const auditQuerySchema = z.object({
+  action: z.string().optional(),
+  orgId: z.coerce.number().int().positive().optional(),
+  userId: z.coerce.number().int().positive().optional(),
+  startDate: z.coerce.date().optional(),
+  endDate: z.coerce.date().optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+adminRouter.get('/audit-logs', async (req: Request, res: Response) => {
+  const parsed = auditQuerySchema.safeParse(req.query);
+  if (!parsed.success) throw new ValidationError('Invalid query parameters', parsed.error.issues);
+
+  const { limit, offset, ...filters } = parsed.data;
+  const [logs, count] = await Promise.all([
+    auditLogsQueries.query({ ...filters, limit, offset }),
+    auditLogsQueries.total(filters),
+  ]);
+
+  const page = Math.floor(offset / limit) + 1;
+  const totalPages = Math.ceil(count / limit) || 1;
+
+  res.json({
+    data: logs,
+    meta: { total: count, pagination: { page, pageSize: limit, totalPages } },
+  });
 });

@@ -37,6 +37,11 @@ vi.mock('../services/analytics/trackEvent.js', () => ({
   trackEvent: mockTrackEvent,
 }));
 
+vi.mock('../services/audit/auditService.js', () => ({
+  audit: vi.fn(),
+  auditAuth: vi.fn(),
+}));
+
 const mockWithRlsContext = vi.fn();
 
 vi.mock('../lib/rls.js', () => ({

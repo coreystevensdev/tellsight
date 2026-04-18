@@ -27,6 +27,11 @@ vi.mock('../lib/rls.js', () => ({
   withRlsContext: vi.fn((_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({})),
 }));
 
+vi.mock('../services/audit/auditService.js', () => ({
+  audit: vi.fn(),
+  auditAuth: vi.fn(),
+}));
+
 vi.mock('../config.js', () => ({
   env: { NODE_ENV: 'test', APP_URL: 'http://localhost:3000' },
 }));

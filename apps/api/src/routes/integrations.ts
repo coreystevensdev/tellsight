@@ -13,6 +13,8 @@ import * as qbOAuth from '../services/integrations/quickbooks/oauth.js';
 import { enqueueSyncJob } from '../services/integrations/worker.js';
 import { registerDailySync, removeDailySync } from '../services/integrations/scheduler.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
+import { audit, auditAuth } from '../services/audit/auditService.js';
+import { AUDIT_ACTIONS } from 'shared/constants';
 
 function qbGuard(_req: Request, res: Response, next: () => void) {
   if (!isQbConfigured(env)) {
@@ -120,6 +122,11 @@ integrationsRouter.delete('/quickbooks', roleGuard('owner'), async (req: Request
     provider: 'quickbooks',
   });
 
+  auditAuth(req, AUDIT_ACTIONS.INTEGRATION_DISCONNECTED, {
+    targetType: 'integration',
+    targetId: 'quickbooks',
+  });
+
   logger.info({ orgId: user.org_id }, 'QuickBooks disconnected');
   res.json({ data: { message: 'QuickBooks disconnected' } });
 });
@@ -195,7 +202,14 @@ integrationsCallbackRouter.get('/quickbooks/callback', async (req: Request, res:
       realmId,
     });
 
-    // BullMQ enqueueSyncJob + registerDailySync will be wired in QB-7
+    audit(req, {
+      orgId,
+      userId: Number(userId),
+      action: AUDIT_ACTIONS.INTEGRATION_CONNECTED,
+      targetType: 'integration',
+      targetId: 'quickbooks',
+      metadata: { realmId },
+    });
 
     logger.info({ orgId, realmId }, 'QuickBooks connected');
     res.redirect(`${dashboardUrl}?qb=connected`);

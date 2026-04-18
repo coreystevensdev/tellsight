@@ -43,6 +43,11 @@ vi.mock('../services/analytics/trackEvent.js', () => ({
   trackEvent: mockTrackEvent,
 }));
 
+vi.mock('../services/audit/auditService.js', () => ({
+  audit: vi.fn(),
+  auditAuth: vi.fn(),
+}));
+
 vi.mock('../services/integrations/worker.js', () => ({
   enqueueSyncJob: vi.fn(),
 }));

@@ -1,6 +1,8 @@
 import * as Sentry from '@sentry/node';
+import type { Request, Response, NextFunction } from 'express';
 
 import { env } from '../config.js';
+import type { AuthenticatedRequest } from '../middleware/authMiddleware.js';
 
 if (env.SENTRY_DSN) {
   Sentry.init({
@@ -18,4 +20,22 @@ if (env.SENTRY_DSN) {
   });
 }
 
+/**
+ * Sets Sentry user context from the JWT payload so errors
+ * are associated with the user + org that triggered them.
+ * Mount after authMiddleware on protected routes.
+ */
+export function sentryUserContext(req: Request, _res: Response, next: NextFunction) {
+  const user = (req as AuthenticatedRequest).user;
+  if (user) {
+    Sentry.setUser({
+      id: user.sub,
+      org_id: String(user.org_id),
+      role: user.role,
+    });
+  }
+  next();
+}
+
 export { Sentry };
+export { setupExpressErrorHandler } from '@sentry/node';

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/authMiddleware.js';
+import { sentryUserContext } from '../lib/sentry.js';
 import { inviteRouter } from './invites.js';
 import { datasetsRouter } from './datasets.js';
 import { datasetManagementRouter } from './datasetManagement.js';
@@ -17,6 +18,7 @@ const protectedRouter = Router();
 
 // every route mounted on this router requires a valid JWT
 protectedRouter.use(authMiddleware);
+protectedRouter.use(sentryUserContext);
 
 protectedRouter.use('/invites', inviteRouter);
 protectedRouter.use('/datasets', datasetsRouter);

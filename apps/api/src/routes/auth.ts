@@ -16,6 +16,8 @@ import { dbAdmin } from '../lib/db.js';
 import { AUTH } from 'shared/constants';
 import { googleCallbackSchema } from 'shared/schemas';
 import { rateLimitAuth } from '../middleware/rateLimiter.js';
+import { audit } from '../services/audit/auditService.js';
+import { AUDIT_ACTIONS } from 'shared/constants';
 
 const router = Router();
 
@@ -76,6 +78,13 @@ router.post('/auth/callback', rateLimitAuth, async (req: Request, res: Response)
   setCookie(res, AUTH.COOKIE_NAMES.ACCESS_TOKEN, accessToken, 15 * 60);
   setCookie(res, AUTH.COOKIE_NAMES.REFRESH_TOKEN, refreshToken, 7 * 24 * 60 * 60);
 
+  audit(req, {
+    orgId: org.id,
+    userId: user.id,
+    action: AUDIT_ACTIONS.AUTH_LOGIN,
+    metadata: { isNewUser, email: user.email },
+  });
+
   res.json({
     data: {
       user: {
@@ -116,6 +125,11 @@ router.post('/auth/logout', rateLimitAuth, async (req: Request, res: Response) =
     const existing = await refreshTokensQueries.findByHash(hash, dbAdmin);
     if (existing) {
       await refreshTokensQueries.revokeToken(existing.id, dbAdmin);
+      audit(req, {
+        orgId: existing.orgId,
+        userId: existing.userId,
+        action: AUDIT_ACTIONS.AUTH_LOGOUT,
+      });
       logger.info({ userId: existing.userId }, 'User logged out');
     }
   }
