@@ -59,8 +59,10 @@ function noveltyScore(stat: ComputedStat): number {
     case StatType.MarginTrend:
       return stat.details.direction !== 'stable' ? 0.8 : 0.35;
     case StatType.CashFlow:
+      // 0.80 matches MarginTrend not-stable — pairs novelty tier exactly so the
+      // total score lands at parity with MarginTrend shrinking, not above it.
       if (stat.details.direction === 'burning') {
-        return stat.details.monthsBurning >= 2 ? 0.85 : 0.7;
+        return stat.details.monthsBurning >= 2 ? 0.8 : 0.7;
       }
       return 0.5; // surplus
     case StatType.Trend:
@@ -109,7 +111,10 @@ function specificityScore(stat: ComputedStat): number {
     case StatType.SeasonalProjection:
       return 0.85;
     case StatType.CashFlow:
-      return 0.85; // parity with SeasonalProjection — both carry named months and exact amounts
+      // 0.80 matches MarginTrend — paired deliberately to keep burning cash flow
+      // at score parity (not above) shrinking margin. SeasonalProjection's 0.85
+      // stays higher because it projects forward, a distinct kind of specificity.
+      return 0.8;
     case StatType.MarginTrend:
       return 0.8;
     case StatType.YearOverYear:

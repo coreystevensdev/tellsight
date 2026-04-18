@@ -219,18 +219,17 @@ describe('scoreInsights', () => {
     expect(burning!.score).toBeGreaterThan(surplus!.score);
   });
 
-  it('does not invert MarginTrend vs CashFlow (tie or margin first, never cash first)', async () => {
+  it('scores CashFlow burning at exact parity with MarginTrend shrinking (tie, never inversion)', async () => {
     mockConfig({ ...validConfig, topN: 10 });
     const { scoreInsights } = await import('./scoring.js');
 
     const insights = scoreInsights([cashFlowBurning3, marginShrinking]);
     const cf = insights.find((i) => i.stat.statType === StatType.CashFlow)!;
     const mt = insights.find((i) => i.stat.statType === StatType.MarginTrend)!;
-    // Margin is the leading signal; cash flow is the trailing consequence.
-    // Actionability ties at 0.9; specificity gives CF slight edge (0.85 vs 0.8);
-    // novelty ties at 0.85 vs 0.8. The small differential keeps CF close to MT
-    // but documentation-compliant: no inverted reorder. Assert they're within a
-    // tight band rather than strict ordering.
-    expect(Math.abs(cf.score - mt.score)).toBeLessThan(0.05);
+    // Margin is the leading signal, cash flow is the trailing consequence.
+    // Under the default weight config (novelty 0.35, actionability 0.40,
+    // specificity 0.25), both land at 0.840. Strict tie — any inversion
+    // would be a scoring regression.
+    expect(cf.score).toBeCloseTo(mt.score, 6);
   });
 });

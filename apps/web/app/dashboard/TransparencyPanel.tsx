@@ -33,6 +33,9 @@ const STAT_TYPE_LABELS: Record<string, string> = {
   trend: 'Trend analysis',
   anomaly: 'Anomaly detection',
   category_breakdown: 'Category breakdown',
+  year_over_year: 'Year-over-year comparison',
+  margin_trend: 'Margin trend',
+  seasonal_projection: 'Seasonal projection',
   cash_flow: 'Cash Flow',
 };
 

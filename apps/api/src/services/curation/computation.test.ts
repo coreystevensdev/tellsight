@@ -339,7 +339,10 @@ describe('computeCashFlow', () => {
 
   it('suppresses when avgMonthlyRevenue <= 0 but no individual month is zero', () => {
     // Revenues [+100, +100, -200] → mean = 0. None is 0 so zero-revenue guard doesn't trip.
-    // avgMonthlyRevenue <= 0 guard fires instead.
+    // avgMonthlyRevenue <= 0 guard fires instead. The March -200 row is a deliberate
+    // negative-income fixture (refund/chargeback adjustment) — it's the only way to
+    // reach the second guard without triggering the first, since Map.get(m) ?? 0
+    // makes genuine-zero months look identical to missing-income-row months.
     const rows = [
       ...ccfMonth(2026, 1, 100, 5000),
       ...ccfMonth(2026, 2, 100, 5000),
