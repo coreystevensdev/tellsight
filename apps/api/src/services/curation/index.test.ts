@@ -148,8 +148,8 @@ describe('runFullPipeline', () => {
     expect(aiSummariesQueries.storeSummary).toHaveBeenCalledWith(
       1, 1,
       'Fresh AI analysis.',
-      expect.objectContaining({ promptVersion: 'v1', insightCount: expect.any(Number) }),
-      'v1',
+      expect.objectContaining({ promptVersion: 'v1.1', insightCount: expect.any(Number) }),
+      'v1.1',
     );
   });
 
@@ -170,5 +170,56 @@ describe('runFullPipeline', () => {
 
     expect(generateInterpretation).not.toHaveBeenCalled();
     expect(aiSummariesQueries.storeSummary).not.toHaveBeenCalled();
+  });
+});
+
+describe('cash flow end-to-end pipeline', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('surfaces cash flow in prompt and metadata without leaking row labels', async () => {
+    // Monthly nets: Jan -7000, Feb -3000, Mar -1000. Median = -3000, direction burning, monthsBurning 3.
+    // Every row carries an identifiable label — the privacy check greps for these exact strings below.
+    const burningRows = [
+      { id: 100, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-01-01'), amount: '10000.00', label: 'Acme Corp invoice #4218',  metadata: null, createdAt: new Date() },
+      { id: 101, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent',    parentCategory: 'Expenses', date: new Date('2026-01-01'), amount: '7000.00',  label: 'Main St landlord wire',    metadata: null, createdAt: new Date() },
+      { id: 102, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Payroll', parentCategory: 'Expenses', date: new Date('2026-01-01'), amount: '10000.00', label: 'Gusto payroll batch #JK2', metadata: null, createdAt: new Date() },
+      { id: 103, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-02-01'), amount: '10000.00', label: 'Widget sales Feb',         metadata: null, createdAt: new Date() },
+      { id: 104, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent',    parentCategory: 'Expenses', date: new Date('2026-02-01'), amount: '7000.00',  label: 'Main St landlord wire',    metadata: null, createdAt: new Date() },
+      { id: 105, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Payroll', parentCategory: 'Expenses', date: new Date('2026-02-01'), amount: '6000.00',  label: 'Gusto payroll batch #JK3', metadata: null, createdAt: new Date() },
+      { id: 106, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-03-01'), amount: '10000.00', label: 'Widget sales Mar',         metadata: null, createdAt: new Date() },
+      { id: 107, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent',    parentCategory: 'Expenses', date: new Date('2026-03-01'), amount: '7000.00',  label: 'Main St landlord wire',    metadata: null, createdAt: new Date() },
+      { id: 108, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Payroll', parentCategory: 'Expenses', date: new Date('2026-03-01'), amount: '4000.00',  label: 'Gusto payroll batch #JK4', metadata: null, createdAt: new Date() },
+    ];
+
+    vi.mocked(dataRowsQueries.getRowsByDataset).mockResolvedValue(burningRows as never);
+
+    const insights = await runCurationPipeline(1, 1);
+    const { assemblePrompt } = await import('./assembly.js');
+    const result = assemblePrompt(insights);
+
+    // metadata: cash_flow present, prompt version bumped
+    expect(result.metadata.statTypes).toContain('cash_flow');
+    expect(result.metadata.promptVersion).toBe('v1.1');
+
+    // prompt: cash flow framing with signed monthly net
+    expect(result.prompt).toMatch(/Cash Flow: burning/);
+    expect(result.prompt).toMatch(/-\$[\d,]+\/mo/);
+    expect(result.prompt).toMatch(/over 3 months/);
+
+    // privacy boundary: no row-level labels survive assembly
+    const sensitiveLabels = [
+      'Acme Corp invoice #4218',
+      'Main St landlord wire',
+      'Gusto payroll batch #JK2',
+      'Gusto payroll batch #JK3',
+      'Gusto payroll batch #JK4',
+      'Widget sales Feb',
+      'Widget sales Mar',
+    ];
+    for (const label of sensitiveLabels) {
+      expect(result.prompt).not.toContain(label);
+    }
   });
 });

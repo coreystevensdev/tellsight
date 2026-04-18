@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { computeStats } from './computation.js';
+import type { ComputedStat, CashFlowStat } from './types.js';
 import { StatType } from './types.js';
 
 const fixture = {
@@ -217,5 +218,214 @@ describe('computeStats', () => {
       expect(pct).toBeGreaterThanOrEqual(0);
       expect(pct).toBeLessThanOrEqual(100);
     }
+  });
+});
+
+// Trailing burn/surplus stat. Revenue and expense rows are tagged via
+// parentCategory, the same contract computeMarginTrend uses.
+
+let _ccfRowId = 1000;
+
+function ccfRow(parentCategory: 'Income' | 'Expenses', year: number, m: number, amount: number) {
+  return {
+    id: _ccfRowId++,
+    orgId: 1,
+    datasetId: 1,
+    sourceType: 'csv' as const,
+    category: parentCategory === 'Income' ? 'Revenue' : 'COGS',
+    parentCategory,
+    date: new Date(Date.UTC(year, m - 1, 1)),
+    amount: amount.toFixed(2),
+    label: null,
+    metadata: null,
+    createdAt: new Date(),
+  };
+}
+
+function ccfMonth(year: number, m: number, revenue: number, expenses: number) {
+  const rows: ReturnType<typeof ccfRow>[] = [];
+  // Skip the Income row when revenue is explicitly 0 — that's how the "zero-revenue month"
+  // data shape surfaces in production (no income rows for a given bucket).
+  if (revenue !== 0) rows.push(ccfRow('Income', year, m, revenue));
+  rows.push(ccfRow('Expenses', year, m, expenses));
+  return rows;
+}
+
+function cashFlowStat(rows: ReturnType<typeof ccfRow>[], opts?: { cashFlowWindow?: number }): CashFlowStat | null {
+  const all: ComputedStat[] = computeStats(rows, opts);
+  const cf = all.filter((s): s is CashFlowStat => s.statType === StatType.CashFlow);
+  if (cf.length === 0) return null;
+  if (cf.length > 1) throw new Error(`expected ≤1 CashFlow stat, got ${cf.length}`);
+  return cf[0]!;
+}
+
+describe('computeCashFlow', () => {
+  it('emits burning stat for 3 consecutive loss months — median of sorted nets is the middle element', () => {
+    // Distinct nets so median ≠ mean proves median is used.
+    // Sorted nets: [-7000, -3000, -1000] → median = -3000, mean ≈ -3666.67
+    const rows = [
+      ...ccfMonth(2026, 1, 10000, 17000),
+      ...ccfMonth(2026, 2, 10000, 13000),
+      ...ccfMonth(2026, 3, 10000, 11000),
+    ];
+    const stat = cashFlowStat(rows);
+    expect(stat).not.toBeNull();
+    expect(stat!.details.direction).toBe('burning');
+    expect(stat!.details.monthsBurning).toBe(3);
+    expect(stat!.details.trailingMonths).toBe(3);
+    expect(stat!.details.monthlyNet).toBe(-3000);
+    expect(stat!.value).toBe(-3000);
+    expect(stat!.category).toBeNull();
+    expect(stat!.details.recentMonths).toHaveLength(3);
+  });
+
+  it('emits surplus stat for 3 months of positive nets', () => {
+    const rows = [
+      ...ccfMonth(2026, 1, 15000, 10000),
+      ...ccfMonth(2026, 2, 16000, 11000),
+      ...ccfMonth(2026, 3, 17000, 12000),
+    ];
+    const stat = cashFlowStat(rows);
+    expect(stat).not.toBeNull();
+    expect(stat!.details.direction).toBe('surplus');
+    expect(stat!.details.monthsBurning).toBe(0);
+    expect(stat!.details.monthlyNet).toBe(5000);
+  });
+
+  it('mixed window with median cleanly burning — direction burning, monthsBurning 2', () => {
+    // Sorted nets: [-4000, -4000, +500] → median = -4000
+    // avg revenue = 10000, threshold = 500, |-4000| = 4000 > 500 → not suppressed
+    const rows = [
+      ...ccfMonth(2026, 1, 10000, 14000),
+      ...ccfMonth(2026, 2, 10000, 14000),
+      ...ccfMonth(2026, 3, 10000, 9500),
+    ];
+    const stat = cashFlowStat(rows);
+    expect(stat).not.toBeNull();
+    expect(stat!.details.direction).toBe('burning');
+    expect(stat!.details.monthsBurning).toBe(2);
+    expect(stat!.details.monthlyNet).toBe(-4000);
+  });
+
+  it('mixed window with median near zero — suppressed (break-even companion fixture)', () => {
+    // Sorted nets: [-3000, -100, +4000] → median = -100
+    // avg revenue = 10000, threshold = 500, |-100| < 500 → suppressed
+    const rows = [
+      ...ccfMonth(2026, 1, 10000, 13000),
+      ...ccfMonth(2026, 2, 10000, 6000),
+      ...ccfMonth(2026, 3, 10000, 10100),
+    ];
+    expect(cashFlowStat(rows)).toBeNull();
+  });
+
+  it('suppresses when nets are within ±5% of avg revenue', () => {
+    // Sorted nets: [-400, -100, +300] → median = -100, |-100| < 500 → suppressed
+    const rows = [
+      ...ccfMonth(2026, 1, 10000, 10400),
+      ...ccfMonth(2026, 2, 10000, 9700),
+      ...ccfMonth(2026, 3, 10000, 10100),
+    ];
+    expect(cashFlowStat(rows)).toBeNull();
+  });
+
+  it('suppresses when any month in the window has revenue === 0 (data gap)', () => {
+    const rows = [
+      ...ccfMonth(2026, 1, 10000, 5000),
+      ...ccfMonth(2026, 2, 0, 5000), // no Income row, revenue bucket defaults to 0
+      ...ccfMonth(2026, 3, 10000, 5000),
+    ];
+    expect(cashFlowStat(rows)).toBeNull();
+  });
+
+  it('suppresses when avgMonthlyRevenue <= 0 but no individual month is zero', () => {
+    // Revenues [+100, +100, -200] → mean = 0. None is 0 so zero-revenue guard doesn't trip.
+    // avgMonthlyRevenue <= 0 guard fires instead.
+    const rows = [
+      ...ccfMonth(2026, 1, 100, 5000),
+      ...ccfMonth(2026, 2, 100, 5000),
+      ...ccfMonth(2026, 3, -200, 5000),
+    ];
+    expect(cashFlowStat(rows)).toBeNull();
+  });
+
+  it('service business (expense-only mirror case) — emits surplus, not suppressed', () => {
+    // Solo consultant: consistent revenue, near-zero expenses.
+    // Proves the zero-revenue suppression does NOT mistakenly trigger on zero-expense.
+    const rows = [
+      ...ccfMonth(2026, 1, 5000, 100),
+      ...ccfMonth(2026, 2, 5500, 120),
+      ...ccfMonth(2026, 3, 6000, 110),
+    ];
+    const stat = cashFlowStat(rows);
+    expect(stat).not.toBeNull();
+    expect(stat!.details.direction).toBe('surplus');
+    expect(stat!.details.monthsBurning).toBe(0);
+    expect(stat!.details.monthlyNet).toBe(5380);
+  });
+
+  it('suppresses when the window has fewer than trailingMonths of data', () => {
+    const rows = [
+      ...ccfMonth(2026, 1, 10000, 14000),
+      ...ccfMonth(2026, 2, 10000, 14000),
+    ];
+    expect(cashFlowStat(rows)).toBeNull();
+  });
+
+  it('window N=3 — median is the middle element of sorted nets', () => {
+    // Explicit test of median-of-odd-N semantics. Sorted: [-5000, -2000, +1000] → median = -2000
+    const rows = [
+      ...ccfMonth(2026, 1, 10000, 15000),
+      ...ccfMonth(2026, 2, 10000, 12000),
+      ...ccfMonth(2026, 3, 10000, 9000),
+    ];
+    const stat = cashFlowStat(rows);
+    expect(stat).not.toBeNull();
+    expect(stat!.details.monthlyNet).toBe(-2000);
+  });
+
+  it('window N=6 — median is mean of two middle elements', () => {
+    // Sorted nets: [-5000, -4000, -3000, +500, +1000, +1500]
+    // median = (sorted[2] + sorted[3]) / 2 = (-3000 + 500) / 2 = -1250
+    // Prevents a hand-rolled "middle element" median bug at even window sizes.
+    const rows = [
+      ...ccfMonth(2026, 1, 10000, 15000),
+      ...ccfMonth(2026, 2, 10000, 14000),
+      ...ccfMonth(2026, 3, 10000, 13000),
+      ...ccfMonth(2026, 4, 10000, 9500),
+      ...ccfMonth(2026, 5, 10000, 9000),
+      ...ccfMonth(2026, 6, 10000, 8500),
+    ];
+    const stat = cashFlowStat(rows, { cashFlowWindow: 6 });
+    expect(stat).not.toBeNull();
+    expect(stat!.details.trailingMonths).toBe(6);
+    expect(stat!.details.monthlyNet).toBe(-1250);
+    expect(stat!.details.direction).toBe('burning');
+    expect(stat!.details.monthsBurning).toBe(3);
+    expect(stat!.details.recentMonths).toHaveLength(6);
+  });
+
+  it('median robustness — one outlier month does not flip direction', () => {
+    // Two small losses + one huge loss. Median shows the typical month,
+    // mean would exaggerate. Sorted nets: [-20000, -600, -500] → median = -600, mean ≈ -7033
+    const rows = [
+      ...ccfMonth(2026, 1, 10000, 10500),
+      ...ccfMonth(2026, 2, 10000, 10600),
+      ...ccfMonth(2026, 3, 10000, 30000),
+    ];
+    const stat = cashFlowStat(rows);
+    expect(stat).not.toBeNull();
+    expect(stat!.details.monthlyNet).toBe(-600);
+  });
+
+  it('recentMonths carries only aggregated shape — no row-level leaks', () => {
+    const rows = [
+      ...ccfMonth(2026, 1, 10000, 17000),
+      ...ccfMonth(2026, 2, 10000, 13000),
+      ...ccfMonth(2026, 3, 10000, 11000),
+    ];
+    const stat = cashFlowStat(rows);
+    expect(stat).not.toBeNull();
+    const keys = Object.keys(stat!.details.recentMonths[0]!);
+    expect(keys.sort()).toEqual(['expenses', 'month', 'net', 'revenue']);
   });
 });
