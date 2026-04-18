@@ -100,9 +100,9 @@ export async function createQbClient(connectionId: number): Promise<QbClient> {
 
         const url = `${baseUrl}/v3/company/${realmId}/query?query=${encodeURIComponent(sql)}`;
         const res = await qbFetch(url);
-        const data = await res.json() as any;
+        const data = (await res.json()) as { QueryResponse?: Record<string, unknown[]> };
 
-        const rows = data?.QueryResponse?.[entityType] ?? [];
+        const rows = data.QueryResponse?.[entityType] ?? [];
         results.push(...rows);
 
         if (rows.length < MAX_RESULTS) break;
@@ -116,8 +116,8 @@ export async function createQbClient(connectionId: number): Promise<QbClient> {
     async getCompanyInfo(): Promise<{ companyName: string }> {
       const url = `${baseUrl}/v3/company/${realmId}/companyinfo/${realmId}`;
       const res = await qbFetch(url);
-      const data = await res.json() as any;
-      return { companyName: data?.CompanyInfo?.CompanyName ?? 'QuickBooks Company' };
+      const data = (await res.json()) as { CompanyInfo?: { CompanyName?: string } };
+      return { companyName: data.CompanyInfo?.CompanyName ?? 'QuickBooks Company' };
     },
   };
 }

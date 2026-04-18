@@ -182,15 +182,15 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
     qbToastFiredRef.current = true;
     if (qb === 'connected') {
       toast.success('QuickBooks connected', {
-        description: 'We\u2019re syncing your transactions now — insights will refresh shortly.',
+        description: 'We\u2019re syncing your transactions now — this can take a few minutes.',
       });
     } else if (qb === 'denied') {
       toast.info('QuickBooks connection cancelled', {
-        description: 'No data was imported. You can try again from Settings > Integrations.',
+        description: 'Nothing was saved. You can connect anytime from Settings > Integrations.',
       });
     } else if (qb === 'error') {
       toast.error('QuickBooks connection failed', {
-        description: 'Please try again, or contact support if the issue continues.',
+        description: 'Something went wrong on the way back from QuickBooks. Retry from Settings > Integrations — we haven\u2019t saved any of your data.',
       });
     }
 

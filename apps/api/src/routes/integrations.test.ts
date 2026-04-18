@@ -1,4 +1,44 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { NextFunction, Request, Response, Router } from 'express';
+
+interface MockCookieOpts {
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: 'lax' | 'strict' | 'none';
+  maxAge?: number;
+  path?: string;
+}
+
+interface MockReq {
+  user: { sub: string; org_id: number; role: string; isAdmin: boolean };
+  cookies: Record<string, string>;
+  query: Record<string, string | undefined>;
+  [key: string]: unknown;
+}
+
+interface JsonBody {
+  data?: Record<string, unknown>;
+  error?: { code: string; message?: string; details?: unknown };
+}
+
+interface MockRes {
+  statusCode: number;
+  _json: JsonBody | null;
+  _redirectUrl: string | null;
+  _cookies: Record<string, { value: string; opts: MockCookieOpts }>;
+  _clearedCookies: string[];
+  status(code: number): MockRes;
+  json(data: JsonBody): MockRes;
+  redirect(url: string): MockRes;
+  cookie(name: string, value: string, opts: MockCookieOpts): MockRes;
+  clearCookie(name: string, opts?: MockCookieOpts): MockRes;
+}
+
+class RoleGuardError extends Error {
+  constructor(message: string, readonly statusCode: number, readonly code: string) {
+    super(message);
+  }
+}
 
 const mockGetByOrgAndProvider = vi.fn();
 const mockUpsert = vi.fn();
@@ -62,19 +102,16 @@ vi.mock('../lib/logger.js', () => ({
 }));
 
 vi.mock('../middleware/roleGuard.js', () => ({
-  roleGuard: (role: string) => (req: any, _res: any, next: any) => {
+  roleGuard: (role: string) => (req: MockReq, _res: MockRes, next: NextFunction) => {
     if (role === 'owner' && req.user?.role !== 'owner') {
-      const err = new Error('Owner access required');
-      (err as any).statusCode = 403;
-      (err as any).code = 'FORBIDDEN';
-      throw err;
+      throw new RoleGuardError('Owner access required', 403, 'FORBIDDEN');
     }
     next();
   },
 }));
 
 // Lightweight Express test helper
-function createMockReq(overrides: Record<string, unknown> = {}) {
+function createMockReq(overrides: Partial<MockReq> = {}): MockReq {
   return {
     user: { sub: '1', org_id: 10, role: 'owner', isAdmin: false },
     cookies: {},
@@ -83,18 +120,18 @@ function createMockReq(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function createMockRes() {
-  const res: any = {
+function createMockRes(): MockRes {
+  const res: MockRes = {
     statusCode: 200,
-    _json: null as unknown,
-    _redirectUrl: null as string | null,
-    _cookies: {} as Record<string, { value: string; opts: any }>,
-    _clearedCookies: [] as string[],
+    _json: null,
+    _redirectUrl: null,
+    _cookies: {},
+    _clearedCookies: [],
     status(code: number) { res.statusCode = code; return res; },
-    json(data: unknown) { res._json = data; return res; },
+    json(data: JsonBody) { res._json = data; return res; },
     redirect(url: string) { res._redirectUrl = url; return res; },
-    cookie(name: string, value: string, opts: any) { res._cookies[name] = { value, opts }; return res; },
-    clearCookie(name: string, _opts?: any) { res._clearedCookies.push(name); return res; },
+    cookie(name: string, value: string, opts: MockCookieOpts) { res._cookies[name] = { value, opts }; return res; },
+    clearCookie(name: string) { res._clearedCookies.push(name); return res; },
   };
   return res;
 }
@@ -117,14 +154,14 @@ describe('integrations routes', () => {
 
       const req = createMockReq();
       const res = createMockRes();
-      await handler(req as any, res as any, vi.fn());
+      await handler(req, res, vi.fn());
 
       expect(res._json).toEqual({
         data: { authUrl: 'https://appcenter.intuit.com/connect/oauth2?foo=bar' },
       });
       expect(res._cookies.qb_oauth_state).toBeDefined();
-      expect(res._cookies.qb_oauth_state.value).toBe('random-state-123');
-      expect(res._cookies.qb_oauth_state.opts.httpOnly).toBe(true);
+      expect(res._cookies.qb_oauth_state?.value).toBe('random-state-123');
+      expect(res._cookies.qb_oauth_state?.opts.httpOnly).toBe(true);
       expect(res._cookies.qb_oauth_org_id).toBeDefined();
       expect(res._cookies.qb_oauth_user_id).toBeDefined();
     });
@@ -137,10 +174,10 @@ describe('integrations routes', () => {
 
       const req = createMockReq();
       const res = createMockRes();
-      await handler(req as any, res as any, vi.fn());
+      await handler(req, res, vi.fn());
 
       expect(res.statusCode).toBe(409);
-      expect(res._json.error.code).toBe('ALREADY_CONNECTED');
+      expect(res._json?.error?.code).toBe('ALREADY_CONNECTED');
     });
   });
 
@@ -160,11 +197,11 @@ describe('integrations routes', () => {
 
       const req = createMockReq();
       const res = createMockRes();
-      await handler(req as any, res as any, vi.fn());
+      await handler(req, res, vi.fn());
 
-      expect(res._json.data.connected).toBe(true);
-      expect(res._json.data.provider).toBe('quickbooks');
-      expect(res._json.data.syncStatus).toBe('idle');
+      expect(res._json?.data?.connected).toBe(true);
+      expect(res._json?.data?.provider).toBe('quickbooks');
+      expect(res._json?.data?.syncStatus).toBe('idle');
     });
 
     it('returns disconnected when no connection', async () => {
@@ -175,9 +212,9 @@ describe('integrations routes', () => {
 
       const req = createMockReq();
       const res = createMockRes();
-      await handler(req as any, res as any, vi.fn());
+      await handler(req, res, vi.fn());
 
-      expect(res._json.data.connected).toBe(false);
+      expect(res._json?.data?.connected).toBe(false);
     });
   });
 
@@ -190,10 +227,10 @@ describe('integrations routes', () => {
 
       const req = createMockReq();
       const res = createMockRes();
-      await handler(req as any, res as any, vi.fn());
+      await handler(req, res, vi.fn());
 
       expect(res.statusCode).toBe(409);
-      expect(res._json.error.code).toBe('SYNC_IN_PROGRESS');
+      expect(res._json?.error?.code).toBe('SYNC_IN_PROGRESS');
     });
 
     it('returns 404 if not connected', async () => {
@@ -204,7 +241,7 @@ describe('integrations routes', () => {
 
       const req = createMockReq();
       const res = createMockRes();
-      await handler(req as any, res as any, vi.fn());
+      await handler(req, res, vi.fn());
 
       expect(res.statusCode).toBe(404);
     });
@@ -224,7 +261,7 @@ describe('integrations routes', () => {
 
       const req = createMockReq();
       const res = createMockRes();
-      await handler(req as any, res as any, vi.fn());
+      await handler(req, res, vi.fn());
 
       expect(mockRevokeToken).toHaveBeenCalledWith('enc-token');
       expect(mockDeleteByOrgAndProvider).toHaveBeenCalledWith(10, 'quickbooks');
@@ -232,7 +269,7 @@ describe('integrations routes', () => {
         10, 1, 'integration.disconnected',
         expect.objectContaining({ provider: 'quickbooks' }),
       );
-      expect(res._json.data.message).toBe('QuickBooks disconnected');
+      expect(res._json?.data?.message).toBe('QuickBooks disconnected');
     });
 
     it('returns 404 if not connected', async () => {
@@ -243,7 +280,7 @@ describe('integrations routes', () => {
 
       const req = createMockReq();
       const res = createMockRes();
-      await handler(req as any, res as any, vi.fn());
+      await handler(req, res, vi.fn());
 
       expect(res.statusCode).toBe(404);
     });
@@ -272,7 +309,7 @@ describe('integrations routes', () => {
         },
       });
       const res = createMockRes();
-      await handler(req as any, res as any, vi.fn());
+      await handler(req, res, vi.fn());
 
       expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?qb=connected');
       expect(mockExchangeCode).toHaveBeenCalledWith('auth-code', 'realm789');
@@ -295,7 +332,7 @@ describe('integrations routes', () => {
         cookies: { qb_oauth_state: 'correct-state' },
       });
       const res = createMockRes();
-      await handler(req as any, res as any, vi.fn());
+      await handler(req, res, vi.fn());
 
       expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?qb=error');
       expect(mockExchangeCode).not.toHaveBeenCalled();
@@ -309,7 +346,7 @@ describe('integrations routes', () => {
         query: { error: 'access_denied' },
       });
       const res = createMockRes();
-      await handler(req as any, res as any, vi.fn());
+      await handler(req, res, vi.fn());
 
       expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?qb=denied');
     });
@@ -323,7 +360,7 @@ describe('integrations routes', () => {
         cookies: {},
       });
       const res = createMockRes();
-      await handler(req as any, res as any, vi.fn());
+      await handler(req, res, vi.fn());
 
       expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?qb=error');
     });
@@ -343,7 +380,7 @@ describe('integrations routes', () => {
         },
       });
       const res = createMockRes();
-      await handler(req as any, res as any, vi.fn());
+      await handler(req, res, vi.fn());
 
       expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?qb=error');
     });
@@ -354,25 +391,36 @@ describe('integrations routes', () => {
 // Each middleware must fully complete before we advance — we wait on the
 // current promise and only advance when done, since Express middleware
 // typically call next() without awaiting it themselves.
-function getRouteHandler(router: any, method: string, path: string) {
+interface RouteLayer {
+  method?: string;
+  handle: (req: Request, res: Response, next: NextFunction) => void | Promise<void>;
+}
+
+interface RouterStack {
+  stack: Array<{ route?: { path: string; stack: RouteLayer[] } }>;
+}
+
+function getRouteHandler(router: Router, method: string, path: string) {
   const methodLower = method.toLowerCase();
-  for (const layer of router.stack) {
+  for (const layer of (router as unknown as RouterStack).stack) {
     if (layer.route?.path === path) {
       const stack = layer.route.stack.filter(
-        (l: any) => l.method === methodLower || !l.method,
+        (l) => l.method === methodLower || !l.method,
       );
 
-      return async (req: any, res: any, finalNext: any) => {
+      return async (req: MockReq, res: MockRes, finalNext?: NextFunction) => {
         for (const routeLayer of stack) {
           let advanced = false;
           let nextErr: unknown = null;
           const nextCalled = new Promise<void>((resolve) => {
-            const nx = (err?: unknown) => {
+            const nx: NextFunction = (err?: unknown) => {
               advanced = true;
               nextErr = err;
               resolve();
             };
-            Promise.resolve(routeLayer.handle(req, res, nx)).then(() => resolve());
+            Promise.resolve(
+              routeLayer.handle(req as unknown as Request, res as unknown as Response, nx),
+            ).then(() => resolve());
           });
           await nextCalled;
           if (nextErr) throw nextErr;
