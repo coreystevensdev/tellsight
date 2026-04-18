@@ -1,34 +1,43 @@
 import { z } from 'zod';
 
-const envSchema = z.object({
-  DATABASE_URL: z.string().url(),
-  DATABASE_ADMIN_URL: z.string().url(),
-  REDIS_URL: z.string().url(),
-  CLAUDE_API_KEY: z.string().min(1),
-  CLAUDE_MODEL: z.string().default('claude-sonnet-4-5-20250929'),
-  STRIPE_SECRET_KEY: z.string().min(1),
-  STRIPE_WEBHOOK_SECRET: z.string().min(1),
-  STRIPE_PRICE_ID: z.string().min(1),
-  GOOGLE_CLIENT_ID: z.string().min(1),
-  GOOGLE_CLIENT_SECRET: z.string().min(1),
-  JWT_SECRET: z.string().min(32),
-  APP_URL: z.string().url(),
-  NODE_ENV: z.enum(['development', 'production', 'test']),
-  PORT: z.coerce.number().default(3001),
-  ANALYTICS_RETENTION_DAYS: z.coerce.number().int().positive().default(90),
-  METRICS_TOKEN: z.string().min(16).optional(),
+export const envSchema = z
+  .object({
+    DATABASE_URL: z.string().url(),
+    DATABASE_ADMIN_URL: z.string().url(),
+    REDIS_URL: z.string().url(),
+    CLAUDE_API_KEY: z.string().min(1),
+    CLAUDE_MODEL: z.string().default('claude-sonnet-4-5-20250929'),
+    STRIPE_SECRET_KEY: z.string().min(1),
+    STRIPE_WEBHOOK_SECRET: z.string().min(1),
+    STRIPE_PRICE_ID: z.string().min(1),
+    GOOGLE_CLIENT_ID: z.string().min(1),
+    GOOGLE_CLIENT_SECRET: z.string().min(1),
+    JWT_SECRET: z.string().min(32),
+    APP_URL: z.string().url(),
+    NODE_ENV: z.enum(['development', 'production', 'test']),
+    PORT: z.coerce.number().default(3001),
+    ANALYTICS_RETENTION_DAYS: z.coerce.number().int().positive().default(90),
+    METRICS_TOKEN: z.string().min(16).optional(),
 
-  SENTRY_DSN: z.string().url().optional(),
+    SENTRY_DSN: z.string().url().optional(),
 
-  RESEND_API_KEY: z.string().min(1).optional(),
-  DIGEST_FROM_EMAIL: z.string().email().default('insights@example.com'),
+    RESEND_API_KEY: z.string().min(1).optional(),
+    DIGEST_FROM_EMAIL: z.string().email().default('insights@example.com'),
 
-  QUICKBOOKS_CLIENT_ID: z.string().min(1).optional(),
-  QUICKBOOKS_CLIENT_SECRET: z.string().min(1).optional(),
-  QUICKBOOKS_REDIRECT_URI: z.string().url().optional(),
-  QUICKBOOKS_ENVIRONMENT: z.enum(['sandbox', 'production']).default('sandbox'),
-  ENCRYPTION_KEY: z.string().length(64).optional(),
-});
+    QUICKBOOKS_CLIENT_ID: z.string().min(1).optional(),
+    QUICKBOOKS_CLIENT_SECRET: z.string().min(1).optional(),
+    QUICKBOOKS_REDIRECT_URI: z.string().url().optional(),
+    QUICKBOOKS_ENVIRONMENT: z.enum(['sandbox', 'production']).default('sandbox'),
+    ENCRYPTION_KEY: z.string().length(64).optional(),
+  })
+  .refine(
+    (data) => !(data.NODE_ENV === 'production' && data.STRIPE_SECRET_KEY.startsWith('sk_test_')),
+    {
+      message:
+        'STRIPE_SECRET_KEY must be a live key (sk_live_*) when NODE_ENV=production. A test key (sk_test_*) in production silently ships a broken payment flow to real users.',
+      path: ['STRIPE_SECRET_KEY'],
+    },
+  );
 
 export type Env = z.infer<typeof envSchema>;
 
