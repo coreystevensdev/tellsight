@@ -272,7 +272,12 @@ export function AiSummaryCard({
   className,
 }: AiSummaryCardProps) {
   const [refreshing, setRefreshing] = useState(false);
-  const isStale = !!(cachedStaleAt && new Date(cachedStaleAt).getTime() < Date.now());
+  // Snapshot staleness at mount — cachedStaleAt is a server-rendered prop, so a
+  // per-render Date.now() would violate the "pure render" rule without changing
+  // behavior. Re-mounts on navigation pick up a fresh value from the server.
+  const [isStale] = useState(
+    () => !!(cachedStaleAt && new Date(cachedStaleAt).getTime() < Date.now()),
+  );
   const hasCached = !!cachedContent && !refreshing;
   const { status, text, metadata: streamMetadata, error, code, retryable, maxRetriesReached, retry } =
     useAiStream(hasCached ? null : datasetId);

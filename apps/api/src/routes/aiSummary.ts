@@ -18,6 +18,35 @@ import { aiSummaryTotal, aiTokensUsed } from '../lib/metrics.js';
 
 const aiSummaryRouter = Router();
 
+aiSummaryRouter.get('/:datasetId/latest', async (req, res: Response) => {
+  const authedReq = req as unknown as AuthenticatedRequest;
+  const orgId = authedReq.user.org_id;
+  const rawId = Number(req.params.datasetId);
+
+  if (!Number.isInteger(rawId) || rawId <= 0) {
+    throw new ValidationError('Invalid datasetId');
+  }
+
+  const latest = await withRlsContext(orgId, authedReq.user.isAdmin, (tx) =>
+    aiSummariesQueries.getLatestSummary(orgId, rawId, tx),
+  );
+
+  if (!latest) {
+    res.status(404).json({
+      error: { code: 'NOT_FOUND', message: 'No summary exists for this dataset yet' },
+    });
+    return;
+  }
+
+  res.json({
+    data: {
+      content: latest.content,
+      metadata: latest.transparencyMetadata ?? null,
+      staleAt: latest.staleAt ? latest.staleAt.toISOString() : null,
+    },
+  });
+});
+
 aiSummaryRouter.get('/:datasetId', subscriptionGate, async (req, res: Response) => {
   const authedReq = req as AuthenticatedRequest;
   const orgId = authedReq.user.org_id;

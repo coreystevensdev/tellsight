@@ -41,6 +41,27 @@ async function fetchCachedSummary(datasetId: number): Promise<CachedSummaryResul
   }
 }
 
+async function fetchLatestSummary(
+  datasetId: number,
+  cookieHeader: string,
+): Promise<CachedSummaryResult | undefined> {
+  try {
+    const res = await apiServer<{
+      content: string;
+      metadata: TransparencyMetadata | null;
+      staleAt?: string | null;
+    }>(`/ai-summaries/${datasetId}/latest`, { cookies: cookieHeader });
+    return {
+      content: res.data.content,
+      metadata: res.data.metadata,
+      staleAt: res.data.staleAt ?? null,
+    };
+  } catch {
+    // 404 (no summary yet) or other failure — caller falls back to streaming
+    return undefined;
+  }
+}
+
 async function fetchTier(cookieHeader: string): Promise<SubscriptionTier> {
   try {
     const res = await apiServer<{ tier: SubscriptionTier }>('/subscriptions/tier', {
@@ -75,13 +96,17 @@ export default async function DashboardPage() {
     }
   }
 
-  // anonymous visitors get pre-cached seed AI summary (no streaming)
-  // no tier gating — full seed summary is the "aha moment"
+  // Cached summary flows through the same props whether the user is anonymous
+  // (seed org, public /cached) or authenticated (own org, protected /latest).
+  // When the summary is stale, the card renders a refresh banner instead of
+  // silently streaming — saves quota and lets the user choose.
   let cachedSummary: string | undefined;
   let cachedMetadata: TransparencyMetadata | null = null;
   let cachedStaleAt: string | null = null;
-  if (!hasAuth && chartData.datasetId) {
-    const cached = await fetchCachedSummary(chartData.datasetId);
+  if (chartData.datasetId) {
+    const cached = hasAuth
+      ? await fetchLatestSummary(chartData.datasetId, cookieHeader)
+      : await fetchCachedSummary(chartData.datasetId);
     cachedSummary = cached?.content;
     cachedMetadata = cached?.metadata ?? null;
     cachedStaleAt = cached?.staleAt ?? null;

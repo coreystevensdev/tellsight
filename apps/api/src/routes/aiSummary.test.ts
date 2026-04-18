@@ -27,10 +27,12 @@ vi.mock('../lib/db.js', () => ({
 }));
 
 const mockGetCachedSummary = vi.fn();
+const mockGetLatestSummary = vi.fn();
 const mockGetMonthlyAiUsageCount = vi.fn().mockResolvedValue(0);
 vi.mock('../db/queries/index.js', () => ({
   aiSummariesQueries: {
     getCachedSummary: (...args: unknown[]) => mockGetCachedSummary(...args),
+    getLatestSummary: (...args: unknown[]) => mockGetLatestSummary(...args),
   },
   analyticsEventsQueries: {
     getMonthlyAiUsageCount: (...args: unknown[]) => mockGetMonthlyAiUsageCount(...args),
@@ -172,5 +174,64 @@ describe('GET /ai-summaries/:datasetId', () => {
       'ai.summary_requested',
       { datasetId: 42 },
     );
+  });
+});
+
+describe('GET /ai-summaries/:datasetId/latest', () => {
+  it('returns latest summary with null staleAt when fresh', async () => {
+    mockGetLatestSummary.mockResolvedValueOnce({
+      content: 'Fresh cached analysis.',
+      transparencyMetadata: { promptVersion: 'v1' },
+      staleAt: null,
+    });
+
+    const res = await fetch(`${baseUrl}/ai-summaries/42/latest`);
+    const body = await res.json() as { data: { content: string; staleAt: string | null } };
+
+    expect(res.status).toBe(200);
+    expect(body.data.content).toBe('Fresh cached analysis.');
+    expect(body.data.staleAt).toBeNull();
+  });
+
+  it('surfaces staleAt as ISO string when summary is stale', async () => {
+    const staleAt = new Date('2026-04-17T14:00:00.000Z');
+    mockGetLatestSummary.mockResolvedValueOnce({
+      content: 'Prior analysis from before the QB sync.',
+      transparencyMetadata: null,
+      staleAt,
+    });
+
+    const res = await fetch(`${baseUrl}/ai-summaries/42/latest`);
+    const body = await res.json() as { data: { staleAt: string } };
+
+    expect(res.status).toBe(200);
+    expect(body.data.staleAt).toBe('2026-04-17T14:00:00.000Z');
+  });
+
+  it('returns 404 when no summary exists for this org + dataset', async () => {
+    mockGetLatestSummary.mockResolvedValueOnce(null);
+
+    const res = await fetch(`${baseUrl}/ai-summaries/42/latest`);
+    const body = await res.json() as { error: { code: string } };
+
+    expect(res.status).toBe(404);
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('rejects invalid datasetId', async () => {
+    const res = await fetch(`${baseUrl}/ai-summaries/abc/latest`);
+    expect(res.status).toBe(400);
+  });
+
+  it('scopes the query to the authenticated org', async () => {
+    mockGetLatestSummary.mockResolvedValueOnce({
+      content: 'x',
+      transparencyMetadata: null,
+      staleAt: null,
+    });
+
+    await fetch(`${baseUrl}/ai-summaries/42/latest`);
+
+    expect(mockGetLatestSummary).toHaveBeenCalledWith(1, 42, expect.anything());
   });
 });
