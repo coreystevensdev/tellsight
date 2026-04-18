@@ -23,11 +23,14 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
       });
       log.error({ err, code: err.code }, err.devMessage);
     } else {
-      // ExternalServiceErrors (Stripe down, Claude timeout) are worth tracking
+      // ExternalServiceErrors (Stripe down, Claude timeout) are worth tracking.
+      // Fingerprint by service so Stripe and Claude issues don't collapse into
+      // one Sentry issue — same pattern as ProgrammerError above.
       if (err instanceof ExternalServiceError) {
         Sentry.captureException(err, {
           level: 'warning',
-          extra: { code: err.code, statusCode: err.statusCode },
+          fingerprint: ['external-service', err.service],
+          extra: { code: err.code, statusCode: err.statusCode, service: err.service },
         });
       }
       log.warn({ err, statusCode: err.statusCode }, err.message);

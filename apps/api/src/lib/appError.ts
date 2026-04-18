@@ -41,8 +41,11 @@ export class QuotaExceededError extends AppError {
 }
 
 export class ExternalServiceError extends AppError {
+  readonly service: string;
+
   constructor(service: string, details?: unknown) {
     super(`External service error: ${service}`, 'EXTERNAL_SERVICE_ERROR', 502, details);
+    this.service = service;
   }
 }
 
