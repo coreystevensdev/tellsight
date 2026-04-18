@@ -287,10 +287,12 @@ export default function LandingPage() {
                 — Corey, maker of Tellsight
                 <br />
                 <a
-                  href="mailto:hello@tellsight.com"
+                  href="https://github.com/coreystevensdev/saas-analytics-dashboard/issues"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="text-primary underline-offset-4 transition-colors hover:underline"
                 >
-                  hello@tellsight.com
+                  Send feedback on GitHub
                 </a>
               </p>
             </div>
