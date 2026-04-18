@@ -8,6 +8,8 @@ const mockGetOrgDetail = vi.fn();
 const mockGetSystemHealth = vi.fn();
 const mockGetAllAnalyticsEvents = vi.fn();
 const mockGetAnalyticsEventsTotal = vi.fn();
+const mockAuditQuery = vi.fn();
+const mockAuditTotal = vi.fn();
 
 vi.mock('../services/auth/tokenService.js', () => ({
   verifyAccessToken: mockVerifyAccessToken,
@@ -23,6 +25,13 @@ vi.mock('../services/admin/index.js', () => ({
 vi.mock('../db/queries/analyticsEvents.js', () => ({
   getAllAnalyticsEvents: mockGetAllAnalyticsEvents,
   getAnalyticsEventsTotal: mockGetAnalyticsEventsTotal,
+}));
+
+vi.mock('../db/queries/index.js', () => ({
+  auditLogsQueries: {
+    query: (...args: unknown[]) => mockAuditQuery(...args),
+    total: (...args: unknown[]) => mockAuditTotal(...args),
+  },
 }));
 
 vi.mock('../config.js', () => ({
@@ -314,5 +323,91 @@ const json = (await res.json()) as any;
 const json = (await res.json()) as any;
 
     expect(json.meta.pagination).toEqual({ page: 3, pageSize: 25, totalPages: 5 });
+  });
+});
+
+const fakeAuditLogs = [
+  {
+    id: 1, action: 'auth.login', targetType: null, targetId: null,
+    orgName: 'Acme', userEmail: 'a@b.com', userName: 'Alice',
+    metadata: { isNewUser: false }, ipAddress: '192.168.1.1',
+    createdAt: '2026-04-10T12:00:00.000Z',
+  },
+];
+
+describe('GET /admin/audit-logs', () => {
+  it('returns 200 with paginated audit logs for admin', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
+    mockAuditQuery.mockResolvedValueOnce(fakeAuditLogs);
+    mockAuditTotal.mockResolvedValueOnce(1);
+
+    const res = await fetch(`${baseUrl}/admin/audit-logs`, { headers: authHeaders });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const json = (await res.json()) as any;
+
+    expect(res.status).toBe(200);
+    expect(json.data).toEqual(fakeAuditLogs);
+    expect(json.meta.total).toBe(1);
+    expect(json.meta.pagination).toEqual({ page: 1, pageSize: 50, totalPages: 1 });
+  });
+
+  it('returns 403 for non-admin user', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(regularPayload());
+
+    const res = await fetch(`${baseUrl}/admin/audit-logs`, { headers: authHeaders });
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 401 without auth', async () => {
+    const res = await fetch(`${baseUrl}/admin/audit-logs`);
+    expect(res.status).toBe(401);
+  });
+
+  it('passes valid filters to query functions', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
+    mockAuditQuery.mockResolvedValueOnce([]);
+    mockAuditTotal.mockResolvedValueOnce(0);
+
+    const params = new URLSearchParams({
+      action: 'auth.login',
+      orgId: '5',
+      userId: '3',
+      startDate: '2026-01-01T00:00:00.000Z',
+      endDate: '2026-03-31T23:59:59.000Z',
+      limit: '25',
+      offset: '50',
+    });
+
+    const res = await fetch(`${baseUrl}/admin/audit-logs?${params}`, { headers: authHeaders });
+
+    expect(res.status).toBe(200);
+    expect(mockAuditQuery).toHaveBeenCalledWith({
+      action: 'auth.login',
+      orgId: 5,
+      userId: 3,
+      startDate: new Date('2026-01-01T00:00:00.000Z'),
+      endDate: new Date('2026-03-31T23:59:59.000Z'),
+      limit: 25,
+      offset: 50,
+    });
+  });
+
+  it('returns 400 for invalid limit', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
+
+    const res = await fetch(`${baseUrl}/admin/audit-logs?limit=999`, { headers: authHeaders });
+    expect(res.status).toBe(400);
+  });
+
+  it('calculates pagination meta correctly', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
+    mockAuditQuery.mockResolvedValueOnce([]);
+    mockAuditTotal.mockResolvedValueOnce(200);
+
+    const res = await fetch(`${baseUrl}/admin/audit-logs?limit=25&offset=75`, { headers: authHeaders });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const json = (await res.json()) as any;
+
+    expect(json.meta.pagination).toEqual({ page: 4, pageSize: 25, totalPages: 8 });
   });
 });
