@@ -57,8 +57,7 @@ docs/demo-walkthrough-plan.md
 docs/deployment-roadmap.md
 scripts/check-story-status.sh
 
-# BMAD framework
+# BMAD framework (installed templates — artifacts in _bmad-output/ are tracked)
 _bmad/
-_bmad-output/
 CLAUDE.md
 .claude/
