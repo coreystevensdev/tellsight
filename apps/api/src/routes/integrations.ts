@@ -14,6 +14,7 @@ import { enqueueSyncJob } from '../services/integrations/worker.js';
 import { registerDailySync, removeDailySync } from '../services/integrations/scheduler.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
 import { audit, auditAuth } from '../services/audit/auditService.js';
+import { sessionCookieOptions } from '../lib/cookies.js';
 import { AUDIT_ACTIONS } from 'shared/constants';
 
 function qbGuard(_req: Request, res: Response, next: () => void) {
@@ -44,13 +45,7 @@ integrationsRouter.post('/quickbooks/connect', async (req: Request, res: Respons
 
   const { authUrl, state } = qbOAuth.generateAuthUrl();
 
-  const cookieOpts = {
-    httpOnly: true,
-    secure: env.NODE_ENV === 'production',
-    sameSite: 'lax' as const,
-    maxAge: 10 * 60 * 1000,
-    path: '/',
-  };
+  const cookieOpts = sessionCookieOptions(10 * 60);
 
   res.cookie('qb_oauth_state', state, cookieOpts);
   res.cookie('qb_oauth_org_id', String(orgId), cookieOpts);

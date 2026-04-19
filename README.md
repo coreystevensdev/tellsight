@@ -11,6 +11,9 @@
 
 ## Overview
 
+<!-- LIVE_URL_PLACEHOLDER: replace with real URL after Task 14 of tech-spec-production-deployment -->
+**Live demo:** _(deploying soon — target 2026-05-04)_
+
 Most analytics tools show you what happened. This one tells you what it means. Upload a CSV, get instant charts, and let AI interpret the trends, anomalies, and opportunities your data reveals. No data science degree required.
 
 A full-stack portfolio piece with production patterns: multi-tenant architecture, SSE streaming, Stripe billing, row-level security, and a privacy-first AI pipeline.

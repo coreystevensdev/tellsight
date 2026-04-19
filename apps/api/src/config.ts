@@ -14,6 +14,7 @@ export const envSchema = z
     GOOGLE_CLIENT_SECRET: z.string().min(1),
     JWT_SECRET: z.string().min(32),
     APP_URL: z.string().url(),
+    COOKIE_DOMAIN: z.string().min(1).optional(),
     NODE_ENV: z.enum(['development', 'production', 'test']),
     PORT: z.coerce.number().default(3001),
     ANALYTICS_RETENTION_DAYS: z.coerce.number().int().positive().default(90),

@@ -29,7 +29,12 @@ import { registry, httpRequestDuration } from './lib/metrics.js';
 
 const app = express();
 
-app.set('trust proxy', 1); // BFF proxy is the first hop — needed for correct req.ip in rate limiting
+// Production hop count: Cloudflare (DNS-only) → Vercel edge → Railway → Express = 2 hops
+// for browser traffic via BFF. Direct-to-Railway (Stripe webhook, api.{DOMAIN}) is 1 hop,
+// but those paths don't rely on req.ip for rate limiting. Local docker-compose is 0 hops,
+// so 2 is harmless (Express falls back to socket address). Raise to 3 if Cloudflare
+// proxy mode is re-enabled on the apex record.
+app.set('trust proxy', 2);
 
 // Prometheus metrics — before helmet so scraper doesn't need to handle security headers.
 // Gated by bearer token in production to prevent leaking operational data.

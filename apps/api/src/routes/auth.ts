@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { env } from '../config.js';
 import { logger } from '../lib/logger.js';
 import { AuthenticationError, ValidationError } from '../lib/appError.js';
 import {
@@ -13,6 +12,7 @@ import {
 } from '../services/auth/index.js';
 import * as refreshTokensQueries from '../db/queries/refreshTokens.js';
 import { dbAdmin } from '../lib/db.js';
+import { sessionCookieOptions, clearCookieOptions } from '../lib/cookies.js';
 import { AUTH } from 'shared/constants';
 import { googleCallbackSchema } from 'shared/schemas';
 import { rateLimitAuth } from '../middleware/rateLimiter.js';
@@ -21,25 +21,12 @@ import { AUDIT_ACTIONS } from 'shared/constants';
 
 const router = Router();
 
-const isProduction = env.NODE_ENV === 'production';
-
 function setCookie(res: Response, name: string, value: string, maxAge: number) {
-  res.cookie(name, value, {
-    httpOnly: true,
-    secure: isProduction,
-    sameSite: 'lax',
-    path: '/',
-    maxAge: maxAge * 1000,
-  });
+  res.cookie(name, value, sessionCookieOptions(maxAge));
 }
 
 function clearCookie(res: Response, name: string) {
-  res.clearCookie(name, {
-    httpOnly: true,
-    secure: isProduction,
-    sameSite: 'lax',
-    path: '/',
-  });
+  res.clearCookie(name, clearCookieOptions());
 }
 
 router.get('/auth/google', rateLimitAuth, (_req: Request, res: Response) => {

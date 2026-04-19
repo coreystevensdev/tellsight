@@ -2,6 +2,8 @@
 
 Where this project stands relative to production deployment, and what it would take to get there.
 
+> **Active deploy**: execution is tracked in `_bmad-output/implementation-artifacts/tech-spec-production-deployment.md` (status: ready-for-dev, target 2026-05-04). Operational playbook: [`deploy-runbook.md`](./deploy-runbook.md).
+
 ## Current State: Portfolio-Ready
 
 The app runs locally via `docker compose up` with zero configuration. Seed data, pre-cached AI summary, migrations, and dual-role PostgreSQL all initialize automatically. A hiring manager can clone, run one command, and see a working product.
@@ -116,8 +118,8 @@ Managed Postgres providers (Neon, Supabase) support custom roles. Create both du
 
 | Gap | Impact | Effort |
 |-----|--------|--------|
-| **Deployment pipeline** | CI runs tests but doesn't deploy. Manual process to push to production. | Medium — GitHub Actions deploy step |
-| **Readiness vs liveness probes** | Single `/health` endpoint serves both roles. Kubernetes/orchestrators want separate endpoints. | Small — add `/ready` endpoint |
+| ~~**Deployment pipeline**~~ | ~~CI runs tests but doesn't deploy.~~ | ✅ Done — `deploy` job appended to `.github/workflows/ci.yml`, fires Railway + Vercel hooks after `docker-smoke` on `main` |
+| ~~**Readiness vs liveness probes**~~ | ~~Single `/health` endpoint.~~ | ✅ Done — `/health/live` (no deps) + `/health/ready` (DB + Redis) + legacy `/health` in `apps/api/src/routes/health.ts` |
 | **Secrets rotation guide** | No docs on how to rotate JWT_SECRET, API keys without downtime. | Small — document the process |
 | **Performance monitoring** | No P95 latency tracking, no TTFB monitoring, no baseline. | Medium — Sentry performance or custom Pino metrics |
 | **Horizontal scaling** | Single-process deployment only. Rate limiter in-memory fallbacks don't coordinate across instances. | Large — load balancer + Redis-only rate limiting |
@@ -136,14 +138,19 @@ For when you're ready to go live:
 - [x] Add graceful shutdown handlers to `apps/api/src/index.ts`
 - [x] Add per-tier AI usage quota
 - [x] Add dataset row limit (50k)
-- [ ] Deploy API container (Railway/Fly)
-- [ ] Deploy web to Vercel (connect repo, set env vars)
+- [x] Split `/health` into `/health/live` + `/health/ready`
+- [x] Wrap migrations with advisory lock (`apps/api/src/db/migrate.ts`)
+- [x] Set `trust proxy: 2` for BFF hop count (`apps/api/src/index.ts`)
+- [x] Unify cookie flags via `COOKIE_DOMAIN` env var (`apps/api/src/lib/cookies.ts`)
+- [x] Append deploy job to CI pipeline (`.github/workflows/ci.yml`)
+- [ ] Deploy API container (Railway) — see `deploy-runbook.md`
+- [ ] Deploy web to Vercel (connect repo, set env vars) — see `deploy-runbook.md`
 - [ ] Configure Stripe webhook endpoint to production URL
 - [ ] Run migrations against production DB
-- [ ] Verify `/health` returns 200
+- [ ] Verify `/health/ready` returns 200
 - [ ] Verify seed data loads correctly
 - [ ] Verify OAuth login flow works end-to-end
-- [ ] Set up error tracking (Sentry)
+- [ ] Set up error tracking (Sentry) — deferred to Week 2 spec
 - [ ] Monitor first 24 hours of AI usage costs
 
 ## Cost Estimates

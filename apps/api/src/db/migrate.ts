@@ -16,12 +16,24 @@ if (!dbUrl) {
 
 const migrationClient = postgres(dbUrl, { max: 1 });
 
+// Advisory lock ID — any constant int64 works. Defense-in-depth against concurrent
+// boots racing the migrator when a platform (Railway, etc.) restarts or scales the
+// API container. Drizzle's journal catches double-application, but the lock turns
+// a race into a queue: the second boot waits, then finds nothing to do.
+const MIGRATION_LOCK_ID = 42;
+
 async function runMigrations() {
   const db = drizzle(migrationClient);
 
-  console.info('Running database migrations...');
-  await migrate(db, { migrationsFolder: './drizzle/migrations' });
-  console.info('Migrations completed successfully');
+  console.info('Acquiring migration advisory lock...');
+  await migrationClient`SELECT pg_advisory_lock(${MIGRATION_LOCK_ID})`;
+  try {
+    console.info('Running database migrations...');
+    await migrate(db, { migrationsFolder: './drizzle/migrations' });
+    console.info('Migrations completed successfully');
+  } finally {
+    await migrationClient`SELECT pg_advisory_unlock(${MIGRATION_LOCK_ID})`;
+  }
 
   await migrationClient.end();
 }

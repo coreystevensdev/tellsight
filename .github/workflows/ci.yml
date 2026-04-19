@@ -176,3 +176,43 @@ jobs:
 
       - name: Run smoke test
         run: bash scripts/smoke-test.sh --ci
+
+  # Fires Railway + Vercel deploy hooks, then waits for the production health
+  # endpoint to return 200. Not blocked on test-api (continue-on-error: true);
+  # if docker-smoke is green, the main pipeline passed. Secrets required:
+  # RAILWAY_DEPLOY_HOOK_URL, VERCEL_DEPLOY_HOOK_URL, PRODUCTION_URL.
+  deploy:
+    name: Deploy to Production
+    needs: [docker-smoke]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Trigger Vercel deploy
+        env:
+          VERCEL_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+        run: curl -fsS -X POST "$VERCEL_HOOK"
+
+      - name: Trigger Railway deploy
+        env:
+          RAILWAY_HOOK: ${{ secrets.RAILWAY_DEPLOY_HOOK_URL }}
+        run: curl -fsS -X POST "$RAILWAY_HOOK"
+
+      - name: Wait for production health
+        env:
+          PROD_URL: ${{ secrets.PRODUCTION_URL }}
+        run: |
+          url="$PROD_URL/api/health/ready"
+          echo "Polling $url for up to 5 minutes..."
+          for i in $(seq 1 60); do
+            body=$(curl -fsS "$url" 2>/dev/null || true)
+            if echo "$body" | grep -q '"status":"ok"'; then
+              echo "Production healthy after $((i * 5))s"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Production did not become healthy within 5 minutes"
+          echo "Last response: $body"
+          exit 1
