@@ -9,7 +9,8 @@ import type { db, DbTransaction } from '../../lib/db.js';
 import { register, deregister } from '../../lib/activeStreams.js';
 import { CircuitOpenError } from '../../lib/circuitBreaker.js';
 import { aiSummariesQueries } from '../../db/queries/index.js';
-import { runCurationPipeline, assemblePrompt, transparencyMetadataSchema } from '../curation/index.js';
+import { runCurationPipeline, assemblePrompt, transparencyMetadataSchema, validateSummary } from '../curation/index.js';
+import type { ScoredInsight } from '../curation/index.js';
 import { streamInterpretation } from './claudeClient.js';
 
 function writeSseEvent(res: Response, event: string, data: unknown) {
@@ -97,10 +98,11 @@ export async function streamToSSE(
   let prompt: string;
   let validatedMetadata: ReturnType<typeof transparencyMetadataSchema.parse>;
   let promptVersion: string;
+  let pipelineInsights: ScoredInsight[] = [];
 
   try {
-    const insights = await runCurationPipeline(orgId, datasetId, client);
-    const { prompt: p, metadata } = assemblePrompt(insights, undefined, businessProfile);
+    pipelineInsights = await runCurationPipeline(orgId, datasetId, client);
+    const { prompt: p, metadata } = assemblePrompt(pipelineInsights, undefined, businessProfile);
     prompt = p;
     validatedMetadata = transparencyMetadataSchema.parse(metadata);
     promptVersion = metadata.promptVersion;
@@ -169,6 +171,28 @@ export async function streamToSSE(
 
     writeSseEvent(res, 'done', { usage: result.usage, metadata: validatedMetadata } satisfies SseDoneEvent);
     safeEnd();
+
+    // Tier 1 hallucination check — fires after stream is delivered to the user.
+    // Never blocks the response; flagged summaries still cache so we have the evidence.
+    const report = validateSummary(result.fullText, pipelineInsights.map((i) => i.stat));
+    if (report.status === 'clean') {
+      logger.info(
+        { orgId, datasetId, numbersChecked: report.numbersChecked, allowedValueCount: report.allowedValueCount },
+        'AI summary validation clean',
+      );
+    } else {
+      logger.warn(
+        {
+          orgId,
+          datasetId,
+          status: report.status,
+          numbersChecked: report.numbersChecked,
+          unmatched: report.unmatchedNumbers,
+          promptVersion,
+        },
+        'AI summary validation flagged unmatched numbers',
+      );
+    }
 
     try {
       await aiSummariesQueries.storeSummary(

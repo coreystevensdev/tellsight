@@ -15,9 +15,11 @@ vi.mock('../../lib/logger.js', () => ({
 
 const mockRunCurationPipeline = vi.fn();
 const mockAssemblePrompt = vi.fn();
+const mockValidateSummary = vi.fn();
 vi.mock('../curation/index.js', () => ({
   runCurationPipeline: (...args: unknown[]) => mockRunCurationPipeline(...args),
   assemblePrompt: (...args: unknown[]) => mockAssemblePrompt(...args),
+  validateSummary: (...args: unknown[]) => mockValidateSummary(...args),
   transparencyMetadataSchema: { parse: (v: unknown) => v },
 }));
 
@@ -96,6 +98,12 @@ describe('streamToSSE', () => {
     mockAssemblePrompt.mockReturnValue({
       prompt: 'test prompt',
       metadata: defaultMetadata,
+    });
+    mockValidateSummary.mockReturnValue({
+      status: 'clean',
+      unmatchedNumbers: [],
+      numbersChecked: 0,
+      allowedValueCount: 0,
     });
     mockStoreSummary.mockResolvedValue({});
   });

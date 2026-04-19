@@ -6,6 +6,7 @@ import type { db, DbTransaction } from '../../lib/db.js';
 import { computeStats } from './computation.js';
 import { scoreInsights, scoringConfig } from './scoring.js';
 import { assemblePrompt } from './assembly.js';
+import { validateSummary } from './validator.js';
 import { generateInterpretation } from '../aiInterpretation/claudeClient.js';
 import { transparencyMetadataSchema } from './types.js';
 import type { ScoredInsight } from './types.js';
@@ -65,6 +66,25 @@ export async function runFullPipeline(
 
   const content = await generateInterpretation(prompt);
 
+  const report = validateSummary(content, insights.map((i) => i.stat));
+  if (report.status === 'clean') {
+    logger.info(
+      { orgId, datasetId, numbersChecked: report.numbersChecked },
+      'AI summary validation clean',
+    );
+  } else {
+    logger.warn(
+      {
+        orgId,
+        datasetId,
+        status: report.status,
+        unmatched: report.unmatchedNumbers,
+        promptVersion: metadata.promptVersion,
+      },
+      'AI summary validation flagged unmatched numbers',
+    );
+  }
+
   await aiSummariesQueries.storeSummary(
     orgId,
     datasetId,
@@ -81,3 +101,5 @@ export async function runFullPipeline(
 export type { ComputedStat, ScoredInsight, ScoringConfig, AssembledContext, TransparencyMetadata } from './types.js';
 export { StatType, transparencyMetadataSchema } from './types.js';
 export { assemblePrompt } from './assembly.js';
+export { validateSummary } from './validator.js';
+export type { ValidationReport, UnmatchedNumber, ValidateOptions } from './validator.js';
