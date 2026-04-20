@@ -37,11 +37,14 @@ export {
 
 export {
   businessProfileSchema,
+  orgFinancialsSchema,
   BUSINESS_TYPES,
   REVENUE_RANGES,
   TEAM_SIZES,
   TOP_CONCERNS,
 } from './businessProfile';
+
+export type { BusinessProfile, OrgFinancials } from './businessProfile';
 
 export {
   createShareSchema,
