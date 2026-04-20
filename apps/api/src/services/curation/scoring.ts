@@ -65,6 +65,10 @@ function noveltyScore(stat: ComputedStat): number {
         return stat.details.monthsBurning >= 2 ? 0.8 : 0.7;
       }
       return 0.5; // surplus
+    case StatType.Runway:
+      // Quantified risk > unquantified signal. 0.85 beats CashFlow burning (0.80)
+      // because a month count is strictly more informative than direction alone.
+      return stat.details.runwayMonths < 6 ? 0.85 : 0.65;
     case StatType.Trend:
       return Math.abs(stat.details.growthPercent) > scoringConfig.thresholds.significantChangePercent ? 0.8 : 0.4;
     case StatType.CategoryBreakdown:
@@ -91,6 +95,12 @@ function actionabilityScore(stat: ComputedStat): number {
         return stat.details.monthsBurning >= 2 ? 0.9 : 0.75;
       }
       return 0.5; // surplus
+    case StatType.Runway:
+      // 0.95 is the highest actionability in the pipeline — runway <6 months
+      // is existential. Drops sharply once there's room to breathe.
+      if (stat.details.runwayMonths < 6) return 0.95;
+      if (stat.details.runwayMonths < 24) return 0.70;
+      return 0.45;
     case StatType.YearOverYear:
       return Math.abs(stat.details.changePercent) > 10 ? 0.8 : 0.4;
     case StatType.Trend:
@@ -115,6 +125,10 @@ function specificityScore(stat: ComputedStat): number {
       // at score parity (not above) shrinking margin. SeasonalProjection's 0.85
       // stays higher because it projects forward, a distinct kind of specificity.
       return 0.8;
+    case StatType.Runway:
+      // 0.90 flat — runway output is an exact month count. Nothing more specific
+      // than "3.2 months" in this domain.
+      return 0.9;
     case StatType.MarginTrend:
       return 0.8;
     case StatType.YearOverYear:

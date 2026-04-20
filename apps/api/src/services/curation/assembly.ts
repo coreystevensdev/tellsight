@@ -9,7 +9,7 @@ import type { BusinessProfile } from 'shared/types';
 import { getIndustryBenchmarks } from './config/industry-benchmarks.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_VERSION = 'v1.1';
+const DEFAULT_VERSION = 'v1.3';
 const usd = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
 
 function loadTemplate(version: string): string {
@@ -68,6 +68,13 @@ function formatStat(insight: ScoredInsight): string {
       const n = stat.details.monthlyNet;
       const signed = `${n >= 0 ? '+' : '-'}$${usd.format(Math.abs(n))}`;
       return `- [Overall] Cash Flow: ${stat.details.direction} — net ${signed}/mo over ${stat.details.trailingMonths} months (${stat.details.monthsBurning} burning, relevance: ${score.toFixed(2)})`;
+    }
+    case StatType.Runway: {
+      const n = stat.details.monthlyNet;
+      const signedNet = `${n >= 0 ? '+' : '-'}$${usd.format(Math.abs(n))}`;
+      const cash = `$${usd.format(stat.details.cashOnHand)}`;
+      const asOf = stat.details.cashAsOfDate.slice(0, 10); // YYYY-MM-DD
+      return `- [Overall] Runway: ${stat.details.runwayMonths.toFixed(1)} months — net ${signedNet}/mo, cash ${cash} as of ${asOf} (confidence: ${stat.details.confidence}, relevance: ${score.toFixed(2)})`;
     }
   }
 }

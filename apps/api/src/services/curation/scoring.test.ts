@@ -233,3 +233,112 @@ describe('scoreInsights', () => {
     expect(cf.score).toBeCloseTo(mt.score, 6);
   });
 });
+
+describe('scoreInsights — Runway scoring', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.resetModules();
+  });
+
+  const runwayStat = (runwayMonths: number): ComputedStat => ({
+    statType: StatType.Runway,
+    category: null,
+    value: runwayMonths,
+    details: {
+      cashOnHand: 15000,
+      monthlyNet: -5000,
+      runwayMonths,
+      cashAsOfDate: '2026-04-20T00:00:00.000Z',
+      confidence: 'high',
+    },
+  });
+
+  it('critical runway (<6 months) hits the exact 0.9025 score under default weights', async () => {
+    mockConfig(validConfig);
+    const { scoreInsights } = await import('./scoring.js');
+
+    const [ranked] = scoreInsights([runwayStat(3)]);
+    // 0.85 × 0.35 + 0.95 × 0.40 + 0.90 × 0.25 = 0.9025
+    expect(ranked!.score).toBeCloseTo(0.9025, 4);
+    expect(ranked!.breakdown).toEqual({
+      novelty: 0.85,
+      actionability: 0.95,
+      specificity: 0.90,
+    });
+  });
+
+  it('critical runway outranks CashFlow burning by at least 0.04', async () => {
+    mockConfig(validConfig);
+    const { scoreInsights } = await import('./scoring.js');
+
+    const cashFlowBurning: ComputedStat = {
+      statType: StatType.CashFlow,
+      category: null,
+      value: -5000,
+      details: {
+        monthlyNet: -5000,
+        trailingMonths: 3,
+        direction: 'burning',
+        monthsBurning: 3,
+        recentMonths: [],
+      },
+    };
+
+    const insights = scoreInsights([runwayStat(3), cashFlowBurning]);
+    const runway = insights.find((i) => i.stat.statType === StatType.Runway)!;
+    const cashFlow = insights.find((i) => i.stat.statType === StatType.CashFlow)!;
+
+    // Quantified risk > unquantified signal. Margin: 0.9025 - 0.840 = 0.0625
+    expect(runway.score - cashFlow.score).toBeGreaterThan(0.04);
+  });
+
+  it('moderate runway (6-24 months) lands in the 0.70 actionability band', async () => {
+    mockConfig(validConfig);
+    const { scoreInsights } = await import('./scoring.js');
+
+    const [ranked] = scoreInsights([runwayStat(12)]);
+    expect(ranked!.breakdown.actionability).toBe(0.70);
+    expect(ranked!.breakdown.novelty).toBe(0.65);
+  });
+
+  it('extended runway (>=24 months) drops to demoted band', async () => {
+    mockConfig(validConfig);
+    const { scoreInsights } = await import('./scoring.js');
+
+    const [ranked] = scoreInsights([runwayStat(36)]);
+    expect(ranked!.breakdown.actionability).toBe(0.45);
+  });
+
+  it('critical runway ranks above margin-trend shrinking and year-over-year declines', async () => {
+    mockConfig(validConfig);
+    const { scoreInsights } = await import('./scoring.js');
+
+    const marginShrinking: ComputedStat = {
+      statType: StatType.MarginTrend,
+      category: null,
+      value: 0,
+      details: {
+        recentMarginPercent: 10,
+        priorMarginPercent: 25,
+        direction: 'shrinking',
+        revenueGrowthPercent: -5,
+        expenseGrowthPercent: 15,
+      },
+    };
+
+    const insights = scoreInsights([marginShrinking, runwayStat(2)]);
+    expect(insights[0]!.stat.statType).toBe(StatType.Runway);
+  });
+
+  it('config tunability: shifting weights predictably changes runway score', async () => {
+    mockConfig({
+      ...validConfig,
+      weights: { novelty: 0.20, actionability: 0.60, specificity: 0.20 },
+    });
+    const { scoreInsights } = await import('./scoring.js');
+
+    const [ranked] = scoreInsights([runwayStat(3)]);
+    // 0.85 × 0.20 + 0.95 × 0.60 + 0.90 × 0.20 = 0.17 + 0.57 + 0.18 = 0.92
+    expect(ranked!.score).toBeCloseTo(0.92, 4);
+  });
+});

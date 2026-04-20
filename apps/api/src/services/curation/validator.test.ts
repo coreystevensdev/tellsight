@@ -183,3 +183,67 @@ describe('validateSummary', () => {
     expect(report.status).toBe('warnings');
   });
 });
+
+function runwayStat(cashOnHand: number, monthlyNet: number, runwayMonths: number): ComputedStat {
+  return {
+    statType: StatType.Runway,
+    category: null,
+    value: runwayMonths,
+    details: {
+      cashOnHand,
+      monthlyNet,
+      runwayMonths,
+      cashAsOfDate: '2026-04-15T00:00:00.000Z',
+      confidence: 'high',
+    },
+  };
+}
+
+describe('validateSummary — Runway coverage', () => {
+  it('accepts summaries that quote the exact cashOnHand', () => {
+    const stats = [runwayStat(15000, -5000, 3)];
+    const summary = 'At this burn rate, your cash of $15,000 covers about 3 months of runway.';
+
+    const report = validateSummary(summary, stats);
+    expect(report.status).toBe('clean');
+  });
+
+  it('flags a fabricated cashOnHand far from the actual value', () => {
+    const stats = [runwayStat(15000, -5000, 3)];
+    // LLM invents $45,000 cash — not cashOnHand, not monthlyNet, not their sum
+    const summary = 'Your cash balance of $45,000 gives you breathing room.';
+
+    const report = validateSummary(summary, stats);
+    expect(report.status).not.toBe('clean');
+    expect(report.unmatchedNumbers.length).toBeGreaterThan(0);
+  });
+
+  it('does NOT flag numbers near cashOnHand ± monthlyNet (pairwise-sum tolerance)', () => {
+    // $15,000 + $5,000 = $20,000 → inside the pairwise allowed-set. Known tolerance.
+    const stats = [runwayStat(15000, -5000, 3)];
+    const summary = 'Projected depletion around $20,000 worth of spending.';
+
+    const report = validateSummary(summary, stats);
+    // Documents the coverage gap: pairwise sums mask nearby fabrications.
+    expect(report.status).toBe('clean');
+  });
+
+  it('does NOT flag plain runway-month numbers (out of scanner scope)', () => {
+    const stats = [runwayStat(15000, -5000, 3)];
+    // Fabricated runway ("5 months" vs actual 3) — scanner is currency/percent only,
+    // so plain integer months are not checked. Documented deferral.
+    const summary = 'You have roughly 5 months of runway at current burn.';
+
+    const report = validateSummary(summary, stats);
+    // No currency tokens present → nothing to flag → clean
+    expect(report.status).toBe('clean');
+  });
+
+  it('flags a currency amount that matches nothing in the runway allowed-set', () => {
+    const stats = [runwayStat(15000, -5000, 3)];
+    const summary = 'Revenue was around $87,345 for the period.';
+
+    const report = validateSummary(summary, stats);
+    expect(report.status).not.toBe('clean');
+  });
+});

@@ -103,6 +103,14 @@ function classifyStatNumbers(stat: ComputedStat, sets: AllowedSets): void {
         addC(Math.abs(m.net));
       }
       return;
+    case StatType.Runway:
+      // Currency coverage only — runway months are a plain number in prose
+      // ("3 months") and the current scanner is currency/percent. A months-unit
+      // scanner is out of scope for this story; runway-months fabrications are
+      // an acknowledged coverage gap.
+      addC(stat.details.cashOnHand);
+      addC(Math.abs(stat.details.monthlyNet));
+      return;
   }
 }
 
