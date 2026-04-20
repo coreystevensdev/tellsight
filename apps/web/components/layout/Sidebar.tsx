@@ -3,7 +3,7 @@
 import { useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Upload, ShieldCheck, Activity, X, Users, Database, SlidersHorizontal, Plug } from 'lucide-react';
+import { LayoutDashboard, Upload, ShieldCheck, Activity, X, Users, Database, SlidersHorizontal, Plug, DollarSign } from 'lucide-react';
 import { TellsightLogo } from '@/components/common/TellsightLogo';
 import { cn } from '@/lib/utils';
 import { useSidebar } from '@/app/dashboard/contexts/SidebarContext';
@@ -18,6 +18,7 @@ const SETTINGS_ITEMS = [
   { href: '/settings/invites', label: 'Invites', icon: Users },
   { href: '/settings/datasets', label: 'Datasets', icon: Database },
   { href: '/settings/integrations', label: 'Integrations', icon: Plug },
+  { href: '/settings/financials', label: 'Financial baseline', icon: DollarSign },
   { href: '/settings/preferences', label: 'Preferences', icon: SlidersHorizontal },
 ] as const;
 

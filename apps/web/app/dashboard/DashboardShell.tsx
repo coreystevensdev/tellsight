@@ -36,6 +36,9 @@ import { KpiCards } from './KpiCards';
 import { OnboardingModal } from './OnboardingModal';
 import { DatasetChip } from '@/components/datasets/DatasetChip';
 import { QbReturnToast } from './QbReturnToast';
+import { LockedInsightCard } from './LockedInsightCard';
+import { CashBalanceStaleBanner } from './CashBalanceStaleBanner';
+import type { OrgFinancials } from 'shared/types';
 
 interface DashboardShellProps {
   initialData: ChartData;
@@ -247,6 +250,26 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
   const hasData = hasRevenue || hasExpenses;
   const hasAnyData = initialData.revenueTrend.length > 0 || initialData.expenseBreakdown.length > 0;
 
+  const { data: financials, mutate: refreshFinancials } = useSWR<OrgFinancials>(
+    hasAnyData ? '/org/financials' : null,
+    async (key: string) => (await apiClient<OrgFinancials>(key)).data,
+    { revalidateOnFocus: false },
+  );
+
+  // Gate on `financials !== undefined` so the Locked Insight card doesn't flash
+  // during initial SWR fetch for users who already have a cash balance set.
+  const needsCashBalance = hasAnyData && financials !== undefined && !financials.cashOnHand;
+  const hasBalance = !!financials?.cashAsOfDate;
+
+  async function saveCashBalance(value: number) {
+    await apiClient('/org/financials', {
+      method: 'PUT',
+      body: JSON.stringify({ cashOnHand: value }),
+    });
+    await refreshFinancials();
+    router.refresh();
+  }
+
   const aiSummaryCard = (
     <AiSummaryCard
       datasetId={data.datasetId}
@@ -376,6 +399,24 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
               </>
             )}
           </ChartErrorBoundary>
+
+          {hasAnyData && hasBalance && (
+            <CashBalanceStaleBanner
+              cashAsOfDate={financials?.cashAsOfDate ?? null}
+              onUpdate={saveCashBalance}
+              className="mt-6"
+            />
+          )}
+
+          {needsCashBalance && (
+            <LockedInsightCard
+              title="Enable Runway"
+              description="Add your current cash balance to see how many months of runway you have at your current burn rate."
+              inputLabel="Current cash balance"
+              onSubmit={saveCashBalance}
+              className="mt-6"
+            />
+          )}
 
           <AiSummaryErrorBoundary className="mt-6">
             {isMobile ? (

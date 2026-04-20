@@ -89,4 +89,17 @@ describe('TransparencyPanel', () => {
 
     expect(screen.getByText('custom_stat')).toBeTruthy();
   });
+
+  it('renders humanized labels for cash_flow and runway (regression guard)', () => {
+    const customMeta = { ...metadata, statTypes: ['cash_flow', 'runway'] };
+    render(<TransparencyPanel metadata={customMeta} isOpen={true} onClose={vi.fn()} />);
+
+    const panel = screen.getByRole('complementary');
+    // If STAT_TYPE_LABELS loses either entry, the raw snake_case key would render
+    // instead — bug Story 8.1 caught for cash_flow, Story 8.2 for runway.
+    expect(within(panel).getByText('Cash Flow')).toBeTruthy();
+    expect(within(panel).getByText('Runway')).toBeTruthy();
+    expect(within(panel).queryByText('cash_flow')).toBeNull();
+    expect(within(panel).queryByText('runway')).toBeNull();
+  });
 });
