@@ -35,6 +35,11 @@ vi.mock('../../db/queries/index.js', () => ({
   },
 }));
 
+const mockTrackEvent = vi.fn();
+vi.mock('../analytics/trackEvent.js', () => ({
+  trackEvent: (...args: unknown[]) => mockTrackEvent(...args),
+}));
+
 // mock Anthropic SDK error classes for instanceof checks
 vi.mock('@anthropic-ai/sdk', () => {
   class APIConnectionError extends Error {}
@@ -128,7 +133,7 @@ describe('streamToSSE', () => {
     const req = createMockReq();
 
     const { streamToSSE } = await import('./streamHandler.js');
-    await streamToSSE(req, res, 1, 1);
+    await streamToSSE(req, res, 1, 1, 99);
 
     expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/event-stream');
     expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-cache');
@@ -152,7 +157,7 @@ describe('streamToSSE', () => {
     const req = createMockReq();
 
     const { streamToSSE } = await import('./streamHandler.js');
-    await streamToSSE(req, res, 1, 1);
+    await streamToSSE(req, res, 1, 1, 99);
 
     expect(chunks).toContain('event: text\ndata: {"text":"Hello "}\n\n');
     expect(chunks).toContain('event: text\ndata: {"text":"world"}\n\n');
@@ -177,9 +182,77 @@ describe('streamToSSE', () => {
     const req = createMockReq();
 
     const { streamToSSE } = await import('./streamHandler.js');
-    await streamToSSE(req, res, 1, 42);
+    await streamToSSE(req, res, 1, 42, 99);
 
     expect(mockStoreSummary).toHaveBeenCalledWith(1, 42, 'cached text', defaultMetadata, 'v1', false, undefined);
+  });
+
+  it('emits AI_SUMMARY_VALIDATION_FLAGGED when the validator finds unmatched numbers', async () => {
+    mockStreamInterpretation.mockImplementation(
+      async (_prompt: string, onText: (d: string) => void) => {
+        onText('summary with fabricated numbers');
+        return {
+          fullText: 'summary with fabricated numbers',
+          usage: { inputTokens: 100, outputTokens: 20 },
+        };
+      },
+    );
+    mockValidateSummary.mockReturnValue({
+      status: 'suspicious',
+      numbersChecked: 5,
+      allowedValueCount: 12,
+      unmatchedNumbers: [
+        { raw: '$87,000', value: 87000, kind: 'currency', context: 'Q3 revenue was $87,000' },
+        { raw: '42%', value: 42, kind: 'percent', context: 'margin hit 42%' },
+      ],
+    });
+
+    const { res } = createMockRes();
+    const req = createMockReq();
+
+    const { streamToSSE } = await import('./streamHandler.js');
+    await streamToSSE(req, res, 1, 42, 99, 'pro');
+
+    expect(mockTrackEvent).toHaveBeenCalledWith(
+      1,
+      99,
+      'ai.summary_validation_flagged',
+      expect.objectContaining({
+        datasetId: 42,
+        tier: 'pro',
+        promptVersion: 'v1',
+        status: 'suspicious',
+        numbersChecked: 5,
+        unmatchedCount: 2,
+      }),
+    );
+  });
+
+  it('does not emit the validation event when the validator returns clean', async () => {
+    mockStreamInterpretation.mockImplementation(
+      async (_prompt: string, onText: (d: string) => void) => {
+        onText('clean summary');
+        return {
+          fullText: 'clean summary',
+          usage: { inputTokens: 100, outputTokens: 20 },
+        };
+      },
+    );
+    // default beforeEach already returns clean — reassert for clarity
+    mockValidateSummary.mockReturnValue({
+      status: 'clean',
+      numbersChecked: 3,
+      allowedValueCount: 8,
+      unmatchedNumbers: [],
+    });
+
+    const { res } = createMockRes();
+    const req = createMockReq();
+
+    const { streamToSSE } = await import('./streamHandler.js');
+    await streamToSSE(req, res, 1, 1, 99);
+
+    expect(mockTrackEvent).not.toHaveBeenCalled();
   });
 
   it('sends error event on stream failure', async () => {
@@ -189,7 +262,7 @@ describe('streamToSSE', () => {
     const req = createMockReq();
 
     const { streamToSSE } = await import('./streamHandler.js');
-    await streamToSSE(req, res, 1, 1);
+    await streamToSSE(req, res, 1, 1, 99);
 
     const errorChunk = chunks.find((c) => c.startsWith('event: error'));
     expect(errorChunk).toBeDefined();
@@ -213,7 +286,7 @@ describe('streamToSSE', () => {
     const req = createMockReq();
 
     const { streamToSSE } = await import('./streamHandler.js');
-    const promise = streamToSSE(req, res, 1, 1);
+    const promise = streamToSSE(req, res, 1, 1, 99);
 
     await vi.advanceTimersByTimeAsync(15_000);
     await promise;
@@ -245,7 +318,7 @@ describe('streamToSSE', () => {
     const req = createMockReq();
 
     const { streamToSSE } = await import('./streamHandler.js');
-    const promise = streamToSSE(req, res, 1, 1);
+    const promise = streamToSSE(req, res, 1, 1, 99);
 
     await vi.advanceTimersByTimeAsync(15_000);
     await promise;
@@ -271,7 +344,7 @@ describe('streamToSSE', () => {
     const req = createMockReq();
 
     const { streamToSSE } = await import('./streamHandler.js');
-    const promise = streamToSSE(req, res, 1, 1);
+    const promise = streamToSSE(req, res, 1, 1, 99);
 
     await vi.advanceTimersByTimeAsync(15_000);
     await promise;
@@ -292,7 +365,7 @@ describe('streamToSSE', () => {
     const req = createMockReq() as Request & { triggerClose: () => void };
 
     const { streamToSSE } = await import('./streamHandler.js');
-    const promise = streamToSSE(req, res, 1, 1);
+    const promise = streamToSSE(req, res, 1, 1, 99);
 
     await vi.advanceTimersByTimeAsync(100);
     req.triggerClose();
@@ -309,7 +382,7 @@ describe('streamToSSE', () => {
     const req = createMockReq();
 
     const { streamToSSE } = await import('./streamHandler.js');
-    await streamToSSE(req, res, 1, 1);
+    await streamToSSE(req, res, 1, 1, 99);
 
     const errorChunk = chunks.find((c) => c.startsWith('event: error'));
     expect(errorChunk).toBeDefined();
@@ -332,7 +405,7 @@ describe('streamToSSE', () => {
     const req = createMockReq();
 
     const { streamToSSE } = await import('./streamHandler.js');
-    await streamToSSE(req, res, 1, 1);
+    await streamToSSE(req, res, 1, 1, 99);
 
     const errorChunk = chunks.find((c) => c.startsWith('event: error'));
     expect(errorChunk).toBeDefined();
@@ -358,7 +431,7 @@ describe('streamToSSE', () => {
       const req = createMockReq();
 
       const { streamToSSE } = await import('./streamHandler.js');
-      await streamToSSE(req, res, 1, 1);
+      await streamToSSE(req, res, 1, 1, 99);
 
       const errorChunk = chunks.find((c) => c.startsWith('event: error'));
       expect(errorChunk).toContain(`"code":"${expectedCode}"`);
@@ -380,7 +453,7 @@ describe('streamToSSE', () => {
     const req = createMockReq();
 
     const { streamToSSE } = await import('./streamHandler.js');
-    await streamToSSE(req, res, 1, 1);
+    await streamToSSE(req, res, 1, 1, 99);
 
     expect(callOrder).toEqual(['flushHeaders', 'pipeline']);
     const errorChunk = chunks.find((c) => c.startsWith('event: error'));
@@ -403,7 +476,7 @@ describe('streamToSSE', () => {
     const req = createMockReq();
 
     const { streamToSSE } = await import('./streamHandler.js');
-    const result = await streamToSSE(req, res, 1, 1);
+    const result = await streamToSSE(req, res, 1, 1, 99);
 
     // stream was delivered successfully
     const doneChunk = chunks.find((c) => c.startsWith('event: done'));
@@ -434,7 +507,7 @@ describe('streamToSSE', () => {
     const req = createMockReq();
 
     const { streamToSSE } = await import('./streamHandler.js');
-    await streamToSSE(req, res, 1, 1);
+    await streamToSSE(req, res, 1, 1, 99);
 
     expect(res.end).toHaveBeenCalledTimes(1);
   });
@@ -458,7 +531,7 @@ describe('streamToSSE', () => {
       const req = createMockReq();
 
       const { streamToSSE } = await import('./streamHandler.js');
-      const result = await streamToSSE(req, res, 1, 1, 'free');
+      const result = await streamToSSE(req, res, 1, 1, 99, 'free');
 
       const upgradeChunk = chunks.find((c) => c.startsWith('event: upgrade_required'));
       expect(upgradeChunk).toBeDefined();
@@ -488,7 +561,7 @@ describe('streamToSSE', () => {
       const req = createMockReq();
 
       const { streamToSSE } = await import('./streamHandler.js');
-      await streamToSSE(req, res, 1, 1, 'pro');
+      await streamToSSE(req, res, 1, 1, 99, 'pro');
 
       const upgradeChunk = chunks.find((c) => c.startsWith('event: upgrade_required'));
       expect(upgradeChunk).toBeUndefined();
@@ -513,7 +586,7 @@ describe('streamToSSE', () => {
       const req = createMockReq();
 
       const { streamToSSE } = await import('./streamHandler.js');
-      await streamToSSE(req, res, 1, 1, 'free');
+      await streamToSSE(req, res, 1, 1, 99, 'free');
 
       const upgradeChunk = chunks.find((c) => c.startsWith('event: upgrade_required'));
       expect(upgradeChunk).toBeUndefined();
@@ -535,7 +608,7 @@ describe('streamToSSE', () => {
       const req = createMockReq();
 
       const { streamToSSE } = await import('./streamHandler.js');
-      const promise = streamToSSE(req, res, 1, 1, 'free');
+      const promise = streamToSSE(req, res, 1, 1, 99, 'free');
 
       await vi.advanceTimersByTimeAsync(15_000);
       await promise;
@@ -564,7 +637,7 @@ describe('streamToSSE', () => {
       const req = createMockReq();
 
       const { streamToSSE } = await import('./streamHandler.js');
-      await streamToSSE(req, res, 1, 1, 'free');
+      await streamToSSE(req, res, 1, 1, 99, 'free');
 
       expect(abortSignal?.aborted).toBe(true);
     });
@@ -582,7 +655,7 @@ describe('streamToSSE', () => {
       const req = createMockReq();
 
       const { streamToSSE } = await import('./streamHandler.js');
-      await streamToSSE(req, res, 1, 1, 'free');
+      await streamToSSE(req, res, 1, 1, 99, 'free');
 
       expect(mockStoreSummary).not.toHaveBeenCalled();
     });

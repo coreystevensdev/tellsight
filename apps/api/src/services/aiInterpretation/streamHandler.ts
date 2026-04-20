@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { SseTextEvent, SseDoneEvent, SseErrorEvent, SsePartialEvent, SseUpgradeRequiredEvent, BusinessProfile } from 'shared/types';
 import type { SubscriptionTier } from '../../db/queries/subscriptions.js';
 
-import { AI_TIMEOUT_MS, FREE_PREVIEW_WORD_LIMIT } from 'shared/constants';
+import { AI_TIMEOUT_MS, FREE_PREVIEW_WORD_LIMIT, ANALYTICS_EVENTS } from 'shared/constants';
 import { logger } from '../../lib/logger.js';
 import type { db, DbTransaction } from '../../lib/db.js';
 import { register, deregister } from '../../lib/activeStreams.js';
@@ -12,6 +12,7 @@ import { aiSummariesQueries } from '../../db/queries/index.js';
 import { runCurationPipeline, assemblePrompt, transparencyMetadataSchema, validateSummary } from '../curation/index.js';
 import type { ScoredInsight } from '../curation/index.js';
 import { streamInterpretation } from './claudeClient.js';
+import { trackEvent } from '../analytics/trackEvent.js';
 
 function writeSseEvent(res: Response, event: string, data: unknown) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -57,6 +58,7 @@ export async function streamToSSE(
   res: Response,
   orgId: number,
   datasetId: number,
+  userId: number,
   tier: SubscriptionTier = 'free',
   client?: typeof db | DbTransaction,
   businessProfile?: BusinessProfile | null,
@@ -192,6 +194,18 @@ export async function streamToSSE(
         },
         'AI summary validation flagged unmatched numbers',
       );
+      // Analytics event lets the admin dashboard compute hallucination rates
+      // (flagged / total summaries) and drill into specific incidents.
+      // Cap the sample to keep the JSONB payload small.
+      trackEvent(orgId, userId, ANALYTICS_EVENTS.AI_SUMMARY_VALIDATION_FLAGGED, {
+        datasetId,
+        tier,
+        promptVersion,
+        status: report.status,
+        numbersChecked: report.numbersChecked,
+        unmatchedCount: report.unmatchedNumbers.length,
+        unmatchedSample: report.unmatchedNumbers.slice(0, 3),
+      });
     }
 
     try {

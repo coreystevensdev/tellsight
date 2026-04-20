@@ -106,7 +106,7 @@ aiSummaryRouter.get('/:datasetId', subscriptionGate, async (req, res: Response) 
     dataRowsQueries.getRowCount(orgId, rawId, dbAdmin),
     orgsQueries.getBusinessProfile(orgId),
   ]);
-  const outcome = await streamToSSE(req, res, orgId, rawId, tier, dbAdmin, profile);
+  const outcome = await streamToSSE(req, res, orgId, rawId, userId, tier, dbAdmin, profile);
 
   aiSummaryTotal.inc({ tier, cache_hit: 'false', outcome: outcome.ok ? 'ok' : 'error' });
   if (outcome.ok) {

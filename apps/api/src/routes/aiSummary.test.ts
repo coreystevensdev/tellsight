@@ -144,7 +144,8 @@ describe('GET /ai-summaries/:datasetId', () => {
     const args = mockStreamToSSE.mock.calls[0]!;
     expect(args[2]).toBe(1);     // orgId
     expect(args[3]).toBe(42);    // datasetId
-    expect(args[4]).toBe('free'); // tier
+    expect(typeof args[4]).toBe('number'); // userId from JWT
+    expect(args[5]).toBe('free'); // tier
   });
 
   it('rejects invalid datasetId', async () => {

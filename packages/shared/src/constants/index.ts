@@ -37,6 +37,7 @@ export const ANALYTICS_EVENTS = {
   DATASET_DELETED: 'dataset.deleted',
   AI_SUMMARY_REQUESTED: 'ai.summary_requested',
   AI_SUMMARY_COMPLETED: 'ai.summary_completed',
+  AI_SUMMARY_VALIDATION_FLAGGED: 'ai.summary_validation_flagged',
   SHARE_LINK_CREATED: 'share_link.created',
   INSIGHT_EXPORTED: 'insight.exported',
   DASHBOARD_VIEWED: 'dashboard.viewed',
