@@ -10,6 +10,7 @@ export const StatType = {
   MarginTrend: 'margin_trend',
   SeasonalProjection: 'seasonal_projection',
   CashFlow: 'cash_flow',
+  Runway: 'runway',
 } as const;
 
 export type StatType = (typeof StatType)[keyof typeof StatType];
@@ -85,6 +86,16 @@ export interface CashFlowDetails {
   recentMonths: { month: string; revenue: number; expenses: number; net: number }[];
 }
 
+// Runway in months at current burn. Only emitted when CashFlow.direction === 'burning'
+// AND owner has provided a fresh cashOnHand. Confidence softens framing on stale data.
+export interface RunwayDetails {
+  cashOnHand: number;
+  monthlyNet: number; // signed — will be negative (burning)
+  runwayMonths: number;
+  cashAsOfDate: string; // ISO
+  confidence: 'high' | 'moderate' | 'low';
+}
+
 interface BaseComputedStat {
   category: string | null;
   value: number;
@@ -136,6 +147,11 @@ export interface CashFlowStat extends BaseComputedStat {
   details: CashFlowDetails;
 }
 
+export interface RunwayStat extends BaseComputedStat {
+  statType: 'runway';
+  details: RunwayDetails;
+}
+
 export type ComputedStat =
   | TotalStat
   | AverageStat
@@ -145,7 +161,8 @@ export type ComputedStat =
   | YearOverYearStat
   | MarginTrendStat
   | SeasonalProjectionStat
-  | CashFlowStat;
+  | CashFlowStat
+  | RunwayStat;
 
 export interface ScoredInsight {
   stat: ComputedStat;

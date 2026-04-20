@@ -1,4 +1,4 @@
-import type { BusinessProfile } from 'shared/types';
+import type { BusinessProfile, OrgFinancials } from 'shared/types';
 
 import { logger } from '../../lib/logger.js';
 import { dataRowsQueries, aiSummariesQueries } from '../../db/queries/index.js';
@@ -15,6 +15,7 @@ export async function runCurationPipeline(
   orgId: number,
   datasetId: number,
   client?: typeof db | DbTransaction,
+  financials?: OrgFinancials | null,
 ): Promise<ScoredInsight[]> {
   const rows = await dataRowsQueries.getRowsByDataset(orgId, datasetId, client);
 
@@ -27,6 +28,7 @@ export async function runCurationPipeline(
 
   const stats = computeStats(rows, {
     trendMinPoints: scoringConfig.thresholds.trendMinDataPoints,
+    financials: financials ?? null,
   });
   logger.info({ orgId, statCount: stats.length }, 'curation layer 1 complete');
 
@@ -54,7 +56,19 @@ export async function runFullPipeline(
 
   logger.warn({ orgId, datasetId }, 'ai_summaries cache miss — generating fresh summary');
 
-  const insights = await runCurationPipeline(orgId, datasetId);
+  // Pull the financial subset directly from the business profile JSONB — the runway
+  // fields (cashOnHand, cashAsOfDate, businessStartedDate, monthlyFixedCosts) live
+  // alongside onboarding fields. Pass only the financial subset into the pipeline.
+  const financials = businessProfile
+    ? {
+        cashOnHand: businessProfile.cashOnHand,
+        cashAsOfDate: businessProfile.cashAsOfDate,
+        businessStartedDate: businessProfile.businessStartedDate,
+        monthlyFixedCosts: businessProfile.monthlyFixedCosts,
+      }
+    : null;
+
+  const insights = await runCurationPipeline(orgId, datasetId, undefined, financials);
   const { prompt, metadata } = assemblePrompt(insights, undefined, businessProfile);
 
   const validatedMetadata = transparencyMetadataSchema.parse(metadata);

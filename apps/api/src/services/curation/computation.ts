@@ -9,8 +9,15 @@ import {
   max,
 } from 'simple-statistics';
 
-import type { ComputedStat } from './types.js';
+import type { ComputedStat, CashFlowStat, RunwayStat } from './types.js';
 import { StatType } from './types.js';
+
+export interface RunwayFinancials {
+  cashOnHand?: number;
+  cashAsOfDate?: string;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 interface DataRow {
   category: string;
@@ -397,7 +404,7 @@ function computeSeasonalProjection(rows: DataRow[]): ComputedStat[] {
 // Trailing-window cash flow. Uses the same monthly bucket pattern as
 // computeMarginTrend, but looks at the *recent* window because cash pressure
 // is about now, not historical average. Signed monthlyNet — negative = burning.
-function computeCashFlow(rows: DataRow[], trailingMonths = 3): ComputedStat[] {
+function computeCashFlow(rows: DataRow[], trailingMonths = 3): CashFlowStat[] {
   const revenueByMonth = new Map<string, number>();
   const expenseByMonth = new Map<string, number>();
 
@@ -445,9 +452,76 @@ function computeCashFlow(rows: DataRow[], trailingMonths = 3): ComputedStat[] {
   }];
 }
 
+export function runwayConfidence(
+  ageInDays: number,
+  monthsBurning: number,
+): 'high' | 'moderate' | 'low' {
+  if (ageInDays <= 30 && monthsBurning >= 2) return 'high';
+  if (ageInDays <= 90 && monthsBurning >= 1) return 'moderate';
+  return 'low';
+}
+
+/**
+ * Consumes an already-computed CashFlowStat (never raw DataRow[]) plus an
+ * owner-provided cash balance. Privacy boundary: everything here is already
+ * aggregated — the LLM gets numbers, not rows.
+ *
+ * Suppression cases return [] rather than throw — nothing honest to say.
+ *   - No cash flow signal (business not burning, or cash flow suppressed upstream)
+ *   - No cashOnHand or zero balance
+ *   - Missing cashAsOfDate (can't derive confidence)
+ *   - cashAsOfDate older than 180 days (stale → confidently wrong runway)
+ *   - Direction !== 'burning'
+ *
+ * `now` is injectable for deterministic tests; defaults to wall-clock.
+ */
+export function computeRunway(
+  cashFlowStats: CashFlowStat[],
+  financials: RunwayFinancials | null | undefined,
+  now: Date = new Date(),
+): RunwayStat[] {
+  if (cashFlowStats.length === 0) return [];
+  const cashFlowStat = cashFlowStats[0]!;
+  if (cashFlowStat.details.direction !== 'burning') return [];
+
+  if (!financials?.cashOnHand || financials.cashOnHand <= 0) return [];
+  if (!financials.cashAsOfDate) return [];
+
+  const asOf = new Date(financials.cashAsOfDate);
+  if (Number.isNaN(asOf.getTime())) return [];
+
+  const ageInDays = Math.floor((now.getTime() - asOf.getTime()) / DAY_MS);
+  // Negative age = future-dated cashAsOfDate (clock skew, timezone bug, user
+  // error). Suppress rather than label stale data as 'high' confidence.
+  if (ageInDays < 0) return [];
+  if (ageInDays > 180) return [];
+
+  const monthlyNet = cashFlowStat.details.monthlyNet;
+  const runwayMonths = Math.round((financials.cashOnHand / Math.abs(monthlyNet)) * 10) / 10;
+  const confidence = runwayConfidence(ageInDays, cashFlowStat.details.monthsBurning);
+
+  return [{
+    statType: StatType.Runway,
+    category: null,
+    value: runwayMonths,
+    details: {
+      cashOnHand: financials.cashOnHand,
+      monthlyNet,
+      runwayMonths,
+      cashAsOfDate: financials.cashAsOfDate,
+      confidence,
+    },
+  }];
+}
+
 export function computeStats(
   rows: DataRow[],
-  opts?: { trendMinPoints?: number; cashFlowWindow?: number },
+  opts?: {
+    trendMinPoints?: number;
+    cashFlowWindow?: number;
+    financials?: RunwayFinancials | null;
+    now?: Date;
+  },
 ): ComputedStat[] {
   if (rows.length === 0) return [];
 
@@ -463,6 +537,9 @@ export function computeStats(
   const trendMinPoints = opts?.trendMinPoints ?? 3;
   const cashFlowWindow = opts?.cashFlowWindow ?? 3;
 
+  const cashFlowStats = computeCashFlow(rows, cashFlowWindow);
+  const runwayStats = computeRunway(cashFlowStats, opts?.financials, opts?.now);
+
   return [
     ...computeTotals(groups, allAmounts),
     ...computeAverages(groups, allAmounts),
@@ -472,6 +549,7 @@ export function computeStats(
     ...computeYearOverYear(rows),
     ...computeMarginTrend(rows),
     ...computeSeasonalProjection(rows),
-    ...computeCashFlow(rows, cashFlowWindow),
+    ...cashFlowStats,
+    ...runwayStats,
   ];
 }

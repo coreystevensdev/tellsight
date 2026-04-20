@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
-import { computeStats } from './computation.js';
-import type { ComputedStat, CashFlowStat } from './types.js';
+import { computeStats, computeRunway, runwayConfidence } from './computation.js';
+import type { ComputedStat, CashFlowStat, RunwayStat } from './types.js';
 import { StatType } from './types.js';
 
 const fixture = {
@@ -430,5 +430,229 @@ describe('computeCashFlow', () => {
     expect(stat).not.toBeNull();
     const keys = Object.keys(stat!.details.recentMonths[0]!);
     expect(keys.sort()).toEqual(['expenses', 'month', 'net', 'revenue']);
+  });
+});
+
+function burningCashFlow(monthlyNet = -5000, monthsBurning = 3): CashFlowStat {
+  return {
+    statType: StatType.CashFlow,
+    category: null,
+    value: monthlyNet,
+    details: {
+      monthlyNet,
+      trailingMonths: 3,
+      direction: 'burning',
+      monthsBurning,
+      recentMonths: [
+        { month: '2026-02', revenue: 10000, expenses: 15000, net: -5000 },
+        { month: '2026-03', revenue: 10000, expenses: 15000, net: -5000 },
+        { month: '2026-04', revenue: 10000, expenses: 15000, net: -5000 },
+      ],
+    },
+  };
+}
+
+function surplusCashFlow(): CashFlowStat {
+  return {
+    statType: StatType.CashFlow,
+    category: null,
+    value: 3000,
+    details: {
+      monthlyNet: 3000,
+      trailingMonths: 3,
+      direction: 'surplus',
+      monthsBurning: 0,
+      recentMonths: [
+        { month: '2026-02', revenue: 12000, expenses: 9000, net: 3000 },
+        { month: '2026-03', revenue: 12000, expenses: 9000, net: 3000 },
+        { month: '2026-04', revenue: 12000, expenses: 9000, net: 3000 },
+      ],
+    },
+  };
+}
+
+// Anchor wall-clock date for staleness math — 2026-05-01.
+const NOW = new Date('2026-05-01T00:00:00.000Z');
+
+function daysAgoISO(days: number): string {
+  const d = new Date(NOW);
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString();
+}
+
+describe('runwayConfidence', () => {
+  it('high — fresh cash AND sustained burn', () => {
+    expect(runwayConfidence(10, 3)).toBe('high');
+    expect(runwayConfidence(30, 2)).toBe('high');
+  });
+
+  it('moderate — slightly stale OR single-month burn', () => {
+    expect(runwayConfidence(45, 3)).toBe('moderate');
+    expect(runwayConfidence(30, 1)).toBe('moderate');
+  });
+
+  it('low — stale beyond 90 days OR no burn months counted', () => {
+    expect(runwayConfidence(100, 3)).toBe('low');
+    expect(runwayConfidence(10, 0)).toBe('low');
+  });
+});
+
+describe('computeRunway', () => {
+  it('emits runway stat when burning business has fresh cash balance', () => {
+    const cashFlow = [burningCashFlow(-5000, 3)];
+    const financials = { cashOnHand: 15000, cashAsOfDate: daysAgoISO(10) };
+
+    const result = computeRunway(cashFlow, financials, NOW);
+
+    expect(result).toHaveLength(1);
+    const stat = result[0]!;
+    expect(stat.statType).toBe(StatType.Runway);
+    expect(stat.details.runwayMonths).toBe(3.0);
+    expect(stat.details.cashOnHand).toBe(15000);
+    expect(stat.details.confidence).toBe('high');
+  });
+
+  it('rounds runway months to one decimal', () => {
+    const cashFlow = [burningCashFlow(-3000, 3)];
+    const financials = { cashOnHand: 10000, cashAsOfDate: daysAgoISO(5) };
+
+    const result = computeRunway(cashFlow, financials, NOW);
+
+    expect(result[0]!.details.runwayMonths).toBe(3.3);
+  });
+
+  it('suppresses when business is not burning (surplus)', () => {
+    const cashFlow = [surplusCashFlow()];
+    const financials = { cashOnHand: 50000, cashAsOfDate: daysAgoISO(10) };
+
+    expect(computeRunway(cashFlow, financials, NOW)).toEqual([]);
+  });
+
+  it('suppresses when cash flow array is empty (no signal)', () => {
+    const financials = { cashOnHand: 10000, cashAsOfDate: daysAgoISO(10) };
+    expect(computeRunway([], financials, NOW)).toEqual([]);
+  });
+
+  it('suppresses when cashOnHand is null or undefined', () => {
+    const cashFlow = [burningCashFlow(-5000, 3)];
+    expect(computeRunway(cashFlow, null, NOW)).toEqual([]);
+    expect(computeRunway(cashFlow, {}, NOW)).toEqual([]);
+    expect(computeRunway(cashFlow, { cashAsOfDate: daysAgoISO(1) }, NOW)).toEqual([]);
+  });
+
+  it('suppresses when cashOnHand is zero (no runway to report)', () => {
+    const cashFlow = [burningCashFlow(-5000, 3)];
+    const financials = { cashOnHand: 0, cashAsOfDate: daysAgoISO(5) };
+    expect(computeRunway(cashFlow, financials, NOW)).toEqual([]);
+  });
+
+  it('suppresses when cashAsOfDate is missing', () => {
+    const cashFlow = [burningCashFlow(-5000, 3)];
+    const financials = { cashOnHand: 10000 };
+    expect(computeRunway(cashFlow, financials, NOW)).toEqual([]);
+  });
+
+  it('suppresses when cashAsOfDate is malformed', () => {
+    const cashFlow = [burningCashFlow(-5000, 3)];
+    const financials = { cashOnHand: 10000, cashAsOfDate: 'not-a-date' };
+    expect(computeRunway(cashFlow, financials, NOW)).toEqual([]);
+  });
+
+  it('suppresses when cashAsOfDate is older than 180 days (stale)', () => {
+    const cashFlow = [burningCashFlow(-5000, 3)];
+    const financials = { cashOnHand: 15000, cashAsOfDate: daysAgoISO(181) };
+    expect(computeRunway(cashFlow, financials, NOW)).toEqual([]);
+  });
+
+  it('emits with low confidence at 91–180 day staleness', () => {
+    const cashFlow = [burningCashFlow(-5000, 3)];
+    const financials = { cashOnHand: 15000, cashAsOfDate: daysAgoISO(100) };
+
+    const result = computeRunway(cashFlow, financials, NOW);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.details.confidence).toBe('low');
+  });
+
+  it('critical runway <3 months with high confidence on fresh data', () => {
+    const cashFlow = [burningCashFlow(-10000, 3)];
+    const financials = { cashOnHand: 15000, cashAsOfDate: daysAgoISO(5) };
+
+    const result = computeRunway(cashFlow, financials, NOW);
+
+    expect(result[0]!.details.runwayMonths).toBe(1.5);
+    expect(result[0]!.details.confidence).toBe('high');
+  });
+
+  it('extended runway >=24 months still emitted but ready to be demoted by scoring', () => {
+    const cashFlow = [burningCashFlow(-1000, 2)];
+    const financials = { cashOnHand: 50000, cashAsOfDate: daysAgoISO(10) };
+
+    const result = computeRunway(cashFlow, financials, NOW);
+
+    expect(result[0]!.details.runwayMonths).toBe(50);
+  });
+
+  it('boundary: cashAsOfDate exactly 30 days old stays high confidence', () => {
+    const cashFlow = [burningCashFlow(-5000, 3)];
+    const financials = { cashOnHand: 15000, cashAsOfDate: daysAgoISO(30) };
+
+    const result = computeRunway(cashFlow, financials, NOW);
+    expect(result[0]!.details.confidence).toBe('high');
+  });
+
+  it('boundary: cashAsOfDate 31 days old drops to moderate confidence', () => {
+    const cashFlow = [burningCashFlow(-5000, 3)];
+    const financials = { cashOnHand: 15000, cashAsOfDate: daysAgoISO(31) };
+
+    const result = computeRunway(cashFlow, financials, NOW);
+    expect(result[0]!.details.confidence).toBe('moderate');
+  });
+
+  it('suppresses when cashAsOfDate is in the future (clock skew guard)', () => {
+    const cashFlow = [burningCashFlow(-5000, 3)];
+    const futureDate = new Date(NOW);
+    futureDate.setUTCDate(futureDate.getUTCDate() + 5);
+    const financials = { cashOnHand: 15000, cashAsOfDate: futureDate.toISOString() };
+    expect(computeRunway(cashFlow, financials, NOW)).toEqual([]);
+  });
+
+  it('details.monthlyNet stays signed (negative) so assembly can render -$X/mo', () => {
+    const cashFlow = [burningCashFlow(-7500, 3)];
+    const financials = { cashOnHand: 30000, cashAsOfDate: daysAgoISO(10) };
+
+    const result = computeRunway(cashFlow, financials, NOW);
+    expect(result[0]!.details.monthlyNet).toBe(-7500);
+  });
+});
+
+describe('computeStats wiring for runway', () => {
+  it('end-to-end: burning data + cash balance produces runway in ComputedStat[]', () => {
+    const rows = [
+      ...ccfMonth(2026, 2, 10000, 15000),
+      ...ccfMonth(2026, 3, 10000, 15000),
+      ...ccfMonth(2026, 4, 10000, 15000),
+    ];
+
+    const stats = computeStats(rows, {
+      financials: { cashOnHand: 15000, cashAsOfDate: daysAgoISO(10) },
+      now: NOW,
+    });
+
+    const runway = stats.filter((s): s is RunwayStat => s.statType === StatType.Runway);
+    expect(runway).toHaveLength(1);
+    expect(runway[0]!.details.runwayMonths).toBe(3.0);
+  });
+
+  it('end-to-end: no runway when financials absent', () => {
+    const rows = [
+      ...ccfMonth(2026, 2, 10000, 15000),
+      ...ccfMonth(2026, 3, 10000, 15000),
+      ...ccfMonth(2026, 4, 10000, 15000),
+    ];
+
+    const stats = computeStats(rows);
+    const runway = stats.filter((s) => s.statType === StatType.Runway);
+    expect(runway).toEqual([]);
   });
 });

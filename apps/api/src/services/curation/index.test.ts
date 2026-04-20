@@ -148,8 +148,8 @@ describe('runFullPipeline', () => {
     expect(aiSummariesQueries.storeSummary).toHaveBeenCalledWith(
       1, 1,
       'Fresh AI analysis.',
-      expect.objectContaining({ promptVersion: 'v1.1', insightCount: expect.any(Number) }),
-      'v1.1',
+      expect.objectContaining({ promptVersion: 'v1.3', insightCount: expect.any(Number) }),
+      'v1.3',
     );
   });
 
@@ -201,7 +201,7 @@ describe('cash flow end-to-end pipeline', () => {
 
     // metadata: cash_flow present, prompt version bumped
     expect(result.metadata.statTypes).toContain('cash_flow');
-    expect(result.metadata.promptVersion).toBe('v1.1');
+    expect(result.metadata.promptVersion).toBe('v1.3');
 
     // prompt: cash flow framing with signed monthly net
     expect(result.prompt).toMatch(/Cash Flow: burning/);
@@ -221,5 +221,79 @@ describe('cash flow end-to-end pipeline', () => {
     for (const label of sensitiveLabels) {
       expect(result.prompt).not.toContain(label);
     }
+  });
+});
+
+describe('runway end-to-end pipeline', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('surfaces runway in prompt and metadata when cash balance is fresh', async () => {
+    const now = new Date('2026-04-20T00:00:00.000Z');
+    const cashAsOfDate = new Date('2026-04-10T00:00:00.000Z').toISOString();
+
+    // Burning business: 5k/mo net loss over 3 months. Cash = 15000 → ~3.0 months runway.
+    const burningRows = [
+      { id: 200, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-02-01'), amount: '10000.00', label: 'Acme Corp invoice #4218',  metadata: null, createdAt: new Date() },
+      { id: 201, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent',    parentCategory: 'Expenses', date: new Date('2026-02-01'), amount: '15000.00', label: 'Main St landlord wire',    metadata: null, createdAt: new Date() },
+      { id: 202, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-03-01'), amount: '10000.00', label: 'Widget sales Mar',         metadata: null, createdAt: new Date() },
+      { id: 203, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent',    parentCategory: 'Expenses', date: new Date('2026-03-01'), amount: '15000.00', label: 'Main St landlord wire',    metadata: null, createdAt: new Date() },
+      { id: 204, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-04-01'), amount: '10000.00', label: 'Widget sales Apr',         metadata: null, createdAt: new Date() },
+      { id: 205, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent',    parentCategory: 'Expenses', date: new Date('2026-04-01'), amount: '15000.00', label: 'Main St landlord wire',    metadata: null, createdAt: new Date() },
+    ];
+
+    vi.mocked(dataRowsQueries.getRowsByDataset).mockResolvedValue(burningRows as never);
+
+    const { computeStats } = await import('./computation.js');
+    const { scoreInsights } = await import('./scoring.js');
+    const { assemblePrompt } = await import('./assembly.js');
+
+    const stats = computeStats(burningRows as never, {
+      financials: { cashOnHand: 15000, cashAsOfDate },
+      now,
+    });
+    const insights = scoreInsights(stats);
+    const result = assemblePrompt(insights);
+
+    expect(result.metadata.statTypes).toContain('runway');
+    expect(result.metadata.promptVersion).toBe('v1.3');
+    expect(result.prompt).toMatch(/Runway:\s+3\.0\s+months/);
+    expect(result.prompt).toContain('cash $15,000');
+    expect(result.prompt).toContain('as of 2026-04-10');
+    expect(result.prompt).toContain('confidence: high');
+
+    // Privacy regression guard — no row labels leak into runway framing
+    for (const label of ['Acme Corp invoice #4218', 'Main St landlord wire', 'Widget sales Mar', 'Widget sales Apr']) {
+      expect(result.prompt).not.toContain(label);
+    }
+  });
+
+  it('low-confidence runway when cash balance is 100 days old', async () => {
+    const now = new Date('2026-04-20T00:00:00.000Z');
+    const staleDate = new Date(now);
+    staleDate.setUTCDate(staleDate.getUTCDate() - 100);
+
+    const burningRows = [
+      { id: 300, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-02-01'), amount: '10000.00', label: null, metadata: null, createdAt: new Date() },
+      { id: 301, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent',    parentCategory: 'Expenses', date: new Date('2026-02-01'), amount: '15000.00', label: null, metadata: null, createdAt: new Date() },
+      { id: 302, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-03-01'), amount: '10000.00', label: null, metadata: null, createdAt: new Date() },
+      { id: 303, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent',    parentCategory: 'Expenses', date: new Date('2026-03-01'), amount: '15000.00', label: null, metadata: null, createdAt: new Date() },
+      { id: 304, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-04-01'), amount: '10000.00', label: null, metadata: null, createdAt: new Date() },
+      { id: 305, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent',    parentCategory: 'Expenses', date: new Date('2026-04-01'), amount: '15000.00', label: null, metadata: null, createdAt: new Date() },
+    ];
+
+    const { computeStats } = await import('./computation.js');
+    const { scoreInsights } = await import('./scoring.js');
+    const { assemblePrompt } = await import('./assembly.js');
+
+    const stats = computeStats(burningRows as never, {
+      financials: { cashOnHand: 15000, cashAsOfDate: staleDate.toISOString() },
+      now,
+    });
+    const insights = scoreInsights(stats);
+    const result = assemblePrompt(insights);
+
+    expect(result.prompt).toContain('confidence: low');
   });
 });
