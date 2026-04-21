@@ -72,7 +72,7 @@ describe('assemblePrompt', () => {
     expect(result.metadata.statTypes).toEqual(['anomaly', 'trend', 'total']);
     expect(result.metadata.categoryCount).toBe(2);
     expect(result.metadata.insightCount).toBe(3);
-    expect(result.metadata.promptVersion).toBe('v1.3');
+    expect(result.metadata.promptVersion).toBe('v1.4');
     expect(result.metadata.generatedAt).toBeTruthy();
     expect(result.metadata.scoringWeights).toEqual({
       novelty: 0.9,
@@ -100,6 +100,27 @@ describe('assemblePrompt', () => {
 
     expect(result.metadata.promptVersion).toBe('v2');
     expect(result.prompt).toContain('custom');
+  });
+
+  it('injects stat-ID allowlist with alphabetized order', async () => {
+    const { readFileSync } = await import('node:fs');
+    vi.mocked(readFileSync).mockReturnValueOnce('Allow: {{allowedStatIds}}');
+
+    const { assemblePrompt } = await import('./assembly.js');
+    const result = assemblePrompt(fixtureInsights, 'v2');
+
+    // fixture has anomaly, trend, total in relevance order; allowlist sorts alphabetically
+    expect(result.prompt).toBe('Allow: anomaly, total, trend');
+  });
+
+  it('renders allowlist as "none" when insights are empty', async () => {
+    const { readFileSync } = await import('node:fs');
+    vi.mocked(readFileSync).mockReturnValueOnce('Allow: {{allowedStatIds}}');
+
+    const { assemblePrompt } = await import('./assembly.js');
+    const result = assemblePrompt([], 'v2');
+
+    expect(result.prompt).toBe('Allow: none');
   });
 
   it('never includes raw data fields in the prompt', async () => {

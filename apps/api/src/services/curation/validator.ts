@@ -1,3 +1,4 @@
+import { statTagCapture, statTagGlobal } from 'shared/constants';
 import type { ComputedStat } from './types.js';
 import { StatType } from './types.js';
 
@@ -212,4 +213,34 @@ export function validateSummary(
     numbersChecked,
     allowedValueCount: allowed.currency.length + allowed.percent.length,
   };
+}
+
+// Tier 2: chart-reference validation. The LLM emits <stat id="..."/> tokens
+// to bind paragraphs to charts; we cross-check each emitted ID against the
+// stat types the pipeline actually computed. Hallucinated IDs get stripped
+// from the cached summary and tracked as analytics so prompt drift is visible.
+
+export interface StatRefReport {
+  invalidRefs: string[];
+}
+
+export function validateStatRefs(summary: string, stats: ComputedStat[]): StatRefReport {
+  const allowed = new Set<string>(stats.map((s) => s.statType));
+  const invalid = new Set<string>();
+  for (const match of summary.matchAll(statTagCapture())) {
+    const id = match[1]!;
+    if (!allowed.has(id)) invalid.add(id);
+  }
+  return { invalidRefs: [...invalid] };
+}
+
+// strips only the tags whose IDs appear in invalidRefs. Valid tags survive
+// so paragraph→chart binding still works on cache hits.
+export function stripInvalidStatRefs(summary: string, invalidRefs: string[]): string {
+  if (invalidRefs.length === 0) return summary;
+  const ids = new Set(invalidRefs);
+  return summary.replace(statTagGlobal(), (full) => {
+    const idMatch = full.match(/id="(\w+)"/);
+    return idMatch && ids.has(idMatch[1]!) ? '' : full;
+  });
 }

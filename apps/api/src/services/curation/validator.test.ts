@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 
 import type { ComputedStat } from './types.js';
 import { StatType } from './types.js';
-import { validateSummary } from './validator.js';
+import { validateSummary, validateStatRefs, stripInvalidStatRefs } from './validator.js';
 
 function totalStat(value: number, count = 12): ComputedStat {
   return {
@@ -245,5 +245,57 @@ describe('validateSummary — Runway coverage', () => {
 
     const report = validateSummary(summary, stats);
     expect(report.status).not.toBe('clean');
+  });
+});
+
+describe('validateStatRefs', () => {
+  it('returns no invalid refs when all tagged IDs match computed stat types', () => {
+    const stats = [runwayStat(15000, -5000, 3), totalStat(629000)];
+    const summary = 'Runway is 3 months <stat id="runway"/> and total is $629k <stat id="total"/>.';
+
+    expect(validateStatRefs(summary, stats)).toEqual({ invalidRefs: [] });
+  });
+
+  it('flags ref IDs not present in the computed stats', () => {
+    const stats = [runwayStat(15000, -5000, 3)];
+    const summary = 'Runway is 3 months <stat id="runaway"/> at this burn.';
+
+    expect(validateStatRefs(summary, stats)).toEqual({ invalidRefs: ['runaway'] });
+  });
+
+  it('dedupes repeated invalid refs', () => {
+    const stats = [totalStat(100)];
+    const summary = '<stat id="bogus"/> hello <stat id="bogus"/> world';
+
+    expect(validateStatRefs(summary, stats)).toEqual({ invalidRefs: ['bogus'] });
+  });
+
+  it('returns empty array when summary has no tags', () => {
+    const stats = [totalStat(100)];
+    expect(validateStatRefs('plain prose', stats)).toEqual({ invalidRefs: [] });
+  });
+
+  it('separates valid and invalid refs in mixed input', () => {
+    const stats = [runwayStat(15000, -5000, 3)];
+    const summary = '<stat id="runway"/> ok and <stat id="ghost"/> nope.';
+
+    expect(validateStatRefs(summary, stats)).toEqual({ invalidRefs: ['ghost'] });
+  });
+});
+
+describe('stripInvalidStatRefs', () => {
+  it('strips only the tags whose IDs are in invalidRefs', () => {
+    const summary = '<stat id="runway"/> good <stat id="ghost"/> bad';
+    expect(stripInvalidStatRefs(summary, ['ghost'])).toBe('<stat id="runway"/> good  bad');
+  });
+
+  it('returns the input unchanged when invalidRefs is empty', () => {
+    const summary = '<stat id="runway"/> all good';
+    expect(stripInvalidStatRefs(summary, [])).toBe(summary);
+  });
+
+  it('handles multiple invalid IDs in one pass', () => {
+    const summary = 'a <stat id="x"/> b <stat id="y"/> c <stat id="runway"/> d';
+    expect(stripInvalidStatRefs(summary, ['x', 'y'])).toBe('a  b  c <stat id="runway"/> d');
   });
 });

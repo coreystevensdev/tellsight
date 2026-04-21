@@ -1,14 +1,20 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useAiStream } from '@/lib/hooks/useAiStream';
+import { useAiStream, stripStatTags } from '@/lib/hooks/useAiStream';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { trackClientEvent } from '@/lib/analytics';
 import { UpgradeCta } from '@/components/common/UpgradeCta';
 import { AiSummarySkeleton } from './AiSummarySkeleton';
 import { ShareMenu, type ShareStatus, type LinkStatus } from './ShareMenu';
+import { parseStatBindings, type StatBinding } from './parseStatBindings';
+import { InsightChartThumbnail } from './InsightChartThumbnail';
+import { InsightChartChip } from './InsightChartChip';
+import { InsightChartSheet } from './InsightChartSheet';
+import { type CashBalancePoint } from './charts/RunwayTrendChart';
 import { FREE_PREVIEW_WORD_LIMIT, ANALYTICS_EVENTS, AI_DISCLAIMER } from 'shared/constants';
 
 import type { SubscriptionTier, TransparencyMetadata } from 'shared/types';
@@ -32,6 +38,7 @@ interface AiSummaryCardProps {
   shareLinkClipboardFailed?: boolean;
   onExportPdf?: () => Promise<void>;
   pdfStatus?: 'idle' | 'generating' | 'done' | 'error';
+  cashHistory?: CashBalancePoint[];
   className?: string;
 }
 
@@ -92,16 +99,42 @@ function highlightNumbers(text: string): React.ReactNode[] {
   );
 }
 
-function SummaryText({ text }: { text: string }) {
+interface SummaryTextProps {
+  text: string;
+  bindings?: StatBinding[];
+  onOpenStat?: (statId: string, paragraphIndex: number) => void;
+  cashHistory?: CashBalancePoint[];
+  isMobile?: boolean;
+}
+
+function SummaryText({ text, bindings, onOpenStat, cashHistory, isMobile }: SummaryTextProps) {
   const paragraphs = text.split('\n\n').filter(Boolean);
+  const bindingByIndex = new Map<number, string>();
+  for (const b of bindings ?? []) bindingByIndex.set(b.paragraphIndex, b.statId);
 
   return (
     <div className="text-[15px] leading-[1.7] text-card-foreground/85 md:text-base md:leading-[1.75] [&>p+p]:mt-[1.1em]">
-      {paragraphs.map((p, i) => (
-        <p key={i} className={i === 0 ? 'text-card-foreground font-medium' : undefined}>
-          {highlightNumbers(p)}
-        </p>
-      ))}
+      {paragraphs.map((p, i) => {
+        const statId = bindingByIndex.get(i);
+        return (
+          <p key={i} className={i === 0 ? 'text-card-foreground font-medium' : undefined}>
+            {highlightNumbers(p)}
+            {statId && onOpenStat && (
+              <span className="ml-2 inline-flex align-middle">
+                {isMobile ? (
+                  <InsightChartChip statId={statId} onOpen={() => onOpenStat(statId, i)} />
+                ) : (
+                  <InsightChartThumbnail
+                    statId={statId}
+                    cashHistory={cashHistory}
+                    onOpen={() => onOpenStat(statId, i)}
+                  />
+                )}
+              </span>
+            )}
+          </p>
+        );
+      })}
     </div>
   );
 }
@@ -269,6 +302,7 @@ export function AiSummaryCard({
   shareLinkClipboardFailed,
   onExportPdf,
   pdfStatus,
+  cashHistory,
   className,
 }: AiSummaryCardProps) {
   const [refreshing, setRefreshing] = useState(false);
@@ -287,8 +321,35 @@ export function AiSummaryCard({
     () => !!(cachedStaleAt && new Date(cachedStaleAt).getTime() < Date.now()),
   );
   const hasCached = !!cachedContent && !refreshing;
-  const { status, text, metadata: streamMetadata, error, code, retryable, maxRetriesReached, retry } =
+  const { status, text, rawText, metadata: streamMetadata, error, code, retryable, maxRetriesReached, retry } =
     useAiStream(hasCached ? null : datasetId);
+
+  const isMobile = useIsMobile();
+  const [openStatId, setOpenStatId] = useState<string | null>(null);
+  const [openParagraphText, setOpenParagraphText] = useState<string>('');
+
+  // bindings come from the raw buffer (tags intact). Streaming path uses
+  // useAiStream.rawText; cached path parses cachedContent directly. Both
+  // strip tags for display via stripStatTags so the user never sees a
+  // raw <stat id="..."/> token regardless of code path.
+  const sourceText = hasCached ? cachedContent ?? '' : rawText;
+  const bindings = useMemo<StatBinding[]>(() => {
+    if (status !== 'done' && !hasCached) return [];
+    return parseStatBindings(sourceText);
+  }, [sourceText, status, hasCached]);
+
+  const displayText = hasCached ? stripStatTags(cachedContent ?? '') : text;
+
+  const handleOpenStat = (statId: string, paragraphIndex: number) => {
+    const paragraphs = stripStatTags(sourceText).split('\n\n').filter(Boolean);
+    setOpenStatId(statId);
+    setOpenParagraphText(paragraphs[paragraphIndex] ?? '');
+    trackClientEvent(ANALYTICS_EVENTS.INSIGHT_CHART_OPENED, {
+      statType: statId,
+      paragraphIndex,
+      viewport: isMobile ? 'mobile' : 'desktop',
+    });
+  };
 
   const handleRefreshInsights = () => {
     trackClientEvent(ANALYTICS_EVENTS.AI_SUMMARY_REQUESTED, { reason: 'stale_refresh' });
@@ -338,13 +399,26 @@ export function AiSummaryCard({
         )}
         <h3 className="mb-4 text-base font-semibold text-card-foreground">Analysis</h3>
         {wasTruncated ? (
-          <FreePreviewOverlay previewText={preview} onUpgrade={handleUpgrade} />
+          <FreePreviewOverlay previewText={stripStatTags(preview)} onUpgrade={handleUpgrade} />
         ) : (
           <>
-            <SummaryText text={cachedContent!} />
+            <SummaryText
+              text={displayText}
+              bindings={bindings}
+              onOpenStat={handleOpenStat}
+              cashHistory={cashHistory}
+              isMobile={isMobile}
+            />
             <PostCompletionFooter onToggleTransparency={onToggleTransparency} transparencyOpen={transparencyOpen} onShare={onShare} onShareDownload={onShareDownload} onShareCopy={onShareCopy} shareState={shareState} onShareCopyLink={onShareCopyLink} shareLinkStatus={shareLinkStatus} shareLinkClipboardFailed={shareLinkClipboardFailed} onExportPdf={onExportPdf} pdfStatus={pdfStatus} />
           </>
         )}
+        <InsightChartSheet
+          open={openStatId !== null}
+          onOpenChange={(open) => !open && setOpenStatId(null)}
+          statId={openStatId}
+          paragraphText={openParagraphText}
+          cashHistory={cashHistory}
+        />
       </div>
     );
   }
@@ -389,13 +463,26 @@ export function AiSummaryCard({
         aria-label="AI business summary"
       >
         <div aria-live="polite">
-          <SummaryText text={text} />
+          <SummaryText
+            text={text}
+            bindings={bindings}
+            onOpenStat={handleOpenStat}
+            cashHistory={cashHistory}
+            isMobile={isMobile}
+          />
         </div>
         <hr className="my-4 border-muted" />
         <p className="text-sm italic text-muted-foreground">
           We focused on the most important findings to keep things quick.
         </p>
         <PostCompletionFooter onToggleTransparency={onToggleTransparency} transparencyOpen={transparencyOpen} onShare={onShare} onShareDownload={onShareDownload} onShareCopy={onShareCopy} shareState={shareState} onShareCopyLink={onShareCopyLink} shareLinkStatus={shareLinkStatus} shareLinkClipboardFailed={shareLinkClipboardFailed} onExportPdf={onExportPdf} pdfStatus={pdfStatus} />
+        <InsightChartSheet
+          open={openStatId !== null}
+          onOpenChange={(open) => !open && setOpenStatId(null)}
+          statId={openStatId}
+          paragraphText={openParagraphText}
+          cashHistory={cashHistory}
+        />
       </div>
     );
   }
@@ -456,10 +543,23 @@ export function AiSummaryCard({
         aria-live="polite"
         aria-busy={isActive}
       >
-        <SummaryText text={text} />
+        <SummaryText
+          text={text}
+          bindings={isDone ? bindings : undefined}
+          onOpenStat={isDone ? handleOpenStat : undefined}
+          cashHistory={cashHistory}
+          isMobile={isMobile}
+        />
         {isActive && <StreamingCursor />}
       </div>
       {isDone && <PostCompletionFooter onToggleTransparency={onToggleTransparency} transparencyOpen={transparencyOpen} onShare={onShare} onShareDownload={onShareDownload} onShareCopy={onShareCopy} shareState={shareState} onShareCopyLink={onShareCopyLink} shareLinkStatus={shareLinkStatus} shareLinkClipboardFailed={shareLinkClipboardFailed} onExportPdf={onExportPdf} pdfStatus={pdfStatus} />}
+      <InsightChartSheet
+        open={openStatId !== null}
+        onOpenChange={(open) => !open && setOpenStatId(null)}
+        statId={openStatId}
+        paragraphText={openParagraphText}
+        cashHistory={cashHistory}
+      />
     </div>
   );
 }

@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { streamReducer, type StreamState } from './useAiStream';
+import { streamReducer, stripStatTags, type StreamState } from './useAiStream';
 
 const idle: StreamState = {
   status: 'idle',
   text: '',
+  rawText: '',
   metadata: null,
   error: null,
   code: null,
@@ -54,7 +55,12 @@ describe('streamReducer', () => {
   });
 
   it('TEXT appends to existing text in streaming state', () => {
-    const streaming: StreamState = { ...idle, status: 'streaming', text: 'Hello ' };
+    const streaming: StreamState = {
+      ...idle,
+      status: 'streaming',
+      text: 'Hello ',
+      rawText: 'Hello ',
+    };
     const next = streamReducer(streaming, { type: 'TEXT', delta: 'world' });
     expect(next.text).toBe('Hello world');
   });
@@ -226,5 +232,106 @@ describe('streamReducer', () => {
     state = streamReducer(state, { type: 'ERROR', message: 'fail', retryable: true });
     state = streamReducer(state, { type: 'START', isRetry: true }); // retryCount = 3
     expect(state.retryCount).toBe(3);
+  });
+});
+
+describe('stripStatTags', () => {
+  it('strips a complete tag in one chunk', () => {
+    expect(stripStatTags('runway is 3 months <stat id="runway"/> tight'))
+      .toBe('runway is 3 months  tight');
+  });
+
+  it('strips multiple tags in one string', () => {
+    expect(stripStatTags('<stat id="a"/>x<stat id="b"/>y')).toBe('xy');
+  });
+
+  it('hides an incomplete trailing tag fragment', () => {
+    // chunk arrives mid-tag — the fragment must not render
+    expect(stripStatTags('prose <stat')).toBe('prose ');
+    expect(stripStatTags('prose <stat id')).toBe('prose ');
+    expect(stripStatTags('prose <stat id="runw')).toBe('prose ');
+  });
+
+  it('leaves text unchanged when no tags are present', () => {
+    const raw = 'just a normal paragraph with no tags at all.';
+    expect(stripStatTags(raw)).toBe(raw);
+  });
+
+  it('leaves malformed tags as-is (does not crash)', () => {
+    // empty id fails the complete-tag regex; treated as literal prose
+    expect(stripStatTags('bad <stat id=/> tag')).toBe('bad <stat id=/> tag');
+  });
+
+  it('does not mis-strip words that start with <stat', () => {
+    // <statue of liberty is not a tag fragment (no whitespace after stat)
+    expect(stripStatTags('a <statue of freedom')).toBe('a <statue of freedom');
+  });
+});
+
+describe('streamReducer tag handling', () => {
+  it('TEXT action preserves rawText and exposes stripped text', () => {
+    const connecting: StreamState = { ...idle, status: 'connecting' };
+    const next = streamReducer(connecting, {
+      type: 'TEXT',
+      delta: 'runway is 3.2 months <stat id="runway"/> worth watching',
+    });
+    expect(next.rawText).toBe('runway is 3.2 months <stat id="runway"/> worth watching');
+    expect(next.text).toBe('runway is 3.2 months  worth watching');
+  });
+
+  it('TEXT action hides boundary-split tag until next chunk completes it', () => {
+    let state: StreamState = { ...idle, status: 'connecting' };
+    state = streamReducer(state, { type: 'TEXT', delta: 'runway is 3.2 months <stat id="runw' });
+    expect(state.rawText).toBe('runway is 3.2 months <stat id="runw');
+    expect(state.text).toBe('runway is 3.2 months '); // fragment hidden
+
+    state = streamReducer(state, { type: 'TEXT', delta: 'ay"/> worth watching' });
+    expect(state.rawText).toBe('runway is 3.2 months <stat id="runway"/> worth watching');
+    expect(state.text).toBe('runway is 3.2 months  worth watching'); // fragment now complete + stripped
+  });
+
+  it('PARTIAL action strips tags from the partial text', () => {
+    const streaming: StreamState = { ...idle, status: 'streaming' };
+    const next = streamReducer(streaming, {
+      type: 'PARTIAL',
+      text: 'timeout snapshot <stat id="cash_flow"/>',
+    });
+    expect(next.status).toBe('timeout');
+    expect(next.rawText).toBe('timeout snapshot <stat id="cash_flow"/>');
+    expect(next.text).toBe('timeout snapshot ');
+  });
+
+  it('CACHE_HIT action strips tags from cached content', () => {
+    const next = streamReducer(idle, {
+      type: 'CACHE_HIT',
+      content: 'cached prose <stat id="margin_trend"/> end',
+    });
+    expect(next.status).toBe('done');
+    expect(next.rawText).toBe('cached prose <stat id="margin_trend"/> end');
+    expect(next.text).toBe('cached prose  end');
+  });
+
+  it('RESET action clears rawText alongside text', () => {
+    const streaming: StreamState = {
+      ...idle,
+      status: 'streaming',
+      text: 'stuff',
+      rawText: 'stuff <stat id="x"/>',
+    };
+    const next = streamReducer(streaming, { type: 'RESET' });
+    expect(next.rawText).toBe('');
+    expect(next.text).toBe('');
+  });
+
+  it('START action clears rawText alongside text', () => {
+    const done: StreamState = {
+      ...idle,
+      status: 'done',
+      text: 'result',
+      rawText: 'result <stat id="runway"/>',
+    };
+    const next = streamReducer(done, { type: 'START' });
+    expect(next.rawText).toBe('');
+    expect(next.text).toBe('');
   });
 });

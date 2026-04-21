@@ -16,11 +16,20 @@ export type StreamStatus =
 export interface StreamState {
   status: StreamStatus;
   text: string;
+  rawText: string;
   metadata: TransparencyMetadata | null;
   error: string | null;
   code: string | null;
   retryable: boolean;
   retryCount: number;
+}
+
+import { statTagGlobal, statTagOpenFragment } from 'shared/constants';
+
+// strips complete <stat id="..."/> tokens and hides an incomplete trailing
+// tag fragment while the next chunk is still arriving. public for tests.
+export function stripStatTags(raw: string): string {
+  return raw.replace(statTagGlobal(), '').replace(statTagOpenFragment(), '');
 }
 
 export type StreamAction =
@@ -36,6 +45,7 @@ export type StreamAction =
 const initialState: StreamState = {
   status: 'idle',
   text: '',
+  rawText: '',
   metadata: null,
   error: null,
   code: null,
@@ -51,8 +61,10 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
         status: 'connecting',
         retryCount: action.isRetry ? state.retryCount + 1 : 0,
       };
-    case 'TEXT':
-      return { ...state, status: 'streaming', text: state.text + action.delta };
+    case 'TEXT': {
+      const rawText = state.rawText + action.delta;
+      return { ...state, status: 'streaming', rawText, text: stripStatTags(rawText) };
+    }
     case 'DONE':
       // after PARTIAL/UPGRADE_REQUIRED, the trailing done is a no-op
       if (state.status === 'timeout' || state.status === 'free_preview') return state;
@@ -68,9 +80,21 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
         retryable: action.retryable ?? false,
       };
     case 'PARTIAL':
-      return { ...state, status: 'timeout', text: action.text, metadata: action.metadata ?? null };
+      return {
+        ...state,
+        status: 'timeout',
+        rawText: action.text,
+        text: stripStatTags(action.text),
+        metadata: action.metadata ?? null,
+      };
     case 'CACHE_HIT':
-      return { ...initialState, status: 'done', text: action.content, metadata: action.metadata ?? null };
+      return {
+        ...initialState,
+        status: 'done',
+        rawText: action.content,
+        text: stripStatTags(action.content),
+        metadata: action.metadata ?? null,
+      };
     case 'RESET':
       return initialState;
   }

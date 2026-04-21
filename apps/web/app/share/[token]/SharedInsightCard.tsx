@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { AI_DISCLAIMER } from 'shared/constants';
+import { AI_DISCLAIMER, stripAllStatTags } from 'shared/constants';
 
 interface SharedInsightCardProps {
   orgName: string;
@@ -7,8 +7,13 @@ interface SharedInsightCardProps {
   aiSummaryContent: string;
 }
 
+// Shared pages render prose only — no chart affordances are wired here
+// (no chart data, no JS state). We strip <stat id="..."/> tokens so the
+// raw markup never leaks into the shared view, even for cached summaries
+// generated under prompt v1.4+.
 function SummaryText({ text }: { text: string }) {
-  const paragraphs = text.split('\n\n').filter(Boolean);
+  const stripped = stripAllStatTags(text);
+  const paragraphs = stripped.split('\n\n').filter(Boolean);
 
   return (
     <div className="max-w-prose text-base leading-[1.6] md:text-[17px] md:leading-[1.8] [&>p+p]:mt-[1.5em]">

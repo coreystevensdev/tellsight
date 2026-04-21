@@ -17,6 +17,12 @@ const mockUseAiStream = vi.fn();
 
 vi.mock('@/lib/hooks/useAiStream', () => ({
   useAiStream: (...args: unknown[]) => mockUseAiStream(...args),
+  stripStatTags: (raw: string) => raw.replace(/<stat\s+id="\w+"\s*\/>/g, ''),
+}));
+
+const mockTrackClientEvent = vi.fn();
+vi.mock('@/lib/analytics', () => ({
+  trackClientEvent: (...args: unknown[]) => mockTrackClientEvent(...args),
 }));
 
 afterEach(cleanup);
@@ -25,6 +31,7 @@ function defaultHookReturn(overrides = {}) {
   return {
     status: 'idle',
     text: '',
+    rawText: '',
     metadata: null,
     error: null,
     code: null,
@@ -520,5 +527,95 @@ describe('truncateAtWordBoundary', () => {
   it('handles empty string', () => {
     const result = truncateAtWordBoundary('', 150);
     expect(result).toEqual({ preview: '', wasTruncated: false });
+  });
+});
+
+describe('AiSummaryCard chart bindings', () => {
+  it('renders thumbnail next to a tagged paragraph in done state', () => {
+    mockUseAiStream.mockReturnValue(
+      defaultHookReturn({
+        status: 'done',
+        text: 'Runway is 3.2 months  worth watching.\n\nAnother paragraph.',
+        rawText: 'Runway is 3.2 months <stat id="runway"/> worth watching.\n\nAnother paragraph.',
+      }),
+    );
+
+    render(
+      <AiSummaryCard
+        datasetId={1}
+        cashHistory={[
+          { balance: 12000, asOfDate: '2026-04-01T00:00:00Z' },
+          { balance: 9500, asOfDate: '2026-03-01T00:00:00Z' },
+        ]}
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', { name: /open cash balance over time drill-down/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('opens drill-down sheet and fires insight.chart_opened analytics', () => {
+    mockTrackClientEvent.mockClear();
+    mockUseAiStream.mockReturnValue(
+      defaultHookReturn({
+        status: 'done',
+        text: 'Cash flow burning  this month.',
+        rawText: 'Cash flow burning <stat id="cash_flow"/> this month.',
+      }),
+    );
+
+    render(<AiSummaryCard datasetId={1} />);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /open revenue vs\. expenses drill-down/i }),
+    );
+
+    expect(mockTrackClientEvent).toHaveBeenCalledWith('insight.chart_opened', {
+      statType: 'cash_flow',
+      paragraphIndex: 0,
+      viewport: 'desktop',
+    });
+
+    // sheet opens as a Radix dialog — assert the dialog is in the DOM and
+    // the drill-down description text is present. Either check alone would
+    // pass on the thumbnail alone; together they prove the sheet mounted.
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(
+      screen.getByText(/drill-down view for the chart that backs the highlighted insight/i),
+    ).toBeInTheDocument();
+  });
+
+  it('does not render bindings when status is still streaming', () => {
+    mockUseAiStream.mockReturnValue(
+      defaultHookReturn({
+        status: 'streaming',
+        text: 'Streaming text without bindings yet.',
+        rawText: 'Streaming text <stat id="runway"/> not yet bound.',
+      }),
+    );
+
+    render(<AiSummaryCard datasetId={1} />);
+
+    expect(
+      screen.queryByRole('button', { name: /open cash balance over time drill-down/i }),
+    ).toBeNull();
+  });
+
+  it('strips raw stat tags from cached content before render', () => {
+    mockUseAiStream.mockReturnValue(defaultHookReturn());
+
+    render(
+      <AiSummaryCard
+        datasetId={1}
+        cachedContent={'Cached prose <stat id="runway"/> done.\n\nNext paragraph.'}
+        tier="pro"
+      />,
+    );
+
+    // raw token must never reach the user
+    expect(screen.queryByText(/<stat id="runway"\/>/)).toBeNull();
+    // the surrounding prose still renders
+    expect(screen.getByText(/Cached prose/i)).toBeInTheDocument();
   });
 });

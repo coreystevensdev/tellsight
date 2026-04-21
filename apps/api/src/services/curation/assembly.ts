@@ -9,7 +9,7 @@ import type { BusinessProfile } from 'shared/types';
 import { getIndustryBenchmarks } from './config/industry-benchmarks.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_VERSION = 'v1.3';
+const DEFAULT_VERSION = 'v1.4';
 const usd = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
 
 function loadTemplate(version: string): string {
@@ -129,6 +129,7 @@ export function assemblePrompt(
       .replace('{{businessContext}}', businessContext)
       .replace('{{industryBenchmarks}}', benchmarks)
       .replace('{{statTypeList}}', 'none')
+      .replace('{{allowedStatIds}}', 'none')
       .replace('{{categoryCount}}', '0')
       .replace('{{insightCount}}', '0');
 
@@ -147,6 +148,7 @@ export function assemblePrompt(
 
   const statSummaries = insights.map(formatStat).join('\n');
   const statTypes = [...new Set(insights.map((i) => i.stat.statType))];
+  const allowedStatIds = [...statTypes].sort().join(', ');
   const categories = new Set(insights.map((i) => i.stat.category).filter(Boolean));
   const { breakdown } = insights[0]!;
 
@@ -156,6 +158,7 @@ export function assemblePrompt(
     .replace('{{businessContext}}', businessContext)
     .replace('{{industryBenchmarks}}', benchmarks)
     .replace('{{statTypeList}}', statTypes.join(', '))
+    .replace('{{allowedStatIds}}', allowedStatIds)
     .replace('{{categoryCount}}', String(categories.size))
     .replace('{{insightCount}}', String(insights.length));
 

@@ -9,7 +9,7 @@ import type { db, DbTransaction } from '../../lib/db.js';
 import { register, deregister } from '../../lib/activeStreams.js';
 import { CircuitOpenError } from '../../lib/circuitBreaker.js';
 import { aiSummariesQueries } from '../../db/queries/index.js';
-import { runCurationPipeline, assemblePrompt, transparencyMetadataSchema, validateSummary } from '../curation/index.js';
+import { runCurationPipeline, assemblePrompt, transparencyMetadataSchema, validateSummary, validateStatRefs, stripInvalidStatRefs } from '../curation/index.js';
 import type { ScoredInsight } from '../curation/index.js';
 import { streamInterpretation } from './claudeClient.js';
 import { trackEvent } from '../analytics/trackEvent.js';
@@ -174,9 +174,32 @@ export async function streamToSSE(
     writeSseEvent(res, 'done', { usage: result.usage, metadata: validatedMetadata } satisfies SseDoneEvent);
     safeEnd();
 
+    const pipelineStats = pipelineInsights.map((i) => i.stat);
+
+    // Tier 2 chart-ref check — strip invalid <stat id="..."/> tokens before
+    // they reach the cache. Live stream already shipped; clients sanitize
+    // client-side via stripStatTags. The cache write below is the
+    // defense-in-depth path for future cache hits.
+    const refReport = validateStatRefs(result.fullText, pipelineStats);
+    let cachedText = result.fullText;
+    if (refReport.invalidRefs.length > 0) {
+      cachedText = stripInvalidStatRefs(result.fullText, refReport.invalidRefs);
+      logger.warn(
+        { orgId, datasetId, invalidRefs: refReport.invalidRefs, promptVersion },
+        'AI summary referenced unknown stat IDs — stripped before cache',
+      );
+      trackEvent(orgId, userId, ANALYTICS_EVENTS.AI_CHART_REF_INVALID, {
+        datasetId,
+        tier,
+        promptVersion,
+        invalidRefs: refReport.invalidRefs,
+        validStatIds: pipelineStats.map((s) => s.statType),
+      });
+    }
+
     // Tier 1 hallucination check — fires after stream is delivered to the user.
     // Never blocks the response; flagged summaries still cache so we have the evidence.
-    const report = validateSummary(result.fullText, pipelineInsights.map((i) => i.stat));
+    const report = validateSummary(result.fullText, pipelineStats);
     if (report.status === 'clean') {
       logger.info(
         { orgId, datasetId, numbersChecked: report.numbersChecked, allowedValueCount: report.allowedValueCount },
@@ -212,7 +235,7 @@ export async function streamToSSE(
       await aiSummariesQueries.storeSummary(
         orgId,
         datasetId,
-        result.fullText,
+        cachedText,
         validatedMetadata,
         promptVersion,
         false,

@@ -256,6 +256,15 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
     { revalidateOnFocus: false },
   );
 
+  // Cash history feeds the runway thumbnail in Story 8.5. We only fetch once
+  // the user has data (demo mode datasets get no runway anyway) and only when
+  // they've saved at least one balance (no history = no chart).
+  const { data: cashHistory } = useSWR<{ balance: number; asOfDate: string }[]>(
+    hasAnyData && financials?.cashOnHand != null ? '/org/financials/cash-history?limit=24' : null,
+    async (key: string) => (await apiClient<{ balance: number; asOfDate: string }[]>(key)).data,
+    { revalidateOnFocus: false },
+  );
+
   // Gate on `financials !== undefined` so the Locked Insight card doesn't flash
   // during initial SWR fetch for users who already have a cash balance set.
   const needsCashBalance = hasAnyData && financials !== undefined && !financials.cashOnHand;
@@ -290,6 +299,7 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
       shareLinkClipboardFailed={linkClipboardFailed}
       onExportPdf={exportPdf}
       pdfStatus={pdfStatus}
+      cashHistory={cashHistory}
     />
   );
 

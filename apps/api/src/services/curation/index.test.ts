@@ -148,8 +148,8 @@ describe('runFullPipeline', () => {
     expect(aiSummariesQueries.storeSummary).toHaveBeenCalledWith(
       1, 1,
       'Fresh AI analysis.',
-      expect.objectContaining({ promptVersion: 'v1.3', insightCount: expect.any(Number) }),
-      'v1.3',
+      expect.objectContaining({ promptVersion: 'v1.4', insightCount: expect.any(Number) }),
+      'v1.4',
     );
   });
 
@@ -170,6 +170,29 @@ describe('runFullPipeline', () => {
 
     expect(generateInterpretation).not.toHaveBeenCalled();
     expect(aiSummariesQueries.storeSummary).not.toHaveBeenCalled();
+  });
+
+  it('strips hallucinated stat refs before cache write and returns the stripped content', async () => {
+    vi.mocked(aiSummariesQueries.getCachedSummary).mockResolvedValue(undefined as never);
+    vi.mocked(dataRowsQueries.getRowsByDataset).mockResolvedValue(fixtureRows as never);
+    // LLM hallucinates a stat ID that's not in the pipeline output
+    vi.mocked(generateInterpretation).mockResolvedValue(
+      'Runway is tight <stat id="runaway"/> this quarter.',
+    );
+    vi.mocked(aiSummariesQueries.storeSummary).mockResolvedValue({} as never);
+
+    const result = await runFullPipeline(1, 1);
+
+    // return value matches what the next cache hit will return — no
+    // asymmetry between first call and cache-hit call. Two spaces between
+    // "tight" and "this" are intentional — stripInvalidStatRefs removes the
+    // tag without collapsing surrounding whitespace.
+    expect(result.content).toBe('Runway is tight  this quarter.');
+    expect(result.fromCache).toBe(false);
+
+    // cache receives the stripped version
+    const storeCall = vi.mocked(aiSummariesQueries.storeSummary).mock.calls[0]!;
+    expect(storeCall[2]).toBe('Runway is tight  this quarter.');
   });
 });
 
@@ -201,7 +224,7 @@ describe('cash flow end-to-end pipeline', () => {
 
     // metadata: cash_flow present, prompt version bumped
     expect(result.metadata.statTypes).toContain('cash_flow');
-    expect(result.metadata.promptVersion).toBe('v1.3');
+    expect(result.metadata.promptVersion).toBe('v1.4');
 
     // prompt: cash flow framing with signed monthly net
     expect(result.prompt).toMatch(/Cash Flow: burning/);
@@ -257,7 +280,7 @@ describe('runway end-to-end pipeline', () => {
     const result = assemblePrompt(insights);
 
     expect(result.metadata.statTypes).toContain('runway');
-    expect(result.metadata.promptVersion).toBe('v1.3');
+    expect(result.metadata.promptVersion).toBe('v1.4');
     expect(result.prompt).toMatch(/Runway:\s+3\.0\s+months/);
     expect(result.prompt).toContain('cash $15,000');
     expect(result.prompt).toContain('as of 2026-04-10');
@@ -295,5 +318,70 @@ describe('runway end-to-end pipeline', () => {
     const result = assemblePrompt(insights);
 
     expect(result.prompt).toContain('confidence: low');
+  });
+});
+
+describe('chart-tag pipeline integration', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.resetModules();
+  });
+
+  it('assembles a prompt with the stat-ID allowlist injected', async () => {
+    const { readFileSync } = await import('node:fs');
+    // path-aware mock — scoring config still loads JSON, prompt-template
+    // calls return the allowlist-aware mock
+    vi.mocked(readFileSync).mockImplementation((...args: unknown[]) => {
+      const p = String(args[0]);
+      if (p.includes('prompt-templates')) {
+        return 'Allowlist: {{allowedStatIds}}\nStats:\n{{statSummaries}}\n';
+      }
+      return JSON.stringify({
+        version: '1.0',
+        topN: 8,
+        weights: { novelty: 0.35, actionability: 0.4, specificity: 0.25 },
+        thresholds: { anomalyZScore: 2.0, trendMinDataPoints: 3, significantChangePercent: 10 },
+      });
+    });
+
+    const { computeStats } = await import('./computation.js');
+    const { scoreInsights } = await import('./scoring.js');
+    const { assemblePrompt } = await import('./assembly.js');
+
+    const stats = computeStats(fixtureRows as never);
+    const insights = scoreInsights(stats);
+    const result = assemblePrompt(insights, 'v2');
+
+    expect(result.prompt).toMatch(/Allowlist: [a-z_, ]+/);
+    const allowlistMatch = result.prompt.match(/Allowlist: ([a-z_, ]+)/);
+    expect(allowlistMatch).not.toBeNull();
+    const advertised = allowlistMatch![1]!.split(', ').sort();
+    expect(advertised).toEqual([...result.metadata.statTypes].sort());
+  });
+
+  it('validateStatRefs rejects unknown IDs and accepts mapped ones together', async () => {
+    const { computeStats } = await import('./computation.js');
+    const { scoreInsights } = await import('./scoring.js');
+    const { validateStatRefs } = await import('./validator.js');
+
+    const stats = computeStats(fixtureRows as never);
+    const insights = scoreInsights(stats);
+    const allowedIds = [...new Set(insights.map((i) => i.stat.statType))];
+
+    // simulate an LLM output with one valid ID and one hallucinated ID
+    const validId = allowedIds[0]!;
+    const fakeSummary = `First paragraph <stat id="${validId}"/> grounded.\n\nSecond <stat id="runaway"/> hallucinated.`;
+
+    const report = validateStatRefs(fakeSummary, insights.map((i) => i.stat));
+    expect(report.invalidRefs).toEqual(['runaway']);
+  });
+
+  it('stripInvalidStatRefs preserves valid tags for downstream binding', async () => {
+    const { stripInvalidStatRefs } = await import('./validator.js');
+
+    const summary = '<stat id="runway"/> kept and <stat id="ghost"/> stripped.';
+    const cleaned = stripInvalidStatRefs(summary, ['ghost']);
+
+    expect(cleaned).toBe('<stat id="runway"/> kept and  stripped.');
   });
 });

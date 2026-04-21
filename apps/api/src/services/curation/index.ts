@@ -6,7 +6,7 @@ import type { db, DbTransaction } from '../../lib/db.js';
 import { computeStats } from './computation.js';
 import { scoreInsights, scoringConfig } from './scoring.js';
 import { assemblePrompt } from './assembly.js';
-import { validateSummary } from './validator.js';
+import { validateSummary, validateStatRefs, stripInvalidStatRefs } from './validator.js';
 import { generateInterpretation } from '../aiInterpretation/claudeClient.js';
 import { transparencyMetadataSchema } from './types.js';
 import type { ScoredInsight } from './types.js';
@@ -79,8 +79,33 @@ export async function runFullPipeline(
   );
 
   const content = await generateInterpretation(prompt);
+  const pipelineStats = insights.map((i) => i.stat);
 
-  const report = validateSummary(content, insights.map((i) => i.stat));
+  // Tier 2 chart-ref check — same defense-in-depth as streamHandler.ts.
+  // Strip hallucinated stat refs before cache write so non-streaming
+  // callers (seed generation, batch runs) don't pollute the cache.
+  //
+  // We return `cachedContent` (stripped) rather than raw `content` so the
+  // first-call response matches what the next cache hit will return. The
+  // alternative — returning raw on first call, stripped on later calls —
+  // would set a trap where users see different text depending on cache state.
+  //
+  // No AI_CHART_REF_INVALID analytics emit here because runFullPipeline has
+  // no userId/tier in scope (it's called from seed generation and batch
+  // contexts, not a user request). The log.warn above is the observable
+  // signal; streamHandler.ts is the only path that fires the analytics event.
+  const refReport = validateStatRefs(content, pipelineStats);
+  const cachedContent = refReport.invalidRefs.length > 0
+    ? stripInvalidStatRefs(content, refReport.invalidRefs)
+    : content;
+  if (refReport.invalidRefs.length > 0) {
+    logger.warn(
+      { orgId, datasetId, invalidRefs: refReport.invalidRefs, promptVersion: metadata.promptVersion },
+      'AI summary referenced unknown stat IDs — stripped before cache',
+    );
+  }
+
+  const report = validateSummary(content, pipelineStats);
   if (report.status === 'clean') {
     logger.info(
       { orgId, datasetId, numbersChecked: report.numbersChecked },
@@ -102,18 +127,18 @@ export async function runFullPipeline(
   await aiSummariesQueries.storeSummary(
     orgId,
     datasetId,
-    content,
+    cachedContent,
     validatedMetadata,
     metadata.promptVersion,
   );
 
   logger.info({ orgId, datasetId }, 'ai summary stored in cache');
 
-  return { content, fromCache: false };
+  return { content: cachedContent, fromCache: false };
 }
 
 export type { ComputedStat, ScoredInsight, ScoringConfig, AssembledContext, TransparencyMetadata } from './types.js';
 export { StatType, transparencyMetadataSchema } from './types.js';
 export { assemblePrompt } from './assembly.js';
-export { validateSummary } from './validator.js';
-export type { ValidationReport, UnmatchedNumber, ValidateOptions } from './validator.js';
+export { validateSummary, validateStatRefs, stripInvalidStatRefs } from './validator.js';
+export type { ValidationReport, UnmatchedNumber, ValidateOptions, StatRefReport } from './validator.js';

@@ -38,6 +38,8 @@ export const ANALYTICS_EVENTS = {
   AI_SUMMARY_REQUESTED: 'ai.summary_requested',
   AI_SUMMARY_COMPLETED: 'ai.summary_completed',
   AI_SUMMARY_VALIDATION_FLAGGED: 'ai.summary_validation_flagged',
+  AI_CHART_REF_INVALID: 'ai.chart_ref_invalid',
+  INSIGHT_CHART_OPENED: 'insight.chart_opened',
   SHARE_LINK_CREATED: 'share_link.created',
   INSIGHT_EXPORTED: 'insight.exported',
   DASHBOARD_VIEWED: 'dashboard.viewed',
@@ -66,6 +68,32 @@ export const ANALYTICS_EVENTS = {
 
 export type AnalyticsEventName =
   (typeof ANALYTICS_EVENTS)[keyof typeof ANALYTICS_EVENTS];
+
+// Inline chart-reference token emitted by the LLM to bind a paragraph to a
+// chart — see Story 8.5. Centralized here so every consumer (validator,
+// stream hook, post-stream parser, shared-link strip, OG metadata strip)
+// sees the same definition. If the token shape ever changes, this is the
+// only file that needs to know.
+//
+// Factory-style exports because a shared RegExp with the /g flag carries
+// lastIndex state across uses — each caller gets a fresh regex.
+export function statTagGlobal(): RegExp {
+  return /<stat\s+id="\w+"\s*\/>/g;
+}
+export function statTagCapture(): RegExp {
+  return /<stat\s+id="(\w+)"\s*\/>/g;
+}
+export function statTagOpenFragment(): RegExp {
+  return /<stat(?:\s[^>]*)?$/;
+}
+
+// Convenience: strip all fully-formed <stat id="..."/> tokens from text.
+// Does NOT handle boundary-split fragments — that's useAiStream's concern
+// (mid-stream UX) and this helper is for post-stream or server-side calls
+// where the full text is already in hand.
+export function stripAllStatTags(text: string): string {
+  return text.replace(statTagGlobal(), '');
+}
 
 export const AUTH = {
   ACCESS_TOKEN_EXPIRY: '15m',

@@ -16,10 +16,14 @@ vi.mock('../../lib/logger.js', () => ({
 const mockRunCurationPipeline = vi.fn();
 const mockAssemblePrompt = vi.fn();
 const mockValidateSummary = vi.fn();
+const mockValidateStatRefs = vi.fn((..._args: unknown[]) => ({ invalidRefs: [] as string[] }));
+const mockStripInvalidStatRefs = vi.fn((...args: unknown[]) => String(args[0] ?? ''));
 vi.mock('../curation/index.js', () => ({
   runCurationPipeline: (...args: unknown[]) => mockRunCurationPipeline(...args),
   assemblePrompt: (...args: unknown[]) => mockAssemblePrompt(...args),
   validateSummary: (...args: unknown[]) => mockValidateSummary(...args),
+  validateStatRefs: (...args: unknown[]) => mockValidateStatRefs(...args),
+  stripInvalidStatRefs: (...args: unknown[]) => mockStripInvalidStatRefs(...args),
   transparencyMetadataSchema: { parse: (v: unknown) => v },
 }));
 
@@ -226,6 +230,59 @@ describe('streamToSSE', () => {
         unmatchedCount: 2,
       }),
     );
+  });
+
+  it('strips invalid stat-refs before cache write and emits ai.chart_ref_invalid', async () => {
+    mockStreamInterpretation.mockImplementation(
+      async (_prompt: string, onText: (d: string) => void) => {
+        onText('runway ');
+        onText('<stat id="ghost"/>');
+        onText(' ok');
+        return {
+          fullText: 'runway <stat id="ghost"/> ok',
+          usage: { inputTokens: 100, outputTokens: 20 },
+        };
+      },
+    );
+    mockValidateStatRefs.mockReturnValueOnce({ invalidRefs: ['ghost'] });
+    mockStripInvalidStatRefs.mockImplementationOnce((...args: unknown[]) => {
+      const raw = String(args[0] ?? '');
+      const invalid = (args[1] as string[] | undefined) ?? [];
+      return raw.replace(/<stat\s+id="(\w+)"\s*\/>/g, (full, id) =>
+        invalid.includes(id) ? '' : full,
+      );
+    });
+    mockValidateSummary.mockReturnValueOnce({
+      status: 'clean',
+      numbersChecked: 0,
+      allowedValueCount: 0,
+      unmatchedNumbers: [],
+    });
+
+    const { res } = createMockRes();
+    const req = createMockReq();
+
+    const { streamToSSE } = await import('./streamHandler.js');
+    await streamToSSE(req, res, 1, 42, 99, 'pro');
+
+    // analytics event fires with the hallucinated id
+    expect(mockTrackEvent).toHaveBeenCalledWith(
+      1,
+      99,
+      'ai.chart_ref_invalid',
+      expect.objectContaining({
+        datasetId: 42,
+        tier: 'pro',
+        invalidRefs: ['ghost'],
+      }),
+    );
+
+    // the cache write received the stripped text, not the raw LLM output
+    expect(mockStoreSummary).toHaveBeenCalled();
+    const call = mockStoreSummary.mock.calls[0]!;
+    expect(call[0]).toBe(1);
+    expect(call[1]).toBe(42);
+    expect(call[2]).toBe('runway  ok');
   });
 
   it('does not emit the validation event when the validator returns clean', async () => {
