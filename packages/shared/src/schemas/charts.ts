@@ -48,4 +48,9 @@ export const chartDataSchema = z.object({
   datasetId: z.number().nullable(),
   datasetName: z.string().nullable().optional(),
   datasetRowCount: z.number().optional(),
+  // True when the org has at least 4 months of rows with both Income and Expenses
+  // present — the same threshold computeMarginTrend uses to emit. Lets the UI
+  // decide whether to show the "Enable Break-Even" locked card without waiting
+  // on the AI summary to stream.
+  hasMarginSignal: z.boolean().optional(),
 });

@@ -55,7 +55,7 @@ dashboardRouter.get('/dashboard/charts', async (req: Request, res: Response) => 
       const orgName = org?.name ?? 'Your Organization';
 
       // data_rows + datasets are RLS-enabled — run inside tenant context
-      const { chartData, datasets, demoState, activeDatasetId, datasetRowCount } = await withRlsContext(
+      const { chartData, datasets, demoState, activeDatasetId, datasetRowCount, hasMarginSignal } = await withRlsContext(
         orgId,
         payload.isAdmin,
         async (tx) => {
@@ -81,14 +81,17 @@ dashboardRouter.get('/dashboard/charts', async (req: Request, res: Response) => 
             ? requestedId
             : (activeId != null && ds.some((d) => d.id === activeId) ? activeId : ds[0]?.id ?? null);
 
-          const [cd, rowCount] = await Promise.all([
+          const [cd, rowCount, marginSignal] = await Promise.all([
             chartsQueries.getChartData(orgId, filterArg, undefined, tx, resolvedId ?? undefined),
             resolvedId != null
               ? dataRowsQueries.getRowCount(orgId, resolvedId, tx)
               : Promise.resolve(0),
+            resolvedId != null
+              ? chartsQueries.getHasMarginSignal(orgId, tx, resolvedId)
+              : Promise.resolve(false),
           ]);
 
-          return { chartData: cd, datasets: ds, demoState: state, activeDatasetId: resolvedId, datasetRowCount: rowCount };
+          return { chartData: cd, datasets: ds, demoState: state, activeDatasetId: resolvedId, datasetRowCount: rowCount, hasMarginSignal: marginSignal };
         },
       );
 
@@ -106,7 +109,7 @@ dashboardRouter.get('/dashboard/charts', async (req: Request, res: Response) => 
       logger.info({ orgId, isDemo: false, filtered: hasFilters(filters) }, 'Dashboard charts served');
 
       res.json({
-        data: { ...chartData, orgName, isDemo: false, demoState, datasetId, datasetName, datasetRowCount },
+        data: { ...chartData, orgName, isDemo: false, demoState, datasetId, datasetName, datasetRowCount, hasMarginSignal },
       });
       return;
     } catch (err) {
@@ -117,16 +120,17 @@ dashboardRouter.get('/dashboard/charts', async (req: Request, res: Response) => 
 
   // unauthenticated — seed org via dbAdmin (no tenant context)
   const orgId = await orgsQueries.getSeedOrgId();
-  const [chartData, datasets] = await Promise.all([
+  const [chartData, datasets, hasMarginSignal] = await Promise.all([
     chartsQueries.getChartData(orgId, filterArg, undefined, dbAdmin),
     datasetsQueries.getDatasetsByOrg(orgId, dbAdmin),
+    chartsQueries.getHasMarginSignal(orgId, dbAdmin),
   ]);
   const datasetId = datasets[0]?.id ?? null;
 
   logger.info({ orgId, isDemo: true, filtered: hasFilters(filters) }, 'Dashboard charts served');
 
   res.json({
-    data: { ...chartData, orgName: 'Sunrise Cafe', isDemo: true, demoState: 'seed_only', datasetId },
+    data: { ...chartData, orgName: 'Sunrise Cafe', isDemo: true, demoState: 'seed_only', datasetId, hasMarginSignal },
   });
 });
 

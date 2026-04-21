@@ -199,3 +199,52 @@ export async function getChartData(
 
   return { revenueTrend, expenseBreakdown, expenseTrend, monthlyComparison, yoyComparison, availableCategories, dateRange };
 }
+
+/**
+ * True when `computeMarginTrend` would emit for this org's rows. Mirrors the
+ * pipeline's predicate exactly: union of months with income or expenses ≥ 4,
+ * and both chronological halves carry non-zero revenue. Deterministic from
+ * row shape, so the dashboard can decide whether to show the break-even
+ * locked card before the AI summary streams.
+ */
+export async function getHasMarginSignal(
+  orgId: number,
+  client: typeof db | DbTransaction = db,
+  datasetId?: number,
+): Promise<boolean> {
+  const scope = scopeConditions(orgId, datasetId);
+
+  const rows = await client
+    .select({
+      bucket: sql<string>`to_char(date_trunc('month', ${dataRows.date}), 'YYYY-MM')`.as('bucket'),
+      parentCategory: dataRows.parentCategory,
+      total: sql<string>`sum(${dataRows.amount})`.as('total'),
+    })
+    .from(dataRows)
+    .where(and(...scope))
+    .groupBy(
+      sql`to_char(date_trunc('month', ${dataRows.date}), 'YYYY-MM')`,
+      dataRows.parentCategory,
+    );
+
+  const revenueByMonth = new Map<string, number>();
+  const expenseByMonth = new Map<string, number>();
+  for (const r of rows) {
+    const amt = parseFloat(r.total);
+    if (!Number.isFinite(amt)) continue;
+    if (r.parentCategory === 'Income') {
+      revenueByMonth.set(r.bucket, (revenueByMonth.get(r.bucket) ?? 0) + amt);
+    } else if (r.parentCategory === 'Expenses') {
+      expenseByMonth.set(r.bucket, (expenseByMonth.get(r.bucket) ?? 0) + amt);
+    }
+  }
+
+  const months = [...new Set([...revenueByMonth.keys(), ...expenseByMonth.keys()])].sort();
+  if (months.length < 4) return false;
+
+  const half = Math.floor(months.length / 2);
+  const priorRevenue = months.slice(0, half).reduce((s, m) => s + (revenueByMonth.get(m) ?? 0), 0);
+  const recentRevenue = months.slice(half).reduce((s, m) => s + (revenueByMonth.get(m) ?? 0), 0);
+
+  return priorRevenue > 0 && recentRevenue > 0;
+}
