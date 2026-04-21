@@ -159,8 +159,11 @@ orgFinancialsRouter.get('/financials/cash-forecast', async (req, res: Response) 
         month: pm.month,
         projectedNet: pm.projectedNet,
         projectedBalance: pm.projectedBalance,
-        // duplicate balance/asOfDate keys so the client can reuse CashBalancePoint
-        // directly — no transform layer needed in the dashboard for the chart
+        // Shortcut: duplicate balance/asOfDate so the client can spread each
+        // forecast row straight into `CashBalancePoint[]` without a transform.
+        // Couples this API response to a specific UI type — if CashBalancePoint
+        // ever grows (e.g., per-point confidence), move the field aliasing into
+        // the SWR fetcher and drop the duplicates here.
         balance: pm.projectedBalance,
         asOfDate: `${pm.month}-01`,
       })),

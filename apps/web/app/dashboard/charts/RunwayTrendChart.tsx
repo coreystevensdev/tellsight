@@ -58,10 +58,14 @@ function BalanceTooltip({ active, payload, label }: {
 export function RunwayTrendChart({ data, forecast, variant = 'full' }: RunwayTrendChartProps) {
   const reducedMotion = useReducedMotion();
 
-  const hasHistory = data.length >= 2;
+  // `hasHistoricalLine` gates whether we can draw a solid historical line —
+  // needs ≥2 points to form a segment. A single historical point still
+  // participates via the bridge into the forecast segment; it just doesn't
+  // stand on its own. `hasForecast` requires ≥1 projected point.
+  const hasHistoricalLine = data.length >= 2;
   const hasForecast = (forecast?.length ?? 0) >= 1;
 
-  if (!hasHistory && !hasForecast) {
+  if (!hasHistoricalLine && !hasForecast) {
     // single snapshot can't trend and no forecast to project from — same
     // empty state 8.2 shipped, widened to cover the "no forecast either" case
     return (
@@ -170,7 +174,7 @@ export function RunwayTrendChart({ data, forecast, variant = 'full' }: RunwayTre
               width={55}
             />
             <Tooltip content={<BalanceTooltip />} />
-            {hasHistory && hasForecast && lastHistorical && (
+            {hasHistoricalLine && hasForecast && lastHistorical && (
               <ReferenceLine
                 x={lastHistorical.asOfDate.slice(0, 10)}
                 stroke="var(--color-border)"

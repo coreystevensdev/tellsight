@@ -265,13 +265,17 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
     { revalidateOnFocus: false },
   );
 
-  // Three-month forward forecast — point estimate trajectory. Gated on same
-  // precondition as cash-history; the API suppresses and returns `data: null`
-  // when it can't form a forecast (stale balance, thin net history, etc.).
+  // Three-month forward forecast — point estimate trajectory. Client-side gate
+  // mirrors the server's suppression logic: the API returns `data: null` when
+  // cashOnHand/cashAsOfDate are missing, so we don't issue the round trip when
+  // we already know it can't form a forecast. Staleness + thin-history cases
+  // still reach the server since those need row context to evaluate.
   const { data: cashForecastResponse, mutate: refreshCashForecast } = useSWR<
     { forecast: { balance: number; asOfDate: string }[] } | null
   >(
-    hasAnyData && financials?.cashOnHand != null ? '/org/financials/cash-forecast?months=3' : null,
+    hasAnyData && financials?.cashOnHand != null && financials?.cashAsOfDate != null
+      ? '/org/financials/cash-forecast?months=3'
+      : null,
     async (key: string) => (await apiClient<
       { forecast: { balance: number; asOfDate: string }[] } | null
     >(key)).data,

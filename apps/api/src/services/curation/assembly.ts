@@ -12,6 +12,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_VERSION = 'v1.6';
 const usd = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
 
+// Signed currency with explicit `+` for positives — used for CashFlow and
+// Runway net figures where the reader expects to see direction at a glance.
+const usdSigned = (n: number) => `${n >= 0 ? '+' : '-'}$${usd.format(Math.abs(n))}`;
+
+// Signed currency that omits the `+` for positives — used for break-even gap
+// and forecast balances where a bare `$X` reads naturally and `-$X` flags
+// the negative case. Matches the editorial posture of the owner framing.
+const usdMinus = (n: number) => (n >= 0 ? `$${usd.format(n)}` : `-$${usd.format(Math.abs(n))}`);
+
 function loadTemplate(version: string): string {
   const templatePath = resolve(__dirname, 'config', 'prompt-templates', `${version}.md`);
   try {
@@ -64,30 +73,21 @@ function formatStat(insight: ScoredInsight): string {
     }
     case StatType.SeasonalProjection:
       return `- [${category}] Seasonal Projection: ${stat.details.projectedMonth} estimated at $${usd.format(stat.details.projectedAmount)} based on ${stat.details.basisMonths.join(', ')} (confidence: ${stat.details.confidence}, relevance: ${score.toFixed(2)})`;
-    case StatType.CashFlow: {
-      const n = stat.details.monthlyNet;
-      const signed = `${n >= 0 ? '+' : '-'}$${usd.format(Math.abs(n))}`;
-      return `- [Overall] Cash Flow: ${stat.details.direction} — net ${signed}/mo over ${stat.details.trailingMonths} months (${stat.details.monthsBurning} burning, relevance: ${score.toFixed(2)})`;
-    }
+    case StatType.CashFlow:
+      return `- [Overall] Cash Flow: ${stat.details.direction} — net ${usdSigned(stat.details.monthlyNet)}/mo over ${stat.details.trailingMonths} months (${stat.details.monthsBurning} burning, relevance: ${score.toFixed(2)})`;
     case StatType.Runway: {
-      const n = stat.details.monthlyNet;
-      const signedNet = `${n >= 0 ? '+' : '-'}$${usd.format(Math.abs(n))}`;
       const cash = `$${usd.format(stat.details.cashOnHand)}`;
       const asOf = stat.details.cashAsOfDate.slice(0, 10); // YYYY-MM-DD
-      return `- [Overall] Runway: ${stat.details.runwayMonths.toFixed(1)} months — net ${signedNet}/mo, cash ${cash} as of ${asOf} (confidence: ${stat.details.confidence}, relevance: ${score.toFixed(2)})`;
+      return `- [Overall] Runway: ${stat.details.runwayMonths.toFixed(1)} months — net ${usdSigned(stat.details.monthlyNet)}/mo, cash ${cash} as of ${asOf} (confidence: ${stat.details.confidence}, relevance: ${score.toFixed(2)})`;
     }
     case StatType.BreakEven: {
-      const gap = stat.details.gap;
-      const gapStr = gap >= 0 ? `$${usd.format(gap)}` : `-$${usd.format(Math.abs(gap))}`;
       const be = `$${usd.format(stat.details.breakEvenRevenue)}`;
       const cur = `$${usd.format(stat.details.currentMonthlyRevenue)}`;
-      return `- [Overall] Break-Even: ${be}/mo at ${stat.details.marginPercent.toFixed(1)}% margin — current revenue ${cur}/mo, gap ${gapStr} (confidence: ${stat.details.confidence}, relevance: ${score.toFixed(2)})`;
+      return `- [Overall] Break-Even: ${be}/mo at ${stat.details.marginPercent.toFixed(1)}% margin — current revenue ${cur}/mo, gap ${usdMinus(stat.details.gap)} (confidence: ${stat.details.confidence}, relevance: ${score.toFixed(2)})`;
     }
     case StatType.CashForecast: {
-      const fmt = (b: number) =>
-        b >= 0 ? `$${usd.format(b)}` : `-$${usd.format(Math.abs(b))}`;
       const chain = [stat.details.startingBalance, ...stat.details.projectedMonths.map((p) => p.projectedBalance)]
-        .map(fmt)
+        .map(usdMinus)
         .join(' → ');
       const crossing = stat.details.crossesZeroAtMonth !== null
         ? ` — balance crosses zero around month ${stat.details.crossesZeroAtMonth}`

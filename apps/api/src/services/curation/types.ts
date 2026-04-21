@@ -80,10 +80,14 @@ export interface SeasonalProjectionDetails {
 
 // Net cash flow over a trailing window. Negative = burning, positive = surplus.
 // MonthlyNet is signed — the prompt layer interprets direction for the owner.
+// `break_even` isn't emitted — computation.ts applies a 5%-of-avg-revenue
+// suppression band (see `0.05 * avgMonthlyRevenue` in computeCashFlow) that
+// returns [] instead of labeling the stat break-even — so the literal is
+// intentionally absent from the union.
 export interface CashFlowDetails {
   monthlyNet: number;
   trailingMonths: number;
-  direction: 'burning' | 'surplus' | 'break_even';
+  direction: 'burning' | 'surplus';
   monthsBurning: number;
   recentMonths: { month: string; revenue: number; expenses: number; net: number }[];
 }

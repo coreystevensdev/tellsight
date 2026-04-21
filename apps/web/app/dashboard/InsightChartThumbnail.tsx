@@ -30,10 +30,13 @@ export function InsightChartThumbnail({
   if (!config) return null;
 
   const accessibleName = `Open ${config.label} drill-down`;
-  // Delegate empty-state handling to RunwayTrendChart itself — it renders
-  // "more history needed" when both data and forecast are empty.
+  // Route runway/cash_forecast to RunwayTrendChart whenever the parent has
+  // even attempted to fetch either source (non-undefined props). Empty arrays
+  // still route through — RunwayTrendChart owns its own "more history needed"
+  // placeholder so the branching logic stays in one place.
   const showRunwayChart =
-    (statId === 'runway' || statId === 'cash_forecast') && (cashHistory !== undefined || cashForecast !== undefined);
+    (statId === 'runway' || statId === 'cash_forecast') &&
+    (cashHistory !== undefined || cashForecast !== undefined);
 
   return (
     <button

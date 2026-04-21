@@ -1148,6 +1148,32 @@ describe('computeCashForecast', () => {
     ]);
   });
 
+  it('non-contiguous basis months still produce a valid forecast (gap months treated as even steps)', () => {
+    // Business with a zero-revenue gap in March — monthlyNetsWindow drops it.
+    // Regression treats the remaining 5 months as evenly spaced. Documents the
+    // limitation: the slope reflects the trend over observed months, projected
+    // forward as if the next three are also non-gap.
+    const months = ['2026-01', '2026-02', '2026-04', '2026-05', '2026-06'];
+    const nets = [-5000, -5500, -6000, -6500, -7000];
+    const result = computeCashForecast(
+      [burningCashFlow()],
+      { cashOnHand: 30_000, cashAsOfDate: freshCashDate },
+      { months, nets },
+      NOW,
+    );
+
+    expect(result).toHaveLength(1);
+    const d = result[0]!.details;
+    expect(d.projectedMonths).toHaveLength(3);
+    expect(d.projectedMonths[0]!.month).toBe('2026-07'); // next calendar month after last basis
+    // Inputs -5000, -5500, -6000, -6500, -7000 at indices 0..4 fit exactly to
+    // slope=-500, intercept=-5000 under least-squares. Asserting the precise
+    // value pins the "gap months treated as even steps" contract — if
+    // monthlyNetsWindow's gap-drop behavior ever changes, this test fails.
+    expect(d.slope).toBeCloseTo(-500, 0);
+    expect(d.intercept).toBeCloseTo(-5000, 0);
+  });
+
   it('forecast details shape carries only scalars, ISO strings, month keys, and enum — no row leak', () => {
     const result = computeCashForecast(
       [burningCashFlow()],

@@ -35,9 +35,20 @@ describe('InsightChartThumbnail', () => {
     expect(screen.getByRole('img', { name: /cash balance over time/i })).toBeInTheDocument();
   });
 
-  it('falls back to a generic affordance when runway has insufficient history', () => {
+  it('delegates empty-state rendering to RunwayTrendChart for runway with no data', () => {
+    // cashHistory=[] + no forecast → RunwayTrendChart renders its own
+    // "more history needed" placeholder. Verifies the delegation, not
+    // a thumbnail-local fallback string.
     render(<InsightChartThumbnail statId="runway" onOpen={() => {}} cashHistory={[]} />);
     expect(screen.getByText(/more history needed/i)).toBeInTheDocument();
+  });
+
+  it('renders the generic "Tap to open chart" affordance for mapped stats without dedicated thumbnail data', () => {
+    // statId='trend' maps to RevenueChart but the thumbnail doesn't have a
+    // lightweight variant for it, so the branch at InsightChartThumbnail.tsx
+    // falls through to the affordance text.
+    render(<InsightChartThumbnail statId="trend" onOpen={() => {}} />);
+    expect(screen.getByText(/tap to open chart/i)).toBeInTheDocument();
   });
 
   it('renders the combined chart for cash_forecast when forecast is present', () => {
