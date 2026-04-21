@@ -455,3 +455,112 @@ describe('scoreInsights — BreakEven scoring', () => {
     expect(ranked!.score).toBeCloseTo(0.848, 4);
   });
 });
+
+describe('scoreInsights — CashForecast scoring', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.resetModules();
+  });
+
+  function cashForecastStat(crossesZeroAtMonth: number | null): ComputedStat {
+    return {
+      statType: StatType.CashForecast,
+      category: null,
+      value: crossesZeroAtMonth !== null ? -5_000 : 20_000,
+      details: {
+        startingBalance: 30_000,
+        asOfDate: '2026-06-01T00:00:00Z',
+        method: 'linear_regression',
+        slope: -10_000,
+        intercept: -5_000,
+        basisMonths: ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06'],
+        basisValues: [-5000, -7000, -9000, -11000, -13000, -15000],
+        projectedMonths: [],
+        crossesZeroAtMonth,
+        confidence: 'high',
+      },
+    };
+  }
+
+  it('crosses-zero forecast hits the exact 0.8775 score under default weights', async () => {
+    mockConfig(validConfig);
+    const { scoreInsights } = await import('./scoring.js');
+
+    const [ranked] = scoreInsights([cashForecastStat(2)]);
+    // 0.35 × 0.85 + 0.40 × 0.92 + 0.25 × 0.85 = 0.2975 + 0.368 + 0.2125 = 0.8780 (rounding)
+    expect(ranked!.score).toBeCloseTo(0.8780, 4);
+    expect(ranked!.breakdown).toEqual({
+      novelty: 0.85,
+      actionability: 0.92,
+      specificity: 0.85,
+    });
+  });
+
+  it('balance-holds forecast (crossesZero === null) drops to reassuring band', async () => {
+    mockConfig(validConfig);
+    const { scoreInsights } = await import('./scoring.js');
+
+    const [ranked] = scoreInsights([cashForecastStat(null)]);
+    expect(ranked!.breakdown).toEqual({
+      novelty: 0.65,
+      actionability: 0.55,
+      specificity: 0.85,
+    });
+  });
+
+  it('monotonicity: runway critical > cashforecast crosses-zero > cashflow burning > breakeven gap-positive', async () => {
+    mockConfig({ ...validConfig, topN: 10 });
+    const { scoreInsights } = await import('./scoring.js');
+
+    const runwayCritical: ComputedStat = {
+      statType: StatType.Runway,
+      category: null,
+      value: 3,
+      details: {
+        cashOnHand: 15000,
+        monthlyNet: -5000,
+        runwayMonths: 3,
+        cashAsOfDate: '2026-04-20T00:00:00.000Z',
+        confidence: 'high',
+      },
+    };
+    const cashFlowBurning: ComputedStat = {
+      statType: StatType.CashFlow,
+      category: null,
+      value: -5000,
+      details: {
+        monthlyNet: -5000,
+        trailingMonths: 3,
+        direction: 'burning',
+        monthsBurning: 3,
+        recentMonths: [],
+      },
+    };
+    const breakEvenGapPositive: ComputedStat = {
+      statType: StatType.BreakEven,
+      category: null,
+      value: 75_000,
+      details: {
+        monthlyFixedCosts: 15_000,
+        marginPercent: 20,
+        breakEvenRevenue: 75_000,
+        currentMonthlyRevenue: 50_000,
+        gap: 25_000,
+        confidence: 'high',
+      },
+    };
+    const forecast = cashForecastStat(2);
+
+    const insights = scoreInsights([runwayCritical, forecast, cashFlowBurning, breakEvenGapPositive]);
+    const rw = insights.find((i) => i.stat.statType === StatType.Runway)!;
+    const cf = insights.find((i) => i.stat.statType === StatType.CashForecast)!;
+    const cfl = insights.find((i) => i.stat.statType === StatType.CashFlow)!;
+    const be = insights.find((i) => i.stat.statType === StatType.BreakEven)!;
+
+    // Documented hierarchy — if this flips, a weight was tuned and the
+    // rationales in computation.ts and scoring.ts need review.
+    expect(rw.score).toBeGreaterThan(cf.score);
+    expect(cf.score).toBeGreaterThan(cfl.score);
+    expect(cfl.score).toBeGreaterThan(be.score);
+  });
+});

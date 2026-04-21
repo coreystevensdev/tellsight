@@ -39,4 +39,39 @@ describe('InsightChartThumbnail', () => {
     render(<InsightChartThumbnail statId="runway" onOpen={() => {}} cashHistory={[]} />);
     expect(screen.getByText(/more history needed/i)).toBeInTheDocument();
   });
+
+  it('renders the combined chart for cash_forecast when forecast is present', () => {
+    render(
+      <InsightChartThumbnail
+        statId="cash_forecast"
+        onOpen={() => {}}
+        cashHistory={[
+          { balance: 40_000, asOfDate: '2026-06-01T00:00:00Z' },
+          { balance: 35_000, asOfDate: '2026-05-01T00:00:00Z' },
+        ]}
+        cashForecast={[
+          { balance: 30_000, asOfDate: '2026-07-01' },
+          { balance: 20_000, asOfDate: '2026-08-01' },
+          { balance: 10_000, asOfDate: '2026-09-01' },
+        ]}
+      />,
+    );
+    expect(screen.getByRole('img', { name: /cash balance/i })).toBeInTheDocument();
+  });
+
+  it('renders a forecast-only chart when cashHistory is empty but forecast has points', () => {
+    render(
+      <InsightChartThumbnail
+        statId="cash_forecast"
+        onOpen={() => {}}
+        cashHistory={[{ balance: 40_000, asOfDate: '2026-06-01T00:00:00Z' }]}
+        cashForecast={[
+          { balance: 30_000, asOfDate: '2026-07-01' },
+          { balance: 20_000, asOfDate: '2026-08-01' },
+          { balance: 10_000, asOfDate: '2026-09-01' },
+        ]}
+      />,
+    );
+    expect(screen.getByRole('img', { name: /cash balance/i })).toBeInTheDocument();
+  });
 });

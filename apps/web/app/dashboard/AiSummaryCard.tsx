@@ -39,6 +39,7 @@ interface AiSummaryCardProps {
   onExportPdf?: () => Promise<void>;
   pdfStatus?: 'idle' | 'generating' | 'done' | 'error';
   cashHistory?: CashBalancePoint[];
+  cashForecast?: CashBalancePoint[];
   className?: string;
 }
 
@@ -104,10 +105,11 @@ interface SummaryTextProps {
   bindings?: StatBinding[];
   onOpenStat?: (statId: string, paragraphIndex: number) => void;
   cashHistory?: CashBalancePoint[];
+  cashForecast?: CashBalancePoint[];
   isMobile?: boolean;
 }
 
-function SummaryText({ text, bindings, onOpenStat, cashHistory, isMobile }: SummaryTextProps) {
+function SummaryText({ text, bindings, onOpenStat, cashHistory, cashForecast, isMobile }: SummaryTextProps) {
   const paragraphs = text.split('\n\n').filter(Boolean);
   const bindingByIndex = new Map<number, string>();
   for (const b of bindings ?? []) bindingByIndex.set(b.paragraphIndex, b.statId);
@@ -127,6 +129,7 @@ function SummaryText({ text, bindings, onOpenStat, cashHistory, isMobile }: Summ
                   <InsightChartThumbnail
                     statId={statId}
                     cashHistory={cashHistory}
+                    cashForecast={cashForecast}
                     onOpen={() => onOpenStat(statId, i)}
                   />
                 )}
@@ -303,6 +306,7 @@ export function AiSummaryCard({
   onExportPdf,
   pdfStatus,
   cashHistory,
+  cashForecast,
   className,
 }: AiSummaryCardProps) {
   const [refreshing, setRefreshing] = useState(false);
@@ -407,6 +411,7 @@ export function AiSummaryCard({
               bindings={bindings}
               onOpenStat={handleOpenStat}
               cashHistory={cashHistory}
+              cashForecast={cashForecast}
               isMobile={isMobile}
             />
             <PostCompletionFooter onToggleTransparency={onToggleTransparency} transparencyOpen={transparencyOpen} onShare={onShare} onShareDownload={onShareDownload} onShareCopy={onShareCopy} shareState={shareState} onShareCopyLink={onShareCopyLink} shareLinkStatus={shareLinkStatus} shareLinkClipboardFailed={shareLinkClipboardFailed} onExportPdf={onExportPdf} pdfStatus={pdfStatus} />
@@ -418,6 +423,7 @@ export function AiSummaryCard({
           statId={openStatId}
           paragraphText={openParagraphText}
           cashHistory={cashHistory}
+          cashForecast={cashForecast}
         />
       </div>
     );
@@ -468,6 +474,7 @@ export function AiSummaryCard({
             bindings={bindings}
             onOpenStat={handleOpenStat}
             cashHistory={cashHistory}
+            cashForecast={cashForecast}
             isMobile={isMobile}
           />
         </div>
@@ -482,6 +489,7 @@ export function AiSummaryCard({
           statId={openStatId}
           paragraphText={openParagraphText}
           cashHistory={cashHistory}
+          cashForecast={cashForecast}
         />
       </div>
     );
@@ -548,6 +556,7 @@ export function AiSummaryCard({
           bindings={isDone ? bindings : undefined}
           onOpenStat={isDone ? handleOpenStat : undefined}
           cashHistory={cashHistory}
+          cashForecast={cashForecast}
           isMobile={isMobile}
         />
         {isActive && <StreamingCursor />}
@@ -559,6 +568,7 @@ export function AiSummaryCard({
         statId={openStatId}
         paragraphText={openParagraphText}
         cashHistory={cashHistory}
+        cashForecast={cashForecast}
       />
     </div>
   );

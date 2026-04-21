@@ -16,6 +16,7 @@ export interface InsightChartSheetProps {
   statId: string | null;
   paragraphText?: string;
   cashHistory?: CashBalancePoint[];
+  cashForecast?: CashBalancePoint[];
   details?: StatDetailPair[];
 }
 
@@ -25,6 +26,7 @@ export function InsightChartSheet({
   statId,
   paragraphText,
   cashHistory,
+  cashForecast,
   details,
 }: InsightChartSheetProps) {
   const isMobile = useIsMobile();
@@ -52,8 +54,12 @@ export function InsightChartSheet({
           )}
 
           <div className="min-h-[220px]">
-            {statId === 'runway' && cashHistory ? (
-              <RunwayTrendChart data={cashHistory} variant="full" />
+            {(statId === 'runway' || statId === 'cash_forecast') && (cashHistory || cashForecast) ? (
+              <RunwayTrendChart
+                data={cashHistory ?? []}
+                forecast={cashForecast}
+                variant="full"
+              />
             ) : (
               <div className="flex h-[220px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
                 Open the dashboard to view the full {config.label.toLowerCase()} chart.

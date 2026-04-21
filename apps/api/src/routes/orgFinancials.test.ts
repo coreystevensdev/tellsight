@@ -5,6 +5,8 @@ const mockVerifyAccessToken = vi.fn();
 const mockGetOrgFinancials = vi.fn();
 const mockUpdateOrgFinancials = vi.fn();
 const mockGetCashBalanceHistory = vi.fn();
+const mockGetActiveDatasetId = vi.fn();
+const mockGetRowsByDataset = vi.fn();
 const mockTrackEvent = vi.fn();
 
 vi.mock('../services/auth/tokenService.js', () => ({
@@ -16,6 +18,12 @@ vi.mock('../db/queries/index.js', () => ({
     getOrgFinancials: mockGetOrgFinancials,
     updateOrgFinancials: mockUpdateOrgFinancials,
     getCashBalanceHistory: mockGetCashBalanceHistory,
+  },
+  orgsQueries: {
+    getActiveDatasetId: mockGetActiveDatasetId,
+  },
+  dataRowsQueries: {
+    getRowsByDataset: mockGetRowsByDataset,
   },
 }));
 
@@ -254,6 +262,124 @@ describe('GET /org/financials/cash-history', () => {
       headers: authHeaders,
     });
 
+    expect(res.status).toBe(400);
+  });
+});
+
+// Build a 6-month burning-business row set that will produce a valid forecast
+function burningRows() {
+  const rows: Array<Record<string, unknown>> = [];
+  let id = 1000;
+  for (let m = 1; m <= 6; m++) {
+    rows.push({
+      id: id++,
+      orgId: 10,
+      datasetId: 7,
+      sourceType: 'csv',
+      category: 'Revenue',
+      parentCategory: 'Income',
+      date: new Date(2026, m - 1, 15, 12),
+      amount: '10000.00',
+      label: null,
+      metadata: null,
+      createdAt: new Date(),
+    });
+    rows.push({
+      id: id++,
+      orgId: 10,
+      datasetId: 7,
+      sourceType: 'csv',
+      category: 'COGS',
+      parentCategory: 'Expenses',
+      date: new Date(2026, m - 1, 15, 12),
+      amount: '15000.00',
+      label: null,
+      metadata: null,
+      createdAt: new Date(),
+    });
+  }
+  return rows;
+}
+
+describe('GET /org/financials/cash-forecast', () => {
+  it('returns forecast payload when cashOnHand + rows yield a valid projection', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload());
+    mockGetOrgFinancials.mockResolvedValueOnce({
+      cashOnHand: 40_000,
+      cashAsOfDate: new Date().toISOString(),
+    });
+    mockGetActiveDatasetId.mockResolvedValueOnce(7);
+    mockGetRowsByDataset.mockResolvedValueOnce(burningRows());
+
+    const res = await fetch(`${baseUrl}/org/financials/cash-forecast?months=3`, { headers: authHeaders });
+    const json = (await res.json()) as {
+      data: {
+        startingBalance: number;
+        forecast: Array<{ balance: number; asOfDate: string; month: string }>;
+        method: string;
+        confidence: string;
+      } | null;
+    };
+
+    expect(res.status).toBe(200);
+    expect(json.data).not.toBeNull();
+    expect(json.data!.startingBalance).toBe(40_000);
+    expect(json.data!.forecast).toHaveLength(3);
+    expect(json.data!.method).toBe('linear_regression');
+    expect(mockTrackEvent).toHaveBeenCalledWith(
+      10,
+      5,
+      'forecast.requested',
+      expect.objectContaining({ method: 'linear_regression' }),
+    );
+  });
+
+  it('returns data: null when cashOnHand is absent', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload());
+    mockGetOrgFinancials.mockResolvedValueOnce({}); // no cashOnHand
+    mockGetActiveDatasetId.mockResolvedValueOnce(7);
+    mockGetRowsByDataset.mockResolvedValueOnce(burningRows());
+
+    const res = await fetch(`${baseUrl}/org/financials/cash-forecast`, { headers: authHeaders });
+    const json = (await res.json()) as { data: unknown };
+
+    expect(res.status).toBe(200);
+    expect(json.data).toBeNull();
+    expect(mockTrackEvent).not.toHaveBeenCalled();
+  });
+
+  it('returns data: null when the org has no active dataset', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload());
+    mockGetOrgFinancials.mockResolvedValueOnce({
+      cashOnHand: 40_000,
+      cashAsOfDate: new Date().toISOString(),
+    });
+    mockGetActiveDatasetId.mockResolvedValueOnce(null);
+
+    const res = await fetch(`${baseUrl}/org/financials/cash-forecast`, { headers: authHeaders });
+    const json = (await res.json()) as { data: unknown };
+
+    expect(res.status).toBe(200);
+    expect(json.data).toBeNull();
+    expect(mockGetRowsByDataset).not.toHaveBeenCalled();
+  });
+
+  it('rejects unauthorized requests', async () => {
+    const res = await fetch(`${baseUrl}/org/financials/cash-forecast`);
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects invalid months parameter (too high)', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload());
+
+    const res = await fetch(`${baseUrl}/org/financials/cash-forecast?months=4`, { headers: authHeaders });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects invalid months parameter (non-numeric)', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload());
+
+    const res = await fetch(`${baseUrl}/org/financials/cash-forecast?months=abc`, { headers: authHeaders });
     expect(res.status).toBe(400);
   });
 });

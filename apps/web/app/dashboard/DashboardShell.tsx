@@ -259,11 +259,25 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
   // Cash history feeds the runway thumbnail in Story 8.5. We only fetch once
   // the user has data (demo mode datasets get no runway anyway) and only when
   // they've saved at least one balance (no history = no chart).
-  const { data: cashHistory } = useSWR<{ balance: number; asOfDate: string }[]>(
+  const { data: cashHistory, mutate: refreshCashHistory } = useSWR<{ balance: number; asOfDate: string }[]>(
     hasAnyData && financials?.cashOnHand != null ? '/org/financials/cash-history?limit=24' : null,
     async (key: string) => (await apiClient<{ balance: number; asOfDate: string }[]>(key)).data,
     { revalidateOnFocus: false },
   );
+
+  // Three-month forward forecast — point estimate trajectory. Gated on same
+  // precondition as cash-history; the API suppresses and returns `data: null`
+  // when it can't form a forecast (stale balance, thin net history, etc.).
+  const { data: cashForecastResponse, mutate: refreshCashForecast } = useSWR<
+    { forecast: { balance: number; asOfDate: string }[] } | null
+  >(
+    hasAnyData && financials?.cashOnHand != null ? '/org/financials/cash-forecast?months=3' : null,
+    async (key: string) => (await apiClient<
+      { forecast: { balance: number; asOfDate: string }[] } | null
+    >(key)).data,
+    { revalidateOnFocus: false },
+  );
+  const cashForecast = cashForecastResponse?.forecast;
 
   // Gate on `financials !== undefined` so the Locked Insight card doesn't flash
   // during initial SWR fetch for users who already have a cash balance set.
@@ -279,7 +293,9 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
       method: 'PUT',
       body: JSON.stringify({ cashOnHand: value }),
     });
-    await refreshFinancials();
+    // revalidate all three keys — cash-history and cash-forecast both depend
+    // on the updated balance; this closes the latent staleness gap from 8.2
+    await Promise.all([refreshFinancials(), refreshCashHistory(), refreshCashForecast()]);
     router.refresh();
   }
 
@@ -288,7 +304,7 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
       method: 'PUT',
       body: JSON.stringify({ monthlyFixedCosts: value }),
     });
-    await refreshFinancials();
+    await Promise.all([refreshFinancials(), refreshCashHistory(), refreshCashForecast()]);
     router.refresh();
   }
 
@@ -313,6 +329,7 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
       onExportPdf={exportPdf}
       pdfStatus={pdfStatus}
       cashHistory={cashHistory}
+      cashForecast={cashForecast}
     />
   );
 

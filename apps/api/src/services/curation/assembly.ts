@@ -9,7 +9,7 @@ import type { BusinessProfile } from 'shared/types';
 import { getIndustryBenchmarks } from './config/industry-benchmarks.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_VERSION = 'v1.5';
+const DEFAULT_VERSION = 'v1.6';
 const usd = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
 
 function loadTemplate(version: string): string {
@@ -82,6 +82,17 @@ function formatStat(insight: ScoredInsight): string {
       const be = `$${usd.format(stat.details.breakEvenRevenue)}`;
       const cur = `$${usd.format(stat.details.currentMonthlyRevenue)}`;
       return `- [Overall] Break-Even: ${be}/mo at ${stat.details.marginPercent.toFixed(1)}% margin — current revenue ${cur}/mo, gap ${gapStr} (confidence: ${stat.details.confidence}, relevance: ${score.toFixed(2)})`;
+    }
+    case StatType.CashForecast: {
+      const fmt = (b: number) =>
+        b >= 0 ? `$${usd.format(b)}` : `-$${usd.format(Math.abs(b))}`;
+      const chain = [stat.details.startingBalance, ...stat.details.projectedMonths.map((p) => p.projectedBalance)]
+        .map(fmt)
+        .join(' → ');
+      const crossing = stat.details.crossesZeroAtMonth !== null
+        ? ` — balance crosses zero around month ${stat.details.crossesZeroAtMonth}`
+        : '';
+      return `- [Overall] Cash Forecast: balance ${chain} over next 3 months${crossing} (method: ${stat.details.method}, confidence: ${stat.details.confidence}, relevance: ${score.toFixed(2)})`;
     }
   }
 }

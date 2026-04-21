@@ -122,6 +122,21 @@ function classifyStatNumbers(stat: ComputedStat, sets: AllowedSets): void {
       addC(stat.details.monthlyFixedCosts);
       addC(stat.details.currentMonthlyRevenue);
       return;
+    case StatType.CashForecast:
+      // startingBalance and each projected balance anchor the chart's prose
+      // rendering. projectedNet values cover prose like "burning about $10k/mo
+      // going forward" — strip sign matching CashFlow's pattern. Negative
+      // balances are pushed as absolute values too so "-$12,000" matches on
+      // the magnitude via the currency regex.
+      addC(stat.details.startingBalance);
+      for (const pm of stat.details.projectedMonths) {
+        addC(pm.projectedBalance);
+        addC(Math.abs(pm.projectedBalance));
+        addC(Math.abs(pm.projectedNet));
+      }
+      // Deliberately NOT pushed: slope, intercept (regression coefficients the
+      // LLM should not quote — a fabricated slope is a real hallucination).
+      return;
   }
 }
 

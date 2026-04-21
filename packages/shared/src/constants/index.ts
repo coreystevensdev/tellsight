@@ -63,6 +63,7 @@ export const ANALYTICS_EVENTS = {
   DIGEST_TEASER_SENT: 'digest.teaser_sent',
   DIGEST_PREFERENCE_CHANGED: 'digest.preference_changed',
   FINANCIALS_UPDATED: 'financials.updated',
+  FORECAST_REQUESTED: 'forecast.requested',
   RUNWAY_ENABLED: 'runway.enabled',
 } as const;
 

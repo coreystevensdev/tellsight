@@ -72,7 +72,7 @@ describe('assemblePrompt', () => {
     expect(result.metadata.statTypes).toEqual(['anomaly', 'trend', 'total']);
     expect(result.metadata.categoryCount).toBe(2);
     expect(result.metadata.insightCount).toBe(3);
-    expect(result.metadata.promptVersion).toBe('v1.5');
+    expect(result.metadata.promptVersion).toBe('v1.6');
     expect(result.metadata.generatedAt).toBeTruthy();
     expect(result.metadata.scoringWeights).toEqual({
       novelty: 0.9,
@@ -169,5 +169,80 @@ describe('assemblePrompt', () => {
     const result = assemblePrompt(duplicateInsights);
 
     expect(result.metadata.statTypes).toEqual(['anomaly']);
+  });
+
+  it('formats CashForecast with crossesZeroAtMonth inline and arrow-chained balances', async () => {
+    const forecastInsight: ScoredInsight = {
+      stat: {
+        statType: StatType.CashForecast,
+        category: null,
+        value: -5_000,
+        details: {
+          startingBalance: 58_000,
+          asOfDate: '2026-06-01T00:00:00.000Z',
+          method: 'linear_regression',
+          slope: -17_000,
+          intercept: 0,
+          basisMonths: ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06'],
+          basisValues: [-15000, -16000, -17000, -18000, -19000, -20000],
+          projectedMonths: [
+            { month: '2026-07', projectedNet: -17_000, projectedBalance: 41_000 },
+            { month: '2026-08', projectedNet: -18_000, projectedBalance: 23_000 },
+            { month: '2026-09', projectedNet: -18_000, projectedBalance: 5_000 },
+          ],
+          crossesZeroAtMonth: null,
+          confidence: 'high',
+        },
+      },
+      score: 0.88,
+      breakdown: { novelty: 0.85, actionability: 0.92, specificity: 0.85 },
+    };
+
+    const { assemblePrompt } = await import('./assembly.js');
+    const result = assemblePrompt([forecastInsight]);
+
+    expect(result.prompt).toContain('Cash Forecast: balance $58,000 → $41,000 → $23,000 → $5,000');
+    expect(result.prompt).toContain('method: linear_regression');
+    expect(result.prompt).toContain('confidence: high');
+  });
+
+  it('CashForecast with crossesZeroAtMonth !== null appends the crossing phrase', async () => {
+    const forecastInsight: ScoredInsight = {
+      stat: {
+        statType: StatType.CashForecast,
+        category: null,
+        value: -12_000,
+        details: {
+          startingBalance: 25_000,
+          asOfDate: '2026-06-01T00:00:00.000Z',
+          method: 'linear_regression',
+          slope: 0,
+          intercept: -10_000,
+          basisMonths: ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06'],
+          basisValues: [-10000, -10000, -10000, -10000, -10000, -10000],
+          projectedMonths: [
+            { month: '2026-07', projectedNet: -10_000, projectedBalance: 15_000 },
+            { month: '2026-08', projectedNet: -10_000, projectedBalance: 5_000 },
+            { month: '2026-09', projectedNet: -10_000, projectedBalance: -5_000 },
+          ],
+          crossesZeroAtMonth: 3,
+          confidence: 'high',
+        },
+      },
+      score: 0.88,
+      breakdown: { novelty: 0.85, actionability: 0.92, specificity: 0.85 },
+    };
+
+    const { assemblePrompt } = await import('./assembly.js');
+    const result = assemblePrompt([forecastInsight]);
+
+    expect(result.prompt).toContain('→ -$5,000');
+    expect(result.prompt).toContain('balance crosses zero around month 3');
+  });
+
+  it('defaults to v1.6 prompt version', async () => {
+    const { assemblePrompt } = await import('./assembly.js');
+    const result = assemblePrompt([fixtureInsights[0]!]);
+    expect(result.metadata.promptVersion).toBe('v1.6');
   });
 });

@@ -12,6 +12,7 @@ export const StatType = {
   CashFlow: 'cash_flow',
   Runway: 'runway',
   BreakEven: 'break_even',
+  CashForecast: 'cash_forecast',
 } as const;
 
 export type StatType = (typeof StatType)[keyof typeof StatType];
@@ -110,6 +111,32 @@ export interface BreakEvenDetails {
   confidence: 'high' | 'moderate' | 'low';
 }
 
+// One projected month in the cash-flow forecast. `projectedNet` is the regression's
+// prediction for net cash flow in that month; `projectedBalance` is the cumulative
+// running balance starting from today's cashOnHand.
+export interface ProjectedMonth {
+  month: string; // YYYY-MM
+  projectedNet: number;
+  projectedBalance: number;
+}
+
+// Three-month forward cash forecast. Linear regression on recent net change,
+// with a rolling-mean fallback when the regression is degenerate (flat input).
+// `crossesZeroAtMonth` is 1-indexed — the first projected month where the running
+// balance dips below zero — or null when balance holds across the window.
+export interface CashForecastDetails {
+  startingBalance: number;
+  asOfDate: string; // ISO
+  method: 'linear_regression' | 'rolling_mean';
+  slope: number;
+  intercept: number;
+  basisMonths: string[];
+  basisValues: number[];
+  projectedMonths: ProjectedMonth[];
+  crossesZeroAtMonth: number | null;
+  confidence: 'high' | 'moderate' | 'low';
+}
+
 interface BaseComputedStat {
   category: string | null;
   value: number;
@@ -171,6 +198,11 @@ export interface BreakEvenStat extends BaseComputedStat {
   details: BreakEvenDetails;
 }
 
+export interface CashForecastStat extends BaseComputedStat {
+  statType: 'cash_forecast';
+  details: CashForecastDetails;
+}
+
 export type ComputedStat =
   | TotalStat
   | AverageStat
@@ -182,7 +214,8 @@ export type ComputedStat =
   | SeasonalProjectionStat
   | CashFlowStat
   | RunwayStat
-  | BreakEvenStat;
+  | BreakEvenStat
+  | CashForecastStat;
 
 export interface ScoredInsight {
   stat: ComputedStat;

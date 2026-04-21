@@ -14,6 +14,8 @@ import type {
   CashFlowStat,
   RunwayStat,
   BreakEvenStat,
+  CashForecastStat,
+  ProjectedMonth,
   MarginTrendStat,
   MarginTrendDetails,
 } from './types.js';
@@ -412,7 +414,7 @@ function computeSeasonalProjection(rows: DataRow[]): ComputedStat[] {
 // Trailing-window cash flow. Uses the same monthly bucket pattern as
 // computeMarginTrend, but looks at the *recent* window because cash pressure
 // is about now, not historical average. Signed monthlyNet — negative = burning.
-function computeCashFlow(rows: DataRow[], trailingMonths = 3): CashFlowStat[] {
+export function computeCashFlow(rows: DataRow[], trailingMonths = 3): CashFlowStat[] {
   const revenueByMonth = new Map<string, number>();
   const expenseByMonth = new Map<string, number>();
 
@@ -610,6 +612,171 @@ export function computeBreakEven(
   }];
 }
 
+/**
+ * Aggregates rows into a trailing `windowSize` months of net cash flow
+ * (revenue − expenses per month, income-only months excluded when revenue is
+ * zero — same gap-handling as computeCashFlow). Returns the most recent months
+ * in chronological order. This is the privacy seam for the forecast: rows only
+ * appear here, and the caller passes the scalar result into computeCashForecast.
+ */
+export function monthlyNetsWindow(
+  rows: DataRow[],
+  windowSize = 12,
+): { months: string[]; nets: number[] } {
+  const revenueByMonth = new Map<string, number>();
+  const expenseByMonth = new Map<string, number>();
+
+  for (const row of rows) {
+    const amt = parseAmount(row.amount);
+    if (amt === null) continue;
+
+    const key = `${row.date.getFullYear()}-${String(row.date.getMonth() + 1).padStart(2, '0')}`;
+    if (row.parentCategory === 'Income') {
+      revenueByMonth.set(key, (revenueByMonth.get(key) ?? 0) + amt);
+    } else if (row.parentCategory === 'Expenses') {
+      expenseByMonth.set(key, (expenseByMonth.get(key) ?? 0) + amt);
+    }
+  }
+
+  const allMonths = [...new Set([...revenueByMonth.keys(), ...expenseByMonth.keys()])].sort();
+
+  const months: string[] = [];
+  const nets: number[] = [];
+  for (const m of allMonths) {
+    const revenue = revenueByMonth.get(m) ?? 0;
+    if (revenue === 0) continue; // gap month — don't forecast on zero-revenue signal
+    const expenses = expenseByMonth.get(m) ?? 0;
+    months.push(m);
+    nets.push(revenue - expenses);
+  }
+
+  // trailing window — most recent up to windowSize
+  const start = Math.max(0, months.length - windowSize);
+  return { months: months.slice(start), nets: nets.slice(start) };
+}
+
+// `true` when any net is more than 2σ from the window mean — flags an outlier
+// month that should soften forecast confidence even with enough data points.
+function hasVolatileNets(values: number[]): boolean {
+  if (values.length < 2) return false;
+  const m = mean(values);
+  const std = standardDeviation(values);
+  if (std === 0) return false;
+  return values.some((v) => Math.abs(v - m) > 2 * std);
+}
+
+// Month arithmetic on YYYY-MM keys with December → January rollover. Mirrors
+// the inline pattern in computeSeasonalProjection; isolated here so a future
+// refactor can unify both sites without hunting for divergences.
+function nextMonthKey(yyyymm: string, delta: number): string {
+  const [y, m] = yyyymm.split('-').map(Number);
+  const monthIdx = (m! - 1) + delta;
+  const yearAdd = Math.floor(monthIdx / 12);
+  const nextMonth = ((monthIdx % 12) + 12) % 12;
+  return `${y! + yearAdd}-${String(nextMonth + 1).padStart(2, '0')}`;
+}
+
+/**
+ * Three-month forward forecast of cash balance, anchored on owner-provided
+ * cashOnHand. Regresses on monthly net change (not balance) so the per-month
+ * trend is the signal; the starting balance only shifts the y-intercept of
+ * the projected line. Falls back to a flat rolling mean when the regression
+ * is degenerate (all nets identical), which honestly reflects "no clear trend"
+ * without suppressing a useful forecast.
+ *
+ * Privacy boundary: signature takes aggregated scalars only — monthlyNets is
+ * the { months, nets } output of monthlyNetsWindow. No DataRow[] ever enters
+ * this function. Matches the 8.3 computeBreakEven boundary exactly.
+ *
+ * Suppression cases return [] — each a reason to say nothing rather than
+ * something misleading:
+ *   - No cash flow signal (CashFlow suppressed upstream)
+ *   - No cashOnHand, or zero balance (nowhere to start the trajectory)
+ *   - Missing cashAsOfDate (can't judge freshness)
+ *   - cashAsOfDate in the future (clock skew, typo, timezone bug)
+ *   - cashAsOfDate older than 180 days (projecting from stale data is wrong)
+ *   - Fewer than 3 basis months (regression on 2 points is a line)
+ */
+export function computeCashForecast(
+  cashFlowStats: CashFlowStat[],
+  financials: RunwayFinancials | null | undefined,
+  monthlyNets: { months: string[]; nets: number[] },
+  now: Date = new Date(),
+): CashForecastStat[] {
+  if (cashFlowStats.length === 0) return [];
+  if (!financials?.cashOnHand || financials.cashOnHand <= 0) return [];
+  if (!financials.cashAsOfDate) return [];
+
+  const asOf = new Date(financials.cashAsOfDate);
+  if (Number.isNaN(asOf.getTime())) return [];
+
+  const ageInDays = Math.floor((now.getTime() - asOf.getTime()) / DAY_MS);
+  if (ageInDays < 0) return [];
+  if (ageInDays > 180) return [];
+
+  const { months, nets } = monthlyNets;
+  if (months.length < 3) return [];
+
+  // linearRegression from simple-statistics takes [[x, y], ...] pairs.
+  const points: [number, number][] = nets.map((y, i) => [i, y]);
+  const reg = linearRegression(points);
+  let slope = reg.m;
+  let intercept = reg.b;
+  let method: 'linear_regression' | 'rolling_mean' = 'linear_regression';
+  if (!Number.isFinite(slope) || !Number.isFinite(intercept)) {
+    slope = 0;
+    intercept = mean(nets);
+    method = 'rolling_mean';
+  }
+
+  const startingBalance = financials.cashOnHand;
+  const n = months.length;
+  const projectedMonths: ProjectedMonth[] = [];
+  let runningBalance = startingBalance;
+
+  for (let offset = 1; offset <= 3; offset++) {
+    const t = n + offset - 1;
+    const projectedNet = Math.round(slope * t + intercept);
+    runningBalance = Math.round(runningBalance + projectedNet);
+    projectedMonths.push({
+      month: nextMonthKey(months[n - 1]!, offset),
+      projectedNet,
+      projectedBalance: runningBalance,
+    });
+  }
+
+  const crossIdx = projectedMonths.findIndex((pm) => pm.projectedBalance < 0);
+  const crossesZeroAtMonth: number | null = crossIdx === -1 ? null : crossIdx + 1;
+
+  // First-match rule table — expressed as data so the contract reads like AC #12.
+  const rules: Array<[boolean, 'high' | 'moderate' | 'low']> = [
+    [method === 'rolling_mean',                                        'low'],
+    [months.length < 6,                                                'low'],
+    [ageInDays > 90,                                                   'moderate'],
+    [months.length >= 6 && ageInDays <= 30 && !hasVolatileNets(nets),  'high'],
+    [true,                                                             'moderate'],
+  ];
+  const confidence = rules.find(([cond]) => cond)![1];
+
+  return [{
+    statType: StatType.CashForecast,
+    category: null,
+    value: runningBalance,
+    details: {
+      startingBalance,
+      asOfDate: financials.cashAsOfDate,
+      method,
+      slope,
+      intercept,
+      basisMonths: months,
+      basisValues: nets,
+      projectedMonths,
+      crossesZeroAtMonth,
+      confidence,
+    },
+  }];
+}
+
 export function computeStats(
   rows: DataRow[],
   opts?: {
@@ -642,6 +809,13 @@ export function computeStats(
     opts?.financials?.monthlyFixedCosts,
     currentMonthlyRevenue,
   );
+  const monthlyNets = monthlyNetsWindow(rows, 12);
+  const cashForecastStats = computeCashForecast(
+    cashFlowStats,
+    opts?.financials,
+    monthlyNets,
+    opts?.now,
+  );
 
   return [
     ...computeTotals(groups, allAmounts),
@@ -655,5 +829,6 @@ export function computeStats(
     ...cashFlowStats,
     ...runwayStats,
     ...breakEvenStats,
+    ...cashForecastStats,
   ];
 }

@@ -39,6 +39,7 @@ const STAT_TYPE_LABELS: Record<string, string> = {
   cash_flow: 'Cash Flow',
   runway: 'Runway',
   break_even: 'Break-Even',
+  cash_forecast: 'Cash Forecast',
 };
 
 function Badge({ children }: { children: React.ReactNode }) {

@@ -148,8 +148,8 @@ describe('runFullPipeline', () => {
     expect(aiSummariesQueries.storeSummary).toHaveBeenCalledWith(
       1, 1,
       'Fresh AI analysis.',
-      expect.objectContaining({ promptVersion: 'v1.5', insightCount: expect.any(Number) }),
-      'v1.5',
+      expect.objectContaining({ promptVersion: 'v1.6', insightCount: expect.any(Number) }),
+      'v1.6',
     );
   });
 
@@ -224,7 +224,7 @@ describe('cash flow end-to-end pipeline', () => {
 
     // metadata: cash_flow present, prompt version bumped
     expect(result.metadata.statTypes).toContain('cash_flow');
-    expect(result.metadata.promptVersion).toBe('v1.5');
+    expect(result.metadata.promptVersion).toBe('v1.6');
 
     // prompt: cash flow framing with signed monthly net
     expect(result.prompt).toMatch(/Cash Flow: burning/);
@@ -280,7 +280,7 @@ describe('runway end-to-end pipeline', () => {
     const result = assemblePrompt(insights);
 
     expect(result.metadata.statTypes).toContain('runway');
-    expect(result.metadata.promptVersion).toBe('v1.5');
+    expect(result.metadata.promptVersion).toBe('v1.6');
     expect(result.prompt).toMatch(/Runway:\s+3\.0\s+months/);
     expect(result.prompt).toContain('cash $15,000');
     expect(result.prompt).toContain('as of 2026-04-10');
@@ -355,7 +355,7 @@ describe('break-even end-to-end pipeline', () => {
     const result = assemblePrompt(insights);
 
     expect(result.metadata.statTypes).toContain('break_even');
-    expect(result.metadata.promptVersion).toBe('v1.5');
+    expect(result.metadata.promptVersion).toBe('v1.6');
     expect(result.prompt).toMatch(/Break-Even:\s+\$75,000\/mo/);
     expect(result.prompt).toMatch(/at 20\.0% margin/);
     expect(result.prompt).toMatch(/gap \$25,000/);
@@ -459,5 +459,103 @@ describe('chart-tag pipeline integration', () => {
     const cleaned = stripInvalidStatRefs(summary, ['ghost']);
 
     expect(cleaned).toBe('<stat id="runway"/> kept and  stripped.');
+  });
+});
+
+describe('cash forecast end-to-end pipeline', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('surfaces cash forecast in prompt and metadata alongside runway when both are present', async () => {
+    // 8 months of burning data, fresh cashOnHand, monthlyFixedCosts set.
+    // Revenue 10k/mo, expenses 15k/mo → margin -50% (suppresses margin trend
+    // but not needed for forecast). Net -5k/mo, cashOnHand 50k, asOf 15 days ago.
+    const burningRows = [];
+    let id = 600;
+    for (let m = 1; m <= 8; m++) {
+      burningRows.push({
+        id: id++, orgId: 1, datasetId: 1, sourceType: 'csv' as const,
+        category: 'Revenue', parentCategory: 'Income',
+        date: new Date(2026, m - 1, 15, 12), amount: '10000.00',
+        label: 'Acme Corp invoice', metadata: null, createdAt: new Date(),
+      });
+      burningRows.push({
+        id: id++, orgId: 1, datasetId: 1, sourceType: 'csv' as const,
+        category: 'Payroll', parentCategory: 'Expenses',
+        date: new Date(2026, m - 1, 15, 12), amount: '15000.00',
+        label: 'Main St landlord wire', metadata: null, createdAt: new Date(),
+      });
+    }
+
+    const now = new Date(2026, 8, 15, 12); // Sep 15 2026 local
+    const staleCashDate = new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000);
+
+    const { computeStats } = await import('./computation.js');
+    const { scoreInsights } = await import('./scoring.js');
+    const { assemblePrompt } = await import('./assembly.js');
+
+    const stats = computeStats(burningRows as never, {
+      financials: {
+        cashOnHand: 50_000,
+        cashAsOfDate: staleCashDate.toISOString(),
+        monthlyFixedCosts: 15_000,
+      },
+      now,
+    });
+    const insights = scoreInsights(stats);
+    const result = assemblePrompt(insights);
+
+    // Forecast emits
+    expect(result.metadata.statTypes).toContain('cash_forecast');
+    expect(result.metadata.promptVersion).toBe('v1.6');
+    expect(result.prompt).toMatch(/Cash Forecast: balance \$/);
+
+    // Runway also emits from the same fixture — both should be ranked in.
+    expect(result.metadata.statTypes).toContain('runway');
+
+    // Ranking guard: runway score > cash_forecast score when runway is <6 months
+    const ranked = insights.filter(
+      (i) => i.stat.statType === 'runway' || i.stat.statType === 'cash_forecast',
+    );
+    const runway = ranked.find((i) => i.stat.statType === 'runway')!;
+    const forecast = ranked.find((i) => i.stat.statType === 'cash_forecast')!;
+    expect(runway.score).toBeGreaterThan(forecast.score);
+
+    // Privacy regression — row labels must not leak into the assembled prompt
+    for (const leak of ['Acme Corp invoice', 'Main St landlord wire']) {
+      expect(result.prompt).not.toContain(leak);
+    }
+  });
+
+  it('suppresses forecast when cashOnHand is absent but still emits other stats', async () => {
+    const burningRows = [];
+    let id = 700;
+    for (let m = 1; m <= 6; m++) {
+      burningRows.push({
+        id: id++, orgId: 1, datasetId: 1, sourceType: 'csv' as const,
+        category: 'Revenue', parentCategory: 'Income',
+        date: new Date(2026, m - 1, 15, 12), amount: '10000.00',
+        label: null, metadata: null, createdAt: new Date(),
+      });
+      burningRows.push({
+        id: id++, orgId: 1, datasetId: 1, sourceType: 'csv' as const,
+        category: 'Rent', parentCategory: 'Expenses',
+        date: new Date(2026, m - 1, 15, 12), amount: '15000.00',
+        label: null, metadata: null, createdAt: new Date(),
+      });
+    }
+
+    const { computeStats } = await import('./computation.js');
+    const { scoreInsights } = await import('./scoring.js');
+    const { assemblePrompt } = await import('./assembly.js');
+
+    // No financials at all — forecast can't form without cashOnHand
+    const stats = computeStats(burningRows as never);
+    const insights = scoreInsights(stats);
+    const result = assemblePrompt(insights);
+
+    expect(result.metadata.statTypes).not.toContain('cash_forecast');
+    expect(result.prompt).not.toMatch(/Cash Forecast:/);
   });
 });

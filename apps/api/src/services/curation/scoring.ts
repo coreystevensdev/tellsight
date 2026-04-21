@@ -73,6 +73,12 @@ function noveltyScore(stat: ComputedStat): number {
       // Gap > 0 means revenue is below break-even: the "how much more do I need"
       // question is a concrete target. Above break-even is reassuring, not novel.
       return stat.details.gap > 0 ? 0.75 : 0.60;
+    case StatType.CashForecast:
+      // crossesZeroAtMonth !== null means the projection pierces zero in a
+      // three-month window — a quantified insolvency horizon most owners
+      // haven't seen framed about their own business. Surplus stays below
+      // because a trajectory that holds positive is reassuring, not novel.
+      return stat.details.crossesZeroAtMonth !== null ? 0.85 : 0.65;
     case StatType.Trend:
       return Math.abs(stat.details.growthPercent) > scoringConfig.thresholds.significantChangePercent ? 0.8 : 0.4;
     case StatType.CategoryBreakdown:
@@ -109,6 +115,11 @@ function actionabilityScore(stat: ComputedStat): number {
       // 0.88 when below break-even: the revenue-gap number is directly actionable.
       // 0.55 when already above: reassuring data point, nothing to push on.
       return stat.details.gap > 0 ? 0.88 : 0.55;
+    case StatType.CashForecast:
+      // 0.92 when balance crosses zero in the window — quantified insolvency horizon
+      // is highly actionable but stops shy of Runway's 0.95 so runway still leads
+      // when both are present. 0.55 for a surplus trajectory: reassuring, not a push.
+      return stat.details.crossesZeroAtMonth !== null ? 0.92 : 0.55;
     case StatType.YearOverYear:
       return Math.abs(stat.details.changePercent) > 10 ? 0.8 : 0.4;
     case StatType.Trend:
@@ -140,13 +151,16 @@ function specificityScore(stat: ComputedStat): number {
     case StatType.BreakEven:
       // 0.85 flat — break-even is a revenue target and targets are inherently
       // fuzzier than a month count (depends on maintaining the margin assumption).
+      return 0.85;
+    case StatType.CashForecast:
+      // 0.85 flat — matches BreakEven and SeasonalProjection. Three projected
+      // numbers with trend are less precise than one runway month-count.
       //
-      // Scoring order: Runway critical (0.9025) > CashFlow burning (0.8400) >
-      // BreakEven gap-positive (0.8270). Runway leads because it carries the most
-      // urgent signal (existential timeline). Burning follows because a binary
-      // urgency cue should precede a quantified target. BreakEven trails by
-      // design — it refines the burn signal rather than originating one. If any
-      // score flips the order here, a weight was tuned and both rationales need review.
+      // Scoring order: Runway critical (0.9025) > CashForecast crosses-zero (0.8775) >
+      // CashFlow burning (0.8400) > BreakEven gap-positive (0.8270). Runway leads
+      // because it's a single-count timeline; forecast follows because it adds
+      // trajectory shape without a stronger urgency cue. If any score flips this
+      // order, a weight was tuned and all rationales need review.
       return 0.85;
     case StatType.MarginTrend:
       return 0.8;

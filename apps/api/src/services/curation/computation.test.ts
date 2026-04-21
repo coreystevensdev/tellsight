@@ -1,7 +1,22 @@
 import { describe, it, expect } from 'vitest';
 
-import { computeStats, computeRunway, runwayConfidence, computeBreakEven, breakEvenConfidence } from './computation.js';
-import type { ComputedStat, CashFlowStat, RunwayStat, BreakEvenStat, MarginTrendStat } from './types.js';
+import {
+  computeStats,
+  computeRunway,
+  runwayConfidence,
+  computeBreakEven,
+  breakEvenConfidence,
+  computeCashForecast,
+  monthlyNetsWindow,
+} from './computation.js';
+import type {
+  ComputedStat,
+  CashFlowStat,
+  RunwayStat,
+  BreakEvenStat,
+  CashForecastStat,
+  MarginTrendStat,
+} from './types.js';
 import { StatType } from './types.js';
 
 const fixture = {
@@ -873,5 +888,403 @@ describe('computeStats wiring for break-even', () => {
     const stats = computeStats(rows, { financials: { monthlyFixedCosts: 5_000 } });
     const breakEven = stats.filter((s) => s.statType === StatType.BreakEven);
     expect(breakEven).toEqual([]);
+  });
+});
+
+// `burningCashFlow` is already defined above in the Runway test fixtures — reuse it.
+// The forecast public signature takes CashFlowStat + monthlyNetsWindow output, so
+// the existing helper stands in cleanly.
+
+function netsWindow(months: number, nets: number[]): { months: string[]; nets: number[] } {
+  const monthKeys: string[] = [];
+  for (let i = 0; i < months; i++) {
+    const m = (i % 12) + 1;
+    const y = 2026 + Math.floor(i / 12);
+    monthKeys.push(`${y}-${String(m).padStart(2, '0')}`);
+  }
+  return { months: monthKeys, nets };
+}
+
+describe('computeCashForecast', () => {
+  const NOW = new Date('2026-06-15T00:00:00Z');
+  const freshCashDate = '2026-06-01T00:00:00Z';
+
+  it('consistent burn: emits a 3-month declining trajectory with crossesZeroAtMonth set', () => {
+    const nets = [-10000, -10000, -10000, -10000, -10000, -10000];
+    const result = computeCashForecast(
+      [burningCashFlow()],
+      { cashOnHand: 25_000, cashAsOfDate: freshCashDate },
+      netsWindow(6, nets),
+      NOW,
+    );
+
+    expect(result).toHaveLength(1);
+    const d = result[0]!.details;
+    expect(d.method).toBe('linear_regression');
+    expect(d.startingBalance).toBe(25_000);
+    expect(d.projectedMonths).toHaveLength(3);
+    expect(d.projectedMonths[0]!.projectedBalance).toBe(15_000);
+    expect(d.projectedMonths[1]!.projectedBalance).toBe(5_000);
+    expect(d.projectedMonths[2]!.projectedBalance).toBe(-5_000);
+    expect(d.crossesZeroAtMonth).toBe(3);
+    expect(d.confidence).toBe('high');
+  });
+
+  it('accelerating burn: regression catches the trend, earlier zero crossing than flat extrapolation', () => {
+    const nets = [-5000, -7000, -9000, -11000, -13000, -15000];
+    const result = computeCashForecast(
+      [burningCashFlow(-10000, 6)],
+      { cashOnHand: 50_000, cashAsOfDate: freshCashDate },
+      netsWindow(6, nets),
+      NOW,
+    );
+
+    expect(result).toHaveLength(1);
+    const d = result[0]!.details;
+    expect(d.method).toBe('linear_regression');
+    // Regression slope ≈ -2000; forecast nets at t=6,7,8 ≈ -17k, -19k, -21k
+    // Running balance 50k → 33k → 14k → -7k
+    expect(d.projectedMonths[0]!.projectedBalance).toBeLessThan(40_000);
+    expect(d.projectedMonths[2]!.projectedBalance).toBeLessThan(0);
+    expect(d.crossesZeroAtMonth).toBeLessThanOrEqual(3);
+  });
+
+  it('decelerating burn: slope reverses, zero crossing further out or absent', () => {
+    const nets = [-15000, -13000, -11000, -9000, -7000, -5000];
+    const result = computeCashForecast(
+      [burningCashFlow(-10000, 6)],
+      { cashOnHand: 50_000, cashAsOfDate: freshCashDate },
+      netsWindow(6, nets),
+      NOW,
+    );
+
+    expect(result).toHaveLength(1);
+    const d = result[0]!.details;
+    // slope ≈ +2000 (improving), intercept ≈ -17k
+    // forecast at t=6,7,8 ≈ -5k, -3k, -1k — balance stays above zero
+    expect(d.crossesZeroAtMonth).toBeNull();
+  });
+
+  it('surplus trajectory: crossesZeroAtMonth is null, balance holds positive', () => {
+    const nets = [3000, 4000, 5000, 4000, 5000, 6000];
+    const result = computeCashForecast(
+      [burningCashFlow()], // burning upstream signal just gates emission; projection uses nets
+      { cashOnHand: 30_000, cashAsOfDate: freshCashDate },
+      netsWindow(6, nets),
+      NOW,
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.details.crossesZeroAtMonth).toBeNull();
+  });
+
+  it('degenerate regression (all nets identical across 3 months) falls back to rolling_mean with low confidence', () => {
+    const result = computeCashForecast(
+      [burningCashFlow()],
+      { cashOnHand: 20_000, cashAsOfDate: freshCashDate },
+      netsWindow(3, [-5000, -5000, -5000]),
+      NOW,
+    );
+
+    expect(result).toHaveLength(1);
+    const d = result[0]!.details;
+    // 3 identical points yield a valid zero-slope regression; method stays linear_regression.
+    // But 3 < 6 months → confidence is 'low' anyway.
+    expect(d.confidence).toBe('low');
+    expect(d.slope).toBe(0);
+  });
+
+  it('volatile nets demote confidence from high to moderate even with 6+ months + fresh cash', () => {
+    // 5 smooth months + 1 outlier 3σ away
+    const nets = [-5000, -5500, -5000, -5500, -5000, -50000];
+    const result = computeCashForecast(
+      [burningCashFlow()],
+      { cashOnHand: 40_000, cashAsOfDate: freshCashDate },
+      netsWindow(6, nets),
+      NOW,
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.details.confidence).toBe('moderate');
+  });
+
+  it('thin data (3 basis months) lands at low confidence', () => {
+    const result = computeCashForecast(
+      [burningCashFlow()],
+      { cashOnHand: 30_000, cashAsOfDate: freshCashDate },
+      netsWindow(3, [-5000, -5500, -6000]),
+      NOW,
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.details.confidence).toBe('low');
+  });
+
+  it('stale cash (>30 and <=90 days old) demotes confidence to moderate', () => {
+    // cashAsOfDate is 45 days before NOW
+    const staleCashDate = new Date(NOW.getTime() - 45 * 24 * 60 * 60 * 1000).toISOString();
+    const result = computeCashForecast(
+      [burningCashFlow()],
+      { cashOnHand: 40_000, cashAsOfDate: staleCashDate },
+      netsWindow(6, [-5000, -5000, -5000, -5000, -5000, -5000]),
+      NOW,
+    );
+
+    expect(result).toHaveLength(1);
+    // 45 days > 30 → fails the 'high' predicate → falls to the default 'moderate'
+    expect(result[0]!.details.confidence).toBe('moderate');
+  });
+
+  it('very stale cash (>90 days) explicitly downgrades to moderate via the stale-cash rule', () => {
+    const staleCashDate = new Date(NOW.getTime() - 120 * 24 * 60 * 60 * 1000).toISOString();
+    const result = computeCashForecast(
+      [burningCashFlow()],
+      { cashOnHand: 40_000, cashAsOfDate: staleCashDate },
+      netsWindow(6, [-5000, -5000, -5000, -5000, -5000, -5000]),
+      NOW,
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.details.confidence).toBe('moderate');
+  });
+
+  it('suppresses when CashFlow is suppressed (empty cashFlowStats)', () => {
+    expect(
+      computeCashForecast(
+        [],
+        { cashOnHand: 30_000, cashAsOfDate: freshCashDate },
+        netsWindow(6, [-5000, -5000, -5000, -5000, -5000, -5000]),
+        NOW,
+      ),
+    ).toEqual([]);
+  });
+
+  it('suppresses when cashOnHand is null', () => {
+    expect(
+      computeCashForecast(
+        [burningCashFlow()],
+        { cashOnHand: undefined, cashAsOfDate: freshCashDate },
+        netsWindow(6, [-5000, -5000, -5000, -5000, -5000, -5000]),
+        NOW,
+      ),
+    ).toEqual([]);
+  });
+
+  it('suppresses when cashOnHand is zero', () => {
+    expect(
+      computeCashForecast(
+        [burningCashFlow()],
+        { cashOnHand: 0, cashAsOfDate: freshCashDate },
+        netsWindow(6, [-5000, -5000, -5000, -5000, -5000, -5000]),
+        NOW,
+      ),
+    ).toEqual([]);
+  });
+
+  it('suppresses when cashAsOfDate is more than 180 days old', () => {
+    const veryStaleCashDate = new Date(NOW.getTime() - 200 * 24 * 60 * 60 * 1000).toISOString();
+    expect(
+      computeCashForecast(
+        [burningCashFlow()],
+        { cashOnHand: 30_000, cashAsOfDate: veryStaleCashDate },
+        netsWindow(6, [-5000, -5000, -5000, -5000, -5000, -5000]),
+        NOW,
+      ),
+    ).toEqual([]);
+  });
+
+  it('suppresses when cashAsOfDate is in the future (clock skew)', () => {
+    const futureCashDate = new Date(NOW.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    expect(
+      computeCashForecast(
+        [burningCashFlow()],
+        { cashOnHand: 30_000, cashAsOfDate: futureCashDate },
+        netsWindow(6, [-5000, -5000, -5000, -5000, -5000, -5000]),
+        NOW,
+      ),
+    ).toEqual([]);
+  });
+
+  it('suppresses when fewer than 3 basis months', () => {
+    expect(
+      computeCashForecast(
+        [burningCashFlow()],
+        { cashOnHand: 30_000, cashAsOfDate: freshCashDate },
+        netsWindow(2, [-5000, -5000]),
+        NOW,
+      ),
+    ).toEqual([]);
+  });
+
+  it('month rollover: basis ending in Nov 2026 projects Dec 2026, Jan 2027, Feb 2027', () => {
+    const months = ['2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11'];
+    const nets = [-5000, -5000, -5000, -5000, -5000, -5000];
+    const result = computeCashForecast(
+      [burningCashFlow()],
+      { cashOnHand: 30_000, cashAsOfDate: freshCashDate },
+      { months, nets },
+      NOW,
+    );
+
+    expect(result).toHaveLength(1);
+    const projectedMonthKeys = result[0]!.details.projectedMonths.map((pm) => pm.month);
+    expect(projectedMonthKeys).toEqual(['2026-12', '2027-01', '2027-02']);
+  });
+
+  it('year rollover at December basis ends: Dec 2026 → Jan 2027, Feb 2027, Mar 2027', () => {
+    const months = ['2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12'];
+    const result = computeCashForecast(
+      [burningCashFlow()],
+      { cashOnHand: 30_000, cashAsOfDate: freshCashDate },
+      { months, nets: [-5000, -5000, -5000, -5000, -5000, -5000] },
+      NOW,
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.details.projectedMonths.map((pm) => pm.month)).toEqual([
+      '2027-01',
+      '2027-02',
+      '2027-03',
+    ]);
+  });
+
+  it('forecast details shape carries only scalars, ISO strings, month keys, and enum — no row leak', () => {
+    const result = computeCashForecast(
+      [burningCashFlow()],
+      { cashOnHand: 30_000, cashAsOfDate: freshCashDate },
+      netsWindow(6, [-5000, -5000, -5000, -5000, -5000, -5000]),
+      NOW,
+    );
+
+    expect(result).toHaveLength(1);
+    const keys = Object.keys(result[0]!.details).sort();
+    expect(keys).toEqual([
+      'asOfDate',
+      'basisMonths',
+      'basisValues',
+      'confidence',
+      'crossesZeroAtMonth',
+      'intercept',
+      'method',
+      'projectedMonths',
+      'slope',
+      'startingBalance',
+    ]);
+  });
+});
+
+// Local-time mid-month row — sidesteps the UTC-midnight-crosses-timezone-boundary
+// quirk ccfRow has when the test runner's TZ is west of UTC. monthlyNetsWindow
+// uses getFullYear/getMonth (local time) like the rest of the pipeline, so the
+// cleanest way to assert specific month keys is to build rows that are safely
+// mid-month in every zone.
+let _midRowId = 50_000;
+function midMonthRow(parentCategory: 'Income' | 'Expenses', year: number, m: number, amount: number) {
+  return {
+    id: _midRowId++,
+    orgId: 1,
+    datasetId: 1,
+    sourceType: 'csv' as const,
+    category: parentCategory === 'Income' ? 'Revenue' : 'COGS',
+    parentCategory,
+    date: new Date(year, m - 1, 15, 12),
+    amount: amount.toFixed(2),
+    label: null,
+    metadata: null,
+    createdAt: new Date(),
+  };
+}
+function midMonth(year: number, m: number, revenue: number, expenses: number) {
+  const rows = [];
+  if (revenue !== 0) rows.push(midMonthRow('Income', year, m, revenue));
+  rows.push(midMonthRow('Expenses', year, m, expenses));
+  return rows;
+}
+
+describe('monthlyNetsWindow', () => {
+  it('aggregates income − expenses per YYYY-MM month', () => {
+    const rows = [
+      ...midMonth(2026, 1, 10_000, 6_000),
+      ...midMonth(2026, 2, 10_000, 7_000),
+      ...midMonth(2026, 3, 10_000, 8_000),
+    ];
+
+    const { months, nets } = monthlyNetsWindow(rows, 12);
+    expect(months).toEqual(['2026-01', '2026-02', '2026-03']);
+    expect(nets).toEqual([4_000, 3_000, 2_000]);
+  });
+
+  it('drops zero-revenue months (gap handling matches computeCashFlow)', () => {
+    const rows = [
+      ...midMonth(2026, 1, 10_000, 6_000),
+      ...midMonth(2026, 2, 0, 5_000), // gap month — no income row
+      ...midMonth(2026, 3, 10_000, 7_000),
+    ];
+
+    const { months } = monthlyNetsWindow(rows, 12);
+    expect(months).toEqual(['2026-01', '2026-03']);
+  });
+
+  it('respects the trailing windowSize limit', () => {
+    const rows = [
+      ...midMonth(2026, 1, 10_000, 6_000),
+      ...midMonth(2026, 2, 10_000, 7_000),
+      ...midMonth(2026, 3, 10_000, 8_000),
+      ...midMonth(2026, 4, 10_000, 9_000),
+    ];
+
+    const { months } = monthlyNetsWindow(rows, 2);
+    expect(months).toEqual(['2026-03', '2026-04']);
+  });
+});
+
+describe('computeStats wiring for cash forecast', () => {
+  it('end-to-end: burning cashflow + fresh cashOnHand emits CashForecast in the pipeline output', () => {
+    const rows = [
+      ...ccfMonth(2026, 1, 10_000, 15_000),
+      ...ccfMonth(2026, 2, 10_000, 15_000),
+      ...ccfMonth(2026, 3, 10_000, 15_000),
+      ...ccfMonth(2026, 4, 10_000, 15_000),
+      ...ccfMonth(2026, 5, 10_000, 15_000),
+      ...ccfMonth(2026, 6, 10_000, 15_000),
+    ];
+
+    const stats = computeStats(rows, {
+      financials: { cashOnHand: 20_000, cashAsOfDate: '2026-06-01T00:00:00Z' },
+      now: new Date('2026-06-15T00:00:00Z'),
+    });
+
+    const forecast = stats.filter((s): s is CashForecastStat => s.statType === StatType.CashForecast);
+    expect(forecast).toHaveLength(1);
+    expect(forecast[0]!.details.projectedMonths).toHaveLength(3);
+    expect(forecast[0]!.details.method).toBe('linear_regression');
+  });
+
+  it('end-to-end: no forecast when cashOnHand absent', () => {
+    const rows = [
+      ...ccfMonth(2026, 1, 10_000, 15_000),
+      ...ccfMonth(2026, 2, 10_000, 15_000),
+      ...ccfMonth(2026, 3, 10_000, 15_000),
+      ...ccfMonth(2026, 4, 10_000, 15_000),
+      ...ccfMonth(2026, 5, 10_000, 15_000),
+      ...ccfMonth(2026, 6, 10_000, 15_000),
+    ];
+
+    const stats = computeStats(rows);
+    expect(stats.filter((s) => s.statType === StatType.CashForecast)).toEqual([]);
+  });
+
+  it('end-to-end: no forecast when fewer than 3 basis months', () => {
+    const rows = [
+      ...ccfMonth(2026, 1, 10_000, 15_000),
+      ...ccfMonth(2026, 2, 10_000, 15_000),
+    ];
+
+    const stats = computeStats(rows, {
+      financials: { cashOnHand: 20_000, cashAsOfDate: '2026-02-15T00:00:00Z' },
+      now: new Date('2026-02-28T00:00:00Z'),
+    });
+
+    expect(stats.filter((s) => s.statType === StatType.CashForecast)).toEqual([]);
   });
 });

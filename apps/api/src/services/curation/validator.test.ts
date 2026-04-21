@@ -337,6 +337,91 @@ describe('validateSummary — BreakEven coverage', () => {
   });
 });
 
+function forecastStat(
+  startingBalance: number,
+  projected: { net: number; balance: number }[],
+  crossesZeroAtMonth: number | null = null,
+): ComputedStat {
+  return {
+    statType: StatType.CashForecast,
+    category: null,
+    value: projected[projected.length - 1]?.balance ?? startingBalance,
+    details: {
+      startingBalance,
+      asOfDate: '2026-06-01T00:00:00.000Z',
+      method: 'linear_regression',
+      slope: 0,
+      intercept: projected[0]?.net ?? 0,
+      basisMonths: ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06'],
+      basisValues: [-10000, -10000, -10000, -10000, -10000, -10000],
+      projectedMonths: projected.map((p, i) => ({
+        month: `2026-${String(7 + i).padStart(2, '0')}`,
+        projectedNet: p.net,
+        projectedBalance: p.balance,
+      })),
+      crossesZeroAtMonth,
+      confidence: 'high',
+    },
+  };
+}
+
+describe('validateSummary — CashForecast coverage', () => {
+  it('accepts a summary quoting the exact startingBalance and each projected balance', () => {
+    const stats = [forecastStat(58_000, [
+      { net: -17_000, balance: 41_000 },
+      { net: -18_000, balance: 23_000 },
+      { net: -18_000, balance: 5_000 },
+    ])];
+    const summary =
+      'Your balance sits at $58,000 today and tracks toward $41,000, then $23,000, then $5,000 by month three.';
+
+    const report = validateSummary(summary, stats);
+    expect(report.status).toBe('clean');
+  });
+
+  it('handles negative projected balances by matching their absolute magnitude in prose', () => {
+    // balance crosses zero — LLM renders "-$5,000" which the currency regex picks up as 5000
+    const stats = [forecastStat(25_000, [
+      { net: -10_000, balance: 15_000 },
+      { net: -10_000, balance: 5_000 },
+      { net: -10_000, balance: -5_000 },
+    ], 3)];
+    const summary =
+      'Balance trends from $25,000 to $15,000, then $5,000, and crosses into -$5,000 territory by month three.';
+
+    const report = validateSummary(summary, stats);
+    expect(report.status).toBe('clean');
+  });
+
+  it('flags a fabricated projected balance far from the trajectory', () => {
+    const stats = [forecastStat(58_000, [
+      { net: -17_000, balance: 41_000 },
+      { net: -18_000, balance: 23_000 },
+      { net: -18_000, balance: 5_000 },
+    ])];
+    const summary = 'Your forecast suggests ending at about $95,000 in three months.';
+
+    const report = validateSummary(summary, stats);
+    expect(report.status).not.toBe('clean');
+    expect(report.unmatchedNumbers.length).toBeGreaterThan(0);
+  });
+
+  it('does NOT push slope/intercept into the allowed-set — regression coefficients are not for the LLM to quote', () => {
+    // slope is 0 here (rolling-mean fallback shape), but the test proves the principle:
+    // a number that matches *only* the slope should be flagged.
+    const stats = [forecastStat(58_000, [
+      { net: -17_000, balance: 41_000 },
+      { net: -18_000, balance: 23_000 },
+      { net: -18_000, balance: 5_000 },
+    ])];
+    // $500 matches no balance, no net, no pairwise combo
+    const summary = 'A slope coefficient of $500 per month underlies the forecast.';
+
+    const report = validateSummary(summary, stats);
+    expect(report.status).not.toBe('clean');
+  });
+});
+
 describe('validateStatRefs', () => {
   it('returns no invalid refs when all tagged IDs match computed stat types', () => {
     const stats = [runwayStat(15000, -5000, 3), totalStat(629000)];

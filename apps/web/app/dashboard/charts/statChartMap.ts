@@ -11,6 +11,7 @@
 export type MappedStatId =
   | 'runway'
   | 'cash_flow'
+  | 'cash_forecast'
   | 'margin_trend'
   | 'year_over_year'
   | 'trend';
@@ -27,6 +28,7 @@ export interface StatChartConfig {
 export const STAT_CHART_MAP: Record<MappedStatId, StatChartConfig> = {
   runway: { label: 'Cash balance over time', thumbnailComponent: 'RunwayTrendChart' },
   cash_flow: { label: 'Revenue vs. expenses', thumbnailComponent: 'RevenueVsExpensesChart' },
+  cash_forecast: { label: 'Cash balance trajectory', thumbnailComponent: 'RunwayTrendChart' },
   margin_trend: { label: 'Profit margin trend', thumbnailComponent: 'ProfitMarginChart' },
   year_over_year: { label: 'Year-over-year', thumbnailComponent: 'YoyChart' },
   trend: { label: 'Revenue trend', thumbnailComponent: 'RevenueChart' },

@@ -8,19 +8,21 @@ import { RunwayTrendChart, type CashBalancePoint } from './charts/RunwayTrendCha
 export interface InsightChartThumbnailProps {
   statId: string;
   cashHistory?: CashBalancePoint[];
+  cashForecast?: CashBalancePoint[];
   onOpen: () => void;
   className?: string;
 }
 
 // Inline thumbnail rendered next to a tagged paragraph on desktop. Click
 // opens the drill-down sheet (Task 9). Returns null for unmapped stats so
-// the paragraph renders prose-only — by design, not a bug. Runway gets the
-// real RunwayTrendChart at thumbnail size; the other mapped stats get a
-// chart-icon affordance that fills the same 180×120 slot until per-stat
-// thumbnail variants ship in a follow-up.
+// the paragraph renders prose-only — by design, not a bug. Runway and
+// cash-forecast both get the real RunwayTrendChart at thumbnail size; the
+// other mapped stats get a chart-icon affordance that fills the same 180×120
+// slot until per-stat thumbnail variants ship in a follow-up.
 export function InsightChartThumbnail({
   statId,
   cashHistory,
+  cashForecast,
   onOpen,
   className,
 }: InsightChartThumbnailProps) {
@@ -28,6 +30,10 @@ export function InsightChartThumbnail({
   if (!config) return null;
 
   const accessibleName = `Open ${config.label} drill-down`;
+  // Delegate empty-state handling to RunwayTrendChart itself — it renders
+  // "more history needed" when both data and forecast are empty.
+  const showRunwayChart =
+    (statId === 'runway' || statId === 'cash_forecast') && (cashHistory !== undefined || cashForecast !== undefined);
 
   return (
     <button
@@ -44,8 +50,12 @@ export function InsightChartThumbnail({
         <span className="truncate">{config.label}</span>
       </div>
       <div className="flex-1">
-        {statId === 'runway' && cashHistory ? (
-          <RunwayTrendChart data={cashHistory} variant="thumbnail" />
+        {showRunwayChart ? (
+          <RunwayTrendChart
+            data={cashHistory ?? []}
+            forecast={cashForecast}
+            variant="thumbnail"
+          />
         ) : (
           <div className="flex h-full items-center justify-center text-[11px] text-muted-foreground">
             Tap to open chart
