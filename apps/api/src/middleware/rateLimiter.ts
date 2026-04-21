@@ -3,7 +3,10 @@ import { RateLimiterRedis, RateLimiterMemory, RateLimiterRes } from 'rate-limite
 import { rateLimitHits } from '../lib/metrics.js';
 import { redis } from '../lib/redis.js';
 import { logger } from '../lib/logger.js';
+import { env } from '../config.js';
 import { RATE_LIMITS } from 'shared/constants';
+
+const bypass = env.DISABLE_RATE_LIMIT === 'true';
 
 // in-memory fallbacks — same limits, per-process only
 const authFallback = new RateLimiterMemory({
@@ -54,6 +57,7 @@ function sendRateLimited(res: Response, rlRes: RateLimiterRes) {
 }
 
 export function rateLimitAuth(req: Request, res: Response, next: NextFunction) {
+  if (bypass) return next();
   const key = req.ip ?? 'unknown';
   authLimiter
     .consume(key)
@@ -71,6 +75,7 @@ export function rateLimitAuth(req: Request, res: Response, next: NextFunction) {
 }
 
 export function rateLimitAi(req: Request, res: Response, next: NextFunction) {
+  if (bypass) return next();
   const key = req.user?.sub ?? req.ip ?? 'unknown';
 
   if (!req.user?.sub) {
@@ -92,6 +97,7 @@ export function rateLimitAi(req: Request, res: Response, next: NextFunction) {
 }
 
 export function rateLimitPublic(req: Request, res: Response, next: NextFunction) {
+  if (bypass) return next();
   const key = req.ip ?? 'unknown';
   publicLimiter
     .consume(key)

@@ -30,6 +30,10 @@ export const envSchema = z
     QUICKBOOKS_REDIRECT_URI: z.string().url().optional(),
     QUICKBOOKS_ENVIRONMENT: z.enum(['sandbox', 'production']).default('sandbox'),
     ENCRYPTION_KEY: z.string().length(64).optional(),
+
+    // Only for CI / E2E — set to 'true' to bypass rate limiters entirely.
+    // Parallel Playwright workers blow the 60/min public limit otherwise.
+    DISABLE_RATE_LIMIT: z.enum(['true', 'false']).default('false'),
   })
   .refine(
     (data) => !(data.NODE_ENV === 'production' && data.STRIPE_SECRET_KEY.startsWith('sk_test_')),
