@@ -13,10 +13,7 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"],
-      "shared/constants": ["../../packages/shared/src/constants/index.ts"],
-      "shared/types": ["../../packages/shared/src/types/index.ts"],
-      "shared/schemas": ["../../packages/shared/src/schemas/index.ts"]
+      "@/*": ["./*"]
     }
   },
   "include": [

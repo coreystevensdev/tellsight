@@ -10,7 +10,7 @@ export {
   loginResponseSchema,
   createInviteSchema,
   inviteTokenParamSchema,
-} from './auth';
+} from './auth.js';
 
 export {
   sourceTypeSchema,
@@ -20,7 +20,7 @@ export {
   columnValidationErrorSchema,
   csvPreviewDataSchema,
   csvValidationErrorSchema,
-} from './datasets';
+} from './datasets.js';
 
 export {
   revenueTrendPointSchema,
@@ -28,12 +28,12 @@ export {
   yoyComparisonPointSchema,
   datasetDateRangeSchema,
   chartDataSchema,
-} from './charts';
+} from './charts.js';
 
 export {
   chartFiltersSchema,
   granularitySchema,
-} from './filters';
+} from './filters.js';
 
 export {
   businessProfileSchema,
@@ -42,22 +42,22 @@ export {
   REVENUE_RANGES,
   TEAM_SIZES,
   TOP_CONCERNS,
-} from './businessProfile';
+} from './businessProfile.js';
 
-export type { BusinessProfile, OrgFinancials } from './businessProfile';
+export type { BusinessProfile, OrgFinancials } from './businessProfile.js';
 
 export {
   createShareSchema,
   insightSnapshotSchema,
   shareResponseSchema,
-} from './sharing';
+} from './sharing.js';
 
-export type { CreateShareInput, InsightSnapshot, ShareResponse } from './sharing';
+export type { CreateShareInput, InsightSnapshot, ShareResponse } from './sharing.js';
 
 export {
   checkoutSessionSchema,
   portalSessionSchema,
   subscriptionStatusSchema,
-} from './subscriptions';
+} from './subscriptions.js';
 
-export type { CheckoutSession, PortalSession, SubscriptionStatus } from './subscriptions';
+export type { CheckoutSession, PortalSession, SubscriptionStatus } from './subscriptions.js';

@@ -1,4 +1,4 @@
-import type { TransparencyMetadata } from './transparency';
+import type { TransparencyMetadata } from './transparency.js';
 
 export interface SseTextEvent {
   text: string;

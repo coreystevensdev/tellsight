@@ -5,10 +5,7 @@
     "declaration": false,
     "declarationMap": false,
     "paths": {
-      "@/*": ["./src/*"],
-      "shared/constants": ["../../packages/shared/src/constants/index.ts"],
-      "shared/types": ["../../packages/shared/src/types/index.ts"],
-      "shared/schemas": ["../../packages/shared/src/schemas/index.ts"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src/**/*.ts"],

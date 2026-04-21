@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { demoModeStateSchema } from './datasets';
+import { demoModeStateSchema } from './datasets.js';
 
 export const revenueTrendPointSchema = z.object({
   month: z.string(),

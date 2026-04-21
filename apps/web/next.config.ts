@@ -3,7 +3,6 @@ import { withSentryConfig } from '@sentry/nextjs';
 
 const nextConfig: NextConfig = {
   output: 'standalone',
-  transpilePackages: ['shared'],
   turbopack: {},
   async headers() {
     return [{

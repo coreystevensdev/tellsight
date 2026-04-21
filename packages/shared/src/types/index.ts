@@ -8,7 +8,7 @@ export type {
   JwtPayload,
   GoogleCallback,
   LoginResponse,
-} from './auth';
+} from './auth.js';
 
 export type {
   SourceType,
@@ -18,7 +18,7 @@ export type {
   ColumnValidationError,
   CsvPreviewData,
   CsvValidationError,
-} from './datasets';
+} from './datasets.js';
 
 export type {
   Granularity,
@@ -29,7 +29,7 @@ export type {
   DatasetDateRange,
   ChartData,
   ChartFilters,
-} from './charts';
+} from './charts.js';
 
 export type {
   SseTextEvent,
@@ -37,15 +37,15 @@ export type {
   SseErrorEvent,
   SsePartialEvent,
   SseUpgradeRequiredEvent,
-} from './sse';
+} from './sse.js';
 
-export type { SubscriptionTier } from './subscription';
+export type { SubscriptionTier } from './subscription.js';
 
-export type { TransparencyMetadata } from './transparency';
+export type { TransparencyMetadata } from './transparency.js';
 
-export type { ServiceStatus, SystemHealth } from './admin';
+export type { ServiceStatus, SystemHealth } from './admin.js';
 
-export type { BusinessProfile, OrgFinancials } from '../schemas/businessProfile';
+export type { BusinessProfile, OrgFinancials } from '../schemas/businessProfile.js';
 
 export interface ApiResponse<T> {
   data: T;

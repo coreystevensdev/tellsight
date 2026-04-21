@@ -3,10 +3,20 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "files": ["dist", "src"],
   "exports": {
-    "./schemas": "./src/schemas/index.ts",
-    "./types": "./src/types/index.ts",
-    "./constants": "./src/constants/index.ts"
+    "./schemas": {
+      "types": "./dist/schemas/index.d.ts",
+      "import": "./dist/schemas/index.js"
+    },
+    "./types": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/types/index.js"
+    },
+    "./constants": {
+      "types": "./dist/constants/index.d.ts",
+      "import": "./dist/constants/index.js"
+    }
   },
   "scripts": {
     "lint": "eslint src/",
