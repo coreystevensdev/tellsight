@@ -45,7 +45,7 @@ export const businessProfileSchema = z.object({
   cashOnHand: z.number().positive().max(999_999_999).optional(),
   cashAsOfDate: z.string().datetime().optional(),
   businessStartedDate: z.string().date().optional(),
-  monthlyFixedCosts: z.number().nonnegative().optional(),
+  monthlyFixedCosts: z.number().nonnegative().max(9_999_999).optional(),
 });
 
 export type BusinessProfile = z.infer<typeof businessProfileSchema>;

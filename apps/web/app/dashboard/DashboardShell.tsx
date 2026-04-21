@@ -269,11 +269,24 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
   // during initial SWR fetch for users who already have a cash balance set.
   const needsCashBalance = hasAnyData && financials !== undefined && !financials.cashOnHand;
   const hasBalance = !!financials?.cashAsOfDate;
+  const needsBreakEvenEnable = hasAnyData
+    && data.hasMarginSignal === true
+    && financials !== undefined
+    && financials.monthlyFixedCosts == null;
 
   async function saveCashBalance(value: number) {
     await apiClient('/org/financials', {
       method: 'PUT',
       body: JSON.stringify({ cashOnHand: value }),
+    });
+    await refreshFinancials();
+    router.refresh();
+  }
+
+  async function saveMonthlyFixedCosts(value: number) {
+    await apiClient('/org/financials', {
+      method: 'PUT',
+      body: JSON.stringify({ monthlyFixedCosts: value }),
     });
     await refreshFinancials();
     router.refresh();
@@ -424,6 +437,18 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
               description="Add your current cash balance to see how many months of runway you have at your current burn rate."
               inputLabel="Current cash balance"
               onSubmit={saveCashBalance}
+              className="mt-6"
+            />
+          )}
+
+          {needsBreakEvenEnable && (
+            <LockedInsightCard
+              title="Enable Break-Even Analysis"
+              description="Add your monthly fixed costs to see the revenue you need to cover them at your current margin."
+              inputLabel="Monthly fixed costs"
+              inputMask="currency"
+              inputMax={9_999_999}
+              onSubmit={saveMonthlyFixedCosts}
               className="mt-6"
             />
           )}

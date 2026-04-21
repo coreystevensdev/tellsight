@@ -25,6 +25,7 @@ function formatDateForInput(iso: string | undefined): string {
 export default function FinancialsForm() {
   const [loading, setLoading] = useState(true);
   const [cash, setCash] = useState('');
+  const [fixedCosts, setFixedCosts] = useState('');
   const [started, setStarted] = useState('');
   const [asOf, setAsOf] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -35,6 +36,7 @@ export default function FinancialsForm() {
       try {
         const res = await apiClient<OrgFinancials>('/org/financials');
         setCash(formatCurrency(res.data.cashOnHand));
+        setFixedCosts(formatCurrency(res.data.monthlyFixedCosts));
         setAsOf(formatDateForInput(res.data.cashAsOfDate));
         setStarted(formatDateForInput(res.data.businessStartedDate));
       } catch (err) {
@@ -47,16 +49,21 @@ export default function FinancialsForm() {
   }, []);
 
   const parsedCash = parseCurrency(cash);
+  const parsedFixedCosts = parseCurrency(fixedCosts);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (submitting) return;
+    if (parsedFixedCosts != null && parsedFixedCosts > 9_999_999) return;
 
     setSubmitting(true);
     setFlash(null);
 
     const updates: Record<string, unknown> = {};
     if (parsedCash != null && parsedCash > 0) updates.cashOnHand = parsedCash;
+    if (parsedFixedCosts != null && parsedFixedCosts >= 0 && parsedFixedCosts <= 9_999_999) {
+      updates.monthlyFixedCosts = parsedFixedCosts;
+    }
     if (started) updates.businessStartedDate = started;
     // cashAsOfDate: if a cash value is being saved, stamp it now. Otherwise preserve.
     if (updates.cashOnHand != null) updates.cashAsOfDate = new Date().toISOString();
@@ -125,6 +132,39 @@ export default function FinancialsForm() {
           />
           {asOf && (
             <p className="mt-1.5 text-xs text-muted-foreground">Last updated {asOf}</p>
+          )}
+        </div>
+
+        <div>
+          <label htmlFor="fixed-costs" className="block text-sm font-medium text-foreground">
+            Monthly fixed costs
+          </label>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Rent, salaries, software subscriptions, insurance. Rough estimates are fine — you can update anytime.
+          </p>
+          <input
+            id="fixed-costs"
+            type="text"
+            inputMode="decimal"
+            value={fixedCosts}
+            onChange={(e) => setFixedCosts(e.target.value)}
+            onBlur={() => {
+              const n = parseCurrency(fixedCosts);
+              if (n != null) setFixedCosts(formatCurrency(n));
+            }}
+            onFocus={() => {
+              const n = parseCurrency(fixedCosts);
+              if (n != null) setFixedCosts(String(n));
+            }}
+            disabled={submitting}
+            placeholder="$0"
+            aria-invalid={parsedFixedCosts != null && parsedFixedCosts > 9_999_999 ? 'true' : undefined}
+            className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
+          />
+          {parsedFixedCosts != null && parsedFixedCosts > 9_999_999 && (
+            <p role="alert" className="mt-1.5 text-xs text-destructive">
+              Must be $9,999,999 or less.
+            </p>
           )}
         </div>
 
