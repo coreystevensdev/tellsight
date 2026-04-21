@@ -248,6 +248,95 @@ describe('validateSummary — Runway coverage', () => {
   });
 });
 
+function breakEvenStat(
+  breakEvenRevenue: number,
+  monthlyFixedCosts: number,
+  currentMonthlyRevenue: number,
+  marginPercent: number,
+): ComputedStat {
+  return {
+    statType: StatType.BreakEven,
+    category: null,
+    value: breakEvenRevenue,
+    details: {
+      monthlyFixedCosts,
+      marginPercent,
+      breakEvenRevenue,
+      currentMonthlyRevenue,
+      gap: breakEvenRevenue - currentMonthlyRevenue,
+      confidence: 'high',
+    },
+  };
+}
+
+describe('validateSummary — BreakEven coverage', () => {
+  it('accepts a summary quoting the exact breakEvenRevenue', () => {
+    const stats = [breakEvenStat(75_000, 15_000, 50_000, 20)];
+    const summary = 'To cover your fixed costs at your current margin, you\'d need about $75,000/mo in revenue.';
+
+    const report = validateSummary(summary, stats);
+    expect(report.status).toBe('clean');
+  });
+
+  it('accepts a summary quoting the exact monthlyFixedCosts', () => {
+    const stats = [breakEvenStat(75_000, 15_000, 50_000, 20)];
+    const summary = 'Your $15,000/mo in fixed costs sets the floor.';
+
+    const report = validateSummary(summary, stats);
+    expect(report.status).toBe('clean');
+  });
+
+  it('flags a fabricated breakEvenRevenue far from any allowed value', () => {
+    const stats = [breakEvenStat(75_000, 15_000, 50_000, 20)];
+    // LLM invents $120k break-even — not in allowed set, not pairwise.
+    const summary = 'Your break-even target is about $120,000/mo.';
+
+    const report = validateSummary(summary, stats);
+    expect(report.status).not.toBe('clean');
+    expect(report.unmatchedNumbers.length).toBeGreaterThan(0);
+  });
+
+  it('does NOT flag a gap value that matches breakEvenRevenue - currentMonthlyRevenue (pairwise tolerance)', () => {
+    // breakEven 75k - currentRevenue 50k = 25k → covered by pairwise-sum loop.
+    // Documents the coverage gap: a fabricated gap close to |be - revenue| slips through.
+    const stats = [breakEvenStat(75_000, 15_000, 50_000, 20)];
+    const summary = 'The gap between current revenue and break-even is about $25,000/mo.';
+
+    const report = validateSummary(summary, stats);
+    expect(report.status).toBe('clean');
+  });
+
+  it('does NOT flag marginPercent — covered by MarginTrend classification, not BreakEven', () => {
+    // marginPercent goes through StatType.MarginTrend when both stats are present.
+    // Here we pair BreakEven with MarginTrend so the percent lands in the allowed-set.
+    const marginTrend: ComputedStat = {
+      statType: StatType.MarginTrend,
+      category: null,
+      value: 20,
+      details: {
+        recentMarginPercent: 20,
+        priorMarginPercent: 20,
+        direction: 'stable',
+        revenueGrowthPercent: 0,
+        expenseGrowthPercent: 0,
+      },
+    };
+    const stats = [breakEvenStat(75_000, 15_000, 50_000, 20), marginTrend];
+    const summary = 'At your 20% margin, break-even is $75,000/mo.';
+
+    const report = validateSummary(summary, stats);
+    expect(report.status).toBe('clean');
+  });
+
+  it('flags a currency amount that matches nothing in the break-even allowed-set', () => {
+    const stats = [breakEvenStat(75_000, 15_000, 50_000, 20)];
+    const summary = 'Last quarter\'s revenue came in around $87,345.';
+
+    const report = validateSummary(summary, stats);
+    expect(report.status).not.toBe('clean');
+  });
+});
+
 describe('validateStatRefs', () => {
   it('returns no invalid refs when all tagged IDs match computed stat types', () => {
     const stats = [runwayStat(15000, -5000, 3), totalStat(629000)];

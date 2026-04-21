@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
-import { computeStats, computeRunway, runwayConfidence } from './computation.js';
-import type { ComputedStat, CashFlowStat, RunwayStat } from './types.js';
+import { computeStats, computeRunway, runwayConfidence, computeBreakEven, breakEvenConfidence } from './computation.js';
+import type { ComputedStat, CashFlowStat, RunwayStat, BreakEvenStat, MarginTrendStat } from './types.js';
 import { StatType } from './types.js';
 
 const fixture = {
@@ -654,5 +654,224 @@ describe('computeStats wiring for runway', () => {
     const stats = computeStats(rows);
     const runway = stats.filter((s) => s.statType === StatType.Runway);
     expect(runway).toEqual([]);
+  });
+});
+
+function marginStat(
+  recentMarginPercent: number,
+  direction: 'expanding' | 'shrinking' | 'stable' = 'stable',
+): MarginTrendStat {
+  return {
+    statType: StatType.MarginTrend,
+    category: null,
+    value: recentMarginPercent,
+    comparison: recentMarginPercent,
+    details: {
+      recentMarginPercent,
+      priorMarginPercent: recentMarginPercent,
+      direction,
+      revenueGrowthPercent: 0,
+      expenseGrowthPercent: 0,
+    },
+  };
+}
+
+describe('breakEvenConfidence', () => {
+  it('high when margin >= 10 and direction is not shrinking', () => {
+    expect(breakEvenConfidence(25, 'expanding')).toBe('high');
+    expect(breakEvenConfidence(15, 'stable')).toBe('high');
+    expect(breakEvenConfidence(10, 'stable')).toBe('high');
+    expect(breakEvenConfidence(10, 'expanding')).toBe('high');
+  });
+
+  it('moderate when margin >= 10 but direction is shrinking', () => {
+    expect(breakEvenConfidence(20, 'shrinking')).toBe('moderate');
+    expect(breakEvenConfidence(10, 'shrinking')).toBe('moderate');
+  });
+
+  it('moderate for margin in [5, 10) regardless of direction', () => {
+    expect(breakEvenConfidence(7, 'expanding')).toBe('moderate');
+    expect(breakEvenConfidence(5, 'shrinking')).toBe('moderate');
+    expect(breakEvenConfidence(9.9, 'stable')).toBe('moderate');
+  });
+
+  it('low for margin below 5', () => {
+    expect(breakEvenConfidence(4.9, 'stable')).toBe('low');
+    expect(breakEvenConfidence(3, 'expanding')).toBe('low');
+    expect(breakEvenConfidence(2, 'shrinking')).toBe('low');
+  });
+});
+
+describe('computeBreakEven', () => {
+  it('healthy business above break-even: gap is negative, confidence high, demoted elsewhere', () => {
+    // margin 25%, fixed 10k, revenue 80k → break-even 40k → gap = 40k - 80k = -40k
+    const result = computeBreakEven([marginStat(25, 'expanding')], 10_000, 80_000);
+
+    expect(result).toHaveLength(1);
+    const stat = result[0]!;
+    expect(stat.statType).toBe(StatType.BreakEven);
+    expect(stat.details.breakEvenRevenue).toBe(40_000);
+    expect(stat.details.gap).toBe(-40_000);
+    expect(stat.details.confidence).toBe('high');
+    expect(stat.details.marginPercent).toBe(25);
+    expect(stat.details.monthlyFixedCosts).toBe(10_000);
+    expect(stat.details.currentMonthlyRevenue).toBe(80_000);
+    expect(stat.value).toBe(40_000);
+    expect(stat.category).toBeNull();
+  });
+
+  it('burning business below break-even: gap is positive, high confidence, high actionability', () => {
+    // margin 20%, fixed 15k, revenue 50k → break-even 75k → gap = 75k - 50k = 25k
+    const result = computeBreakEven([marginStat(20, 'stable')], 15_000, 50_000);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.details.breakEvenRevenue).toBe(75_000);
+    expect(result[0]!.details.gap).toBe(25_000);
+    expect(result[0]!.details.confidence).toBe('high');
+  });
+
+  it('shrinking margin at >=10% demotes confidence to moderate (direction override)', () => {
+    const result = computeBreakEven([marginStat(15, 'shrinking')], 10_000, 50_000);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.details.confidence).toBe('moderate');
+  });
+
+  it('low margin (5-9.9%) lands at moderate confidence', () => {
+    const result = computeBreakEven([marginStat(7, 'stable')], 10_000, 50_000);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.details.confidence).toBe('moderate');
+  });
+
+  it('thin margin (2-4.9%) lands at low confidence', () => {
+    const result = computeBreakEven([marginStat(3, 'stable')], 10_000, 50_000);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.details.confidence).toBe('low');
+  });
+
+  it('suppresses when margin stats are empty (no margin signal)', () => {
+    expect(computeBreakEven([], 10_000, 50_000)).toEqual([]);
+  });
+
+  it('suppresses when monthlyFixedCosts is undefined', () => {
+    expect(computeBreakEven([marginStat(25)], undefined, 50_000)).toEqual([]);
+  });
+
+  it('suppresses when monthlyFixedCosts is null', () => {
+    expect(computeBreakEven([marginStat(25)], null, 50_000)).toEqual([]);
+  });
+
+  it('suppresses when monthlyFixedCosts is zero', () => {
+    expect(computeBreakEven([marginStat(25)], 0, 50_000)).toEqual([]);
+  });
+
+  it('suppresses when margin is zero (infinite break-even)', () => {
+    expect(computeBreakEven([marginStat(0)], 10_000, 50_000)).toEqual([]);
+  });
+
+  it('suppresses when margin is negative (negative break-even is nonsense)', () => {
+    expect(computeBreakEven([marginStat(-5)], 10_000, 50_000)).toEqual([]);
+  });
+
+  it('suppresses when margin is trivially low (<2%)', () => {
+    expect(computeBreakEven([marginStat(1.5)], 10_000, 50_000)).toEqual([]);
+    expect(computeBreakEven([marginStat(1.99)], 10_000, 50_000)).toEqual([]);
+  });
+
+  it('suppresses when currentMonthlyRevenue is NaN (upstream aggregation guard)', () => {
+    expect(computeBreakEven([marginStat(25)], 10_000, Number.NaN)).toEqual([]);
+  });
+
+  it('zero currentMonthlyRevenue emits with gap === breakEvenRevenue (pre-revenue case)', () => {
+    const result = computeBreakEven([marginStat(20)], 10_000, 0);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.details.breakEvenRevenue).toBe(50_000);
+    expect(result[0]!.details.gap).toBe(50_000);
+    expect(result[0]!.details.currentMonthlyRevenue).toBe(0);
+  });
+
+  it('boundary: margin exactly 10% + expanding direction → high confidence', () => {
+    const result = computeBreakEven([marginStat(10, 'expanding')], 10_000, 50_000);
+    expect(result[0]!.details.confidence).toBe('high');
+  });
+
+  it('boundary: margin exactly 10% + shrinking direction → moderate confidence', () => {
+    const result = computeBreakEven([marginStat(10, 'shrinking')], 10_000, 50_000);
+    expect(result[0]!.details.confidence).toBe('moderate');
+  });
+
+  it('boundary: margin exactly 5% → moderate confidence', () => {
+    const result = computeBreakEven([marginStat(5, 'expanding')], 10_000, 50_000);
+    expect(result[0]!.details.confidence).toBe('moderate');
+  });
+
+  it('boundary: margin 4.9% → low confidence', () => {
+    const result = computeBreakEven([marginStat(4.9, 'expanding')], 10_000, 50_000);
+    expect(result[0]!.details.confidence).toBe('low');
+  });
+
+  it('boundary: margin exactly 2% → emits with low confidence', () => {
+    const result = computeBreakEven([marginStat(2, 'stable')], 10_000, 50_000);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.details.confidence).toBe('low');
+  });
+
+  it('break-even details carry only numbers and confidence enum — no row-level leak', () => {
+    const result = computeBreakEven([marginStat(25)], 10_000, 50_000);
+    const keys = Object.keys(result[0]!.details).sort();
+    expect(keys).toEqual(['breakEvenRevenue', 'confidence', 'currentMonthlyRevenue', 'gap', 'marginPercent', 'monthlyFixedCosts']);
+  });
+});
+
+describe('computeStats wiring for break-even', () => {
+  it('end-to-end: margin signal + monthly fixed costs produces BreakEven in ComputedStat[]', () => {
+    // 6 months of data producing margin ~20%, revenue 10k/mo, expenses 8k/mo
+    const rows = [
+      ...ccfMonth(2026, 1, 10000, 8000),
+      ...ccfMonth(2026, 2, 10000, 8000),
+      ...ccfMonth(2026, 3, 10000, 8000),
+      ...ccfMonth(2026, 4, 10000, 8000),
+      ...ccfMonth(2026, 5, 10000, 8000),
+      ...ccfMonth(2026, 6, 10000, 8000),
+    ];
+
+    const stats = computeStats(rows, {
+      financials: { monthlyFixedCosts: 5_000 },
+    });
+
+    const breakEven = stats.filter((s): s is BreakEvenStat => s.statType === StatType.BreakEven);
+    expect(breakEven).toHaveLength(1);
+    // margin = (10k - 8k) / 10k = 20%, break-even = 5k / 0.20 = 25k
+    expect(breakEven[0]!.details.breakEvenRevenue).toBe(25_000);
+    expect(breakEven[0]!.details.currentMonthlyRevenue).toBe(10_000);
+    expect(breakEven[0]!.details.gap).toBe(15_000);
+  });
+
+  it('end-to-end: no break-even when monthlyFixedCosts absent', () => {
+    const rows = [
+      ...ccfMonth(2026, 1, 10000, 8000),
+      ...ccfMonth(2026, 2, 10000, 8000),
+      ...ccfMonth(2026, 3, 10000, 8000),
+      ...ccfMonth(2026, 4, 10000, 8000),
+    ];
+
+    const stats = computeStats(rows);
+    const breakEven = stats.filter((s) => s.statType === StatType.BreakEven);
+    expect(breakEven).toEqual([]);
+  });
+
+  it('end-to-end: no break-even when margin trend suppressed (fewer than 4 months)', () => {
+    const rows = [
+      ...ccfMonth(2026, 1, 10000, 8000),
+      ...ccfMonth(2026, 2, 10000, 8000),
+      ...ccfMonth(2026, 3, 10000, 8000),
+    ];
+
+    const stats = computeStats(rows, { financials: { monthlyFixedCosts: 5_000 } });
+    const breakEven = stats.filter((s) => s.statType === StatType.BreakEven);
+    expect(breakEven).toEqual([]);
   });
 });

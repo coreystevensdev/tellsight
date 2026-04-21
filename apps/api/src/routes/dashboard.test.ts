@@ -17,9 +17,10 @@ const mockGetCachedSummary = vi.fn();
 const mockGetLatestSummary = vi.fn();
 const mockGetActiveDatasetId = vi.fn();
 const mockGetRowCount = vi.fn();
+const mockGetHasMarginSignal = vi.fn();
 
 vi.mock('../db/queries/index.js', () => ({
-  chartsQueries: { getChartData: mockGetChartData },
+  chartsQueries: { getChartData: mockGetChartData, getHasMarginSignal: mockGetHasMarginSignal },
   datasetsQueries: { getUserOrgDemoState: mockGetUserOrgDemoState, getDatasetsByOrg: mockGetDatasetsByOrg },
   orgsQueries: { getSeedOrgId: mockGetSeedOrgId, findOrgById: mockFindOrgById, getActiveDatasetId: mockGetActiveDatasetId },
   aiSummariesQueries: { getCachedSummary: mockGetCachedSummary, getLatestSummary: mockGetLatestSummary },
@@ -104,6 +105,7 @@ beforeEach(() => {
   mockGetLatestSummary.mockResolvedValue(null);
   mockGetActiveDatasetId.mockResolvedValue(null);
   mockGetRowCount.mockResolvedValue(144);
+  mockGetHasMarginSignal.mockResolvedValue(false);
   // withRlsContext executes the callback with a mock tx — query mocks intercept regardless
   mockWithRlsContext.mockImplementation(async (_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({ _tag: 'tx' }));
 });
@@ -117,6 +119,7 @@ describe('GET /dashboard/charts', () => {
     expect(body.data.isDemo).toBe(true);
     expect(body.data.orgName).toBe('Sunrise Cafe');
     expect(body.data.demoState).toBe('seed_only');
+    expect(body.data.hasMarginSignal).toBe(false);
     expect(mockGetSeedOrgId).toHaveBeenCalledOnce();
     expect(mockGetChartData).toHaveBeenCalledWith(99, undefined, undefined, expect.anything());
   });
@@ -130,6 +133,7 @@ describe('GET /dashboard/charts', () => {
     });
     mockFindOrgById.mockResolvedValueOnce({ id: 10, name: 'Acme Corp', slug: 'acme' });
     mockGetUserOrgDemoState.mockResolvedValueOnce('user_only');
+    mockGetHasMarginSignal.mockResolvedValueOnce(true);
 
     const res = await fetch(`${baseUrl}/dashboard/charts`, {
       headers: { Cookie: 'access_token=valid-jwt' },
@@ -140,6 +144,7 @@ describe('GET /dashboard/charts', () => {
     expect(body.data.isDemo).toBe(false);
     expect(body.data.orgName).toBe('Acme Corp');
     expect(body.data.demoState).toBe('user_only');
+    expect(body.data.hasMarginSignal).toBe(true);
     expect(mockWithRlsContext).toHaveBeenCalledWith(10, false, expect.any(Function));
     expect(mockGetChartData).toHaveBeenCalledWith(10, undefined, undefined, expect.anything(), 1);
     expect(mockGetSeedOrgId).not.toHaveBeenCalled();
@@ -169,6 +174,7 @@ describe('GET /dashboard/charts', () => {
     mockGetChartData.mockResolvedValue(chartFixture);
     mockGetSeedOrgId.mockResolvedValue(99);
     mockGetDatasetsByOrg.mockResolvedValue([{ id: 1 }]);
+    mockGetHasMarginSignal.mockResolvedValue(false);
     mockWithRlsContext.mockImplementation(async (_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({ _tag: 'tx' }));
 
     // authenticated request — should track

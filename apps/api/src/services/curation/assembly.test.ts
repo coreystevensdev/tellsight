@@ -72,7 +72,7 @@ describe('assemblePrompt', () => {
     expect(result.metadata.statTypes).toEqual(['anomaly', 'trend', 'total']);
     expect(result.metadata.categoryCount).toBe(2);
     expect(result.metadata.insightCount).toBe(3);
-    expect(result.metadata.promptVersion).toBe('v1.4');
+    expect(result.metadata.promptVersion).toBe('v1.5');
     expect(result.metadata.generatedAt).toBeTruthy();
     expect(result.metadata.scoringWeights).toEqual({
       novelty: 0.9,

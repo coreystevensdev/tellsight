@@ -148,8 +148,8 @@ describe('runFullPipeline', () => {
     expect(aiSummariesQueries.storeSummary).toHaveBeenCalledWith(
       1, 1,
       'Fresh AI analysis.',
-      expect.objectContaining({ promptVersion: 'v1.4', insightCount: expect.any(Number) }),
-      'v1.4',
+      expect.objectContaining({ promptVersion: 'v1.5', insightCount: expect.any(Number) }),
+      'v1.5',
     );
   });
 
@@ -224,7 +224,7 @@ describe('cash flow end-to-end pipeline', () => {
 
     // metadata: cash_flow present, prompt version bumped
     expect(result.metadata.statTypes).toContain('cash_flow');
-    expect(result.metadata.promptVersion).toBe('v1.4');
+    expect(result.metadata.promptVersion).toBe('v1.5');
 
     // prompt: cash flow framing with signed monthly net
     expect(result.prompt).toMatch(/Cash Flow: burning/);
@@ -280,7 +280,7 @@ describe('runway end-to-end pipeline', () => {
     const result = assemblePrompt(insights);
 
     expect(result.metadata.statTypes).toContain('runway');
-    expect(result.metadata.promptVersion).toBe('v1.4');
+    expect(result.metadata.promptVersion).toBe('v1.5');
     expect(result.prompt).toMatch(/Runway:\s+3\.0\s+months/);
     expect(result.prompt).toContain('cash $15,000');
     expect(result.prompt).toContain('as of 2026-04-10');
@@ -318,6 +318,82 @@ describe('runway end-to-end pipeline', () => {
     const result = assemblePrompt(insights);
 
     expect(result.prompt).toContain('confidence: low');
+  });
+});
+
+describe('break-even end-to-end pipeline', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('surfaces break-even in prompt and metadata when fixed costs are set', async () => {
+    // 6 months of data: revenue 50k, expenses 40k → margin 20%.
+    // monthlyFixedCosts 15k → break-even 75k. Current revenue 50k → gap 25k.
+    const burningRows = [
+      { id: 400, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-01-15'), amount: '50000.00', label: 'Acme Corp invoice #4218', metadata: null, createdAt: new Date() },
+      { id: 401, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent',    parentCategory: 'Expenses', date: new Date('2026-01-15'), amount: '40000.00', label: 'Main St landlord wire',   metadata: null, createdAt: new Date() },
+      { id: 402, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-02-15'), amount: '50000.00', label: 'Widget sales Feb',        metadata: null, createdAt: new Date() },
+      { id: 403, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent',    parentCategory: 'Expenses', date: new Date('2026-02-15'), amount: '40000.00', label: 'Main St landlord wire',   metadata: null, createdAt: new Date() },
+      { id: 404, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-03-15'), amount: '50000.00', label: 'Widget sales Mar',        metadata: null, createdAt: new Date() },
+      { id: 405, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent',    parentCategory: 'Expenses', date: new Date('2026-03-15'), amount: '40000.00', label: 'Main St landlord wire',   metadata: null, createdAt: new Date() },
+      { id: 406, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-04-15'), amount: '50000.00', label: 'Widget sales Apr',        metadata: null, createdAt: new Date() },
+      { id: 407, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent',    parentCategory: 'Expenses', date: new Date('2026-04-15'), amount: '40000.00', label: 'Main St landlord wire',   metadata: null, createdAt: new Date() },
+      { id: 408, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-05-15'), amount: '50000.00', label: 'Widget sales May',        metadata: null, createdAt: new Date() },
+      { id: 409, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent',    parentCategory: 'Expenses', date: new Date('2026-05-15'), amount: '40000.00', label: 'Main St landlord wire',   metadata: null, createdAt: new Date() },
+      { id: 410, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-06-15'), amount: '50000.00', label: 'Widget sales Jun',        metadata: null, createdAt: new Date() },
+      { id: 411, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent',    parentCategory: 'Expenses', date: new Date('2026-06-15'), amount: '40000.00', label: 'Main St landlord wire',   metadata: null, createdAt: new Date() },
+    ];
+
+    const { computeStats } = await import('./computation.js');
+    const { scoreInsights } = await import('./scoring.js');
+    const { assemblePrompt } = await import('./assembly.js');
+
+    const stats = computeStats(burningRows as never, {
+      financials: { monthlyFixedCosts: 15_000 },
+    });
+    const insights = scoreInsights(stats);
+    const result = assemblePrompt(insights);
+
+    expect(result.metadata.statTypes).toContain('break_even');
+    expect(result.metadata.promptVersion).toBe('v1.5');
+    expect(result.prompt).toMatch(/Break-Even:\s+\$75,000\/mo/);
+    expect(result.prompt).toMatch(/at 20\.0% margin/);
+    expect(result.prompt).toMatch(/gap \$25,000/);
+
+    // Privacy regression guard — no row labels leak into break-even framing
+    for (const label of ['Acme Corp invoice #4218', 'Main St landlord wire', 'Widget sales Mar', 'Widget sales Apr']) {
+      expect(result.prompt).not.toContain(label);
+    }
+  });
+
+  it('above-break-even fixture: reassuring negative gap without prescriptive framing', async () => {
+    // Same margin (20%), same fixed costs (15k), but revenue 100k — well above break-even.
+    // Expected: break-even 75k, gap -25k.
+    const healthyRows = [
+      { id: 500, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-01-15'), amount: '100000.00', label: null, metadata: null, createdAt: new Date() },
+      { id: 501, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent',    parentCategory: 'Expenses', date: new Date('2026-01-15'), amount: '80000.00',  label: null, metadata: null, createdAt: new Date() },
+      { id: 502, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-02-15'), amount: '100000.00', label: null, metadata: null, createdAt: new Date() },
+      { id: 503, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent',    parentCategory: 'Expenses', date: new Date('2026-02-15'), amount: '80000.00',  label: null, metadata: null, createdAt: new Date() },
+      { id: 504, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-03-15'), amount: '100000.00', label: null, metadata: null, createdAt: new Date() },
+      { id: 505, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent',    parentCategory: 'Expenses', date: new Date('2026-03-15'), amount: '80000.00',  label: null, metadata: null, createdAt: new Date() },
+      { id: 506, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-04-15'), amount: '100000.00', label: null, metadata: null, createdAt: new Date() },
+      { id: 507, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent',    parentCategory: 'Expenses', date: new Date('2026-04-15'), amount: '80000.00',  label: null, metadata: null, createdAt: new Date() },
+    ];
+
+    const { computeStats } = await import('./computation.js');
+    const { scoreInsights } = await import('./scoring.js');
+    const { assemblePrompt } = await import('./assembly.js');
+
+    const stats = computeStats(healthyRows as never, {
+      financials: { monthlyFixedCosts: 15_000 },
+    });
+    const insights = scoreInsights(stats);
+    const result = assemblePrompt(insights);
+
+    expect(result.metadata.statTypes).toContain('break_even');
+    expect(result.prompt).toMatch(/Break-Even:\s+\$75,000\/mo/);
+    // Gap is negative — prompt should render the minus sign explicitly.
+    expect(result.prompt).toMatch(/gap -\$25,000/);
   });
 });
 

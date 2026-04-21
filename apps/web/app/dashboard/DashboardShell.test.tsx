@@ -12,11 +12,21 @@ let mockSwrReturn = {
   mutate: mockMutate,
 };
 
+// Per-key overrides so tests can feed /org/financials data without changing
+// the primary chart-data fallback. Keys starting with '/org/financials' look up
+// this map; everything else falls back to mockSwrReturn.
+let mockSwrByKey: Record<string, { data: unknown; mutate: ReturnType<typeof vi.fn> }> = {};
+
 vi.mock('swr', () => ({
-  default: (_key: string, _fetcher: unknown, opts: { fallbackData: unknown }) => ({
-    ...mockSwrReturn,
-    data: mockSwrReturn.data ?? opts.fallbackData,
-  }),
+  default: (key: string | null, _fetcher: unknown, opts: { fallbackData: unknown }) => {
+    if (typeof key === 'string' && key in mockSwrByKey) {
+      return { ...mockSwrByKey[key], isLoading: false };
+    }
+    return {
+      ...mockSwrReturn,
+      data: mockSwrReturn.data ?? opts?.fallbackData,
+    };
+  },
 }));
 
 vi.mock('next/navigation', () => ({
@@ -149,6 +159,7 @@ vi.mock('@/components/common/DemoModeBanner', () => ({
 }));
 
 import { DashboardShell } from './DashboardShell';
+import { apiClient } from '@/lib/api-client';
 import type { ChartData } from 'shared/types';
 
 const fullData: ChartData = {
@@ -199,6 +210,7 @@ afterEach(() => {
   mockTier = 'free';
   mockSearchParams = new URLSearchParams();
   mockSwrReturn = { data: undefined as unknown, isLoading: false, mutate: mockMutate };
+  mockSwrByKey = {};
 });
 
 describe('DashboardShell', () => {
@@ -409,6 +421,70 @@ describe('DashboardShell', () => {
       expect(toast.info).not.toHaveBeenCalled();
       expect(toast.error).not.toHaveBeenCalled();
       expect(mockReplace).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('break-even locked insight', () => {
+    const marginSignalData: ChartData = {
+      ...fullData,
+      hasMarginSignal: true,
+    };
+
+    it('renders the Locked card when hasMarginSignal is true and monthlyFixedCosts is null', () => {
+      mockSwrByKey = {
+        '/org/financials': { data: { cashOnHand: 15000, cashAsOfDate: '2026-04-15T00:00:00.000Z' }, mutate: vi.fn() },
+      };
+
+      render(<DashboardShell initialData={marginSignalData} />);
+
+      expect(screen.getByRole('heading', { name: /enable break-even analysis/i })).toBeInTheDocument();
+      expect(screen.getByLabelText(/monthly fixed costs/i)).toBeInTheDocument();
+    });
+
+    it('does NOT render when hasMarginSignal is false', () => {
+      mockSwrByKey = {
+        '/org/financials': { data: { cashOnHand: 15000, cashAsOfDate: '2026-04-15T00:00:00.000Z' }, mutate: vi.fn() },
+      };
+
+      render(<DashboardShell initialData={{ ...fullData, hasMarginSignal: false }} />);
+
+      expect(screen.queryByRole('heading', { name: /enable break-even analysis/i })).not.toBeInTheDocument();
+    });
+
+    it('does NOT render when monthlyFixedCosts is already set', () => {
+      mockSwrByKey = {
+        '/org/financials': {
+          data: { cashOnHand: 15000, cashAsOfDate: '2026-04-15T00:00:00.000Z', monthlyFixedCosts: 5000 },
+          mutate: vi.fn(),
+        },
+      };
+
+      render(<DashboardShell initialData={marginSignalData} />);
+
+      expect(screen.queryByRole('heading', { name: /enable break-even analysis/i })).not.toBeInTheDocument();
+    });
+
+    it('submits PUT /org/financials with the exact monthlyFixedCosts numeric value', async () => {
+      const refreshFn = vi.fn();
+      mockSwrByKey = {
+        '/org/financials': { data: { cashOnHand: 15000, cashAsOfDate: '2026-04-15T00:00:00.000Z' }, mutate: refreshFn },
+      };
+      vi.mocked(apiClient).mockResolvedValue({ data: {} as unknown });
+
+      render(<DashboardShell initialData={marginSignalData} />);
+
+      const input = screen.getByLabelText(/monthly fixed costs/i);
+      fireEvent.change(input, { target: { value: '15000' } });
+
+      const saveBtn = screen.getAllByRole('button', { name: /save/i })[0]!;
+      fireEvent.click(saveBtn);
+
+      await vi.waitFor(() => {
+        expect(apiClient).toHaveBeenCalledWith('/org/financials', {
+          method: 'PUT',
+          body: JSON.stringify({ monthlyFixedCosts: 15000 }),
+        });
+      });
     });
   });
 

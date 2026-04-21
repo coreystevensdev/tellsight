@@ -342,3 +342,116 @@ describe('scoreInsights — Runway scoring', () => {
     expect(ranked!.score).toBeCloseTo(0.92, 4);
   });
 });
+
+describe('scoreInsights — BreakEven scoring', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.resetModules();
+  });
+
+  function breakEvenStat(gap: number, confidence: 'high' | 'moderate' | 'low' = 'high'): ComputedStat {
+    return {
+      statType: StatType.BreakEven,
+      category: null,
+      value: 75_000,
+      details: {
+        monthlyFixedCosts: 15_000,
+        marginPercent: 20,
+        breakEvenRevenue: 75_000,
+        currentMonthlyRevenue: 75_000 - gap,
+        gap,
+        confidence,
+      },
+    };
+  }
+
+  it('critical break-even (gap > 0) hits the exact 0.8270 score under default weights', async () => {
+    mockConfig(validConfig);
+    const { scoreInsights } = await import('./scoring.js');
+
+    const [ranked] = scoreInsights([breakEvenStat(25_000)]);
+    // 0.35 × 0.75 + 0.40 × 0.88 + 0.25 × 0.85 = 0.2625 + 0.352 + 0.2125 = 0.8270
+    expect(ranked!.score).toBeCloseTo(0.8270, 4);
+    expect(ranked!.breakdown).toEqual({
+      novelty: 0.75,
+      actionability: 0.88,
+      specificity: 0.85,
+    });
+  });
+
+  it('gap === 0 (exactly at break-even) demotes to the reassuring band', async () => {
+    mockConfig(validConfig);
+    const { scoreInsights } = await import('./scoring.js');
+
+    const [ranked] = scoreInsights([breakEvenStat(0)]);
+    expect(ranked!.breakdown).toEqual({
+      novelty: 0.60,
+      actionability: 0.55,
+      specificity: 0.85,
+    });
+  });
+
+  it('gap < 0 (above break-even) scores the same as gap === 0 — both demoted', async () => {
+    mockConfig(validConfig);
+    const { scoreInsights } = await import('./scoring.js');
+
+    const [above] = scoreInsights([breakEvenStat(-40_000)]);
+    const [at] = scoreInsights([breakEvenStat(0)]);
+    expect(above!.score).toBeCloseTo(at!.score, 6);
+  });
+
+  it('monotonicity: runway critical > cashflow burning > break-even gap-positive', async () => {
+    mockConfig({ ...validConfig, topN: 10 });
+    const { scoreInsights } = await import('./scoring.js');
+
+    const runwayCritical: ComputedStat = {
+      statType: StatType.Runway,
+      category: null,
+      value: 3,
+      details: {
+        cashOnHand: 15000,
+        monthlyNet: -5000,
+        runwayMonths: 3,
+        cashAsOfDate: '2026-04-20T00:00:00.000Z',
+        confidence: 'high',
+      },
+    };
+    const cashFlowBurning: ComputedStat = {
+      statType: StatType.CashFlow,
+      category: null,
+      value: -5000,
+      details: {
+        monthlyNet: -5000,
+        trailingMonths: 3,
+        direction: 'burning',
+        monthsBurning: 3,
+        recentMonths: [],
+      },
+    };
+    const breakEven = breakEvenStat(25_000);
+
+    const insights = scoreInsights([runwayCritical, cashFlowBurning, breakEven]);
+    const runway = insights.find((i) => i.stat.statType === StatType.Runway)!;
+    const cashFlow = insights.find((i) => i.stat.statType === StatType.CashFlow)!;
+    const be = insights.find((i) => i.stat.statType === StatType.BreakEven)!;
+
+    // Intended ranking: runway (0.9025) > burning (0.8400) > break-even gap-positive (0.8270).
+    // Runway leads because it carries the most urgent signal. Burning follows because a
+    // binary urgency cue should precede a quantified target. Break-even trails — it
+    // refines the burn signal rather than originating one.
+    expect(runway.score).toBeGreaterThan(cashFlow.score);
+    expect(cashFlow.score).toBeGreaterThan(be.score);
+  });
+
+  it('config tunability: shifting weights predictably changes break-even score', async () => {
+    mockConfig({
+      ...validConfig,
+      weights: { novelty: 0.20, actionability: 0.60, specificity: 0.20 },
+    });
+    const { scoreInsights } = await import('./scoring.js');
+
+    const [ranked] = scoreInsights([breakEvenStat(25_000)]);
+    // 0.75 × 0.20 + 0.88 × 0.60 + 0.85 × 0.20 = 0.15 + 0.528 + 0.17 = 0.848
+    expect(ranked!.score).toBeCloseTo(0.848, 4);
+  });
+});
