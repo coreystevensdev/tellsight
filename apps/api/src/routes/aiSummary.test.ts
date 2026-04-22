@@ -71,6 +71,7 @@ vi.mock('../middleware/rateLimiter.js', () => ({
   rateLimitAi: (_req: unknown, _res: unknown, next: () => void) => next(),
   rateLimitPublic: (_req: unknown, _res: unknown, next: () => void) => next(),
   rateLimitAuth: (_req: unknown, _res: unknown, next: () => void) => next(),
+  rateLimitDashboardCompute: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
 vi.mock('../services/auth/tokenService.js', () => ({

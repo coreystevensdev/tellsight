@@ -70,6 +70,7 @@ vi.mock('../middleware/rateLimiter.js', () => ({
   rateLimitPublic: (_req: unknown, _res: unknown, next: () => void) => next(),
   rateLimitAuth: (_req: unknown, _res: unknown, next: () => void) => next(),
   rateLimitAi: (_req: unknown, _res: unknown, next: () => void) => next(),
+  rateLimitDashboardCompute: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
 const { AuthenticationError } = await import('../lib/appError.js');

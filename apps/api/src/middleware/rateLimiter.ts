@@ -48,6 +48,19 @@ const publicLimiter = new RateLimiterRedis({
   insuranceLimiter: publicFallback,
 });
 
+const dashboardComputeFallback = new RateLimiterMemory({
+  points: RATE_LIMITS.dashboardCompute.max,
+  duration: RATE_LIMITS.dashboardCompute.windowMs / 1000,
+});
+
+const dashboardComputeLimiter = new RateLimiterRedis({
+  storeClient: redis,
+  keyPrefix: 'rl_dashboard',
+  points: RATE_LIMITS.dashboardCompute.max,
+  duration: RATE_LIMITS.dashboardCompute.windowMs / 1000,
+  insuranceLimiter: dashboardComputeFallback,
+});
+
 function sendRateLimited(res: Response, rlRes: RateLimiterRes) {
   const retryAfter = Math.ceil(rlRes.msBeforeNext / 1000);
   res.set('Retry-After', String(retryAfter));
@@ -106,6 +119,33 @@ export function rateLimitPublic(req: Request, res: Response, next: NextFunction)
       if (rlRes instanceof RateLimiterRes) {
         rateLimitHits.inc({ limiter: 'public' });
         logger.warn({ ip: key, path: req.path }, 'Public rate limit exceeded');
+        return sendRateLimited(res, rlRes);
+      }
+      logger.warn({ err: rlRes }, 'Rate limiter error — failing open');
+      next();
+    });
+}
+
+// User-keyed limiter for authenticated dashboard endpoints that do non-trivial
+// compute per request (SQL aggregations, regression math). Sits between `ai`
+// (too tight for normal dashboard usage — 5/min LLM-call budget) and `public`
+// (IP-keyed; penalizes shared networks). Falls back to IP only if somehow
+// called before auth middleware populates req.user.
+export function rateLimitDashboardCompute(req: Request, res: Response, next: NextFunction) {
+  if (bypass) return next();
+  const key = req.user?.sub ?? req.ip ?? 'unknown';
+
+  if (!req.user?.sub) {
+    logger.warn({ path: req.path }, 'Dashboard rate limiter missing user — falling back to IP');
+  }
+
+  dashboardComputeLimiter
+    .consume(key)
+    .then(() => next())
+    .catch((rlRes) => {
+      if (rlRes instanceof RateLimiterRes) {
+        rateLimitHits.inc({ limiter: 'dashboard' });
+        logger.warn({ userId: key, path: req.path }, 'Dashboard rate limit exceeded');
         return sendRateLimited(res, rlRes);
       }
       logger.warn({ err: rlRes }, 'Rate limiter error — failing open');

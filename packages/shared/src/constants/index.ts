@@ -7,6 +7,11 @@ export const RATE_LIMITS = {
   auth: { max: 10, windowMs: 60_000 },
   ai: { max: 5, windowMs: 60_000 },
   public: { max: 60, windowMs: 60_000 },
+  // Authenticated endpoints that do non-trivial compute per request (SQL
+  // aggregations, regression math, etc.) but aren't LLM-gated. User-keyed,
+  // generous enough for page load + occasional refresh (~3-5/min typical),
+  // tight enough to catch loop-bug or abuse patterns (60+/min).
+  dashboardCompute: { max: 30, windowMs: 60_000 },
 } as const;
 
 export const ROLES = {

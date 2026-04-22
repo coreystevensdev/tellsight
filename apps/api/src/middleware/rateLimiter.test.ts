@@ -33,7 +33,7 @@ vi.mock('ioredis', () => {
 const { createTestApp } = await import('../test/helpers/testApp.js');
 
 // rate-limiter-flexible with mocked Redis will fall through to insurance (memory) limiter
-const { rateLimitAuth, rateLimitAi, rateLimitPublic } = await import('./rateLimiter.js');
+const { rateLimitAuth, rateLimitAi, rateLimitPublic, rateLimitDashboardCompute } = await import('./rateLimiter.js');
 
 // retry — memory-backed limiter + concurrent Promise.all can race on busy CI runners
 describe('rateLimiter', { retry: 2 }, () => {
@@ -144,6 +144,46 @@ describe('rateLimiter', { retry: 2 }, () => {
       const requests = [];
       for (let i = 0; i < 10; i++) {
         requests.push(fetch(`${baseUrl}/ai/summary`));
+      }
+      const responses = await Promise.all(requests);
+
+      const blocked = responses.filter((r) => r.status === 429);
+      expect(blocked.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('rateLimitDashboardCompute', () => {
+    let server: http.Server;
+    let baseUrl: string;
+
+    beforeAll(async () => {
+      const result = await createTestApp((app) => {
+        // simulate authMiddleware having already attached req.user
+        app.use((req: Request, _res: Response, next) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (req as any).user = { sub: 'dashboard-user-77' };
+          next();
+        });
+        app.use(rateLimitDashboardCompute);
+        app.get('/dashboard/compute', (_req: Request, res: Response) => {
+          res.json({ data: { ok: true } });
+        });
+      });
+      server = result.server;
+      baseUrl = result.baseUrl;
+    });
+
+    afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
+
+    it('allows requests under the limit', async () => {
+      const res = await fetch(`${baseUrl}/dashboard/compute`);
+      expect(res.status).toBe(200);
+    });
+
+    it('returns 429 when dashboard limit (30/min) is exceeded', async () => {
+      const requests = [];
+      for (let i = 0; i < 40; i++) {
+        requests.push(fetch(`${baseUrl}/dashboard/compute`));
       }
       const responses = await Promise.all(requests);
 

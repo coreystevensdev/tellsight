@@ -7,6 +7,7 @@ import { requireUser } from '../lib/requireUser.js';
 import { withRlsContext } from '../lib/rls.js';
 import { orgFinancialsQueries, orgsQueries, dataRowsQueries } from '../db/queries/index.js';
 import { roleGuard } from '../middleware/roleGuard.js';
+import { rateLimitDashboardCompute } from '../middleware/rateLimiter.js';
 import { logger } from '../lib/logger.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
 import {
@@ -83,7 +84,7 @@ orgFinancialsRouter.put('/financials', roleGuard('owner'), async (req, res: Resp
   res.json({ data: updated ?? {} });
 });
 
-orgFinancialsRouter.get('/financials/cash-history', async (req, res: Response) => {
+orgFinancialsRouter.get('/financials/cash-history', rateLimitDashboardCompute, async (req, res: Response) => {
   const user = requireUser(req);
   const q = historyQuerySchema.safeParse(req.query);
 
@@ -106,7 +107,7 @@ orgFinancialsRouter.get('/financials/cash-history', async (req, res: Response) =
 // crossesZeroAtMonth). Suppression cases return `{ data: null }` so the client
 // can render the same empty state as RunwayTrendChart when the forecast is
 // unavailable.
-orgFinancialsRouter.get('/financials/cash-forecast', async (req, res: Response) => {
+orgFinancialsRouter.get('/financials/cash-forecast', rateLimitDashboardCompute, async (req, res: Response) => {
   const user = requireUser(req);
   const q = forecastQuerySchema.safeParse(req.query);
 
