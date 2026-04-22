@@ -35,16 +35,24 @@ test.afterAll(async () => {
   await cleanupFixtureConnection();
 });
 
-async function clearCashOnHand() {
+async function setupRunwayOnlyFixture() {
   const sql = postgres(DATABASE_ADMIN_URL, { max: 1 });
   try {
-    // Strip cash-related fields from the seed org's businessProfile JSONB.
-    // Leaves other onboarding fields intact (businessType, teamSize, etc.).
+    // Goal: only the "Enable Runway" Locked Insight card should render. That
+    // means cashOnHand must be absent AND monthlyFixedCosts must be SET (not
+    // null), because the Break-Even card's gate is `monthlyFixedCosts == null`.
+    //
+    // Clearing monthlyFixedCosts would render BOTH cards and produce two
+    // Save buttons — that's what the initial version of this fixture got
+    // wrong. Setting fixedCosts to a non-null value hides Break-Even
+    // unambiguously.
     await sql`
       UPDATE orgs
-      SET business_profile = COALESCE(business_profile, '{}'::jsonb)
-        - 'cashOnHand'
-        - 'cashAsOfDate'
+      SET business_profile = jsonb_set(
+        COALESCE(business_profile, '{}'::jsonb) - 'cashOnHand' - 'cashAsOfDate',
+        '{monthlyFixedCosts}',
+        '10000'::jsonb
+      )
       WHERE id = ${SEED_ORG_ID}
     `;
   } finally {
@@ -54,7 +62,12 @@ async function clearCashOnHand() {
 
 test.describe('saveCashBalance revalidation', () => {
   test('Locked Insight card disappears after submitting a balance', async ({ browser }) => {
-    await clearCashOnHand();
+    // Default per-test timeout is 30s, but this test does: nav → fill → PUT →
+    // three parallel SWR refetches → router.refresh → unmount. Each step is
+    // fast individually; together they can exceed 30s on cold CI runners.
+    test.setTimeout(60_000);
+
+    await setupRunwayOnlyFixture();
 
     const ctx = await browser.newContext();
     await authenticateAs(ctx, { ...adminUser, role: 'owner', isAdmin: true });
@@ -64,20 +77,44 @@ test.describe('saveCashBalance revalidation', () => {
     const heading = page.locator('#dashboard-heading');
     await heading.waitFor({ timeout: 15_000 });
 
-    // Card renders because cashOnHand is null after the fixture wipe.
-    const enableRunway = page.getByRole('heading', { name: 'Enable Runway' });
-    await expect(enableRunway).toBeVisible({ timeout: 10_000 });
+    // Fixture guarantees only the Runway card renders, so a page-wide role
+    // query is unambiguous. Break-Even card is hidden because monthlyFixedCosts
+    // is set (the gate is `== null` on that field).
+    const runwayHeading = page.getByRole('heading', { name: 'Enable Runway' });
+    await expect(runwayHeading).toBeVisible({ timeout: 10_000 });
+    await runwayHeading.scrollIntoViewIfNeeded();
 
-    // Submit a balance. Input id is generated via useId; target by label.
     const input = page.getByLabel(/current cash balance/i);
     await input.fill('50000');
-    await page.getByRole('button', { name: /^save$/i }).click();
 
-    // After the Promise.all resolves, financials revalidates → needsCashBalance
-    // flips false → LockedInsightCard unmounts. If any SWR key is left stale
-    // or the router.refresh races ahead, the card sticks at visible and this
-    // assertion times out.
-    await expect(enableRunway).toBeHidden({ timeout: 15_000 });
+    // Confirm the button is enabled (valid state inside LockedInsightCard)
+    // but don't click it. The button flips to `disabled` synchronously when
+    // handleSubmit fires, and Playwright's click-retry mechanics race with
+    // that state change unpredictably — earlier attempts with force:true
+    // swallowed the actual DOM submit event. Pressing Enter on the input
+    // dispatches a native `submit` on the form, which React's onSubmit
+    // handler picks up cleanly. More realistic user behavior, too.
+    const saveButton = page.getByRole('button', { name: /^save$/i });
+    await expect(saveButton).toBeEnabled({ timeout: 5_000 });
+
+    const [putResponse] = await Promise.all([
+      page.waitForResponse(
+        (resp) =>
+          resp.url().includes('/api/org/financials') && resp.request().method() === 'PUT',
+        { timeout: 10_000 },
+      ),
+      input.press('Enter'),
+    ]);
+    expect(putResponse.status()).toBe(200);
+
+    // After the Promise.all resolves in saveCashBalance, financials revalidates
+    // → needsCashBalance flips false → LockedInsightCard unmounts. If any SWR
+    // key is left stale or the router.refresh races ahead, the card sticks at
+    // visible and this assertion times out. Timeout widened to 30s because
+    // three parallel SWR refetches + router.refresh take measurable time in CI.
+    await expect(
+      page.getByRole('heading', { name: 'Enable Runway' }),
+    ).toBeHidden({ timeout: 30_000 });
 
     // Heading is a stable anchor across the dashboard RSC tree. If the page
     // redirected (auth loss, error boundary) or crashed during save, this
