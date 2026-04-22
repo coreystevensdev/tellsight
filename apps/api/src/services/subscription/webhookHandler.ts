@@ -1,9 +1,10 @@
 import type Stripe from 'stripe';
 
-import { ANALYTICS_EVENTS } from 'shared/constants';
+import { ANALYTICS_EVENTS, AUDIT_ACTIONS } from 'shared/constants';
 import { subscriptionsQueries, userOrgsQueries } from '../../db/queries/index.js';
 import { dbAdmin } from '../../lib/db.js';
 import { trackEvent } from '../analytics/trackEvent.js';
+import { auditSystem } from '../audit/auditService.js';
 import { logger } from '../../lib/logger.js';
 
 // Stripe SDK v20 moved current_period_end to SubscriptionItem,
@@ -85,6 +86,19 @@ async function handleSubscriptionUpdated(subscription: SubscriptionWebhookPayloa
     } else {
       logger.warn({ orgId, stripeSubscriptionId }, 'No org owner found — skipping cancellation analytics');
     }
+
+    // Audit: payment-state transitions drive refunds, renewals, support disputes.
+    // System event (webhook origin, no request) — user-triggered from the Stripe
+    // customer portal, but reaches us server-to-server. Attach ownerId when known;
+    // orgId is always known from subscription metadata.
+    auditSystem({
+      orgId,
+      userId: ownerId ?? null,
+      action: AUDIT_ACTIONS.SUBSCRIPTION_CANCELLED,
+      targetType: 'subscription',
+      targetId: stripeSubscriptionId,
+      metadata: { currentPeriodEnd: currentPeriodEnd.toISOString() },
+    });
 
     logger.info({ orgId, stripeSubscriptionId, cancelAtPeriodEnd }, 'Subscription canceled');
   } else if (subscription.status === 'active') {

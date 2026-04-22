@@ -27,6 +27,9 @@ vi.mock('../db/queries/index.js', () => ({
     getRowsByDataset: mockGetRowsByDataset,
     getMonthlyBucketsByDataset: mockGetMonthlyBucketsByDataset,
   },
+  auditLogsQueries: {
+    record: vi.fn().mockResolvedValue(undefined),
+  },
 }));
 
 vi.mock('../lib/rls.js', () => ({

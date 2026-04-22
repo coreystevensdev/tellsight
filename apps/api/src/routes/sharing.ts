@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import type { Response } from 'express';
+import { AUDIT_ACTIONS } from 'shared/constants';
 import { requireUser } from '../lib/requireUser.js';
 import { generateShareLink, getSharedInsight } from '../services/sharing/index.js';
 import { withRlsContext } from '../lib/rls.js';
 import { createShareSchema } from 'shared/schemas';
 import { ValidationError } from '../lib/appError.js';
+import { auditAuth } from '../services/audit/auditService.js';
 
 // mounted behind authMiddleware via protectedRouter
 export const shareRouter = Router();
@@ -22,6 +24,16 @@ shareRouter.post('/', async (req, res: Response) => {
   );
 
   // share_link.created tracking moved client-side (useCreateShareLink.ts) — avoids double-counting
+
+  // Audit: public share links expose dataset-derived AI summaries outside the
+  // org's access boundary. Token-gated, but auditor-visibility matters — who
+  // shared what, when, from where. Share id over token hash: safer to leak
+  // in audit logs if they're ever exported.
+  auditAuth(req, AUDIT_ACTIONS.SHARE_CREATED, {
+    targetType: 'share',
+    targetId: String(result.id),
+    metadata: { datasetId: parsed.data.datasetId },
+  });
 
   res.status(201).json({ data: result });
 });

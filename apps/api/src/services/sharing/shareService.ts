@@ -50,7 +50,7 @@ export async function generateShareLink(
 
   logger.info({ orgId, shareId: share.id, datasetId }, 'Share link generated');
 
-  return { token: raw, url: `${env.APP_URL}/share/${raw}`, expiresAt: share.expiresAt };
+  return { id: share.id, token: raw, url: `${env.APP_URL}/share/${raw}`, expiresAt: share.expiresAt };
 }
 
 /** Public share lookup — uses dbAdmin because there's no authenticated user to set RLS context */

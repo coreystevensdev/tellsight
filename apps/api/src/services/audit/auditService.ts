@@ -39,3 +39,19 @@ export function auditAuth(
     ...extra,
   });
 }
+
+/**
+ * System-event audit for background contexts with no HTTP request (Stripe
+ * webhooks, scheduled jobs, BullMQ workers). No IP/UA because the origin
+ * isn't a user — the actor is the system itself. Caller provides orgId +
+ * optional userId (e.g., the org owner at the time of the event).
+ */
+export function auditSystem(
+  entry: Omit<AuditEntry, 'ipAddress' | 'userAgent'>,
+): void {
+  auditLogsQueries
+    .record({ ...entry })
+    .catch((err) => {
+      logger.error({ err, action: entry.action }, 'Failed to write system audit log');
+    });
+}

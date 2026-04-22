@@ -2,12 +2,13 @@ import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import multer from 'multer';
-import { MAX_FILE_SIZE, CSV_MAX_ROWS, MAX_DATASETS_PER_ORG, ANALYTICS_EVENTS } from 'shared/constants';
+import { MAX_FILE_SIZE, CSV_MAX_ROWS, MAX_DATASETS_PER_ORG, ANALYTICS_EVENTS, AUDIT_ACTIONS } from 'shared/constants';
 import { requireUser } from '../lib/requireUser.js';
 import { ValidationError } from '../lib/appError.js';
 import { csvAdapter } from '../services/dataIngestion/index.js';
 import { normalizeRows } from '../services/dataIngestion/normalizer.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
+import { auditAuth } from '../services/audit/auditService.js';
 import { logger } from '../lib/logger.js';
 import type { PreviewData, ParsedRow } from '../services/adapters/index.js';
 import { normalizeHeader } from '../services/dataIngestion/index.js';
@@ -266,6 +267,17 @@ datasetsRouter.post(
     trackEvent(orgId, userId, ANALYTICS_EVENTS.DATASET_CONFIRMED, {
       datasetId: result.datasetId,
       rowCount: result.rowCount,
+    });
+
+    // Audit: wholesale data mutation. If a user ever says "I never uploaded
+    // that file," this is the source of truth on who/when/where. Action name
+    // is `dataset.uploaded` even though we fire on the confirm step — the
+    // upload→preview→confirm flow is one user-facing operation, and confirm
+    // is where rows actually persist.
+    auditAuth(req, AUDIT_ACTIONS.DATASET_UPLOADED, {
+      targetType: 'dataset',
+      targetId: String(result.datasetId),
+      metadata: { fileName, rowCount: result.rowCount },
     });
 
     logger.info(

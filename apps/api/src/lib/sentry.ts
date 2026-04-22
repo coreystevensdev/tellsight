@@ -23,15 +23,19 @@ if (env.SENTRY_DSN) {
  * Sets Sentry user context from the JWT payload so errors
  * are associated with the user + org that triggered them.
  * Mount after authMiddleware on protected routes.
+ *
+ * org_id and role go to tags (not user custom fields) so the Sentry UI
+ * can filter/group errors by them — e.g., "show me all errors from
+ * members only" or "group by org_id." User fields aren't searchable
+ * that way by default.
  */
 export function sentryUserContext(req: Request, _res: Response, next: NextFunction) {
   const user = req.user;
   if (user) {
-    Sentry.setUser({
-      id: user.sub,
-      org_id: String(user.org_id),
-      role: user.role,
-    });
+    Sentry.setUser({ id: user.sub });
+    Sentry.setTag('org_id', String(user.org_id));
+    Sentry.setTag('role', user.role);
+    if (user.isAdmin) Sentry.setTag('platform_admin', 'true');
   }
   next();
 }

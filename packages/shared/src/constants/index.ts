@@ -180,6 +180,7 @@ export const AUDIT_ACTIONS = {
   ADMIN_ORG_VIEWED: 'admin.org_viewed',
   SETTINGS_DIGEST_CHANGED: 'settings.digest_changed',
   SHARE_CREATED: 'share.created',
+  FINANCIALS_UPDATED: 'financials.updated',
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

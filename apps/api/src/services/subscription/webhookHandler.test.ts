@@ -7,6 +7,7 @@ const mockUpdateSubscriptionStatus = vi.fn();
 const mockGetSubscriptionByStripeId = vi.fn();
 const mockGetOrgOwnerId = vi.fn();
 const mockTrackEvent = vi.fn();
+const mockAuditRecord = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../../db/queries/index.js', () => ({
   subscriptionsQueries: {
@@ -17,6 +18,9 @@ vi.mock('../../db/queries/index.js', () => ({
   },
   userOrgsQueries: {
     getOrgOwnerId: mockGetOrgOwnerId,
+  },
+  auditLogsQueries: {
+    record: mockAuditRecord,
   },
 }));
 

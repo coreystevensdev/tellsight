@@ -41,6 +41,9 @@ vi.mock('../db/queries/index.js', () => ({
   subscriptionsQueries: {
     getActiveTier: vi.fn().mockResolvedValue('free'),
   },
+  auditLogsQueries: {
+    record: vi.fn().mockResolvedValue(undefined),
+  },
 }));
 
 vi.mock('../lib/rls.js', () => ({

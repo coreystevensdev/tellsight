@@ -17,7 +17,7 @@ vi.mock('../../lib/logger.js', () => ({
   },
 }));
 
-const { audit, auditAuth } = await import('./auditService.js');
+const { audit, auditAuth, auditSystem } = await import('./auditService.js');
 
 const flushPromises = () => new Promise((r) => setTimeout(r, 0));
 
@@ -151,6 +151,57 @@ describe('auditAuth', () => {
 
     expect(mockRecord).toHaveBeenCalledWith(
       expect.objectContaining({ orgId: null, userId: null }),
+    );
+  });
+});
+
+describe('auditSystem', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRecord.mockResolvedValue(undefined);
+  });
+
+  it('writes a system audit entry with no IP or user-agent', async () => {
+    auditSystem({
+      orgId: 7,
+      userId: 99,
+      action: 'subscription.cancelled',
+      targetType: 'subscription',
+      targetId: 'sub_abc123',
+      metadata: { currentPeriodEnd: '2026-05-01T00:00:00.000Z' },
+    });
+    await flushPromises();
+
+    expect(mockRecord).toHaveBeenCalledWith({
+      orgId: 7,
+      userId: 99,
+      action: 'subscription.cancelled',
+      targetType: 'subscription',
+      targetId: 'sub_abc123',
+      metadata: { currentPeriodEnd: '2026-05-01T00:00:00.000Z' },
+    });
+  });
+
+  it('accepts null userId (system-initiated events without a known actor)', async () => {
+    auditSystem({ orgId: 7, userId: null, action: 'subscription.cancelled' });
+    await flushPromises();
+
+    expect(mockRecord).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 7, userId: null }),
+    );
+  });
+
+  it('never throws on DB failure — logs error and moves on', async () => {
+    mockRecord.mockRejectedValueOnce(new Error('DB down'));
+
+    expect(() =>
+      auditSystem({ orgId: 7, userId: null, action: 'subscription.cancelled' }),
+    ).not.toThrow();
+
+    await flushPromises();
+    expect(mockLogError).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'subscription.cancelled' }),
+      'Failed to write system audit log',
     );
   });
 });

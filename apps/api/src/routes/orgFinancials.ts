@@ -1,7 +1,7 @@
 import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { orgFinancialsSchema } from 'shared/schemas';
-import { ANALYTICS_EVENTS } from 'shared/constants';
+import { ANALYTICS_EVENTS, AUDIT_ACTIONS } from 'shared/constants';
 
 import { requireUser } from '../lib/requireUser.js';
 import { withRlsContext } from '../lib/rls.js';
@@ -10,6 +10,7 @@ import { roleGuard } from '../middleware/roleGuard.js';
 import { rateLimitDashboardCompute } from '../middleware/rateLimiter.js';
 import { logger } from '../lib/logger.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
+import { auditAuth } from '../services/audit/auditService.js';
 import {
   cashFlowFromBuckets,
   computeCashForecast,
@@ -68,6 +69,14 @@ orgFinancialsRouter.put('/financials', roleGuard('owner'), async (req, res: Resp
 
   trackEvent(user.org_id, Number(user.sub), ANALYTICS_EVENTS.FINANCIALS_UPDATED, {
     fields: fieldsUpdated,
+  });
+
+  // Audit: owners editing financial baseline is the kind of change that
+  // shows up in support disputes ("my runway calculation is wrong"). Log
+  // which fields changed, not the values — balance amounts are sensitive
+  // and already live in cash_balance_snapshots for point-in-time recovery.
+  auditAuth(req, AUDIT_ACTIONS.FINANCIALS_UPDATED, {
+    metadata: { fields: fieldsUpdated, firstCashBalance },
   });
 
   // Adoption signal — the moment an owner sets their first cash balance is when
