@@ -21,6 +21,7 @@ import { integrationsCallbackRouter } from './routes/integrations.js';
 import { initSyncWorker, shutdownWorker } from './services/integrations/worker.js';
 import { initScheduler } from './services/integrations/scheduler.js';
 import { initDigestWorker, initDigestScheduler, shutdownDigestWorker } from './services/emailDigest/index.js';
+import { initEmailProvider } from './services/email/index.js';
 import { redis } from './lib/redis.js';
 import { queryClient, adminClient } from './lib/db.js';
 import { abortAll as abortAllStreams } from './lib/activeStreams.js';
@@ -94,6 +95,8 @@ async function start() {
     logger.error({ err }, 'Redis connect failed — shutting down');
     process.exit(1);
   }
+
+  initEmailProvider(env);
 
   if (isQbConfigured(env)) {
     initSyncWorker();

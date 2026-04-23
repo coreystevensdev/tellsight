@@ -4,10 +4,11 @@
     "outDir": "dist",
     "declaration": false,
     "declarationMap": false,
+    "jsx": "react-jsx",
     "paths": {
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["node_modules", "dist"]
 }

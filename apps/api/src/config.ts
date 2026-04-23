@@ -23,7 +23,18 @@ export const envSchema = z
     SENTRY_DSN: z.string().url().optional(),
 
     RESEND_API_KEY: z.string().min(1).optional(),
+    // deprecated by EMAIL_FROM_ADDRESS (Story 9.1); removed in Story 9.2 after emailDigest/ retires.
     DIGEST_FROM_EMAIL: z.string().email().default('insights@example.com'),
+
+    // Email service (Story 9.1) — provider abstraction, console default outside production.
+    EMAIL_PROVIDER: z.enum(['resend', 'console', 'postmark']).default('console'),
+    EMAIL_FROM_ADDRESS: z.string().email().default('insights@example.com'),
+    EMAIL_FROM_NAME: z.string().min(1).default('Kiln Insights'),
+    EMAIL_REPLY_TO: z.string().email().optional(),
+    EMAIL_MAILING_ADDRESS: z.string().min(1).default('Kiln Insights, 1234 Main St, Denver, CO 80202, USA'),
+    // Optional dev-mode HTML capture directory. When set, console provider also writes
+    // rendered HTML to disk for visual preview. Unset in CI/prod.
+    EMAIL_CAPTURE_DIR: z.string().optional(),
 
     QUICKBOOKS_CLIENT_ID: z.string().min(1).optional(),
     QUICKBOOKS_CLIENT_SECRET: z.string().min(1).optional(),
@@ -42,7 +53,16 @@ export const envSchema = z
         'STRIPE_SECRET_KEY must be a live key (sk_live_*) when NODE_ENV=production. A test key (sk_test_*) in production silently ships a broken payment flow to real users.',
       path: ['STRIPE_SECRET_KEY'],
     },
-  );
+  )
+  .refine((data) => !(data.EMAIL_PROVIDER === 'resend' && !data.RESEND_API_KEY), {
+    message: 'RESEND_API_KEY required when EMAIL_PROVIDER=resend.',
+    path: ['EMAIL_PROVIDER'],
+  })
+  .refine((data) => !(data.NODE_ENV === 'production' && data.EMAIL_PROVIDER === 'console'), {
+    message:
+      'EMAIL_PROVIDER=console is not permitted in production — set EMAIL_PROVIDER=resend. Console provider captures sends to logs instead of delivering them; shipping it to prod silently drops customer mail.',
+    path: ['EMAIL_PROVIDER'],
+  });
 
 export type Env = z.infer<typeof envSchema>;
 
