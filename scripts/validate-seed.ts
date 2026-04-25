@@ -159,7 +159,11 @@ function validate() {
   // and the hash drifts. Same posture as any other snapshot test — inputs
   // are fixed, output is fixed. Real runtime uses `new Date()` by default.
   const FROZEN_NOW = new Date('2026-01-15T12:00:00Z');
-  const { prompt, metadata } = assemblePrompt(scored, undefined, undefined, FROZEN_NOW);
+  const { system, user, metadata } = assemblePrompt(scored, undefined, undefined, FROZEN_NOW);
+  // assemblePrompt now returns { system, user } (cacheable + variable). Snapshot
+  // hashes the canonical "what Claude sees" — same join the dropped `.prompt`
+  // back-compat field used, so existing snapshots stay valid across the split.
+  const prompt = system ? `${system}\n\n${user}` : user;
   if (!prompt || prompt.length === 0) {
     console.error('FAIL: assemblePrompt returned empty prompt');
     process.exit(1);

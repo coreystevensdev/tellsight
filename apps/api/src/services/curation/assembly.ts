@@ -26,9 +26,10 @@ interface SplitTemplate {
   user: string;
 }
 
-// v1.7+ ships split templates so the system half can be prompt-cached.
-// v1-v1.6 are single files; for those, the whole content goes in `user` and
-// `system` is empty. The LlmProvider sends an empty system as "no caching".
+// v1.6+ ships split templates so the system half can be prompt-cached.
+// v1-v1.5 and v1-digest stay single-file; for those, the whole content goes
+// in `user` and `system` is empty. The LlmProvider sends an empty system as
+// "no caching".
 function loadTemplate(version: string): SplitTemplate {
   const dir = resolve(__dirname, 'config', 'prompt-templates');
   const splitSystem = resolve(dir, `${version}-system.md`);
