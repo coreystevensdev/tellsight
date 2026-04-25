@@ -263,6 +263,82 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Privacy section — proves the trust strip's "Raw data never reaches AI" tile */}
+      <section className="border-t border-border/40">
+        <div className="mx-auto max-w-4xl px-4 py-14 md:px-6 md:py-20">
+          <h2 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">
+            Your raw numbers never reach the AI.
+          </h2>
+          <p className="mt-4 text-muted-foreground md:text-lg">
+            Tellsight reads your CSV, computes the stats &mdash; totals, trends,
+            anomalies, year-over-year &mdash; and sends only those summaries to
+            Claude. Claude never sees your individual transactions.
+          </p>
+          <p className="mt-3 text-muted-foreground md:text-lg">
+            The function that builds the AI prompt has a signature that
+            won&apos;t accept raw rows. Try to pass them and TypeScript refuses
+            to compile. The privacy boundary is enforced by the type system,
+            not by code-review discipline.
+          </p>
+          <p className="mt-3 text-muted-foreground md:text-lg">
+            Built on the same principle as{' '}
+            <a
+              href="https://github.com/coreystevensdev/invoiceflow"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-foreground underline underline-offset-4 transition-colors hover:text-primary"
+            >
+              InvoiceFlow
+            </a>
+            , the invoice tool I made for the same audience: the privacy
+            promise lives in the code, not in a policy.
+          </p>
+
+          <details className="mt-6 rounded-lg border border-border/60 bg-card p-4 text-sm">
+            <summary className="cursor-pointer select-none font-medium text-foreground">
+              For engineers &mdash; how it&apos;s enforced
+            </summary>
+            <div className="mt-3 space-y-2 text-muted-foreground">
+              <p>
+                The prompt-assembly function in{' '}
+                <a
+                  href="https://github.com/coreystevensdev/saas-analytics-dashboard/blob/main/apps/api/src/services/curation/assembly.ts"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-xs underline underline-offset-4 hover:text-primary"
+                >
+                  apps/api/src/services/curation/assembly.ts
+                </a>{' '}
+                takes <code className="font-mono text-xs">
+                  ScoredInsight[]
+                </code>
+                , not <code className="font-mono text-xs">DataRow[]</code>.
+                Trying to pass raw transactions is a TypeScript compile
+                error.
+              </p>
+              <p>
+                The pipeline is three layers: compute statistics, score them,
+                assemble the prompt. Only the third layer talks to Claude, and
+                its input type is structurally unable to carry raw user data.
+              </p>
+              <p>
+                Side benefit of the same boundary: the cost ceiling in{' '}
+                <a
+                  href="https://github.com/coreystevensdev/saas-analytics-dashboard/blob/main/apps/api/src/lib/cost.ts"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-xs underline underline-offset-4 hover:text-primary"
+                >
+                  apps/api/src/lib/cost.ts
+                </a>{' '}
+                catches anomalously expensive AI calls before they pollute the
+                rolling-median baseline.
+              </p>
+            </div>
+          </details>
+        </div>
+      </section>
+
       {/* A note from the maker — deliberately off-rhythm (narrower, left-aligned) to break the centered sections around it */}
       <section className="border-t border-border/40 bg-muted/20">
         <div className="mx-auto max-w-4xl px-4 py-14 md:px-6 md:py-20">
