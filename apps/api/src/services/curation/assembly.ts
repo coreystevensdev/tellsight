@@ -204,7 +204,6 @@ export function assemblePrompt(
     return {
       system: template.system,
       user,
-      prompt: template.system ? `${template.system}\n\n${user}` : user,
       metadata: {
         statTypes: [],
         categoryCount: 0,
@@ -242,10 +241,5 @@ export function assemblePrompt(
     generatedAt: now.toISOString(),
   };
 
-  return {
-    system: template.system,
-    user,
-    prompt: template.system ? `${template.system}\n\n${user}` : user,
-    metadata,
-  };
+  return { system: template.system, user, metadata };
 }

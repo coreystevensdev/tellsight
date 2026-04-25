@@ -235,13 +235,16 @@ async function seed() {
 
         const stats = computeStats(dbRows, { trendMinPoints: 3 });
         const scored = scoreInsights(stats);
-        const { prompt, metadata } = assemblePrompt(scored);
+        const { system, user, metadata } = assemblePrompt(scored);
 
         const model = process.env.CLAUDE_MODEL ?? 'claude-sonnet-4-5-20250929';
         const message = await claude.messages.create({
           model,
           max_tokens: 1024,
-          messages: [{ role: 'user', content: prompt }],
+          ...(system && {
+            system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+          }),
+          messages: [{ role: 'user', content: user }],
         });
 
         const content = message.content[0]?.type === 'text' ? message.content[0].text : '';

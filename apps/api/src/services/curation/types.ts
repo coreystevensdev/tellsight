@@ -267,16 +267,11 @@ export const transparencyMetadataSchema = z.object({
 export type TransparencyMetadata = z.infer<typeof transparencyMetadataSchema>;
 
 // Split into system + user so the system half can be sent with prompt-cache
-// control on Anthropic. Older single-file templates (v1-v1.6) load entirely
-// into `user` with `system: ''` — the LlmProvider treats empty system as
-// "no caching, send only user message".
-//
-// `prompt` is a convenience join used by tests and any caller that still
-// thinks of the assembly as one string. New code should pass `{ system, user }`
-// to the LlmProvider instead — that's what enables prompt caching.
+// control on Anthropic. Older single-file templates (v1-v1.5, v1-digest) load
+// entirely into `user` with `system: ''` — the LlmProvider treats empty
+// system as "no caching, send only user message".
 export interface AssembledContext {
   system: string;
   user: string;
-  prompt: string;
   metadata: TransparencyMetadata;
 }

@@ -237,9 +237,9 @@ describe('cash flow end-to-end pipeline', () => {
     expect(result.metadata.promptVersion).toBe('v1.6');
 
     // prompt: cash flow framing with signed monthly net
-    expect(result.prompt).toMatch(/Cash Flow: burning/);
-    expect(result.prompt).toMatch(/-\$[\d,]+\/mo/);
-    expect(result.prompt).toMatch(/over 3 months/);
+    expect(result.user).toMatch(/Cash Flow: burning/);
+    expect(result.user).toMatch(/-\$[\d,]+\/mo/);
+    expect(result.user).toMatch(/over 3 months/);
 
     // privacy boundary: no row-level labels survive assembly
     const sensitiveLabels = [
@@ -252,7 +252,7 @@ describe('cash flow end-to-end pipeline', () => {
       'Widget sales Mar',
     ];
     for (const label of sensitiveLabels) {
-      expect(result.prompt).not.toContain(label);
+      expect(result.user).not.toContain(label);
     }
   });
 });
@@ -291,14 +291,14 @@ describe('runway end-to-end pipeline', () => {
 
     expect(result.metadata.statTypes).toContain('runway');
     expect(result.metadata.promptVersion).toBe('v1.6');
-    expect(result.prompt).toMatch(/Runway:\s+3\.0\s+months/);
-    expect(result.prompt).toContain('cash $15,000');
-    expect(result.prompt).toContain('as of 2026-04-10');
-    expect(result.prompt).toContain('confidence: high');
+    expect(result.user).toMatch(/Runway:\s+3\.0\s+months/);
+    expect(result.user).toContain('cash $15,000');
+    expect(result.user).toContain('as of 2026-04-10');
+    expect(result.user).toContain('confidence: high');
 
     // Privacy regression guard — no row labels leak into runway framing
     for (const label of ['Acme Corp invoice #4218', 'Main St landlord wire', 'Widget sales Mar', 'Widget sales Apr']) {
-      expect(result.prompt).not.toContain(label);
+      expect(result.user).not.toContain(label);
     }
   });
 
@@ -327,7 +327,7 @@ describe('runway end-to-end pipeline', () => {
     const insights = scoreInsights(stats);
     const result = assemblePrompt(insights);
 
-    expect(result.prompt).toContain('confidence: low');
+    expect(result.user).toContain('confidence: low');
   });
 });
 
@@ -366,13 +366,13 @@ describe('break-even end-to-end pipeline', () => {
 
     expect(result.metadata.statTypes).toContain('break_even');
     expect(result.metadata.promptVersion).toBe('v1.6');
-    expect(result.prompt).toMatch(/Break-Even:\s+\$75,000\/mo/);
-    expect(result.prompt).toMatch(/at 20\.0% margin/);
-    expect(result.prompt).toMatch(/gap \$25,000/);
+    expect(result.user).toMatch(/Break-Even:\s+\$75,000\/mo/);
+    expect(result.user).toMatch(/at 20\.0% margin/);
+    expect(result.user).toMatch(/gap \$25,000/);
 
     // Privacy regression guard — no row labels leak into break-even framing
     for (const label of ['Acme Corp invoice #4218', 'Main St landlord wire', 'Widget sales Mar', 'Widget sales Apr']) {
-      expect(result.prompt).not.toContain(label);
+      expect(result.user).not.toContain(label);
     }
   });
 
@@ -401,9 +401,9 @@ describe('break-even end-to-end pipeline', () => {
     const result = assemblePrompt(insights);
 
     expect(result.metadata.statTypes).toContain('break_even');
-    expect(result.prompt).toMatch(/Break-Even:\s+\$75,000\/mo/);
+    expect(result.user).toMatch(/Break-Even:\s+\$75,000\/mo/);
     // Gap is negative — prompt should render the minus sign explicitly.
-    expect(result.prompt).toMatch(/gap -\$25,000/);
+    expect(result.user).toMatch(/gap -\$25,000/);
   });
 });
 
@@ -438,8 +438,8 @@ describe('chart-tag pipeline integration', () => {
     const insights = scoreInsights(stats);
     const result = assemblePrompt(insights, 'v2');
 
-    expect(result.prompt).toMatch(/Allowlist: [a-z_, ]+/);
-    const allowlistMatch = result.prompt.match(/Allowlist: ([a-z_, ]+)/);
+    expect(result.user).toMatch(/Allowlist: [a-z_, ]+/);
+    const allowlistMatch = result.user.match(/Allowlist: ([a-z_, ]+)/);
     expect(allowlistMatch).not.toBeNull();
     const advertised = allowlistMatch![1]!.split(', ').sort();
     expect(advertised).toEqual([...result.metadata.statTypes].sort());
@@ -519,7 +519,7 @@ describe('cash forecast end-to-end pipeline', () => {
     // Forecast emits
     expect(result.metadata.statTypes).toContain('cash_forecast');
     expect(result.metadata.promptVersion).toBe('v1.6');
-    expect(result.prompt).toMatch(/Cash Forecast: balance \$/);
+    expect(result.user).toMatch(/Cash Forecast: balance \$/);
 
     // Runway also emits from the same fixture — both should be ranked in.
     expect(result.metadata.statTypes).toContain('runway');
@@ -534,7 +534,7 @@ describe('cash forecast end-to-end pipeline', () => {
 
     // Privacy regression — row labels must not leak into the assembled prompt
     for (const leak of ['Acme Corp invoice', 'Main St landlord wire']) {
-      expect(result.prompt).not.toContain(leak);
+      expect(result.user).not.toContain(leak);
     }
   });
 
@@ -566,6 +566,6 @@ describe('cash forecast end-to-end pipeline', () => {
     const result = assemblePrompt(insights);
 
     expect(result.metadata.statTypes).not.toContain('cash_forecast');
-    expect(result.prompt).not.toMatch(/Cash Forecast:/);
+    expect(result.user).not.toMatch(/Cash Forecast:/);
   });
 });

@@ -90,13 +90,13 @@ describe('assemblePrompt', () => {
     const { assemblePrompt } = await import('./assembly.js');
     const result = assemblePrompt(fixtureInsights);
 
-    expect(result.prompt).toContain('Template start');
-    expect(result.prompt).toContain('Template end');
-    expect(result.prompt).toContain('[Sales] Anomaly');
-    expect(result.prompt).toContain('[Marketing] Trend');
-    expect(result.prompt).toContain('Stat types: anomaly, trend, total');
-    expect(result.prompt).toContain('Categories: 2');
-    expect(result.prompt).toContain('Insights: 3');
+    expect(result.user).toContain('Template start');
+    expect(result.user).toContain('Template end');
+    expect(result.user).toContain('[Sales] Anomaly');
+    expect(result.user).toContain('[Marketing] Trend');
+    expect(result.user).toContain('Stat types: anomaly, trend, total');
+    expect(result.user).toContain('Categories: 2');
+    expect(result.user).toContain('Insights: 3');
   });
 
   it('returns valid metadata with correct shape', async () => {
@@ -119,7 +119,7 @@ describe('assemblePrompt', () => {
     const { assemblePrompt } = await import('./assembly.js');
     const result = assemblePrompt([]);
 
-    expect(result.prompt).toContain('No statistical insights available');
+    expect(result.user).toContain('No statistical insights available');
     expect(result.metadata.insightCount).toBe(0);
     expect(result.metadata.categoryCount).toBe(0);
     expect(result.metadata.statTypes).toEqual([]);
@@ -133,7 +133,7 @@ describe('assemblePrompt', () => {
     const result = assemblePrompt(fixtureInsights, 'v2');
 
     expect(result.metadata.promptVersion).toBe('v2');
-    expect(result.prompt).toContain('custom');
+    expect(result.user).toContain('custom');
   });
 
   it('injects stat-ID allowlist with alphabetized order', async () => {
@@ -154,7 +154,7 @@ describe('assemblePrompt', () => {
     const result = assemblePrompt(fixtureInsights, 'v2');
 
     // fixture has anomaly, trend, total in relevance order; allowlist sorts alphabetically
-    expect(result.prompt).toBe('Allow: anomaly, total, trend');
+    expect(result.user).toBe('Allow: anomaly, total, trend');
   });
 
   it('renders allowlist as "none" when insights are empty', async () => {
@@ -172,7 +172,7 @@ describe('assemblePrompt', () => {
     const { assemblePrompt } = await import('./assembly.js');
     const result = assemblePrompt([], 'v2');
 
-    expect(result.prompt).toBe('Allow: none');
+    expect(result.user).toBe('Allow: none');
   });
 
   it('never includes raw data fields in the prompt', async () => {
@@ -180,7 +180,7 @@ describe('assemblePrompt', () => {
     const result = assemblePrompt(fixtureInsights);
 
     // only check the prompt text — the metadata property is part of AssembledContext, not a data leak
-    const prompt = result.prompt;
+    const prompt = result.user;
     expect(prompt).not.toContain('"orgId"');
     expect(prompt).not.toContain('"datasetId"');
     expect(prompt).not.toContain('"rows"');
@@ -191,14 +191,14 @@ describe('assemblePrompt', () => {
     const result = assemblePrompt(fixtureInsights);
 
     // anomaly
-    expect(result.prompt).toContain('z-score: 2.50');
-    expect(result.prompt).toContain('above normal');
+    expect(result.user).toContain('z-score: 2.50');
+    expect(result.user).toContain('above normal');
     // trend
-    expect(result.prompt).toContain('up 25.0%');
-    expect(result.prompt).toContain('6 periods');
+    expect(result.user).toContain('up 25.0%');
+    expect(result.user).toContain('6 periods');
     // total
-    expect(result.prompt).toContain('[Overall] Total');
-    expect(result.prompt).toContain('20 transactions');
+    expect(result.user).toContain('[Overall] Total');
+    expect(result.user).toContain('20 transactions');
   });
 
   it('deduplicates stat types in metadata', async () => {
@@ -253,9 +253,9 @@ describe('assemblePrompt', () => {
     const { assemblePrompt } = await import('./assembly.js');
     const result = assemblePrompt([forecastInsight]);
 
-    expect(result.prompt).toContain('Cash Forecast: balance $58,000 → $41,000 → $23,000 → $5,000');
-    expect(result.prompt).toContain('method: linear_regression');
-    expect(result.prompt).toContain('confidence: high');
+    expect(result.user).toContain('Cash Forecast: balance $58,000 → $41,000 → $23,000 → $5,000');
+    expect(result.user).toContain('method: linear_regression');
+    expect(result.user).toContain('confidence: high');
   });
 
   it('CashForecast with crossesZeroAtMonth !== null appends the crossing phrase', async () => {
@@ -288,8 +288,8 @@ describe('assemblePrompt', () => {
     const { assemblePrompt } = await import('./assembly.js');
     const result = assemblePrompt([forecastInsight]);
 
-    expect(result.prompt).toContain('→ -$5,000');
-    expect(result.prompt).toContain('balance crosses zero around month 3');
+    expect(result.user).toContain('→ -$5,000');
+    expect(result.user).toContain('balance crosses zero around month 3');
   });
 
   it('defaults to v1.6 prompt version', async () => {
