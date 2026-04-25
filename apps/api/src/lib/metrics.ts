@@ -45,6 +45,17 @@ export const circuitBreakerState = new Gauge({
   registers: [registry],
 });
 
+// -- AI cost ceiling --
+// Counts post-call detections of cost anomalies. Labelled by caller because
+// the generate path throws (request fails) while the stream path logs-only
+// (response was already delivered) — operators want to distinguish the two.
+export const aiCostBudgetExceeded = new Counter({
+  name: 'ai_cost_budget_exceeded_total',
+  help: 'Times an AI call cost exceeded the rolling-median or absolute ceiling',
+  labelNames: ['caller'] as const,
+  registers: [registry],
+});
+
 // -- active SSE streams (pulled from activeStreams registry) --
 new Gauge({
   name: 'sse_active_streams',

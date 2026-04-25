@@ -21,13 +21,34 @@ const usdSigned = (n: number) => `${n >= 0 ? '+' : '-'}$${usd.format(Math.abs(n)
 // the negative case. Matches the editorial posture of the owner framing.
 const usdMinus = (n: number) => (n >= 0 ? `$${usd.format(n)}` : `-$${usd.format(Math.abs(n))}`);
 
-function loadTemplate(version: string): string {
-  const templatePath = resolve(__dirname, 'config', 'prompt-templates', `${version}.md`);
+interface SplitTemplate {
+  system: string;
+  user: string;
+}
+
+// v1.7+ ships split templates so the system half can be prompt-cached.
+// v1-v1.6 are single files; for those, the whole content goes in `user` and
+// `system` is empty. The LlmProvider sends an empty system as "no caching".
+function loadTemplate(version: string): SplitTemplate {
+  const dir = resolve(__dirname, 'config', 'prompt-templates');
+  const splitSystem = resolve(dir, `${version}-system.md`);
+  const splitUser = resolve(dir, `${version}-user.md`);
+
   try {
-    return readFileSync(templatePath, 'utf-8');
+    return {
+      system: readFileSync(splitSystem, 'utf-8'),
+      user: readFileSync(splitUser, 'utf-8'),
+    };
+  } catch {
+    // Split files absent — fall back to single-file convention.
+  }
+
+  const singlePath = resolve(dir, `${version}.md`);
+  try {
+    return { system: '', user: readFileSync(singlePath, 'utf-8') };
   } catch (err) {
     throw new AppError(
-      `Prompt template missing: ${version}.md`,
+      `Prompt template missing: tried ${version}-system.md/${version}-user.md and ${version}.md`,
       'CONFIG_ERROR',
       500,
       err,
@@ -35,9 +56,9 @@ function loadTemplate(version: string): string {
   }
 }
 
-const templateCache = new Map<string, string>();
+const templateCache = new Map<string, SplitTemplate>();
 
-function getTemplate(version: string): string {
+function getTemplate(version: string): SplitTemplate {
   let tpl = templateCache.get(version);
   if (!tpl) {
     tpl = loadTemplate(version);
@@ -130,6 +151,32 @@ function formatBusinessContext(profile: BusinessProfile | null | undefined): str
   return `This is a ${type} business (${revenue}, ${team}). The owner's top concern is ${concern}. Tailor your advice to this context.`;
 }
 
+// Apply variable substitutions to the user-facing portion of the template.
+// The system portion (v1.7+) has no placeholders and is returned unchanged.
+function renderUser(
+  template: string,
+  vars: {
+    statSummaries: string;
+    today: string;
+    businessContext: string;
+    benchmarks: string;
+    statTypeList: string;
+    allowedStatIds: string;
+    categoryCount: string;
+    insightCount: string;
+  },
+): string {
+  return template
+    .replace('{{statSummaries}}', vars.statSummaries)
+    .replace('{{today}}', vars.today)
+    .replace('{{businessContext}}', vars.businessContext)
+    .replace('{{industryBenchmarks}}', vars.benchmarks)
+    .replace('{{statTypeList}}', vars.statTypeList)
+    .replace('{{allowedStatIds}}', vars.allowedStatIds)
+    .replace('{{categoryCount}}', vars.categoryCount)
+    .replace('{{insightCount}}', vars.insightCount);
+}
+
 export function assemblePrompt(
   insights: ScoredInsight[],
   promptVersion = DEFAULT_VERSION,
@@ -142,18 +189,22 @@ export function assemblePrompt(
   const benchmarks = getIndustryBenchmarks(businessProfile?.businessType) ?? 'No industry benchmarks available.';
 
   if (insights.length === 0) {
-    const emptyPrompt = template
-      .replace('{{statSummaries}}', 'No statistical insights available. The dataset may be empty or too small for meaningful analysis.')
-      .replace('{{today}}', today)
-      .replace('{{businessContext}}', businessContext)
-      .replace('{{industryBenchmarks}}', benchmarks)
-      .replace('{{statTypeList}}', 'none')
-      .replace('{{allowedStatIds}}', 'none')
-      .replace('{{categoryCount}}', '0')
-      .replace('{{insightCount}}', '0');
+    const user = renderUser(template.user, {
+      statSummaries:
+        'No statistical insights available. The dataset may be empty or too small for meaningful analysis.',
+      today,
+      businessContext,
+      benchmarks,
+      statTypeList: 'none',
+      allowedStatIds: 'none',
+      categoryCount: '0',
+      insightCount: '0',
+    });
 
     return {
-      prompt: emptyPrompt,
+      system: template.system,
+      user,
+      prompt: template.system ? `${template.system}\n\n${user}` : user,
       metadata: {
         statTypes: [],
         categoryCount: 0,
@@ -171,15 +222,16 @@ export function assemblePrompt(
   const categories = new Set(insights.map((i) => i.stat.category).filter(Boolean));
   const { breakdown } = insights[0]!;
 
-  const prompt = template
-    .replace('{{statSummaries}}', statSummaries)
-    .replace('{{today}}', today)
-    .replace('{{businessContext}}', businessContext)
-    .replace('{{industryBenchmarks}}', benchmarks)
-    .replace('{{statTypeList}}', statTypes.join(', '))
-    .replace('{{allowedStatIds}}', allowedStatIds)
-    .replace('{{categoryCount}}', String(categories.size))
-    .replace('{{insightCount}}', String(insights.length));
+  const user = renderUser(template.user, {
+    statSummaries,
+    today,
+    businessContext,
+    benchmarks,
+    statTypeList: statTypes.join(', '),
+    allowedStatIds,
+    categoryCount: String(categories.size),
+    insightCount: String(insights.length),
+  });
 
   const metadata: TransparencyMetadata = {
     statTypes,
@@ -190,5 +242,10 @@ export function assemblePrompt(
     generatedAt: now.toISOString(),
   };
 
-  return { prompt, metadata };
+  return {
+    system: template.system,
+    user,
+    prompt: template.system ? `${template.system}\n\n${user}` : user,
+    metadata,
+  };
 }

@@ -22,6 +22,21 @@ vi.mock('../../lib/circuitBreaker.js', () => ({
   },
 }));
 
+const mockComputeCost = vi.fn();
+const mockExceedsBudget = vi.fn();
+const mockRecordCost = vi.fn();
+
+vi.mock('../../lib/cost.js', () => ({
+  computeCost: (...args: unknown[]) => mockComputeCost(...args),
+  exceedsBudget: (...args: unknown[]) => mockExceedsBudget(...args),
+  recordCost: (...args: unknown[]) => mockRecordCost(...args),
+}));
+
+const mockBudgetMetric = { inc: vi.fn() };
+vi.mock('../../lib/metrics.js', () => ({
+  aiCostBudgetExceeded: mockBudgetMetric,
+}));
+
 const mockCreate = vi.fn();
 const mockStream = vi.fn();
 
@@ -54,6 +69,15 @@ import { logger } from '../../lib/logger.js';
 describe('generateInterpretation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Defaults: cost is small, budget is fine. Tests exercising the cost path
+    // override these explicitly.
+    mockComputeCost.mockReturnValue(0.018);
+    mockExceedsBudget.mockReturnValue({
+      exceeded: false,
+      observed: 0.018,
+      cap: null,
+      median: null,
+    });
   });
 
   it('returns text from Claude response', async () => {
@@ -63,7 +87,7 @@ describe('generateInterpretation', () => {
     });
 
     const { generateInterpretation } = await import('./claudeClient.js');
-    const result = await generateInterpretation('analyze this data');
+    const result = await generateInterpretation({ system: '', user: 'analyze this data' });
 
     expect(result).toBe('Revenue is growing steadily.');
     expect(mockCreate).toHaveBeenCalledWith({
@@ -80,7 +104,7 @@ describe('generateInterpretation', () => {
     });
 
     const { generateInterpretation } = await import('./claudeClient.js');
-    await generateInterpretation('test prompt');
+    await generateInterpretation({ system: '', user: 'test prompt' });
 
     expect(logger.info).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -97,7 +121,7 @@ describe('generateInterpretation', () => {
     });
 
     const { generateInterpretation } = await import('./claudeClient.js');
-    const result = await generateInterpretation('prompt');
+    const result = await generateInterpretation({ system: '', user: 'prompt' });
 
     expect(result).toBe('');
   });
@@ -107,7 +131,7 @@ describe('generateInterpretation', () => {
 
     const { generateInterpretation } = await import('./claudeClient.js');
 
-    await expect(generateInterpretation('prompt')).rejects.toThrow(
+    await expect(generateInterpretation({ system: '', user: 'prompt' })).rejects.toThrow(
       'External service error: Claude API',
     );
   });
@@ -119,7 +143,7 @@ describe('generateInterpretation', () => {
 
     const { generateInterpretation } = await import('./claudeClient.js');
 
-    await expect(generateInterpretation('prompt')).rejects.toThrow();
+    await expect(generateInterpretation({ system: '', user: 'prompt' })).rejects.toThrow();
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({ err: 'Invalid API key' }),
       'Claude API non-retryable error',
@@ -132,11 +156,122 @@ describe('generateInterpretation', () => {
 
     const { generateInterpretation } = await import('./claudeClient.js');
 
-    await expect(generateInterpretation('prompt')).rejects.toThrow();
+    await expect(generateInterpretation({ system: '', user: 'prompt' })).rejects.toThrow();
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({ err: 'Server overloaded' }),
       'Claude API retryable error exhausted',
     );
+  });
+
+  it('records cost into history on successful generate', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'text', text: 'ok' }],
+      usage: { input_tokens: 1000, output_tokens: 1000 },
+    });
+
+    const { generateInterpretation } = await import('./claudeClient.js');
+    await generateInterpretation({ system: '', user: 'prompt' });
+
+    expect(mockRecordCost).toHaveBeenCalledWith(0.018);
+    expect(mockBudgetMetric.inc).not.toHaveBeenCalled();
+  });
+
+  it('throws CostBudgetExceededError when generate cost exceeds budget', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'text', text: 'expensive response' }],
+      usage: { input_tokens: 100000, output_tokens: 100000 },
+    });
+    mockComputeCost.mockReturnValue(2.0);
+    mockExceedsBudget.mockReturnValue({
+      exceeded: true,
+      observed: 2.0,
+      cap: 1.0,
+      median: 0.05,
+    });
+
+    const { generateInterpretation } = await import('./claudeClient.js');
+
+    await expect(generateInterpretation({ system: '', user: 'prompt' })).rejects.toThrow('exceeded safety cap');
+    expect(mockBudgetMetric.inc).toHaveBeenCalledWith({ caller: 'generate' });
+    expect(mockRecordCost).not.toHaveBeenCalled();
+  });
+
+  it('does not wrap CostBudgetExceededError as ExternalServiceError', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'text', text: 'expensive' }],
+      usage: { input_tokens: 100000, output_tokens: 100000 },
+    });
+    mockComputeCost.mockReturnValue(2.0);
+    mockExceedsBudget.mockReturnValue({
+      exceeded: true,
+      observed: 2.0,
+      cap: 1.0,
+      median: 0.05,
+    });
+
+    const { generateInterpretation } = await import('./claudeClient.js');
+
+    // The thrown error should retain the COST_BUDGET_EXCEEDED code, not get
+    // re-wrapped as External Service Error (502). The error handler routes
+    // 503 from here.
+    await expect(generateInterpretation({ system: '', user: 'prompt' })).rejects.toMatchObject({
+      code: 'COST_BUDGET_EXCEEDED',
+      statusCode: 503,
+    });
+  });
+
+  it('skips cost path entirely when computeCost returns null (unknown model)', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'text', text: 'ok' }],
+      usage: { input_tokens: 1000, output_tokens: 1000 },
+    });
+    mockComputeCost.mockReturnValue(null);
+
+    const { generateInterpretation } = await import('./claudeClient.js');
+    await generateInterpretation({ system: '', user: 'prompt' });
+
+    expect(mockExceedsBudget).not.toHaveBeenCalled();
+    expect(mockRecordCost).not.toHaveBeenCalled();
+  });
+
+  it('attaches cache_control to system block when system is non-empty', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'text', text: 'analysis' }],
+      usage: { input_tokens: 1000, output_tokens: 200 },
+    });
+
+    const { generateInterpretation } = await import('./claudeClient.js');
+    await generateInterpretation({
+      system: 'You are an analyst. Follow these rules carefully.',
+      user: 'Here is the data.',
+    });
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        system: [
+          {
+            type: 'text',
+            text: 'You are an analyst. Follow these rules carefully.',
+            cache_control: { type: 'ephemeral' },
+          },
+        ],
+        messages: [{ role: 'user', content: 'Here is the data.' }],
+      }),
+    );
+  });
+
+  it('omits system field entirely when system is empty (no caching)', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'text', text: 'ok' }],
+      usage: { input_tokens: 100, output_tokens: 50 },
+    });
+
+    const { generateInterpretation } = await import('./claudeClient.js');
+    await generateInterpretation({ system: '', user: 'just a user message' });
+
+    const calledWith = mockCreate.mock.calls[0]![0] as Record<string, unknown>;
+    expect(calledWith).not.toHaveProperty('system');
+    expect(calledWith.messages).toEqual([{ role: 'user', content: 'just a user message' }]);
   });
 });
 
@@ -168,6 +303,13 @@ function createMockStream(chunks: string[], finalMessage: unknown) {
 describe('streamInterpretation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockComputeCost.mockReturnValue(0.018);
+    mockExceedsBudget.mockReturnValue({
+      exceeded: false,
+      observed: 0.018,
+      cap: null,
+      median: null,
+    });
   });
 
   it('streams text chunks and returns full result', async () => {
@@ -180,7 +322,7 @@ describe('streamInterpretation', () => {
 
     const { streamInterpretation } = await import('./claudeClient.js');
     const deltas: string[] = [];
-    const result = await streamInterpretation('test', (d) => deltas.push(d));
+    const result = await streamInterpretation({ system: '', user: 'test' }, (d) => deltas.push(d));
 
     expect(deltas).toEqual(['Hello ', 'world']);
     expect(result).toEqual({
@@ -197,7 +339,7 @@ describe('streamInterpretation', () => {
     mockStream.mockReturnValue(createMockStream(['done'], finalMsg));
 
     const { streamInterpretation } = await import('./claudeClient.js');
-    await streamInterpretation('test', () => {});
+    await streamInterpretation({ system: '', user: 'test' }, () => {});
 
     expect(logger.info).toHaveBeenCalledWith(
       expect.objectContaining({ usage: finalMsg.usage }),
@@ -216,7 +358,7 @@ describe('streamInterpretation', () => {
     mockStream.mockReturnValue(stream);
 
     const { streamInterpretation } = await import('./claudeClient.js');
-    const promise = streamInterpretation('test', () => {}, controller.signal);
+    const promise = streamInterpretation({ system: '', user: 'test' }, () => {}, controller.signal);
 
     // stream completes normally here since abort happens after
     await promise;
@@ -235,6 +377,44 @@ describe('streamInterpretation', () => {
 
     const { streamInterpretation } = await import('./claudeClient.js');
 
-    await expect(streamInterpretation('test', () => {})).rejects.toThrow('stream failed');
+    await expect(streamInterpretation({ system: '', user: 'test' }, () => {})).rejects.toThrow('stream failed');
+  });
+
+  it('records cost into history on successful stream', async () => {
+    const finalMsg = {
+      content: [{ type: 'text', text: 'done' }],
+      usage: { input_tokens: 1000, output_tokens: 1000 },
+    };
+    mockStream.mockReturnValue(createMockStream(['done'], finalMsg));
+
+    const { streamInterpretation } = await import('./claudeClient.js');
+    await streamInterpretation({ system: '', user: 'test' }, () => {});
+
+    expect(mockRecordCost).toHaveBeenCalledWith(0.018);
+    expect(mockBudgetMetric.inc).not.toHaveBeenCalled();
+  });
+
+  it('logs but does not throw when stream cost exceeds budget', async () => {
+    const finalMsg = {
+      content: [{ type: 'text', text: 'expensive answer already shipped' }],
+      usage: { input_tokens: 100000, output_tokens: 100000 },
+    };
+    mockStream.mockReturnValue(createMockStream(['expensive ', 'answer ', 'already shipped'], finalMsg));
+    mockComputeCost.mockReturnValue(2.0);
+    mockExceedsBudget.mockReturnValue({
+      exceeded: true,
+      observed: 2.0,
+      cap: 1.0,
+      median: 0.05,
+    });
+
+    const { streamInterpretation } = await import('./claudeClient.js');
+
+    // Critical: streaming MUST NOT throw on overrun — content already shipped.
+    const result = await streamInterpretation({ system: '', user: 'test' }, () => {});
+
+    expect(result.fullText).toBe('expensive answer already shipped');
+    expect(mockBudgetMetric.inc).toHaveBeenCalledWith({ caller: 'stream' });
+    expect(mockRecordCost).not.toHaveBeenCalled();
   });
 });

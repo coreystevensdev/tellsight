@@ -4,12 +4,24 @@ import type { ScoredInsight } from './types.js';
 import { StatType } from './types.js';
 
 vi.mock('node:fs', () => ({
-  readFileSync: vi.fn(() => `Template start
+  // The assembly loader looks for split templates first (-system.md / -user.md),
+  // then falls back to the single-file convention. Tests stay on the single-file
+  // path by throwing ENOENT for split filenames — the legacy template content
+  // below still drives every assertion.
+  readFileSync: vi.fn((path: string) => {
+    if (path.includes('-system.md') || path.includes('-user.md')) {
+      const err = new Error('ENOENT: no such file (test mock)') as Error & { code: string };
+      err.code = 'ENOENT';
+      throw err;
+    }
+    return `Template start
 {{statSummaries}}
 Stat types: {{statTypeList}}
 Categories: {{categoryCount}}
 Insights: {{insightCount}}
-Template end`),
+Allow: {{allowedStatIds}}
+Template end`;
+  }),
 }));
 
 const fixtureInsights: ScoredInsight[] = [
@@ -46,10 +58,32 @@ const fixtureInsights: ScoredInsight[] = [
   },
 ];
 
+// The default mock for readFileSync — re-applied in beforeEach so per-test
+// mockImplementation overrides don't bleed into subsequent tests.
+function setDefaultFsMock(readFileSyncMock: ReturnType<typeof vi.fn>) {
+  readFileSyncMock.mockImplementation((path: unknown) => {
+    const p = String(path);
+    if (p.includes('-system.md') || p.includes('-user.md')) {
+      const err = new Error('ENOENT (test mock)') as Error & { code: string };
+      err.code = 'ENOENT';
+      throw err;
+    }
+    return `Template start
+{{statSummaries}}
+Stat types: {{statTypeList}}
+Categories: {{categoryCount}}
+Insights: {{insightCount}}
+Allow: {{allowedStatIds}}
+Template end`;
+  });
+}
+
 describe('assemblePrompt', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     vi.resetModules();
+    const { readFileSync } = await import('node:fs');
+    setDefaultFsMock(vi.mocked(readFileSync));
   });
 
   it('populates template placeholders with insight data', async () => {
@@ -104,7 +138,17 @@ describe('assemblePrompt', () => {
 
   it('injects stat-ID allowlist with alphabetized order', async () => {
     const { readFileSync } = await import('node:fs');
-    vi.mocked(readFileSync).mockReturnValueOnce('Allow: {{allowedStatIds}}');
+    // Force single-file fallback so the test's tiny override template is the
+    // entire prompt — split-file mode would compose system + user instead.
+    vi.mocked(readFileSync).mockImplementation((path: unknown) => {
+      const p = String(path);
+      if (p.includes('-system.md') || p.includes('-user.md')) {
+        const err = new Error('ENOENT (test mock)') as Error & { code: string };
+        err.code = 'ENOENT';
+        throw err;
+      }
+      return 'Allow: {{allowedStatIds}}';
+    });
 
     const { assemblePrompt } = await import('./assembly.js');
     const result = assemblePrompt(fixtureInsights, 'v2');
@@ -115,7 +159,15 @@ describe('assemblePrompt', () => {
 
   it('renders allowlist as "none" when insights are empty', async () => {
     const { readFileSync } = await import('node:fs');
-    vi.mocked(readFileSync).mockReturnValueOnce('Allow: {{allowedStatIds}}');
+    vi.mocked(readFileSync).mockImplementation((path: unknown) => {
+      const p = String(path);
+      if (p.includes('-system.md') || p.includes('-user.md')) {
+        const err = new Error('ENOENT (test mock)') as Error & { code: string };
+        err.code = 'ENOENT';
+        throw err;
+      }
+      return 'Allow: {{allowedStatIds}}';
+    });
 
     const { assemblePrompt } = await import('./assembly.js');
     const result = assemblePrompt([], 'v2');

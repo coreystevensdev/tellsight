@@ -2,9 +2,11 @@ import Anthropic from '@anthropic-ai/sdk';
 
 import { env } from '../../config.js';
 import { logger } from '../../lib/logger.js';
-import { ExternalServiceError } from '../../lib/appError.js';
+import { ExternalServiceError, CostBudgetExceededError } from '../../lib/appError.js';
 import { CircuitBreaker } from '../../lib/circuitBreaker.js';
-import type { LlmProvider, StreamResult, ProviderHealth } from './provider.js';
+import { computeCost, exceedsBudget, recordCost } from '../../lib/cost.js';
+import { aiCostBudgetExceeded } from '../../lib/metrics.js';
+import type { LlmProvider, PromptInput, StreamResult, ProviderHealth } from './provider.js';
 import { getProvider, registerProvider } from './provider.js';
 
 export type { StreamResult };
@@ -43,25 +45,63 @@ async function anthropicHealth(): Promise<ProviderHealth> {
   }
 }
 
-async function anthropicGenerate(prompt: string): Promise<string> {
+// Build the SDK system parameter from PromptInput. Returns undefined when
+// the system half is empty (digest template, legacy single-file versions) so
+// the call shape matches the pre-caching path exactly.
+function systemParam(input: PromptInput) {
+  if (!input.system) return undefined;
+  return [
+    {
+      type: 'text' as const,
+      text: input.system,
+      cache_control: { type: 'ephemeral' as const },
+    },
+  ];
+}
+
+async function anthropicGenerate(input: PromptInput): Promise<string> {
   return runInBreaker(async () => {
     try {
       const message = await client.messages.create({
         model: env.CLAUDE_MODEL,
         max_tokens: 1024,
-        messages: [{ role: 'user', content: prompt }],
+        ...(systemParam(input) && { system: systemParam(input) }),
+        messages: [{ role: 'user', content: input.user }],
       });
 
       const block = message.content[0];
       const text = block?.type === 'text' ? block.text : '';
 
+      // Post-call cost gate. Tokens are already spent by the time we know
+      // the cost, so this is an anomaly detector — the next request gets
+      // the benefit. Real prevention is upstream (max_tokens, timeout).
+      // Anomalies are NOT recorded into median history; recording would
+      // raise the floor and let the next anomaly slip through.
+      const cost = computeCost(message.usage);
+      if (cost !== null) {
+        const budget = exceedsBudget(cost);
+        if (budget.exceeded) {
+          aiCostBudgetExceeded.inc({ caller: 'generate' });
+          logger.warn(
+            { cost, cap: budget.cap, median: budget.median, model: env.CLAUDE_MODEL },
+            'Claude API cost budget exceeded — request refused',
+          );
+          throw new CostBudgetExceededError(cost, budget.cap);
+        }
+        recordCost(cost);
+      }
+
       logger.info(
-        { model: env.CLAUDE_MODEL, usage: message.usage },
+        { model: env.CLAUDE_MODEL, usage: message.usage, cost },
         'Claude API response received',
       );
 
       return text;
     } catch (err) {
+      // Cost gate threw our domain error — propagate unchanged so the error
+      // handler returns 503 with the typed COST_BUDGET_EXCEEDED code.
+      if (err instanceof CostBudgetExceededError) throw err;
+
       if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.BadRequestError) {
         logger.error({ err: (err as Error).message }, 'Claude API non-retryable error');
       } else {
@@ -76,7 +116,7 @@ async function anthropicGenerate(prompt: string): Promise<string> {
 }
 
 async function anthropicStream(
-  prompt: string,
+  input: PromptInput,
   onText: (delta: string) => void,
   signal?: AbortSignal,
 ): Promise<StreamResult> {
@@ -86,7 +126,8 @@ async function anthropicStream(
       const stream = client.messages.stream({
         model: env.CLAUDE_MODEL,
         max_tokens: 1024,
-        messages: [{ role: 'user', content: prompt }],
+        ...(systemParam(input) && { system: systemParam(input) }),
+        messages: [{ role: 'user', content: input.user }],
       });
 
       if (signal) {
@@ -99,8 +140,26 @@ async function anthropicStream(
 
       const finalMessage = await stream.finalMessage();
 
+      // Streaming is log-only on overrun: the content already shipped to the
+      // user via onText callbacks. Throwing here would be wasted — they got
+      // the answer. We still skip recording into median history so the floor
+      // stays representative of normal cost.
+      const cost = computeCost(finalMessage.usage);
+      if (cost !== null) {
+        const budget = exceedsBudget(cost);
+        if (budget.exceeded) {
+          aiCostBudgetExceeded.inc({ caller: 'stream' });
+          logger.warn(
+            { cost, cap: budget.cap, median: budget.median, model: env.CLAUDE_MODEL },
+            'Claude API stream cost budget exceeded — content delivered, anomaly logged',
+          );
+        } else {
+          recordCost(cost);
+        }
+      }
+
       logger.info(
-        { model: env.CLAUDE_MODEL, usage: finalMessage.usage },
+        { model: env.CLAUDE_MODEL, usage: finalMessage.usage, cost },
         'Claude API stream completed',
       );
 
@@ -143,19 +202,18 @@ export const anthropicProvider: LlmProvider = {
 // which is fine — those tests don't exercise the provider seam.
 registerProvider(anthropicProvider);
 
-// Backward-compat wrappers. Existing callers import these by name; they now
-// route through getProvider() so a future provider swap is a config change
-// rather than a caller migration.
-export async function generateInterpretation(prompt: string): Promise<string> {
-  return getProvider().generate(prompt);
+// Wrappers route through getProvider() so a future provider swap is a config
+// change rather than a caller migration.
+export async function generateInterpretation(input: PromptInput): Promise<string> {
+  return getProvider().generate(input);
 }
 
 export async function streamInterpretation(
-  prompt: string,
+  input: PromptInput,
   onText: (delta: string) => void,
   signal?: AbortSignal,
 ): Promise<StreamResult> {
-  return getProvider().stream(prompt, onText, signal);
+  return getProvider().stream(input, onText, signal);
 }
 
 export async function checkClaudeHealth(): Promise<ProviderHealth> {

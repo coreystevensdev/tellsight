@@ -31,8 +31,8 @@ export async function generateDigestForOrg(
     return '- Not enough data to generate insights this week. Upload more transactions to get started.';
   }
 
-  const { prompt } = assemblePrompt(insights, DIGEST_PROMPT_VERSION, businessProfile as never);
-  return generateInterpretation(prompt);
+  const { system, user } = assemblePrompt(insights, DIGEST_PROMPT_VERSION, businessProfile as never);
+  return generateInterpretation({ system, user });
 }
 
 export async function processAllDigests(): Promise<DigestResult[]> {

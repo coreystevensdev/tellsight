@@ -8,13 +8,21 @@ export interface ProviderHealth {
   latencyMs: number;
 }
 
+// Split into system + user so providers that support prompt caching can mark
+// the system half as cacheable. Empty `system` means "send only user message"
+// — the provider should not attach cache_control or a system field.
+export interface PromptInput {
+  system: string;
+  user: string;
+}
+
 // Pluggable LLM contract. One active provider at a time, selected via config.
 // Each provider owns its own SDK, retries, circuit breaker, and error mapping.
 // Callers work with this interface — never with Anthropic (or any other) SDK directly.
 export interface LlmProvider {
   name: string;
-  generate(prompt: string): Promise<string>;
-  stream(prompt: string, onText: (delta: string) => void, signal?: AbortSignal): Promise<StreamResult>;
+  generate(input: PromptInput): Promise<string>;
+  stream(input: PromptInput, onText: (delta: string) => void, signal?: AbortSignal): Promise<StreamResult>;
   checkHealth(): Promise<ProviderHealth>;
 }
 

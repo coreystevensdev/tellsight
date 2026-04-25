@@ -60,6 +60,27 @@ export class ExternalServiceError extends AppError {
   }
 }
 
+// Operator-side safety guard, not a user-tier issue. Use 503 because the user
+// did nothing wrong — we refused the call to protect a shared budget. Distinct
+// from QuotaExceededError (402 — user needs to upgrade) and from
+// ExternalServiceError (502 — upstream actually failed). The cost was real
+// and incurred; this error documents that we caught it post-hoc.
+export class CostBudgetExceededError extends AppError {
+  readonly observedUsd: number;
+  readonly capUsd: number | null;
+
+  constructor(observedUsd: number, capUsd: number | null) {
+    super(
+      `AI request cost $${observedUsd.toFixed(4)} exceeded safety cap $${capUsd?.toFixed(4) ?? 'unknown'}.`,
+      'COST_BUDGET_EXCEEDED',
+      503,
+      { observedUsd, capUsd },
+    );
+    this.observedUsd = observedUsd;
+    this.capUsd = capUsd;
+  }
+}
+
 // For invariants the server should uphold — not user-facing auth failures.
 // Use this when the cause is misconfigured code (missing middleware, unreachable
 // branch) rather than a bad request. Two audiences, two messages:

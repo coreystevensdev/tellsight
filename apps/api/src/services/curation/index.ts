@@ -69,7 +69,7 @@ export async function runFullPipeline(
     : null;
 
   const insights = await runCurationPipeline(orgId, datasetId, undefined, financials);
-  const { prompt, metadata } = assemblePrompt(insights, undefined, businessProfile);
+  const { system, user, metadata } = assemblePrompt(insights, undefined, businessProfile);
 
   const validatedMetadata = transparencyMetadataSchema.parse(metadata);
 
@@ -78,7 +78,7 @@ export async function runFullPipeline(
     'calling Claude API',
   );
 
-  const content = await generateInterpretation(prompt);
+  const content = await generateInterpretation({ system, user });
   const pipelineStats = insights.map((i) => i.stat);
 
   // Tier 2 chart-ref check — same defense-in-depth as streamHandler.ts.

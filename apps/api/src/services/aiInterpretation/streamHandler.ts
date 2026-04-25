@@ -97,15 +97,15 @@ export async function streamToSSE(
   });
 
   // -- pipeline phase (separate catch for PIPELINE_ERROR) --
-  let prompt: string;
+  let promptInput: { system: string; user: string };
   let validatedMetadata: ReturnType<typeof transparencyMetadataSchema.parse>;
   let promptVersion: string;
   let pipelineInsights: ScoredInsight[] = [];
 
   try {
     pipelineInsights = await runCurationPipeline(orgId, datasetId, client);
-    const { prompt: p, metadata } = assemblePrompt(pipelineInsights, undefined, businessProfile);
-    prompt = p;
+    const { system, user, metadata } = assemblePrompt(pipelineInsights, undefined, businessProfile);
+    promptInput = { system, user };
     validatedMetadata = transparencyMetadataSchema.parse(metadata);
     promptVersion = metadata.promptVersion;
   } catch (err) {
@@ -129,7 +129,7 @@ export async function streamToSSE(
     logger.info({ orgId, datasetId, promptVersion, tier }, 'starting AI summary stream');
 
     const result = await streamInterpretation(
-      prompt,
+      promptInput,
       (delta) => {
         if (clientDisconnected || ended || truncatedForFree) return;
         accumulatedText += delta;

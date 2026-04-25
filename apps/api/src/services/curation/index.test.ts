@@ -29,6 +29,14 @@ Stat types: {{statTypeList}}, Categories: {{categoryCount}}, Insights: {{insight
   return {
     readFileSync: vi.fn((...args: unknown[]) => {
       const p = String(args[0]);
+      // Force the legacy single-file template path so existing assertions on
+      // rendered prompt content keep working. Split-file loading is exercised
+      // in production but not in this test harness.
+      if (p.includes('-system.md') || p.includes('-user.md')) {
+        const err = new Error('ENOENT (test mock)') as Error & { code: string };
+        err.code = 'ENOENT';
+        throw err;
+      }
       return p.includes('prompt-templates') ? prompt : scoring;
     }),
   };
@@ -144,7 +152,9 @@ describe('runFullPipeline', () => {
     expect(result.content).toBe('Fresh AI analysis.');
     expect(result.fromCache).toBe(false);
     expect(dataRowsQueries.getRowsByDataset).toHaveBeenCalledWith(1, 1, undefined);
-    expect(generateInterpretation).toHaveBeenCalledWith(expect.stringContaining('business analyst'));
+    expect(generateInterpretation).toHaveBeenCalledWith(
+      expect.objectContaining({ user: expect.stringContaining('business analyst') }),
+    );
     expect(aiSummariesQueries.storeSummary).toHaveBeenCalledWith(
       1, 1,
       'Fresh AI analysis.',
