@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/CoreyStevensDev/saas-analytics-dashboard/actions/workflows/ci.yml"><img src="https://github.com/CoreyStevensDev/saas-analytics-dashboard/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/coreystevensdev/saas-analytics-dashboard/actions/workflows/ci.yml"><img src="https://github.com/coreystevensdev/saas-analytics-dashboard/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License">
   <img src="https://img.shields.io/badge/Next.js-16-black.svg" alt="Next.js 16">
   <img src="https://img.shields.io/badge/TypeScript-5.9-3178c6.svg" alt="TypeScript">
@@ -107,7 +107,7 @@ The browser never talks to Express directly. Everything routes through a Next.js
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/CoreyStevensDev/saas-analytics-dashboard.git
+git clone https://github.com/coreystevensdev/saas-analytics-dashboard.git
 cd saas-analytics-dashboard
 
 # 2. Create your env file
