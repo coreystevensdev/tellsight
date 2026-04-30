@@ -59,25 +59,18 @@ function noveltyScore(stat: ComputedStat): number {
     case StatType.MarginTrend:
       return stat.details.direction !== 'stable' ? 0.8 : 0.35;
     case StatType.CashFlow:
-      // 0.80 matches MarginTrend not-stable, pairs novelty tier exactly so the
-      // total score lands at parity with MarginTrend shrinking, not above it.
       if (stat.details.direction === 'burning') {
         return stat.details.monthsBurning >= 2 ? 0.8 : 0.7;
       }
       return 0.5; // surplus
     case StatType.Runway:
-      // Quantified risk > unquantified signal. 0.85 beats CashFlow burning (0.80)
-      // because a month count is strictly more informative than direction alone.
+      // Month count beats CashFlow's direction-only signal.
       return stat.details.runwayMonths < 6 ? 0.85 : 0.65;
     case StatType.BreakEven:
-      // Gap > 0 means revenue is below break-even: the "how much more do I need"
-      // question is a concrete target. Above break-even is reassuring, not novel.
+      // Below break-even gives a concrete revenue target; above it is reassuring.
       return stat.details.gap > 0 ? 0.75 : 0.60;
     case StatType.CashForecast:
-      // crossesZeroAtMonth !== null means the projection pierces zero in a
-      // three-month window, a quantified insolvency horizon most owners
-      // haven't seen framed about their own business. Surplus stays below
-      // because a trajectory that holds positive is reassuring, not novel.
+      // crossesZeroAtMonth !== null means the projection pierces zero in 3 months.
       return stat.details.crossesZeroAtMonth !== null ? 0.85 : 0.65;
     case StatType.Trend:
       return Math.abs(stat.details.growthPercent) > scoringConfig.thresholds.significantChangePercent ? 0.8 : 0.4;
@@ -99,26 +92,18 @@ function actionabilityScore(stat: ComputedStat): number {
     case StatType.MarginTrend:
       return stat.details.direction === 'shrinking' ? 0.9 : 0.5;
     case StatType.CashFlow:
-      // Ties MarginTrend shrinking at 0.9, margin compression is the leading
-      // signal, cash burn is the trailing consequence. Not inverted.
       if (stat.details.direction === 'burning') {
         return stat.details.monthsBurning >= 2 ? 0.9 : 0.75;
       }
       return 0.5; // surplus
     case StatType.Runway:
-      // 0.95 is the highest actionability in the pipeline, runway <6 months
-      // is existential. Drops sharply once there's room to breathe.
+      // <6 months is existential, highest in the pipeline.
       if (stat.details.runwayMonths < 6) return 0.95;
       if (stat.details.runwayMonths < 24) return 0.70;
       return 0.45;
     case StatType.BreakEven:
-      // 0.88 when below break-even: the revenue-gap number is directly actionable.
-      // 0.55 when already above: reassuring data point, nothing to push on.
       return stat.details.gap > 0 ? 0.88 : 0.55;
     case StatType.CashForecast:
-      // 0.92 when balance crosses zero in the window, quantified insolvency horizon
-      // is highly actionable but stops shy of Runway's 0.95 so runway still leads
-      // when both are present. 0.55 for a surplus trajectory: reassuring, not a push.
       return stat.details.crossesZeroAtMonth !== null ? 0.92 : 0.55;
     case StatType.YearOverYear:
       return Math.abs(stat.details.changePercent) > 10 ? 0.8 : 0.4;
@@ -133,6 +118,9 @@ function actionabilityScore(stat: ComputedStat): number {
   }
 }
 
+// Scoring-order invariant for critical signals:
+//   Runway (0.9025) > CashForecast crosses-zero (0.8775) > CashFlow burning (0.8400) > BreakEven gap-positive (0.8270).
+// If a tweak flips this order, all rationales need review.
 function specificityScore(stat: ComputedStat): number {
   switch (stat.statType) {
     case StatType.Anomaly:
@@ -140,27 +128,12 @@ function specificityScore(stat: ComputedStat): number {
     case StatType.SeasonalProjection:
       return 0.85;
     case StatType.CashFlow:
-      // 0.80 matches MarginTrend, paired deliberately to keep burning cash flow
-      // at score parity (not above) shrinking margin. SeasonalProjection's 0.85
-      // stays higher because it projects forward, a distinct kind of specificity.
       return 0.8;
     case StatType.Runway:
-      // 0.90 flat, runway output is an exact month count. Nothing more specific
-      // than "3.2 months" in this domain.
       return 0.9;
     case StatType.BreakEven:
-      // 0.85 flat, break-even is a revenue target and targets are inherently
-      // fuzzier than a month count (depends on maintaining the margin assumption).
       return 0.85;
     case StatType.CashForecast:
-      // 0.85 flat, matches BreakEven and SeasonalProjection. Three projected
-      // numbers with trend are less precise than one runway month-count.
-      //
-      // Scoring order: Runway critical (0.9025) > CashForecast crosses-zero (0.8775) >
-      // CashFlow burning (0.8400) > BreakEven gap-positive (0.8270). Runway leads
-      // because it's a single-count timeline; forecast follows because it adds
-      // trajectory shape without a stronger urgency cue. If any score flips this
-      // order, a weight was tuned and all rationales need review.
       return 0.85;
     case StatType.MarginTrend:
       return 0.8;
