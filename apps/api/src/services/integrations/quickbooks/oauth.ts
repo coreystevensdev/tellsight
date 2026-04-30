@@ -117,9 +117,9 @@ export async function refreshAccessToken(connectionId: number): Promise<{
       await integrationConnectionsQueries.updateSyncStatus(
         connection.id,
         'error',
-        'QuickBooks access was revoked — please reconnect',
+        'QuickBooks access was revoked, please reconnect',
       );
-      throw new ExternalServiceError('Intuit OAuth — token revoked', { status: 401 });
+      throw new ExternalServiceError('Intuit OAuth, token revoked', { status: 401 });
     }
 
     throw new ExternalServiceError('Intuit OAuth', { status: res.status });
@@ -159,6 +159,6 @@ export async function revokeToken(encryptedRefreshToken: string): Promise<void> 
       signal: AbortSignal.timeout(TOKEN_TIMEOUT_MS),
     });
   } catch (err) {
-    logger.warn({ err }, 'Intuit token revocation failed — best effort');
+    logger.warn({ err }, 'Intuit token revocation failed, best effort');
   }
 }

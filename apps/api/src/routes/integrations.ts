@@ -126,7 +126,7 @@ integrationsRouter.delete('/quickbooks', roleGuard('owner'), async (req: Request
   res.json({ data: { message: 'QuickBooks disconnected' } });
 });
 
-// Public callback route (Intuit redirects browser here — no auth cookies)
+// Public callback route (Intuit redirects browser here, no auth cookies)
 export const integrationsCallbackRouter = Router();
 integrationsCallbackRouter.use(qbGuard);
 
@@ -163,7 +163,7 @@ integrationsCallbackRouter.get('/quickbooks/callback', async (req: Request, res:
     const accessTokenExpiresAt = new Date(Date.now() + tokens.expiresIn * 1000);
 
     // The callback doesn't have auth context (browser redirect from Intuit).
-    // We encode orgId in a signed cookie set during /connect, or — simpler for now —
+    // We encode orgId in a signed cookie set during /connect, or, simpler for now
     // extract it from the state param. For MVP, we use a temp cookie set at /connect time.
     const orgIdCookie = req.cookies?.qb_oauth_org_id;
     const userId = req.cookies?.qb_oauth_user_id;

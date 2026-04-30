@@ -152,7 +152,7 @@ describe('PUT /org/financials', () => {
     expect(updates.cashOnHand).toBe(25000);
     expect(updates.cashAsOfDate).toBeDefined();
 
-    // Analytics — both events fire on the first cash balance submission
+    // Analytics, both events fire on the first cash balance submission
     expect(mockTrackEvent).toHaveBeenCalledWith(10, 5, 'financials.updated', {
       fields: expect.arrayContaining(['cashOnHand']),
     });
@@ -271,7 +271,7 @@ describe('GET /org/financials/cash-history', () => {
   });
 });
 
-// 6-month burning-business bucket map — revenue 10k, expenses 15k per month.
+// 6-month burning-business bucket map, revenue 10k, expenses 15k per month.
 // Matches the shape the SQL-backed query returns.
 function burningBuckets() {
   const map = new Map<string, { revenue: number; expenses: number }>();

@@ -10,7 +10,7 @@ export interface InsightChartChipProps {
   className?: string;
 }
 
-// Mobile-friendly affordance — replaces the desktop thumbnail at <768px.
+// Mobile-friendly affordance, replaces the desktop thumbnail at <768px.
 // Tap target meets WCAG 44×44 (44px tall via py-2 + text + padding).
 // Same drill-down sheet trigger as the thumbnail; only the visual differs.
 export function InsightChartChip({ statId, onOpen, className }: InsightChartChipProps) {

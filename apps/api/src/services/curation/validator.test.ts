@@ -111,7 +111,7 @@ describe('validateSummary', () => {
   });
 
   it('accepts rounded values within the default 2% tolerance', () => {
-    // stat is 62,987 but LLM rounds to 63,000 — diff is 0.02%, well under tolerance
+    // stat is 62,987 but LLM rounds to 63,000, diff is 0.02%, well under tolerance
     const stats = [totalStat(62987)];
     const summary = 'Revenue came in at $63,000 for the period.';
 
@@ -121,7 +121,7 @@ describe('validateSummary', () => {
   });
 
   it('rejects values outside tolerance even when close', () => {
-    // stat is 50,000, summary says $60k — 20% off, well outside 2%
+    // stat is 50,000, summary says $60k, 20% off, well outside 2%
     const stats = [totalStat(50000)];
     const summary = 'Revenue was around $60,000 this month.';
 
@@ -199,7 +199,7 @@ function runwayStat(cashOnHand: number, monthlyNet: number, runwayMonths: number
   };
 }
 
-describe('validateSummary — Runway coverage', () => {
+describe('validateSummary, Runway coverage', () => {
   it('accepts summaries that quote the exact cashOnHand', () => {
     const stats = [runwayStat(15000, -5000, 3)];
     const summary = 'At this burn rate, your cash of $15,000 covers about 3 months of runway.';
@@ -210,7 +210,7 @@ describe('validateSummary — Runway coverage', () => {
 
   it('flags a fabricated cashOnHand far from the actual value', () => {
     const stats = [runwayStat(15000, -5000, 3)];
-    // LLM invents $45,000 cash — not cashOnHand, not monthlyNet, not their sum
+    // LLM invents $45,000 cash, not cashOnHand, not monthlyNet, not their sum
     const summary = 'Your cash balance of $45,000 gives you breathing room.';
 
     const report = validateSummary(summary, stats);
@@ -230,7 +230,7 @@ describe('validateSummary — Runway coverage', () => {
 
   it('does NOT flag plain runway-month numbers (out of scanner scope)', () => {
     const stats = [runwayStat(15000, -5000, 3)];
-    // Fabricated runway ("5 months" vs actual 3) — scanner is currency/percent only,
+    // Fabricated runway ("5 months" vs actual 3), scanner is currency/percent only,
     // so plain integer months are not checked. Documented deferral.
     const summary = 'You have roughly 5 months of runway at current burn.';
 
@@ -269,7 +269,7 @@ function breakEvenStat(
   };
 }
 
-describe('validateSummary — BreakEven coverage', () => {
+describe('validateSummary, BreakEven coverage', () => {
   it('accepts a summary quoting the exact breakEvenRevenue', () => {
     const stats = [breakEvenStat(75_000, 15_000, 50_000, 20)];
     const summary = 'To cover your fixed costs at your current margin, you\'d need about $75,000/mo in revenue.';
@@ -288,7 +288,7 @@ describe('validateSummary — BreakEven coverage', () => {
 
   it('flags a fabricated breakEvenRevenue far from any allowed value', () => {
     const stats = [breakEvenStat(75_000, 15_000, 50_000, 20)];
-    // LLM invents $120k break-even — not in allowed set, not pairwise.
+    // LLM invents $120k break-even, not in allowed set, not pairwise.
     const summary = 'Your break-even target is about $120,000/mo.';
 
     const report = validateSummary(summary, stats);
@@ -306,7 +306,7 @@ describe('validateSummary — BreakEven coverage', () => {
     expect(report.status).toBe('clean');
   });
 
-  it('does NOT flag marginPercent — covered by MarginTrend classification, not BreakEven', () => {
+  it('does NOT flag marginPercent, covered by MarginTrend classification, not BreakEven', () => {
     // marginPercent goes through StatType.MarginTrend when both stats are present.
     // Here we pair BreakEven with MarginTrend so the percent lands in the allowed-set.
     const marginTrend: ComputedStat = {
@@ -365,7 +365,7 @@ function forecastStat(
   };
 }
 
-describe('validateSummary — CashForecast coverage', () => {
+describe('validateSummary, CashForecast coverage', () => {
   it('accepts a summary quoting the exact startingBalance and each projected balance', () => {
     const stats = [forecastStat(58_000, [
       { net: -17_000, balance: 41_000 },
@@ -380,7 +380,7 @@ describe('validateSummary — CashForecast coverage', () => {
   });
 
   it('handles negative projected balances by matching their absolute magnitude in prose', () => {
-    // balance crosses zero — LLM renders "-$5,000" which the currency regex picks up as 5000
+    // balance crosses zero, LLM renders "-$5,000" which the currency regex picks up as 5000
     const stats = [forecastStat(25_000, [
       { net: -10_000, balance: 15_000 },
       { net: -10_000, balance: 5_000 },
@@ -406,7 +406,7 @@ describe('validateSummary — CashForecast coverage', () => {
     expect(report.unmatchedNumbers.length).toBeGreaterThan(0);
   });
 
-  it('does NOT push slope/intercept into the allowed-set — regression coefficients are not for the LLM to quote', () => {
+  it('does NOT push slope/intercept into the allowed-set, regression coefficients are not for the LLM to quote', () => {
     // slope is 0 here (rolling-mean fallback shape), but the test proves the principle:
     // a number that matches *only* the slope should be flagged.
     const stats = [forecastStat(58_000, [

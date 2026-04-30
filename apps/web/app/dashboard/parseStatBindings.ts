@@ -7,7 +7,7 @@ export interface StatBinding {
 
 // extracts paragraph→stat bindings from summary text. runs post-stream on
 // the raw buffer (tags intact). validation of statId against the active
-// ComputedStat[] lives in validateStatRefs — this parser just reports what
+// ComputedStat[] lives in validateStatRefs, this parser just reports what
 // the LLM emitted.
 export function parseStatBindings(rawText: string): StatBinding[] {
   const paragraphs = rawText.split('\n\n').filter(Boolean);

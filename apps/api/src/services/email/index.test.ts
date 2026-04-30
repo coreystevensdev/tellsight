@@ -39,7 +39,7 @@ function Fixture({ name }: { name: string }) {
   );
 }
 
-describe('email service — barrel integration', () => {
+describe('email service, barrel integration', () => {
   beforeEach(() => {
     resetEmailProvider();
   });

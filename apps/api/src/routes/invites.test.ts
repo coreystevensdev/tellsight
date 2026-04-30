@@ -49,10 +49,10 @@ let baseUrl: string;
 
 beforeAll(async () => {
   const result = await createTestApp((app) => {
-    // public route — no auth
+    // public route, no auth
     app.use(publicInviteRouter);
 
-    // protected route — auth required
+    // protected route, auth required
     app.use(authMiddleware);
     app.use('/invites', inviteRouter);
   });
@@ -110,7 +110,7 @@ describe('GET /invites', () => {
     expect(mockGetActiveInvitesForOrg).toHaveBeenCalledWith(10, expect.anything());
   });
 
-  it('member gets 403 — only owners can list invites', async () => {
+  it('member gets 403, only owners can list invites', async () => {
     mockVerifyAccessToken.mockResolvedValueOnce(memberPayload());
 
     const res = await fetch(`${baseUrl}/invites`, {
@@ -162,7 +162,7 @@ describe('POST /invites', () => {
     expect(mockGenerateInvite).toHaveBeenCalledWith(10, 1, 14, expect.anything());
   });
 
-  it('member gets 403 — only owners can create invites', async () => {
+  it('member gets 403, only owners can create invites', async () => {
     mockVerifyAccessToken.mockResolvedValueOnce(memberPayload());
 
     const res = await fetch(`${baseUrl}/invites`, {
@@ -225,7 +225,7 @@ describe('GET /invites/:token', () => {
   it('expired token returns error', async () => {
     const { ValidationError } = await import('../lib/appError.js');
     mockValidateInviteToken.mockRejectedValueOnce(
-      new ValidationError('This invite link has expired — ask the org owner for a new one'),
+      new ValidationError('This invite link has expired, ask the org owner for a new one'),
     );
 
     const res = await fetch(`${baseUrl}/invites/expired-token`);

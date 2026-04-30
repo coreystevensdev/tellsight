@@ -34,7 +34,7 @@ export function encrypt(plaintext: string): string {
 export function decrypt(encoded: string): string {
   const parts = encoded.split(':');
   if (parts.length !== 3) {
-    throw new Error('Invalid encrypted format — expected iv:authTag:ciphertext');
+    throw new Error('Invalid encrypted format, expected iv:authTag:ciphertext');
   }
 
   const key = getKey();

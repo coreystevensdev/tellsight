@@ -50,7 +50,7 @@ orgFinancialsRouter.put('/financials', roleGuard('owner'), async (req, res: Resp
     return;
   }
 
-  // Default cashAsOfDate to "now" when cashOnHand is set without an explicit date —
+  // Default cashAsOfDate to "now" when cashOnHand is set without an explicit date
   // owners shouldn't have to type today's date every time they update their balance.
   const updates = { ...parsed.data };
   if (updates.cashOnHand != null && !updates.cashAsOfDate) {
@@ -73,13 +73,13 @@ orgFinancialsRouter.put('/financials', roleGuard('owner'), async (req, res: Resp
 
   // Audit: owners editing financial baseline is the kind of change that
   // shows up in support disputes ("my runway calculation is wrong"). Log
-  // which fields changed, not the values — balance amounts are sensitive
+  // which fields changed, not the values, balance amounts are sensitive
   // and already live in cash_balance_snapshots for point-in-time recovery.
   auditAuth(req, AUDIT_ACTIONS.FINANCIALS_UPDATED, {
     metadata: { fields: fieldsUpdated, firstCashBalance },
   });
 
-  // Adoption signal — the moment an owner sets their first cash balance is when
+  // Adoption signal, the moment an owner sets their first cash balance is when
   // runway becomes reachable for their account. Tracked separately from the
   // generic update event for cleaner funnel queries.
   if (firstCashBalance) {
@@ -111,7 +111,7 @@ orgFinancialsRouter.get('/financials/cash-history', rateLimitDashboardCompute, a
   res.json({ data: history });
 });
 
-// Cash forecast — derived from monthly net trend + current cashOnHand. Returns
+// Cash forecast, derived from monthly net trend + current cashOnHand. Returns
 // a three-month point-estimate trajectory plus metadata (method, confidence,
 // crossesZeroAtMonth). Suppression cases return `{ data: null }` so the client
 // can render the same empty state as RunwayTrendChart when the forecast is
@@ -130,7 +130,7 @@ orgFinancialsRouter.get('/financials/cash-forecast', rateLimitDashboardCompute, 
   const { financials, buckets } = await withRlsContext(user.org_id, user.isAdmin, async (tx) => {
     const financials = await orgFinancialsQueries.getOrgFinancials(user.org_id, tx);
     const datasetId = await orgsQueries.getActiveDatasetId(user.org_id, tx);
-    // SQL-aggregated bucket map instead of full row fetch — a 50k-row dataset
+    // SQL-aggregated bucket map instead of full row fetch, a 50k-row dataset
     // collapses to ~12-60 rows at the DB layer, so API memory stays bounded.
     const buckets = datasetId != null
       ? await dataRowsQueries.getMonthlyBucketsByDataset(user.org_id, datasetId, tx)
@@ -173,7 +173,7 @@ orgFinancialsRouter.get('/financials/cash-forecast', rateLimitDashboardCompute, 
         projectedBalance: pm.projectedBalance,
         // Shortcut: duplicate balance/asOfDate so the client can spread each
         // forecast row straight into `CashBalancePoint[]` without a transform.
-        // Couples this API response to a specific UI type — if CashBalancePoint
+        // Couples this API response to a specific UI type, if CashBalancePoint
         // ever grows (e.g., per-point confidence), move the field aliasing into
         // the SWR fetcher and drop the duplicates here.
         balance: pm.projectedBalance,

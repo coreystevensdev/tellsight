@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import InviteAccept from './InviteAccept';
 
 export const metadata: Metadata = {
-  title: 'Join Organization — Tellsight',
+  title: 'Join Organization, Tellsight',
 };
 
 export default async function InvitePage({

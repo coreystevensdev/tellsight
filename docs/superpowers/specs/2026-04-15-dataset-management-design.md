@@ -1,4 +1,4 @@
-# Dataset Management — Design Spec
+# Dataset Management, Design Spec
 
 **Date:** 2026-04-15
 **Status:** Approved
@@ -13,11 +13,11 @@ Users can upload CSVs but have no way to see, manage, or switch between them. Th
 | Decision | Choice | Reasoning |
 |----------|--------|-----------|
 | Multi-dataset model | Keep all uploads, user picks | Users upload different time periods, want to compare |
-| Delete permissions | Org owners only | Destructive — cascades to rows, summaries, shares |
+| Delete permissions | Org owners only | Destructive, cascades to rows, summaries, shares |
 | Active dataset tracking | `active_dataset_id` on `orgs` + URL override | Simple, org-wide default, `?dataset=` for temporary switching |
 | Switcher placement | Dedicated `/settings/datasets` page + dashboard header chip | Keeps dashboard focused, management has room to breathe |
 | Delete active dataset | Auto-switch to next newest, empty state if none left | Graceful degradation |
-| Rename | Inline edit on management page | No modal — click, type, Enter |
+| Rename | Inline edit on management page | No modal, click, type, Enter |
 
 ## Data Model
 
@@ -59,7 +59,7 @@ All routes require authentication. Base path: `/datasets`.
   "data": [
     {
       "id": 1,
-      "name": "2024–2025 Financials",
+      "name": "2024-2025 Financials",
       "rowCount": 144,
       "sourceType": "csv",
       "uploadedBy": { "id": 5, "name": "Corey" },
@@ -75,7 +75,7 @@ All routes require authentication. Base path: `/datasets`.
 {
   "data": {
     "id": 1,
-    "name": "2024–2025 Financials",
+    "name": "2024-2025 Financials",
     "rowCount": 144,
     "sourceType": "csv",
     "uploadedBy": { "id": 5, "name": "Corey" },
@@ -106,33 +106,33 @@ All routes require authentication. Base path: `/datasets`.
 - Absent: use `org.active_dataset_id`, fall back to newest
 - Invalid/wrong org: ignore, use default
 
-Response shape unchanged — already includes `datasetId`.
+Response shape unchanged, already includes `datasetId`.
 
 ### Validation Rules
 
-- Rename: 1–255 chars, trimmed, reject empty/whitespace-only
+- Rename: 1-255 chars, trimmed, reject empty/whitespace-only
 - Delete: reject attempts on seed datasets (400), reject non-owners (403)
 - Activate: reject datasets not belonging to the org (404)
 
 ### New Analytics Events
 
-- `dataset.renamed` — `{ datasetId, oldName, newName }`
-- `dataset.deleted` — `{ datasetId, rowCount, hadActiveShares }`
-- `dataset.activated` — `{ datasetId, previousDatasetId }`
+- `dataset.renamed`, `{ datasetId, oldName, newName }`
+- `dataset.deleted`, `{ datasetId, rowCount, hadActiveShares }`
+- `dataset.activated`, `{ datasetId, previousDatasetId }`
 
 ## Frontend
 
 ### New Pages & Components
 
-**`/settings/datasets` page** — Dataset management
+**`/settings/datasets` page**, Dataset management
 
 Components:
-- `DatasetList` — server component fetches datasets, passes to client
-- `DatasetCard` — individual row: name, row count, upload date, uploader, action buttons
-- `RenameInline` — click-to-edit input, Enter saves, Escape cancels
-- `DeleteConfirmation` — inline warning panel showing cascade impact (row count, summary count, share count), confirm/cancel buttons
+- `DatasetList`, server component fetches datasets, passes to client
+- `DatasetCard`, individual row: name, row count, upload date, uploader, action buttons
+- `RenameInline`, click-to-edit input, Enter saves, Escape cancels
+- `DeleteConfirmation`, inline warning panel showing cascade impact (row count, summary count, share count), confirm/cancel buttons
 
-**Dashboard header — `DatasetChip`**
+**Dashboard header, `DatasetChip`**
 - Small chip below org name: dataset icon + name + row count + chevron
 - Clicking navigates to `/settings/datasets`
 - Only rendered for authenticated users (demo mode keeps current layout unchanged)
@@ -198,11 +198,11 @@ Components:
 ### Backend (Vitest)
 
 Extend `datasets.test.ts`:
-- `GET /datasets` — list sorted newest-first, includes `isActive`, respects RLS
-- `GET /datasets/:id` — returns dataset with row count, 404 for wrong org
-- `PATCH /datasets/:id` — rename succeeds, empty name rejected, 404 for wrong org
-- `DELETE /datasets/:id` — owner succeeds, member gets 403, cascades verified (rows + summaries + shares removed), active auto-switches to next newest
-- `POST /datasets/:id/activate` — sets `active_dataset_id`, 404 for wrong org
+- `GET /datasets`, list sorted newest-first, includes `isActive`, respects RLS
+- `GET /datasets/:id`, returns dataset with row count, 404 for wrong org
+- `PATCH /datasets/:id`, rename succeeds, empty name rejected, 404 for wrong org
+- `DELETE /datasets/:id`, owner succeeds, member gets 403, cascades verified (rows + summaries + shares removed), active auto-switches to next newest
+- `POST /datasets/:id/activate`, sets `active_dataset_id`, 404 for wrong org
 
 Extend `dashboard.test.ts`:
 - `?dataset=123` query param uses specified dataset
@@ -211,10 +211,10 @@ Extend `dashboard.test.ts`:
 
 ### Frontend (Vitest + jsdom)
 
-- `DatasetList` — renders datasets, active badge, owner sees delete, member doesn't
-- `DatasetCard` — rename inline edit flow, activate call
-- `DeleteConfirmation` — shows cascade counts, fires delete on confirm
-- `DatasetChip` — renders name + count, links to management page, hidden for unauthenticated
+- `DatasetList`, renders datasets, active badge, owner sees delete, member doesn't
+- `DatasetCard`, rename inline edit flow, activate call
+- `DeleteConfirmation`, shows cascade counts, fires delete on confirm
+- `DatasetChip`, renders name + count, links to management page, hidden for unauthenticated
 
 ## Scope Boundaries
 
@@ -238,24 +238,24 @@ Extend `dashboard.test.ts`:
 ## Files to Create or Modify
 
 ### New Files
-- `apps/api/src/routes/datasetManagement.ts` — new routes (list, get, rename, delete, activate)
-- `apps/api/src/routes/datasetManagement.test.ts` — API tests
-- `apps/api/src/db/migrations/XXXX_add_active_dataset_id.ts` — Drizzle migration
-- `apps/web/app/settings/datasets/page.tsx` — management page
-- `apps/web/components/datasets/DatasetList.tsx` — list component
-- `apps/web/components/datasets/DatasetCard.tsx` — individual card
-- `apps/web/components/datasets/RenameInline.tsx` — inline edit
-- `apps/web/components/datasets/DeleteConfirmation.tsx` — confirmation panel
-- `apps/web/components/datasets/DatasetChip.tsx` — dashboard header chip
-- `apps/web/components/datasets/DatasetChip.test.tsx` — chip tests
-- `apps/web/components/datasets/DatasetList.test.tsx` — list tests
+- `apps/api/src/routes/datasetManagement.ts`, new routes (list, get, rename, delete, activate)
+- `apps/api/src/routes/datasetManagement.test.ts`, API tests
+- `apps/api/src/db/migrations/XXXX_add_active_dataset_id.ts`, Drizzle migration
+- `apps/web/app/settings/datasets/page.tsx`, management page
+- `apps/web/components/datasets/DatasetList.tsx`, list component
+- `apps/web/components/datasets/DatasetCard.tsx`, individual card
+- `apps/web/components/datasets/RenameInline.tsx`, inline edit
+- `apps/web/components/datasets/DeleteConfirmation.tsx`, confirmation panel
+- `apps/web/components/datasets/DatasetChip.tsx`, dashboard header chip
+- `apps/web/components/datasets/DatasetChip.test.tsx`, chip tests
+- `apps/web/components/datasets/DatasetList.test.tsx`, list tests
 
 ### Modified Files
-- `apps/api/src/db/schema.ts` — add `activeDatasetId` to `orgs`
-- `apps/api/src/db/queries/datasets.ts` — add `getDatasetById`, `deleteDataset`, `updateDatasetName`, `setActiveDataset`, `getDatasetCascadeCounts`
-- `apps/api/src/routes/datasets.ts` — update `persistUpload` to set active dataset
-- `apps/api/src/routes/dashboard.ts` — accept `?dataset=` param, use `active_dataset_id`
-- `apps/api/src/routes/dashboard.test.ts` — extend with dataset switching tests
-- `apps/web/app/dashboard/page.tsx` — pass `datasetId` and dataset info for chip
-- `apps/web/components/Sidebar.tsx` — add Datasets link under Settings section
-- `packages/shared/src/constants/index.ts` — add new analytics event names
+- `apps/api/src/db/schema.ts`, add `activeDatasetId` to `orgs`
+- `apps/api/src/db/queries/datasets.ts`, add `getDatasetById`, `deleteDataset`, `updateDatasetName`, `setActiveDataset`, `getDatasetCascadeCounts`
+- `apps/api/src/routes/datasets.ts`, update `persistUpload` to set active dataset
+- `apps/api/src/routes/dashboard.ts`, accept `?dataset=` param, use `active_dataset_id`
+- `apps/api/src/routes/dashboard.test.ts`, extend with dataset switching tests
+- `apps/web/app/dashboard/page.tsx`, pass `datasetId` and dataset info for chip
+- `apps/web/components/Sidebar.tsx`, add Datasets link under Settings section
+- `packages/shared/src/constants/index.ts`, add new analytics event names

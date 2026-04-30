@@ -57,7 +57,7 @@ async function fetchLatestSummary(
       staleAt: res.data.staleAt ?? null,
     };
   } catch {
-    // 404 (no summary yet) or other failure — caller falls back to streaming
+    // 404 (no summary yet) or other failure, caller falls back to streaming
     return undefined;
   }
 }
@@ -99,7 +99,7 @@ export default async function DashboardPage() {
   // Cached summary flows through the same props whether the user is anonymous
   // (seed org, public /cached) or authenticated (own org, protected /latest).
   // When the summary is stale, the card renders a refresh banner instead of
-  // silently streaming — saves quota and lets the user choose.
+  // silently streaming, saves quota and lets the user choose.
   let cachedSummary: string | undefined;
   let cachedMetadata: TransparencyMetadata | null = null;
   let cachedStaleAt: string | null = null;

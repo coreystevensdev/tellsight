@@ -76,7 +76,7 @@ describe('GET /health', () => {
     };
 
     expect(res.status).toBe(200);
-    expect(body.status).toBe('ok'); // fail-open — email unregistered does not degrade the overall check
+    expect(body.status).toBe('ok'); // fail-open, email unregistered does not degrade the overall check
     expect(body.services.email).toEqual({
       provider: 'none',
       status: 'unregistered',

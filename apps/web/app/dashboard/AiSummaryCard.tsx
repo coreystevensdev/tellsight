@@ -46,9 +46,9 @@ interface AiSummaryCardProps {
 const ERROR_MESSAGES: Record<string, string> = {
   TIMEOUT: 'The analysis took longer than expected.',
   AI_UNAVAILABLE: 'AI service is temporarily unavailable.',
-  RATE_LIMITED: 'Too many requests — please wait a moment.',
+  RATE_LIMITED: 'Too many requests, please wait a moment.',
   PIPELINE_ERROR: 'Something went wrong preparing your analysis.',
-  EMPTY_RESPONSE: 'AI produced no results — please try again.',
+  EMPTY_RESPONSE: 'AI produced no results, please try again.',
   STREAM_ERROR: 'Something went wrong generating insights.',
 };
 
@@ -318,7 +318,7 @@ export function AiSummaryCard({
   //
   // Tradeoff: if a background QB sync marks the summary stale while the user
   // is sitting on the dashboard, the banner won't appear until the next nav.
-  // Acceptable for MVP — the sync takes minutes, and the user will reload
+  // Acceptable for MVP, the sync takes minutes, and the user will reload
   // eventually. If real-time staleness becomes important, either re-derive on
   // cachedStaleAt changes or subscribe to a WebSocket event.
   const [isStale] = useState(
@@ -360,7 +360,7 @@ export function AiSummaryCard({
     setRefreshing(true);
   };
 
-  // converge two metadata paths — stream (authenticated) or RSC cache (anonymous)
+  // converge two metadata paths, stream (authenticated) or RSC cache (anonymous)
   const metadata = streamMetadata ?? cachedMetadata ?? null;
 
   useEffect(() => {
@@ -378,7 +378,7 @@ export function AiSummaryCard({
     router.push('/billing');
   };
 
-  // cached content — AI is already "done"
+  // cached content, AI is already "done"
   useEffect(() => {
     if (hasCached) onStreamComplete?.();
   }, [hasCached, onStreamComplete]);
@@ -431,7 +431,7 @@ export function AiSummaryCard({
 
   if (status === 'idle') return null;
 
-  // free preview from SSE — backend truncated + sent upgrade_required
+  // free preview from SSE, backend truncated + sent upgrade_required
   if (status === 'free_preview') {
     return (
       <div

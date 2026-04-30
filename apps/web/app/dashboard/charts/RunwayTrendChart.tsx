@@ -58,7 +58,7 @@ function BalanceTooltip({ active, payload, label }: {
 export function RunwayTrendChart({ data, forecast, variant = 'full' }: RunwayTrendChartProps) {
   const reducedMotion = useReducedMotion();
 
-  // `hasHistoricalLine` gates whether we can draw a solid historical line —
+  // `hasHistoricalLine` gates whether we can draw a solid historical line
   // needs ≥2 points to form a segment. A single historical point still
   // participates via the bridge into the forecast segment; it just doesn't
   // stand on its own. `hasForecast` requires ≥1 projected point.
@@ -66,7 +66,7 @@ export function RunwayTrendChart({ data, forecast, variant = 'full' }: RunwayTre
   const hasForecast = (forecast?.length ?? 0) >= 1;
 
   if (!hasHistoricalLine && !hasForecast) {
-    // single snapshot can't trend and no forecast to project from — same
+    // single snapshot can't trend and no forecast to project from, same
     // empty state 8.2 shipped, widened to cover the "no forecast either" case
     return (
       <div
@@ -143,7 +143,7 @@ export function RunwayTrendChart({ data, forecast, variant = 'full' }: RunwayTre
     <figure className="rounded-lg border border-border bg-card p-4 shadow-sm md:p-6">
       <figcaption className="mb-4">
         <h3 className="text-base font-semibold text-card-foreground">
-          {hasForecast ? 'Cash balance — history and forecast' : 'Cash balance over time'}
+          {hasForecast ? 'Cash balance, history and forecast' : 'Cash balance over time'}
         </h3>
       </figcaption>
       <div

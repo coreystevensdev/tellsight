@@ -193,9 +193,9 @@ describe('runFullPipeline', () => {
 
     const result = await runFullPipeline(1, 1);
 
-    // return value matches what the next cache hit will return — no
+    // return value matches what the next cache hit will return, no
     // asymmetry between first call and cache-hit call. Two spaces between
-    // "tight" and "this" are intentional — stripInvalidStatRefs removes the
+    // "tight" and "this" are intentional, stripInvalidStatRefs removes the
     // tag without collapsing surrounding whitespace.
     expect(result.content).toBe('Runway is tight  this quarter.');
     expect(result.fromCache).toBe(false);
@@ -213,7 +213,7 @@ describe('cash flow end-to-end pipeline', () => {
 
   it('surfaces cash flow in prompt and metadata without leaking row labels', async () => {
     // Monthly nets: Jan -7000, Feb -3000, Mar -1000. Median = -3000, direction burning, monthsBurning 3.
-    // Every row carries an identifiable label — the privacy check greps for these exact strings below.
+    // Every row carries an identifiable label, the privacy check greps for these exact strings below.
     const burningRows = [
       { id: 100, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-01-01'), amount: '10000.00', label: 'Acme Corp invoice #4218',  metadata: null, createdAt: new Date() },
       { id: 101, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent',    parentCategory: 'Expenses', date: new Date('2026-01-01'), amount: '7000.00',  label: 'Main St landlord wire',    metadata: null, createdAt: new Date() },
@@ -296,7 +296,7 @@ describe('runway end-to-end pipeline', () => {
     expect(result.user).toContain('as of 2026-04-10');
     expect(result.user).toContain('confidence: high');
 
-    // Privacy regression guard — no row labels leak into runway framing
+    // Privacy regression guard, no row labels leak into runway framing
     for (const label of ['Acme Corp invoice #4218', 'Main St landlord wire', 'Widget sales Mar', 'Widget sales Apr']) {
       expect(result.user).not.toContain(label);
     }
@@ -370,14 +370,14 @@ describe('break-even end-to-end pipeline', () => {
     expect(result.user).toMatch(/at 20\.0% margin/);
     expect(result.user).toMatch(/gap \$25,000/);
 
-    // Privacy regression guard — no row labels leak into break-even framing
+    // Privacy regression guard, no row labels leak into break-even framing
     for (const label of ['Acme Corp invoice #4218', 'Main St landlord wire', 'Widget sales Mar', 'Widget sales Apr']) {
       expect(result.user).not.toContain(label);
     }
   });
 
   it('above-break-even fixture: reassuring negative gap without prescriptive framing', async () => {
-    // Same margin (20%), same fixed costs (15k), but revenue 100k — well above break-even.
+    // Same margin (20%), same fixed costs (15k), but revenue 100k, well above break-even.
     // Expected: break-even 75k, gap -25k.
     const healthyRows = [
       { id: 500, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-01-15'), amount: '100000.00', label: null, metadata: null, createdAt: new Date() },
@@ -402,7 +402,7 @@ describe('break-even end-to-end pipeline', () => {
 
     expect(result.metadata.statTypes).toContain('break_even');
     expect(result.user).toMatch(/Break-Even:\s+\$75,000\/mo/);
-    // Gap is negative — prompt should render the minus sign explicitly.
+    // Gap is negative, prompt should render the minus sign explicitly.
     expect(result.user).toMatch(/gap -\$25,000/);
   });
 });
@@ -415,7 +415,7 @@ describe('chart-tag pipeline integration', () => {
 
   it('assembles a prompt with the stat-ID allowlist injected', async () => {
     const { readFileSync } = await import('node:fs');
-    // path-aware mock — scoring config still loads JSON, prompt-template
+    // path-aware mock, scoring config still loads JSON, prompt-template
     // calls return the allowlist-aware mock
     vi.mocked(readFileSync).mockImplementation((...args: unknown[]) => {
       const p = String(args[0]);
@@ -521,7 +521,7 @@ describe('cash forecast end-to-end pipeline', () => {
     expect(result.metadata.promptVersion).toBe('v1.6');
     expect(result.user).toMatch(/Cash Forecast: balance \$/);
 
-    // Runway also emits from the same fixture — both should be ranked in.
+    // Runway also emits from the same fixture, both should be ranked in.
     expect(result.metadata.statTypes).toContain('runway');
 
     // Ranking guard: runway score > cash_forecast score when runway is <6 months
@@ -532,7 +532,7 @@ describe('cash forecast end-to-end pipeline', () => {
     const forecast = ranked.find((i) => i.stat.statType === 'cash_forecast')!;
     expect(runway.score).toBeGreaterThan(forecast.score);
 
-    // Privacy regression — row labels must not leak into the assembled prompt
+    // Privacy regression, row labels must not leak into the assembled prompt
     for (const leak of ['Acme Corp invoice', 'Main St landlord wire']) {
       expect(result.user).not.toContain(leak);
     }
@@ -560,7 +560,7 @@ describe('cash forecast end-to-end pipeline', () => {
     const { scoreInsights } = await import('./scoring.js');
     const { assemblePrompt } = await import('./assembly.js');
 
-    // No financials at all — forecast can't form without cashOnHand
+    // No financials at all, forecast can't form without cashOnHand
     const stats = computeStats(burningRows as never);
     const insights = scoreInsights(stats);
     const result = assemblePrompt(insights);

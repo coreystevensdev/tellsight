@@ -28,10 +28,10 @@ export async function getOrgFinancials(
 
 /**
  * Merges financial fields into existing businessProfile JSONB using the Postgres
- * `||` operator — existing onboarding fields (businessType, revenueRange, etc.)
+ * `||` operator, existing onboarding fields (businessType, revenueRange, etc.)
  * survive. When cashOnHand changes, atomically appends a snapshot for runway-over-time.
  *
- * The merge + snapshot insert must share a transaction — a split would corrupt history.
+ * The merge + snapshot insert must share a transaction, a split would corrupt history.
  */
 export async function updateOrgFinancials(
   orgId: number,
@@ -67,7 +67,7 @@ export async function updateOrgFinancials(
     return getOrgFinancials(orgId, tx);
   };
 
-  // Identity check — only the global `db` lacks an outer tx context. A passed
+  // Identity check, only the global `db` lacks an outer tx context. A passed
   // client is always a transaction (either a withRlsContext wrapper or an
   // explicit db.transaction from a caller). Duck-typing (`'rollback' in client`)
   // diverges from the codebase's convention and misses cases where Drizzle's

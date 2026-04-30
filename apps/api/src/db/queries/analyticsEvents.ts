@@ -38,7 +38,7 @@ export async function getEventsByOrg(
   });
 }
 
-// Cross-org queries — no orgId required. Gated by roleGuard('admin') at route layer.
+// Cross-org queries, no orgId required. Gated by roleGuard('admin') at route layer.
 
 export interface AdminEventsFilter {
   eventName?: string;
@@ -138,7 +138,7 @@ export interface AiUsageStats {
  * Sum AI token usage across all orgs within a time window. Pulls from the
  * `AI_SUMMARY_COMPLETED` event's JSONB metadata (where the SSE stream records
  * per-request `inputTokens`/`outputTokens` after each Anthropic call). Used
- * by the admin dashboard cost tile — caller scopes the window (default is
+ * by the admin dashboard cost tile, caller scopes the window (default is
  * month-to-date via getMonthToDateAiUsage).
  *
  * `::text::integer` casts handle the JSONB→SQL-int conversion. `COALESCE`

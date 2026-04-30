@@ -1,4 +1,4 @@
-// Standalone migration script — runs before the Express app boots (via Docker entrypoint).
+// Standalone migration script, runs before the Express app boots (via Docker entrypoint).
 // Exceptions from CLAUDE.md rules:
 //   - process.env: config.ts validates ALL env vars (REDIS_URL, CLAUDE_API_KEY, etc.)
 //     which aren't available in the migration context. Direct access is intentional.
@@ -16,7 +16,7 @@ if (!dbUrl) {
 
 const migrationClient = postgres(dbUrl, { max: 1 });
 
-// Advisory lock ID — any constant int64 works. Defense-in-depth against concurrent
+// Advisory lock ID, any constant int64 works. Defense-in-depth against concurrent
 // boots racing the migrator when a platform (Railway, etc.) restarts or scales the
 // API container. Drizzle's journal catches double-application, but the lock turns
 // a race into a queue: the second boot waits, then finds nothing to do.

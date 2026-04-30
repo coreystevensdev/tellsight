@@ -4,7 +4,7 @@ import type { DbTransaction } from './db.js';
 
 /**
  * Wraps DB queries in a transaction with RLS context variables set.
- * If either SET LOCAL fails, the transaction aborts — fail-closed by design.
+ * If either SET LOCAL fails, the transaction aborts, fail-closed by design.
  *
  * Uses sql.raw() because PostgreSQL SET doesn't accept $1 parameter placeholders.
  * Safe from injection: orgId is validated as finite number, isAdmin is boolean.

@@ -46,7 +46,7 @@ export function renderProDigest({ orgName, summary, dashboardUrl, unsubscribeUrl
   <div style="${STYLES.container}">
     <div style="${STYLES.card}">
       <h1 style="${STYLES.h1}">${orgName}</h1>
-      <p style="${STYLES.subtitle}">Weekly insights — ${weekOf}</p>
+      <p style="${STYLES.subtitle}">Weekly insights, ${weekOf}</p>
       <ul style="${STYLES.summary}padding-left:20px;">
         ${formatSummaryHtml(summary)}
       </ul>
@@ -78,7 +78,7 @@ export function renderFreeTeaser({ orgName, dashboardUrl, unsubscribeUrl }: Free
         Upgrade to Pro to get AI-powered weekly digests delivered to your inbox
         with the most important changes in your business.
       </p>
-      <a href="${dashboardUrl}/billing" style="${STYLES.cta}">Upgrade to Pro — $29/mo</a>
+      <a href="${dashboardUrl}/billing" style="${STYLES.cta}">Upgrade to Pro, $29/mo</a>
     </div>
     <p style="${STYLES.footer}">
       You're receiving this because you have an account.<br>

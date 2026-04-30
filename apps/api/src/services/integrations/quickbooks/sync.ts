@@ -148,7 +148,7 @@ export async function runSync(
 }
 
 async function findOrCreateQbDataset(orgId: number, companyName: string) {
-  const datasetName = `QuickBooks — ${companyName}`;
+  const datasetName = `QuickBooks, ${companyName}`;
   const existing = (await datasetsQueries.getDatasetsByOrg(orgId, dbAdmin)).find(
     (ds) => ds.sourceType === 'quickbooks',
   );

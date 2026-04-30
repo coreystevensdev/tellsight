@@ -172,7 +172,7 @@ describe('useShareInsight', () => {
     await act(async () => {
       await result.current.generatePng();
     });
-    // still only 1 call — cached
+    // still only 1 call, cached
     expect(mockToPng).toHaveBeenCalledTimes(1);
   });
 
@@ -186,7 +186,7 @@ describe('useShareInsight', () => {
       clipboard: { write: mockWrite },
     });
 
-    // jsdom has no ClipboardItem — stub it
+    // jsdom has no ClipboardItem, stub it
     globalThis.ClipboardItem = vi.fn().mockImplementation((items) => items) as unknown as typeof ClipboardItem;
 
     // mock fetch for data URL to blob conversion

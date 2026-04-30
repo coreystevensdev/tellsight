@@ -52,7 +52,7 @@ function eventBadge(name: string) {
 
 function metadataCell(metadata: Record<string, unknown> | null) {
   if (!metadata || Object.keys(metadata).length === 0) {
-    return <span className="text-muted-foreground">—</span>;
+    return <span className="text-muted-foreground">-</span>;
   }
   return (
     <details className="cursor-pointer">

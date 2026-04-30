@@ -65,7 +65,7 @@ describe('getActiveTier', () => {
   });
 
   it('returns pro for active subscription with null currentPeriodEnd (fresh checkout)', async () => {
-    // fresh checkout sets currentPeriodEnd: null — the isNull branch keeps access
+    // fresh checkout sets currentPeriodEnd: null, the isNull branch keeps access
     mockLimit._resultPromise = Promise.resolve([{ id: 1, status: 'active', currentPeriodEnd: null }]);
 
     const { getActiveTier } = await import('./subscriptions.js');
@@ -75,7 +75,7 @@ describe('getActiveTier', () => {
   });
 
   it('returns pro for canceled subscription within period', async () => {
-    // canceled but period hasn't ended yet — query's OR branch matches
+    // canceled but period hasn't ended yet, query's OR branch matches
     mockLimit._resultPromise = Promise.resolve([{ id: 1, status: 'canceled', currentPeriodEnd: new Date(Date.now() + 86400000) }]);
 
     const { getActiveTier } = await import('./subscriptions.js');
@@ -103,10 +103,10 @@ describe('getActiveTier', () => {
     expect(tier).toBe('free');
   });
 
-  // Story 5.3 — documents expected behavior for statuses that return free by exclusion.
+  // Story 5.3, documents expected behavior for statuses that return free by exclusion.
   // These test the "empty result → free" mapping. Actual WHERE clause filtering is
   // verified structurally in the "WHERE clause includes canceled-within-period branch" test
-  // below — unit mocks can't exercise real Drizzle query logic.
+  // below, unit mocks can't exercise real Drizzle query logic.
   it('returns free for expired subscription', async () => {
     mockLimit._resultPromise = Promise.resolve([]);
 
@@ -141,7 +141,7 @@ describe('getActiveTier', () => {
     await getActiveTier(42);
 
     // the WHERE clause (2nd element of the `and()` array) must include an `or` with both
-    // active and canceled branches — prevents silent removal of the canceled access path
+    // active and canceled branches, prevents silent removal of the canceled access path
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const whereArg = mockWhere.mock.calls[0]![0] as any[];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

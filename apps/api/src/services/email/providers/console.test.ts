@@ -26,7 +26,7 @@ import { createConsoleProvider, redactRecipient } from './console.js';
 
 // Explicit vi.fn() references so tests can introspect `.mock.calls` without
 // fighting pino's LogFn overloads. Cast back to the pino logger type at
-// injection site — the provider only touches the methods we implement here.
+// injection site, the provider only touches the methods we implement here.
 type RealLogger = typeof pinoLogger;
 
 function makeFakeLogger() {
@@ -47,7 +47,7 @@ function makeFakeFs(overrides: Partial<{ writeFile: ReturnType<typeof vi.fn>; mk
   };
 }
 
-// Minimal React fixture — one element with literal content so render produces
+// Minimal React fixture, one element with literal content so render produces
 // deterministic HTML. Avoids pulling @react-email/components element wrappers
 // into unit tests.
 const template = () => React.createElement('p', null, 'hello world');
@@ -141,7 +141,7 @@ describe('console provider', () => {
     expect(fs.mkdir).not.toHaveBeenCalled();
   });
 
-  it('swallows capture errors and logs a warning — never fails the send', async () => {
+  it('swallows capture errors and logs a warning, never fails the send', async () => {
     const { logger, warn } = makeFakeLogger();
     const fs = makeFakeFs({
       writeFile: vi.fn(async () => {

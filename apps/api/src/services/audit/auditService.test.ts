@@ -86,7 +86,7 @@ describe('audit', () => {
     );
   });
 
-  it('does not throw when record fails — fire-and-forget', async () => {
+  it('does not throw when record fails, fire-and-forget', async () => {
     mockRecord.mockRejectedValueOnce(new Error('db down'));
 
     expect(() => audit(fakeReq(), { orgId: 1, userId: 1, action: 'test' })).not.toThrow();
@@ -191,7 +191,7 @@ describe('auditSystem', () => {
     );
   });
 
-  it('never throws on DB failure — logs error and moves on', async () => {
+  it('never throws on DB failure, logs error and moves on', async () => {
     mockRecord.mockRejectedValueOnce(new Error('DB down'));
 
     expect(() =>

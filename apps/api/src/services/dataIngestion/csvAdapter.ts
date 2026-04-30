@@ -139,7 +139,7 @@ export const csvAdapter: DataSourceAdapter = {
     });
 
     // csv-parse handles quoted headers correctly (e.g. "Revenue, Q1")
-    // — naive split(',') would break on those
+    //, naive split(',') would break on those
     let rawHeaders: string[];
     if (records.length > 0) {
       rawHeaders = Object.keys(records[0]!);
@@ -176,7 +176,7 @@ export const csvAdapter: DataSourceAdapter = {
     const headerValidation = this.validate(rawHeaders);
 
     if (!headerValidation.valid) {
-      // header-level failures are fatal — can't validate rows without the right columns
+      // header-level failures are fatal, can't validate rows without the right columns
       return { headers: rawHeaders, rows: [], rowCount: records.length, warnings: [] };
     }
 
@@ -184,7 +184,7 @@ export const csvAdapter: DataSourceAdapter = {
     const failRate = records.length > 0 ? skippedRows.length / records.length : 0;
 
     if (failRate > 0.5) {
-      // >50% of sampled rows failed — reject entirely
+      // >50% of sampled rows failed, reject entirely
       return { headers: rawHeaders, rows: [], rowCount: records.length, warnings: [] };
     }
 

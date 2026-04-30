@@ -44,7 +44,7 @@ vi.mock('../analytics/trackEvent.js', () => ({
   trackEvent: mockTrackEvent,
 }));
 
-// templates can run un-mocked — they're pure HTML string builders
+// templates can run un-mocked, they're pure HTML string builders
 vi.mock('./templates.js', () => ({
   renderProDigest: vi.fn(() => '<html>pro</html>'),
   renderFreeTeaser: vi.fn(() => '<html>teaser</html>'),

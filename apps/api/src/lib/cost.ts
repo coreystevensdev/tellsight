@@ -2,7 +2,7 @@
  * Rolling-median cost anomaly detector for AI calls.
  *
  * Purpose: catch a single Claude call that costs dramatically more than the
- * usual one — a runaway prompt, a multi-page payload, a pricing
+ * usual one, a runaway prompt, a multi-page payload, a pricing
  * misconfiguration. Modelled on InvoiceFlow's cost.ts (NFR-R4 there).
  *
  * Invariants worth knowing:
@@ -16,7 +16,7 @@
  *   - Race window between read and append: two concurrent calls can both
  *     pass the check. Locking would not reduce spend already incurred.
  *   - Failing open: unknown model returns `null` cost; budget check is
- *     skipped. A defensive default — better than refusing service when an
+ *     skipped. A defensive default, better than refusing service when an
  *     operator configures a new model variant.
  *
  * Anthropic pricing per 1M tokens (as of 2026-04):
@@ -50,7 +50,7 @@ export interface Usage {
 }
 
 export function computeCost(usage: Usage, model: string = env.CLAUDE_MODEL): number | null {
-  // Destructure from entries so the price object is non-nullable in scope —
+  // Destructure from entries so the price object is non-nullable in scope
   // PRICING[key] under noUncheckedIndexedAccess returns T | undefined.
   const entry = Object.entries(PRICING).find(([prefix]) => model.startsWith(prefix));
   if (!entry) return null;

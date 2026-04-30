@@ -8,7 +8,7 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
 }));
 
-// Mock XMLHttpRequest — the component uses it instead of fetch for progress tracking
+// Mock XMLHttpRequest, the component uses it instead of fetch for progress tracking
 class MockXHR {
   status = 200;
   responseText = '';

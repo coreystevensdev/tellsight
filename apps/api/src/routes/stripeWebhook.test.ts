@@ -36,7 +36,7 @@ let server: http.Server;
 let baseUrl: string;
 
 beforeAll(async () => {
-  // webhook route needs raw body — mount it on a bare Express app without JSON parser
+  // webhook route needs raw body, mount it on a bare Express app without JSON parser
   const result = await createTestApp((app) => {
     app.use(stripeWebhookRouter);
   });

@@ -197,6 +197,6 @@ describe('AnalyticsEventsTable', () => {
       expect(screen.getByText('user.signed_in')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.getByText('-')).toBeInTheDocument();
   });
 });

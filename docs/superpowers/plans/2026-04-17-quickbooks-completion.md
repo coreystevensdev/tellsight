@@ -12,7 +12,7 @@
 
 ---
 
-## Task 1: Upload Page — QuickBooks Card (QB-8)
+## Task 1: Upload Page, QuickBooks Card (QB-8)
 
 **Files:**
 - Create: `apps/web/app/upload/QuickBooksCard.tsx`
@@ -20,10 +20,10 @@
 
 ### Prerequisites
 Read these files before starting:
-- `apps/web/app/upload/page.tsx` — current upload page layout
-- `apps/web/app/upload/UploadDropzone.tsx` — existing CSV dropzone component
-- `apps/web/lib/api-client.ts` — `apiClient<T>()` fetch helper
-- `apps/web/app/settings/integrations/IntegrationsManager.tsx` — existing QB connect flow for reference
+- `apps/web/app/upload/page.tsx`, current upload page layout
+- `apps/web/app/upload/UploadDropzone.tsx`, existing CSV dropzone component
+- `apps/web/lib/api-client.ts`, `apiClient<T>()` fetch helper
+- `apps/web/app/settings/integrations/IntegrationsManager.tsx`, existing QB connect flow for reference
 
 - [ ] **Step 1: Create QuickBooksCard component**
 
@@ -119,7 +119,7 @@ export function QuickBooksCard() {
 Read `apps/web/app/upload/page.tsx` to see the current structure. Wrap the existing `UploadDropzone` and the new `QuickBooksCard` in a 2-column grid:
 
 ```tsx
-// In apps/web/app/upload/page.tsx — modify the layout section
+// In apps/web/app/upload/page.tsx, modify the layout section
 // Add import at the top:
 import { QuickBooksCard } from './QuickBooksCard';
 
@@ -164,7 +164,7 @@ git commit -m "feat: add QuickBooks card to upload page (QB-8)"
 
 ---
 
-## Task 2: Stale Nudge — Backend (QB-9 Part 1)
+## Task 2: Stale Nudge, Backend (QB-9 Part 1)
 
 **Files:**
 - Create: `apps/api/drizzle/migrations/0018_add-stale-reason.sql`
@@ -175,10 +175,10 @@ git commit -m "feat: add QuickBooks card to upload page (QB-8)"
 
 ### Prerequisites
 Read these files before starting:
-- `apps/api/src/db/schema.ts` — find the `aiSummaries` table definition (around line 183)
-- `apps/api/src/db/queries/aiSummaries.ts` — `markStale()` function signature
-- `apps/api/src/services/integrations/quickbooks/sync.ts` — where `markStale()` is called
-- `apps/api/src/routes/datasets.ts` — where CSV upload triggers `markStale()`
+- `apps/api/src/db/schema.ts`, find the `aiSummaries` table definition (around line 183)
+- `apps/api/src/db/queries/aiSummaries.ts`, `markStale()` function signature
+- `apps/api/src/services/integrations/quickbooks/sync.ts`, where `markStale()` is called
+- `apps/api/src/routes/datasets.ts`, where CSV upload triggers `markStale()`
 
 - [ ] **Step 1: Write the migration**
 
@@ -243,7 +243,7 @@ Search for any other `markStale()` call sites and update them all. If there's a 
 - [ ] **Step 7: Run tests and type-check**
 
 Run: `pnpm -C apps/api type-check && pnpm -C apps/api test`
-Expected: Type-check passes. Tests pass (existing tests may need the new `reason` argument added to their `markStale()` calls — fix any failures).
+Expected: Type-check passes. Tests pass (existing tests may need the new `reason` argument added to their `markStale()` calls, fix any failures).
 
 - [ ] **Step 8: Commit**
 
@@ -254,19 +254,19 @@ git commit -m "feat: add stale_reason column to ai_summaries (QB-9)"
 
 ---
 
-## Task 3: Stale Nudge — Frontend (QB-9 Part 2)
+## Task 3: Stale Nudge, Frontend (QB-9 Part 2)
 
 **Files:**
 - Modify: `apps/web/app/dashboard/AiSummaryCard.tsx`
 
 ### Prerequisites
 Read these files before starting:
-- `apps/web/app/dashboard/AiSummaryCard.tsx` — full component (405 lines, client component)
-- `apps/web/app/dashboard/hooks/useAiStream.ts` — the SSE streaming hook used for AI summaries
+- `apps/web/app/dashboard/AiSummaryCard.tsx`, full component (405 lines, client component)
+- `apps/web/app/dashboard/hooks/useAiStream.ts`, the SSE streaming hook used for AI summaries
 
 - [ ] **Step 1: Add stale nudge footer to AiSummaryCard**
 
-In `apps/web/app/dashboard/AiSummaryCard.tsx`, add the stale nudge as a footer inside the card's outer container. The component receives cached summary data from props — check if `staleAt` and `staleReason` are in the response.
+In `apps/web/app/dashboard/AiSummaryCard.tsx`, add the stale nudge as a footer inside the card's outer container. The component receives cached summary data from props, check if `staleAt` and `staleReason` are in the response.
 
 Add the stale footer at the bottom of the card, inside the outermost `<div>`:
 
@@ -298,11 +298,11 @@ async function handleRefresh() {
   setIsRefreshing(true);
   try {
     // Trigger the existing AI summary regeneration
-    // This depends on how useAiStream works — it may accept a force param
+    // This depends on how useAiStream works, it may accept a force param
     // or you may need to call the SSE endpoint directly
     await onRegenerate?.(); // if the parent passes a regenerate callback
   } catch {
-    // Show error toast — nudge stays visible for retry
+    // Show error toast, nudge stays visible for retry
     setIsRefreshing(false);
   }
 }
@@ -329,7 +329,7 @@ To test the stale nudge without a real QB sync:
 1. Manually set `stale_at = NOW()` and `stale_reason = 'sync'` on an `ai_summaries` row in the DB
 2. Load the dashboard
 3. Verify the amber footer appears at the bottom of the AI summary card
-4. Click "Refresh" — verify the summary regenerates (requires API + Claude key)
+4. Click "Refresh", verify the summary regenerates (requires API + Claude key)
 5. After refresh, verify the footer disappears
 
 - [ ] **Step 6: Commit**
@@ -349,8 +349,8 @@ git commit -m "feat: add stale data nudge to AI summary card (QB-9)"
 
 ### Prerequisites
 Read these files before starting:
-- `apps/api/src/services/integrations/quickbooks/sync.ts` — the `runSync()` function
-- `apps/api/src/lib/sentry.ts` — Sentry setup, exports `Sentry` instance
+- `apps/api/src/services/integrations/quickbooks/sync.ts`, the `runSync()` function
+- `apps/api/src/lib/sentry.ts`, Sentry setup, exports `Sentry` instance
 
 - [ ] **Step 1: Add Sentry import to sync.ts**
 
@@ -360,7 +360,7 @@ import { Sentry } from '../../lib/sentry.js';
 
 - [ ] **Step 2: Add breadcrumbs at each sync stage**
 
-Add `Sentry.addBreadcrumb()` calls at each stage within `runSync()`. Place them at the natural boundaries — after each major operation completes:
+Add `Sentry.addBreadcrumb()` calls at each stage within `runSync()`. Place them at the natural boundaries, after each major operation completes:
 
 ```ts
 // At start of runSync():
@@ -438,7 +438,7 @@ Add a `currentStage` variable at the top of `runSync()` that you update as you p
 
 - [ ] **Step 4: Guard breadcrumbs when Sentry is unconfigured**
 
-The `Sentry` import from `lib/sentry.ts` exports the `@sentry/node` module. If `SENTRY_DSN` is not set, `Sentry.init()` wasn't called, but `Sentry.addBreadcrumb()` is a no-op in that case — it won't throw. Verify this by checking the Sentry SDK docs. No guard needed if the SDK handles this gracefully.
+The `Sentry` import from `lib/sentry.ts` exports the `@sentry/node` module. If `SENTRY_DSN` is not set, `Sentry.init()` wasn't called, but `Sentry.addBreadcrumb()` is a no-op in that case, it won't throw. Verify this by checking the Sentry SDK docs. No guard needed if the SDK handles this gracefully.
 
 - [ ] **Step 5: Type-check and run tests**
 
@@ -454,7 +454,7 @@ git commit -m "feat: add Sentry breadcrumbs to QB sync lifecycle (QB-10)"
 
 ---
 
-## Task 5: Admin Panel — Sync Health (QB-10 Part 2)
+## Task 5: Admin Panel, Sync Health (QB-10 Part 2)
 
 **Files:**
 - Create: `apps/api/src/db/queries/syncHealth.ts`
@@ -464,10 +464,10 @@ git commit -m "feat: add Sentry breadcrumbs to QB sync lifecycle (QB-10)"
 
 ### Prerequisites
 Read these files before starting:
-- `apps/api/src/routes/admin.ts` — existing admin routes
-- `apps/web/app/admin/page.tsx` — existing admin page layout
-- `apps/web/app/admin/SystemHealthPanel.tsx` — pattern for health panels
-- `apps/api/src/db/queries/syncJobs.ts` — existing sync job queries
+- `apps/api/src/routes/admin.ts`, existing admin routes
+- `apps/web/app/admin/page.tsx`, existing admin page layout
+- `apps/web/app/admin/SystemHealthPanel.tsx`, pattern for health panels
+- `apps/api/src/db/queries/syncJobs.ts`, existing sync job queries
 
 - [ ] **Step 1: Create syncHealth query module**
 
@@ -583,8 +583,8 @@ export function SyncHealthPanel({ data }: { data: SyncHealth }) {
 
       {oldestAge !== null && (
         <p className={`mt-3 text-xs ${isStale ? 'text-destructive' : 'text-muted-foreground'}`}>
-          Oldest sync: {data.oldestSuccess!.orgName} — {oldestAge}h ago
-          {isStale && ' (stale — >48h)'}
+          Oldest sync: {data.oldestSuccess!.orgName}, {oldestAge}h ago
+          {isStale && ' (stale, >48h)'}
         </p>
       )}
 
@@ -658,7 +658,7 @@ git commit -m "feat: add sync health panel to admin dashboard (QB-10)"
 
 ---
 
-## Task 6: Integration Tests — Sync Orchestrator (QB-11 Part 1)
+## Task 6: Integration Tests, Sync Orchestrator (QB-11 Part 1)
 
 **Files:**
 - Create: `apps/api/src/services/integrations/quickbooks/__tests__/sync.test.ts`
@@ -666,10 +666,10 @@ git commit -m "feat: add sync health panel to admin dashboard (QB-10)"
 
 ### Prerequisites
 Read these files before starting:
-- `apps/api/src/services/integrations/quickbooks/sync.ts` — `runSync()`, `SyncResult`
-- `apps/api/src/services/integrations/quickbooks/api.ts` — `createQbClient()` signature
-- `apps/api/src/services/integrations/quickbooks/normalize.ts` — normalizer input/output types
-- `apps/api/src/db/queries/integrationConnections.ts` — connection query functions
+- `apps/api/src/services/integrations/quickbooks/sync.ts`, `runSync()`, `SyncResult`
+- `apps/api/src/services/integrations/quickbooks/api.ts`, `createQbClient()` signature
+- `apps/api/src/services/integrations/quickbooks/normalize.ts`, normalizer input/output types
+- `apps/api/src/db/queries/integrationConnections.ts`, connection query functions
 - Existing test files for patterns (e.g., `apps/api/src/services/curation/__tests__/`)
 
 - [ ] **Step 1: Create test fixtures**
@@ -765,7 +765,7 @@ vi.mock('../../lib/sentry.js', () => ({
   Sentry: { addBreadcrumb: vi.fn(), captureException: vi.fn() },
 }));
 
-// Test structure — implement each test body by reading the actual runSync() code
+// Test structure, implement each test body by reading the actual runSync() code
 // and mocking the DB queries it calls
 
 describe('runSync', () => {
@@ -776,7 +776,7 @@ describe('runSync', () => {
   it('creates dataset on initial sync when no QB dataset exists', async () => {
     // Mock: no existing QB dataset for this org
     // Mock: QB client returns invoice + purchase data
-    // Assert: dataset created with name "QuickBooks — Test Company"
+    // Assert: dataset created with name "QuickBooks, Test Company"
     // Assert: activeDatasetId set on the org
   });
 
@@ -795,7 +795,7 @@ describe('runSync', () => {
     // Assert: markStale called with orgId and reason 'sync'
   });
 
-  it('handles partial failure — writes checkpoint before throwing', async () => {
+  it('handles partial failure, writes checkpoint before throwing', async () => {
     // Mock: first entity type succeeds, second throws
     // Assert: first batch of rows were written
     // Assert: sync job status is 'failed' with error message
@@ -820,7 +820,7 @@ describe('runSync', () => {
 });
 ```
 
-Fill in each test body after reading the actual `runSync()` implementation. The mocking strategy depends on how `runSync()` is structured — whether it imports query functions directly or accepts them as dependencies.
+Fill in each test body after reading the actual `runSync()` implementation. The mocking strategy depends on how `runSync()` is structured, whether it imports query functions directly or accepts them as dependencies.
 
 - [ ] **Step 3: Run the tests**
 
@@ -836,7 +836,7 @@ git commit -m "test: add sync orchestrator integration tests (QB-11)"
 
 ---
 
-## Task 7: Integration Tests — Routes + Worker (QB-11 Part 2)
+## Task 7: Integration Tests, Routes + Worker (QB-11 Part 2)
 
 **Files:**
 - Create: `apps/api/src/routes/__tests__/integrations.test.ts`
@@ -844,8 +844,8 @@ git commit -m "test: add sync orchestrator integration tests (QB-11)"
 
 ### Prerequisites
 Read these files before starting:
-- `apps/api/src/routes/integrations.ts` — route handlers
-- `apps/api/src/services/integrations/worker.ts` — BullMQ worker
+- `apps/api/src/routes/integrations.ts`, route handlers
+- `apps/api/src/services/integrations/worker.ts`, BullMQ worker
 - Existing route test files for patterns (e.g., `apps/api/src/routes/__tests__/`)
 
 - [ ] **Step 1: Write route handler tests**
@@ -963,11 +963,11 @@ git commit -m "test: add route handler and worker integration tests (QB-11)"
 
 ### Prerequisites
 Read these files before starting:
-- `e2e/dashboard.spec.ts` — existing Playwright test patterns, locator strategies
-- `playwright.config.ts` — test directory config, base URL, timeouts
-- `apps/web/app/upload/QuickBooksCard.tsx` — selectors for the QB card
-- `apps/web/app/settings/integrations/IntegrationsManager.tsx` — selectors for integrations page
-- `apps/web/app/dashboard/AiSummaryCard.tsx` — selectors for stale nudge
+- `e2e/dashboard.spec.ts`, existing Playwright test patterns, locator strategies
+- `playwright.config.ts`, test directory config, base URL, timeouts
+- `apps/web/app/upload/QuickBooksCard.tsx`, selectors for the QB card
+- `apps/web/app/settings/integrations/IntegrationsManager.tsx`, selectors for integrations page
+- `apps/web/app/dashboard/AiSummaryCard.tsx`, selectors for stale nudge
 
 - [ ] **Step 1: Create the E2E test file with route mocking helpers**
 
@@ -989,7 +989,7 @@ async function mockQbStatus(page, status: 'connected' | 'disconnected' | 'error'
       connected: true,
       companyName: 'Test Company',
       syncStatus: 'error',
-      syncError: 'Token revoked — please reconnect',
+      syncError: 'Token revoked, please reconnect',
     },
     syncing: {
       connected: true,
@@ -1077,7 +1077,7 @@ test.describe('QuickBooks Integration', () => {
       await page.goto('/dashboard');
       await expect(page.getByText('New QuickBooks data available')).toBeVisible();
 
-      // Click refresh — mock new summary without stale flag
+      // Click refresh, mock new summary without stale flag
       await page.route('**/api/datasets/*/summary', (route) =>
         route.fulfill({
           json: { data: { content: 'Updated summary...', staleAt: null, staleReason: null } },
@@ -1099,7 +1099,7 @@ test.describe('QuickBooks Integration', () => {
       // After disconnect, mock status as disconnected
       await mockQbStatus(page, 'disconnected');
 
-      // Navigate to dashboard — charts should still render
+      // Navigate to dashboard, charts should still render
       await page.goto('/dashboard');
       // Verify chart container exists (data persists)
       await expect(page.locator('[data-testid="revenue-chart"], canvas')).toBeVisible();
@@ -1293,7 +1293,7 @@ Run this checklist manually against the staging environment before each producti
 ### OAuth Flow
 - [ ] Click "Connect QuickBooks" on upload page
 - [ ] Redirected to Intuit consent screen
-- [ ] Authorize — redirected back to integrations page
+- [ ] Authorize, redirected back to integrations page
 - [ ] Status shows "Connected to Sandbox Company_US_1"
 
 ### Initial Sync
@@ -1309,19 +1309,19 @@ Run this checklist manually against the staging environment before each producti
 
 ### Stale Nudge
 - [ ] After sync, dashboard shows amber "New QuickBooks data available" footer
-- [ ] Click "Refresh" — new AI summary generates
+- [ ] Click "Refresh", new AI summary generates
 - [ ] Amber footer disappears after refresh
 
 ### Disconnect
 - [ ] Click "Disconnect" on integrations page
 - [ ] Status returns to disconnected
 - [ ] Dashboard still shows charts (data persists)
-- [ ] Reconnect — no duplicate rows
+- [ ] Reconnect, no duplicate rows
 
 ### Monitoring
-- [ ] Check Sentry — sync breadcrumbs visible for the session
-- [ ] Check admin panel — sync health shows the test connection
-- [ ] Check Pino logs — structured sync events present
+- [ ] Check Sentry, sync breadcrumbs visible for the session
+- [ ] Check admin panel, sync health shows the test connection
+- [ ] Check Pino logs, structured sync events present
 ```
 
 - [ ] **Step 3: Commit**
@@ -1339,7 +1339,7 @@ git commit -m "feat: add staging deploy workflow and sandbox checklist (QB-13)"
 - Create: `apps/web/app/privacy/page.tsx`
 - Create: `apps/web/app/terms/page.tsx`
 
-This task is content work — draft the privacy policy and terms of service pages that Intuit requires for app review.
+This task is content work, draft the privacy policy and terms of service pages that Intuit requires for app review.
 
 - [ ] **Step 1: Create privacy policy page**
 
@@ -1348,7 +1348,7 @@ This task is content work — draft the privacy policy and terms of service page
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy — Tellsight',
+  title: 'Privacy Policy, Tellsight',
 };
 
 export default function PrivacyPage() {
@@ -1373,7 +1373,7 @@ export default function PrivacyPage() {
           <p className="mt-2">
             Your transaction data is used to generate charts and AI-powered
             business insights. Raw transaction data is never sent to the AI
-            model — only computed statistics (totals, averages, trends).
+            model, only computed statistics (totals, averages, trends).
           </p>
         </section>
 
@@ -1398,10 +1398,10 @@ export default function PrivacyPage() {
         <section>
           <h2 className="text-base font-semibold text-foreground">Third-Party Services</h2>
           <ul className="mt-2 list-disc pl-5 space-y-1">
-            <li>Intuit QuickBooks — accounting data sync</li>
-            <li>Anthropic Claude — AI-powered analysis (receives statistics only, not raw data)</li>
-            <li>Stripe — payment processing</li>
-            <li>Sentry — error monitoring (no user data in reports)</li>
+            <li>Intuit QuickBooks, accounting data sync</li>
+            <li>Anthropic Claude, AI-powered analysis (receives statistics only, not raw data)</li>
+            <li>Stripe, payment processing</li>
+            <li>Sentry, error monitoring (no user data in reports)</li>
           </ul>
         </section>
 
@@ -1424,7 +1424,7 @@ export default function PrivacyPage() {
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Terms of Service — Tellsight',
+  title: 'Terms of Service, Tellsight',
 };
 
 export default function TermsPage() {
@@ -1467,7 +1467,7 @@ export default function TermsPage() {
           <p className="mt-2">
             Free tier includes charts and a preview AI summary. Pro subscription
             ($29/month) unlocks full AI analysis, email digests, and priority
-            support. Cancel anytime — access continues through the billing period.
+            support. Cancel anytime, access continues through the billing period.
           </p>
         </section>
 

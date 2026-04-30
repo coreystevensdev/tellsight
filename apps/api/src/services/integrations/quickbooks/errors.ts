@@ -19,7 +19,7 @@ export class RetryableError extends QbApiError {
 }
 
 export class TokenRevokedError extends QbApiError {
-  constructor(message = 'QuickBooks access was revoked — please reconnect') {
+  constructor(message = 'QuickBooks access was revoked, please reconnect') {
     super(message, 401);
     this.name = 'TokenRevokedError';
   }

@@ -79,7 +79,7 @@ describe('subscriptionGate', () => {
     expect(next).toHaveBeenCalled();
   });
 
-  it('never sends a 403 — always calls next()', async () => {
+  it('never sends a 403, always calls next()', async () => {
     mockGetActiveTier.mockResolvedValue('free');
     const req = makeReq({ user: { org_id: 1, sub: '1' } });
     const res = { status: vi.fn(), json: vi.fn() } as unknown as Response;

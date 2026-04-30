@@ -28,12 +28,12 @@ test.describe('Analytics Event Verification (FR40)', () => {
     await page.locator('#dashboard-heading').waitFor({ timeout: 15_000 });
 
     const event = await waitForEvent(ctx.request, 'dashboard.viewed', since);
-    // fire-and-forget — may not persist within the polling window in CI
+    // fire-and-forget, may not persist within the polling window in CI
     if (event) {
       expect(event.org_id).toBe(adminUser.orgId);
       expect(event.user_id).toBe(adminUser.userId);
     } else {
-      console.warn('dashboard.viewed event not found within polling window — timing-dependent in CI');
+      console.warn('dashboard.viewed event not found within polling window, timing-dependent in CI');
     }
 
     await ctx.close();
@@ -57,7 +57,7 @@ test.describe('Analytics Event Verification (FR40)', () => {
     });
 
     if (response.status() === 429) {
-      console.warn('Upload rate limited in CI — skipping event assertion');
+      console.warn('Upload rate limited in CI, skipping event assertion');
       await ctx.close();
       return;
     }
@@ -87,14 +87,14 @@ test.describe('Analytics Event Verification (FR40)', () => {
         limit: 50,
       });
     } catch {
-      // rate limited — skip shape validation rather than fail
-      console.warn('Admin analytics query rate limited — skipping shape validation');
+      // rate limited, skip shape validation rather than fail
+      console.warn('Admin analytics query rate limited, skipping shape validation');
       await ctx.close();
       return;
     }
 
     if (events.length === 0) {
-      console.warn('No analytics events found — fire-and-forget writes may not have persisted');
+      console.warn('No analytics events found, fire-and-forget writes may not have persisted');
       await ctx.close();
       return;
     }

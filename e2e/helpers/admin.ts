@@ -84,7 +84,7 @@ export async function waitForEvent(
 ): Promise<DbEvent | null> {
   const sql = getAdminSql();
 
-  // initial delay — fire-and-forget writes need time to persist
+  // initial delay, fire-and-forget writes need time to persist
   await new Promise((r) => setTimeout(r, 2_000));
 
   for (let i = 0; i < maxAttempts; i++) {

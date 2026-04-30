@@ -107,7 +107,7 @@ beforeEach(() => {
   mockGetActiveDatasetId.mockResolvedValue(null);
   mockGetRowCount.mockResolvedValue(144);
   mockGetHasMarginSignal.mockResolvedValue(false);
-  // withRlsContext executes the callback with a mock tx — query mocks intercept regardless
+  // withRlsContext executes the callback with a mock tx, query mocks intercept regardless
   mockWithRlsContext.mockImplementation(async (_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({ _tag: 'tx' }));
 });
 
@@ -167,7 +167,7 @@ describe('GET /dashboard/charts', () => {
   });
 
   it('fires trackEvent for authenticated users only', async () => {
-    // anonymous request — no tracking
+    // anonymous request, no tracking
     await fetch(`${baseUrl}/dashboard/charts`);
     expect(mockTrackEvent).not.toHaveBeenCalled();
 
@@ -178,7 +178,7 @@ describe('GET /dashboard/charts', () => {
     mockGetHasMarginSignal.mockResolvedValue(false);
     mockWithRlsContext.mockImplementation(async (_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({ _tag: 'tx' }));
 
-    // authenticated request — should track
+    // authenticated request, should track
     mockVerifyAccessToken.mockResolvedValueOnce({
       sub: '42',
       org_id: 10,

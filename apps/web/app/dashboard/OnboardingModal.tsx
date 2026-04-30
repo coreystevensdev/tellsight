@@ -29,15 +29,15 @@ const TYPE_LABELS: Record<string, string> = {
 
 const REVENUE_LABELS: Record<string, string> = {
   under_100k: 'Under $100K',
-  '100k_500k': '$100K – $500K',
-  '500k_2m': '$500K – $2M',
+  '100k_500k': '$100K, $500K',
+  '500k_2m': '$500K, $2M',
   over_2m: 'Over $2M',
 };
 
 const TEAM_LABELS: Record<string, string> = {
   solo: 'Just me',
-  '2_5': '2–5 people',
-  '6_20': '6–20 people',
+  '2_5': '2-5 people',
+  '6_20': '6-20 people',
   over_20: '20+ people',
 };
 
@@ -77,7 +77,7 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
       try {
         await apiClient('/org/profile', { method: 'PUT', body: JSON.stringify(next) });
       } catch {
-        // profile save failed — continue anyway, don't block the dashboard
+        // profile save failed, continue anyway, don't block the dashboard
       }
       onComplete();
       return;

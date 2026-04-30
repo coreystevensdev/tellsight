@@ -3,7 +3,7 @@ import type { DemoModeState } from 'shared/types';
 import { db, type DbTransaction } from '../../lib/db.js';
 import { datasets, dataRows, aiSummaries, shares } from '../schema.js';
 import type { NormalizedRow } from '../../services/dataIngestion/normalizer.js';
-// Deliberate cross-query imports — persistUpload orchestrates both query modules.
+// Deliberate cross-query imports, persistUpload orchestrates both query modules.
 // Do NOT add imports from datasets.ts into dataRows.ts (circular dependency risk).
 import { insertBatch } from './dataRows.js';
 import { markStale } from './aiSummaries.js';
@@ -65,7 +65,7 @@ export async function getDatasetsByOrg(
 }
 
 /** User orgs only: returns 'empty' or 'user_only'. 'seed_plus_user' is intentionally
- *  unreachable — under Option C, user orgs never contain seed data. Seed org states
+ *  unreachable, under Option C, user orgs never contain seed data. Seed org states
  *  ('seed_only') are handled at the view layer, not here. */
 export async function getUserOrgDemoState(
   orgId: number,

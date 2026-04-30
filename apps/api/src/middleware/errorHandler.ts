@@ -7,7 +7,7 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
   const log = req.log ?? logger;
 
   if (err instanceof AppError) {
-    // ProgrammerErrors are real bugs — treat them like unhandled errors at the
+    // ProgrammerErrors are real bugs, treat them like unhandled errors at the
     // logging + telemetry layer, but still route through the AppError branch
     // so the response shape stays consistent.
     //
@@ -25,7 +25,7 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
     } else {
       // ExternalServiceErrors (Stripe down, Claude timeout) are worth tracking.
       // Fingerprint by service so Stripe and Claude issues don't collapse into
-      // one Sentry issue — same pattern as ProgrammerError above.
+      // one Sentry issue, same pattern as ProgrammerError above.
       if (err instanceof ExternalServiceError) {
         Sentry.captureException(err, {
           level: 'warning',
@@ -48,7 +48,7 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
     return;
   }
 
-  // unhandled errors — these are real bugs
+  // unhandled errors, these are real bugs
   Sentry.captureException(err);
   log.error({ err }, 'Unhandled error');
   res.status(500).json({

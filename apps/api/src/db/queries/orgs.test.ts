@@ -82,7 +82,7 @@ describe('orgs queries', () => {
       expect(result).toBe(99);
     });
 
-    it('caches the result — second call does not hit DB', async () => {
+    it('caches the result, second call does not hit DB', async () => {
       mockFindFirst.mockResolvedValueOnce({ id: 99, slug: 'seed-demo' });
 
       await getSeedOrgId();

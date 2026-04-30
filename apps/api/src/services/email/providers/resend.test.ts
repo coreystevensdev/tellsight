@@ -247,7 +247,7 @@ describe('resend provider', () => {
     expect(payload.replyTo).toBe('override@kiln.app');
   });
 
-  it('serializes tags to {name,value}[] — Resend wire format', async () => {
+  it('serializes tags to {name,value}[], Resend wire format', async () => {
     const { logger } = makeFakeLogger();
     const { client, send } = fakeResend(async () => ({ data: { id: 'x' }, error: null }));
     const provider = createResendProvider(env, { resend: client, sentry, logger });

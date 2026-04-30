@@ -59,13 +59,13 @@ export function createConsoleProvider(env: Env, deps: ConsoleDeps = {}): EmailPr
     },
 
     async checkHealth() {
-      // Console provider is always healthy — no network, no SDK, no upstream.
+      // Console provider is always healthy, no network, no SDK, no upstream.
       return { status: 'ok', latencyMs: 0 };
     },
   };
 }
 
-// Local PII redactor. Grepped the codebase on 2026-04-23 — no existing recipient
+// Local PII redactor. Grepped the codebase on 2026-04-23, no existing recipient
 // redactor found. If a shared helper lands later, prefer that and delete this.
 export function redactRecipient(to: string | string[]): string | string[] {
   if (Array.isArray(to)) return to.map(redactOne);
@@ -75,7 +75,7 @@ export function redactRecipient(to: string | string[]): string | string[] {
 function redactOne(email: string): string {
   // Keep first 2 chars of local part + domain; mask the rest.
   const at = email.indexOf('@');
-  if (at < 0) return email; // malformed — don't try to be clever
+  if (at < 0) return email; // malformed, don't try to be clever
   const local = email.slice(0, at);
   const domain = email.slice(at);
   const keep = local.slice(0, 2);
@@ -96,7 +96,7 @@ async function captureHtml(
     await fs.writeFile(fullPath, html, 'utf8');
     log.debug({ template, path: fullPath }, 'email capture written');
   } catch (err) {
-    // capture is a dev ergonomic — a broken FS path must never fail the send
-    log.warn({ err, dir, template }, 'email capture failed — continuing');
+    // capture is a dev ergonomic, a broken FS path must never fail the send
+    log.warn({ err, dir, template }, 'email capture failed, continuing');
   }
 }

@@ -141,7 +141,7 @@ describe('computeStats', () => {
     expect(salesBreakdown!.details).toHaveProperty('percentage');
   });
 
-  it('handles single-row category — total and average only, no trend/anomaly', () => {
+  it('handles single-row category, total and average only, no trend/anomaly', () => {
     const stats = computeStats(fixture.singleRow);
 
     const totals = stats.filter((s) => s.statType === StatType.Total);
@@ -186,7 +186,7 @@ describe('computeStats', () => {
     expect(avg?.value).toBeCloseTo(-216.67, 1);
   });
 
-  it('handles all-same-amount data — no anomalies, flat trend', () => {
+  it('handles all-same-amount data, no anomalies, flat trend', () => {
     const stats = computeStats(fixture.allSameAmount);
 
     const anomalies = stats.filter((s) => s.statType === StatType.Anomaly);
@@ -218,11 +218,11 @@ describe('computeStats', () => {
     }
   });
 
-  it('respects trendMinPoints option — suppresses trends below threshold', () => {
+  it('respects trendMinPoints option, suppresses trends below threshold', () => {
     const stats = computeStats(fixture.multiCategory, { trendMinPoints: 5 });
     const trends = stats.filter((s) => s.statType === StatType.Trend);
 
-    // multiCategory has 4 rows per category — below threshold of 5
+    // multiCategory has 4 rows per category, below threshold of 5
     expect(trends).toHaveLength(0);
   });
 
@@ -263,7 +263,7 @@ function ccfRow(parentCategory: 'Income' | 'Expenses', year: number, m: number, 
 
 function ccfMonth(year: number, m: number, revenue: number, expenses: number) {
   const rows: ReturnType<typeof ccfRow>[] = [];
-  // Skip the Income row when revenue is explicitly 0 — that's how the "zero-revenue month"
+  // Skip the Income row when revenue is explicitly 0, that's how the "zero-revenue month"
   // data shape surfaces in production (no income rows for a given bucket).
   if (revenue !== 0) rows.push(ccfRow('Income', year, m, revenue));
   rows.push(ccfRow('Expenses', year, m, expenses));
@@ -279,7 +279,7 @@ function cashFlowStat(rows: ReturnType<typeof ccfRow>[], opts?: { cashFlowWindow
 }
 
 describe('computeCashFlow', () => {
-  it('emits burning stat for 3 consecutive loss months — median of sorted nets is the middle element', () => {
+  it('emits burning stat for 3 consecutive loss months, median of sorted nets is the middle element', () => {
     // Distinct nets so median ≠ mean proves median is used.
     // Sorted nets: [-7000, -3000, -1000] → median = -3000, mean ≈ -3666.67
     const rows = [
@@ -311,7 +311,7 @@ describe('computeCashFlow', () => {
     expect(stat!.details.monthlyNet).toBe(5000);
   });
 
-  it('mixed window with median cleanly burning — direction burning, monthsBurning 2', () => {
+  it('mixed window with median cleanly burning, direction burning, monthsBurning 2', () => {
     // Sorted nets: [-4000, -4000, +500] → median = -4000
     // avg revenue = 10000, threshold = 500, |-4000| = 4000 > 500 → not suppressed
     const rows = [
@@ -326,7 +326,7 @@ describe('computeCashFlow', () => {
     expect(stat!.details.monthlyNet).toBe(-4000);
   });
 
-  it('mixed window with median near zero — suppressed (break-even companion fixture)', () => {
+  it('mixed window with median near zero, suppressed (break-even companion fixture)', () => {
     // Sorted nets: [-3000, -100, +4000] → median = -100
     // avg revenue = 10000, threshold = 500, |-100| < 500 → suppressed
     const rows = [
@@ -359,7 +359,7 @@ describe('computeCashFlow', () => {
   it('suppresses when avgMonthlyRevenue <= 0 but no individual month is zero', () => {
     // Revenues [+100, +100, -200] → mean = 0. None is 0 so zero-revenue guard doesn't trip.
     // avgMonthlyRevenue <= 0 guard fires instead. The March -200 row is a deliberate
-    // negative-income fixture (refund/chargeback adjustment) — it's the only way to
+    // negative-income fixture (refund/chargeback adjustment), it's the only way to
     // reach the second guard without triggering the first, since Map.get(m) ?? 0
     // makes genuine-zero months look identical to missing-income-row months.
     const rows = [
@@ -370,7 +370,7 @@ describe('computeCashFlow', () => {
     expect(cashFlowStat(rows)).toBeNull();
   });
 
-  it('service business (expense-only mirror case) — emits surplus, not suppressed', () => {
+  it('service business (expense-only mirror case), emits surplus, not suppressed', () => {
     // Solo consultant: consistent revenue, near-zero expenses.
     // Proves the zero-revenue suppression does NOT mistakenly trigger on zero-expense.
     const rows = [
@@ -393,7 +393,7 @@ describe('computeCashFlow', () => {
     expect(cashFlowStat(rows)).toBeNull();
   });
 
-  it('window N=3 — median is the middle element of sorted nets', () => {
+  it('window N=3, median is the middle element of sorted nets', () => {
     // Explicit test of median-of-odd-N semantics. Sorted: [-5000, -2000, +1000] → median = -2000
     const rows = [
       ...ccfMonth(2026, 1, 10000, 15000),
@@ -405,7 +405,7 @@ describe('computeCashFlow', () => {
     expect(stat!.details.monthlyNet).toBe(-2000);
   });
 
-  it('window N=6 — median is mean of two middle elements', () => {
+  it('window N=6, median is mean of two middle elements', () => {
     // Sorted nets: [-5000, -4000, -3000, +500, +1000, +1500]
     // median = (sorted[2] + sorted[3]) / 2 = (-3000 + 500) / 2 = -1250
     // Prevents a hand-rolled "middle element" median bug at even window sizes.
@@ -426,7 +426,7 @@ describe('computeCashFlow', () => {
     expect(stat!.details.recentMonths).toHaveLength(6);
   });
 
-  it('median robustness — one outlier month does not flip direction', () => {
+  it('median robustness, one outlier month does not flip direction', () => {
     // Two small losses + one huge loss. Median shows the typical month,
     // mean would exaggerate. Sorted nets: [-20000, -600, -500] → median = -600, mean ≈ -7033
     const rows = [
@@ -439,7 +439,7 @@ describe('computeCashFlow', () => {
     expect(stat!.details.monthlyNet).toBe(-600);
   });
 
-  it('recentMonths carries only aggregated shape — no row-level leaks', () => {
+  it('recentMonths carries only aggregated shape, no row-level leaks', () => {
     const rows = [
       ...ccfMonth(2026, 1, 10000, 17000),
       ...ccfMonth(2026, 2, 10000, 13000),
@@ -490,7 +490,7 @@ function surplusCashFlow(): CashFlowStat {
   };
 }
 
-// Anchor wall-clock date for staleness math — 2026-05-01.
+// Anchor wall-clock date for staleness math, 2026-05-01.
 const NOW = new Date('2026-05-01T00:00:00.000Z');
 
 function daysAgoISO(days: number): string {
@@ -500,17 +500,17 @@ function daysAgoISO(days: number): string {
 }
 
 describe('runwayConfidence', () => {
-  it('high — fresh cash AND sustained burn', () => {
+  it('high, fresh cash AND sustained burn', () => {
     expect(runwayConfidence(10, 3)).toBe('high');
     expect(runwayConfidence(30, 2)).toBe('high');
   });
 
-  it('moderate — slightly stale OR single-month burn', () => {
+  it('moderate, slightly stale OR single-month burn', () => {
     expect(runwayConfidence(45, 3)).toBe('moderate');
     expect(runwayConfidence(30, 1)).toBe('moderate');
   });
 
-  it('low — stale beyond 90 days OR no burn months counted', () => {
+  it('low, stale beyond 90 days OR no burn months counted', () => {
     expect(runwayConfidence(100, 3)).toBe('low');
     expect(runwayConfidence(10, 0)).toBe('low');
   });
@@ -583,7 +583,7 @@ describe('computeRunway', () => {
     expect(computeRunway(cashFlow, financials, NOW)).toEqual([]);
   });
 
-  it('emits with low confidence at 91–180 day staleness', () => {
+  it('emits with low confidence at 91-180 day staleness', () => {
     const cashFlow = [burningCashFlow(-5000, 3)];
     const financials = { cashOnHand: 15000, cashAsOfDate: daysAgoISO(100) };
 
@@ -838,7 +838,7 @@ describe('computeBreakEven', () => {
     expect(result[0]!.details.confidence).toBe('low');
   });
 
-  it('break-even details carry only numbers and confidence enum — no row-level leak', () => {
+  it('break-even details carry only numbers and confidence enum, no row-level leak', () => {
     const result = computeBreakEven([marginStat(25)], 10_000, 50_000);
     const keys = Object.keys(result[0]!.details).sort();
     expect(keys).toEqual(['breakEvenRevenue', 'confidence', 'currentMonthlyRevenue', 'gap', 'marginPercent', 'monthlyFixedCosts']);
@@ -895,7 +895,7 @@ describe('computeStats wiring for break-even', () => {
   });
 });
 
-// `burningCashFlow` is already defined above in the Runway test fixtures — reuse it.
+// `burningCashFlow` is already defined above in the Runway test fixtures, reuse it.
 // The forecast public signature takes CashFlowStat + monthlyNetsWindow output, so
 // the existing helper stands in cleanly.
 
@@ -965,7 +965,7 @@ describe('computeCashForecast', () => {
     expect(result).toHaveLength(1);
     const d = result[0]!.details;
     // slope ≈ +2000 (improving), intercept ≈ -17k
-    // forecast at t=6,7,8 ≈ -5k, -3k, -1k — balance stays above zero
+    // forecast at t=6,7,8 ≈ -5k, -3k, -1k, balance stays above zero
     expect(d.crossesZeroAtMonth).toBeNull();
   });
 
@@ -1153,7 +1153,7 @@ describe('computeCashForecast', () => {
   });
 
   it('non-contiguous basis months still produce a valid forecast (gap months treated as even steps)', () => {
-    // Business with a zero-revenue gap in March — monthlyNetsWindow drops it.
+    // Business with a zero-revenue gap in March, monthlyNetsWindow drops it.
     // Regression treats the remaining 5 months as evenly spaced. Documents the
     // limitation: the slope reflects the trend over observed months, projected
     // forward as if the next three are also non-gap.
@@ -1172,13 +1172,13 @@ describe('computeCashForecast', () => {
     expect(d.projectedMonths[0]!.month).toBe('2026-07'); // next calendar month after last basis
     // Inputs -5000, -5500, -6000, -6500, -7000 at indices 0..4 fit exactly to
     // slope=-500, intercept=-5000 under least-squares. Asserting the precise
-    // value pins the "gap months treated as even steps" contract — if
+    // value pins the "gap months treated as even steps" contract, if
     // monthlyNetsWindow's gap-drop behavior ever changes, this test fails.
     expect(d.slope).toBeCloseTo(-500, 0);
     expect(d.intercept).toBeCloseTo(-5000, 0);
   });
 
-  it('forecast details shape carries only scalars, ISO strings, month keys, and enum — no row leak', () => {
+  it('forecast details shape carries only scalars, ISO strings, month keys, and enum, no row leak', () => {
     const result = computeCashForecast(
       [burningCashFlow()],
       { cashOnHand: 30_000, cashAsOfDate: freshCashDate },
@@ -1203,7 +1203,7 @@ describe('computeCashForecast', () => {
   });
 });
 
-// Local-time mid-month row — sidesteps the UTC-midnight-crosses-timezone-boundary
+// Local-time mid-month row, sidesteps the UTC-midnight-crosses-timezone-boundary
 // quirk ccfRow has when the test runner's TZ is west of UTC. monthlyNetsWindow
 // uses getFullYear/getMonth (local time) like the rest of the pipeline, so the
 // cleanest way to assert specific month keys is to build rows that are safely
@@ -1239,7 +1239,7 @@ describe('bucketRowsByMonth', () => {
   it('aggregates income + expenses per local-time month', () => {
     const rows = [
       ...midMonth(2026, 1, 10_000, 6_000),
-      ...midMonth(2026, 1, 5_000, 1_000), // same month — sums
+      ...midMonth(2026, 1, 5_000, 1_000), // same month, sums
       ...midMonth(2026, 2, 8_000, 4_000),
     ];
     const map = bucketRowsByMonth(rows);
@@ -1312,7 +1312,7 @@ describe('netsFromBuckets', () => {
   it('drops zero-revenue months and returns the trailing window', () => {
     const map = buckets([
       ['2026-01', { revenue: 10_000, expenses: 6_000 }],
-      ['2026-02', { revenue: 0, expenses: 5_000 }], // gap — dropped
+      ['2026-02', { revenue: 0, expenses: 5_000 }], // gap, dropped
       ['2026-03', { revenue: 10_000, expenses: 7_000 }],
       ['2026-04', { revenue: 10_000, expenses: 8_000 }],
     ]);
@@ -1349,7 +1349,7 @@ describe('monthlyNetsWindow', () => {
   it('drops zero-revenue months (gap handling matches computeCashFlow)', () => {
     const rows = [
       ...midMonth(2026, 1, 10_000, 6_000),
-      ...midMonth(2026, 2, 0, 5_000), // gap month — no income row
+      ...midMonth(2026, 2, 0, 5_000), // gap month, no income row
       ...midMonth(2026, 3, 10_000, 7_000),
     ];
 

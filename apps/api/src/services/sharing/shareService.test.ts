@@ -44,7 +44,7 @@ describe('shareService', () => {
     const fakeSummary = {
       id: 1,
       content: 'Revenue grew 12% MoM driven by catering orders.',
-      transparencyMetadata: { dateRange: 'Jan 2026 – Feb 2026' },
+      transparencyMetadata: { dateRange: 'Jan 2026, Feb 2026' },
     };
     const fakeOrg = { id: 10, name: 'Sunrise Cafe', slug: 'sunrise-cafe' };
 
@@ -98,7 +98,7 @@ describe('shareService', () => {
       const snapshot = mockCreateShare.mock.calls[0]![3];
       expect(snapshot.orgName).toBe('Sunrise Cafe');
       expect(snapshot.aiSummaryContent).toBe(fakeSummary.content);
-      expect(snapshot.dateRange).toBe('Jan 2026 – Feb 2026');
+      expect(snapshot.dateRange).toBe('Jan 2026, Feb 2026');
     });
 
     it('falls back to placeholder when transparencyMetadata lacks dateRange', async () => {
@@ -139,7 +139,7 @@ describe('shareService', () => {
   describe('getSharedInsight', () => {
     const fakeSnapshot = {
       orgName: 'Sunrise Cafe',
-      dateRange: 'Jan 2026 – Feb 2026',
+      dateRange: 'Jan 2026, Feb 2026',
       aiSummaryContent: 'Revenue grew 12% MoM.',
       chartConfig: { type: 'bar' },
     };

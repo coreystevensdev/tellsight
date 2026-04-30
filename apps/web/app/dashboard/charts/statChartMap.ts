@@ -1,7 +1,7 @@
 // Single source of truth for stat-ID -> chart binding. Used by
 // InsightChartThumbnail (inline render next to a paragraph) and
 // InsightChartSheet (drill-down). Stats absent from this map render
-// prose-only — no chip, no thumbnail. Adding a new stat-chart pairing
+// prose-only, no chip, no thumbnail. Adding a new stat-chart pairing
 // means adding an entry here and nothing else.
 //
 // CRITICAL: do NOT call STAT_CHART_MAP[id] without nullish-checking. The

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Docker smoke test — Stage 5 of CI pipeline.
+# Docker smoke test, Stage 5 of CI pipeline.
 # Proves the "hiring manager test": clone → docker compose up → working app.
 #
 # Usage:
-#   bash scripts/smoke-test.sh        # local — uses default compose (dev override)
-#   bash scripts/smoke-test.sh --ci   # CI — production build, explicit compose files
+#   bash scripts/smoke-test.sh        # local, uses default compose (dev override)
+#   bash scripts/smoke-test.sh --ci   # CI, production build, explicit compose files
 
 MAX_WAIT=90
 API_URL="http://localhost:3001/health"
@@ -15,7 +15,7 @@ API_URL="http://localhost:3001/health"
 if [[ "${1:-}" == "--ci" ]]; then
   COMPOSE="docker compose -f docker-compose.yml -f docker-compose.ci.yml"
 else
-  echo "WARNING: Running locally — this will 'docker compose down --volumes' on exit."
+  echo "WARNING: Running locally, this will 'docker compose down --volumes' on exit."
   echo "Press Ctrl+C within 3s to abort, or pass --ci for production build."
   sleep 3
   COMPOSE="docker compose"

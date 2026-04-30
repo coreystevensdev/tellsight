@@ -79,12 +79,12 @@ export async function rotateRefreshToken(rawToken: string) {
   const existing = await refreshTokensQueries.findByHash(hash, dbAdmin);
 
   if (!existing) {
-    // Token not valid — check if it was previously revoked (reuse attack detection)
+    // Token not valid, check if it was previously revoked (reuse attack detection)
     const revoked = await refreshTokensQueries.findAnyByHash(hash, dbAdmin);
     if (revoked) {
       logger.warn(
         { userId: revoked.userId, tokenHashPrefix: hash.slice(0, 8) },
-        'Refresh token reuse detected — revoking all tokens for user',
+        'Refresh token reuse detected, revoking all tokens for user',
       );
       await refreshTokensQueries.revokeAllForUser(revoked.userId, dbAdmin);
     }

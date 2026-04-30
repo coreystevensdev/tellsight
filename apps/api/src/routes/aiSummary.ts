@@ -80,7 +80,7 @@ aiSummaryRouter.get('/:datasetId', subscriptionGate, async (req, res: Response) 
     return;
   }
 
-  // quota gate — cache hits don't count, so this runs after the cache check
+  // quota gate, cache hits don't count, so this runs after the cache check
   const quota = AI_MONTHLY_QUOTA[tier] ?? AI_MONTHLY_QUOTA.free;
   const usageCount = await analyticsEventsQueries.getMonthlyAiUsageCount(orgId);
   if (usageCount >= quota) {
@@ -100,7 +100,7 @@ aiSummaryRouter.get('/:datasetId', subscriptionGate, async (req, res: Response) 
   if (res.headersSent) return;
 
   // streaming runs outside the RLS transaction (holding a tx for 3-15s would starve the pool).
-  // dbAdmin bypasses RLS — safe because the route is auth-gated and orgId comes from the JWT.
+  // dbAdmin bypasses RLS, safe because the route is auth-gated and orgId comes from the JWT.
   const [streamStart, datasetSize, profile] = await Promise.all([
     Promise.resolve(Date.now()),
     dataRowsQueries.getRowCount(orgId, rawId, dbAdmin),

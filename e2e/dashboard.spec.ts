@@ -5,7 +5,7 @@ test.describe('Dashboard', () => {
   test('loads with seed data and renders key elements', async ({ page }) => {
     await page.goto('/dashboard');
 
-    // org name heading renders — proves RSC pipeline + API worked
+    // org name heading renders, proves RSC pipeline + API worked
     const heading = page.locator('#dashboard-heading');
     await expect(heading).toBeVisible({ timeout: 15_000 });
 
@@ -23,7 +23,7 @@ test.describe('Dashboard', () => {
     const hasAiSummary = await aiFooter.isVisible({ timeout: 5_000 }).catch(() => false);
 
     if (!hasAiSummary) {
-      test.skip(true, 'No seed AI summary — Claude API key is a CI dummy');
+      test.skip(true, 'No seed AI summary, Claude API key is a CI dummy');
       return;
     }
 

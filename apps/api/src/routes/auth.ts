@@ -48,7 +48,7 @@ router.post('/auth/callback', rateLimitAuth, async (req: Request, res: Response)
 
   if (!storedState || state.length !== storedState.length
       || !timingSafeEqual(Buffer.from(state), Buffer.from(storedState))) {
-    throw new AuthenticationError('OAuth state mismatch — possible CSRF attack');
+    throw new AuthenticationError('OAuth state mismatch, possible CSRF attack');
   }
 
   clearCookie(res, AUTH.COOKIE_NAMES.OAUTH_STATE);

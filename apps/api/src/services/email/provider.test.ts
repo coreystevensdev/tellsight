@@ -81,7 +81,7 @@ describe('email provider registry', () => {
 
   it('throw message names registerEmailProvider explicitly', () => {
     expect(() => getEmailProvider()).toThrow(
-      'Email provider not registered — call registerEmailProvider() at boot',
+      'Email provider not registered, call registerEmailProvider() at boot',
     );
   });
 });

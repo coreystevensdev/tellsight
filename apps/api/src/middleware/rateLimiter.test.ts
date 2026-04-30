@@ -35,7 +35,7 @@ const { createTestApp } = await import('../test/helpers/testApp.js');
 // rate-limiter-flexible with mocked Redis will fall through to insurance (memory) limiter
 const { rateLimitAuth, rateLimitAi, rateLimitPublic, rateLimitDashboardCompute } = await import('./rateLimiter.js');
 
-// retry — memory-backed limiter + concurrent Promise.all can race on busy CI runners
+// retry, memory-backed limiter + concurrent Promise.all can race on busy CI runners
 describe('rateLimiter', { retry: 2 }, () => {
   describe('rateLimitPublic', () => {
     let server: http.Server;
@@ -60,7 +60,7 @@ describe('rateLimiter', { retry: 2 }, () => {
     });
 
     it('returns 429 with Retry-After when limit is exceeded', async () => {
-      // public limit is 60/min — exhaust it via memory fallback
+      // public limit is 60/min, exhaust it via memory fallback
       const requests = [];
       for (let i = 0; i < 65; i++) {
         requests.push(fetch(`${baseUrl}/public`));
@@ -193,10 +193,10 @@ describe('rateLimiter', { retry: 2 }, () => {
   });
 
   describe('fail-open behavior', () => {
-    it('serves requests via memory fallback when Redis is unavailable — never 500s', async () => {
+    it('serves requests via memory fallback when Redis is unavailable, never 500s', async () => {
       // ioredis is mocked with no real connection, so rate-limiter-flexible
       // falls to insuranceLimiter (RateLimiterMemory). Every test in this
-      // file proves fail-open works — they'd all be 500s if it didn't.
+      // file proves fail-open works, they'd all be 500s if it didn't.
       //
       // This test explicitly asserts the response is a valid rate-limiter
       // response (200 or 429), never a 500 or connection timeout.
@@ -209,7 +209,7 @@ describe('rateLimiter', { retry: 2 }, () => {
       const server = result.server;
 
       const res = await fetch(`${result.baseUrl}/health-check`);
-      // 200 if under limit, 429 if memory fallback exhausted from earlier tests — both valid
+      // 200 if under limit, 429 if memory fallback exhausted from earlier tests, both valid
       expect([200, 429]).toContain(res.status);
       expect(res.status).not.toBe(500);
 

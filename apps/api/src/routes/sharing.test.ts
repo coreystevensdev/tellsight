@@ -49,10 +49,10 @@ let baseUrl: string;
 
 beforeAll(async () => {
   const result = await createTestApp((app) => {
-    // public — no auth
+    // public, no auth
     app.use(publicShareRouter);
 
-    // protected — auth required
+    // protected, auth required
     app.use(authMiddleware);
     app.use('/shares', shareRouter);
   });
@@ -152,7 +152,7 @@ describe('GET /shares/:token', () => {
   it('returns insight data for a valid token', async () => {
     mockGetSharedInsight.mockResolvedValueOnce({
       orgName: 'Sunrise Cafe',
-      dateRange: 'Jan – Feb 2026',
+      dateRange: 'Jan, Feb 2026',
       aiSummaryContent: 'Revenue grew 12%.',
       chartConfig: { type: 'bar' },
       viewCount: 4,

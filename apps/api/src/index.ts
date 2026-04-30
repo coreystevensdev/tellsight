@@ -1,4 +1,4 @@
-import './lib/sentry.js'; // must be first — instruments modules before they load
+import './lib/sentry.js'; // must be first, instruments modules before they load
 
 import express from 'express';
 import helmet from 'helmet';
@@ -37,7 +37,7 @@ const app = express();
 // proxy mode is re-enabled on the apex record.
 app.set('trust proxy', 2);
 
-// Prometheus metrics — before helmet so scraper doesn't need to handle security headers.
+// Prometheus metrics, before helmet so scraper doesn't need to handle security headers.
 // Gated by bearer token in production to prevent leaking operational data.
 app.get('/metrics', async (req, res) => {
   if (env.NODE_ENV === 'production') {
@@ -51,7 +51,7 @@ app.get('/metrics', async (req, res) => {
   res.end(await registry.metrics());
 });
 
-// request duration histogram — wraps all routes
+// request duration histogram, wraps all routes
 app.use((req, res, next) => {
   const end = httpRequestDuration.startTimer();
   res.on('finish', () => {
@@ -62,7 +62,7 @@ app.use((req, res, next) => {
 });
 
 app.use(helmet({
-  contentSecurityPolicy: false, // API serves JSON/SSE, not HTML — CSP is the frontend's job
+  contentSecurityPolicy: false, // API serves JSON/SSE, not HTML, CSP is the frontend's job
   crossOriginResourcePolicy: { policy: 'cross-origin' }, // BFF proxy forwards from a different port
 }));
 app.use(correlationId);
@@ -92,7 +92,7 @@ async function start() {
   try {
     await redis.connect();
   } catch (err) {
-    logger.error({ err }, 'Redis connect failed — shutting down');
+    logger.error({ err }, 'Redis connect failed, shutting down');
     process.exit(1);
   }
 
@@ -102,21 +102,21 @@ async function start() {
     initSyncWorker();
     await initScheduler();
   } else {
-    logger.info({}, 'QuickBooks integration not configured — sync worker disabled');
+    logger.info({}, 'QuickBooks integration not configured, sync worker disabled');
   }
 
   if (isDigestConfigured(env)) {
     initDigestWorker();
     await initDigestScheduler();
   } else {
-    logger.info({}, 'Email digest not configured — digest worker disabled');
+    logger.info({}, 'Email digest not configured, digest worker disabled');
   }
 
   const server = app.listen(env.PORT, () => {
     logger.info({ port: env.PORT, env: env.NODE_ENV }, 'API server started');
   });
 
-  // SSE streams can run up to 15s — give them time to finish
+  // SSE streams can run up to 15s, give them time to finish
   server.keepAliveTimeout = 20_000;
 
   let shuttingDown = false;
@@ -125,7 +125,7 @@ async function start() {
     if (shuttingDown) return;
     shuttingDown = true;
     const aborted = abortAllStreams();
-    logger.info({ signal, activeStreams: aborted }, 'Shutdown signal received — draining connections');
+    logger.info({ signal, activeStreams: aborted }, 'Shutdown signal received, draining connections');
 
     server.close(async () => {
       try {
@@ -137,7 +137,7 @@ async function start() {
         await redis.quit();
         await queryClient.end({ timeout: 5 });
         await adminClient.end({ timeout: 5 });
-        logger.info({}, 'All connections closed — exiting');
+        logger.info({}, 'All connections closed, exiting');
         process.exit(0);
       } catch (err) {
         logger.error({ err }, 'Error during connection cleanup');
@@ -147,7 +147,7 @@ async function start() {
 
     // hard kill if drain takes too long (30s covers worst-case SSE + query finish)
     setTimeout(() => {
-      logger.error({}, 'Graceful shutdown timed out — forcing exit');
+      logger.error({}, 'Graceful shutdown timed out, forcing exit');
       process.exit(1);
     }, 30_000).unref();
   }

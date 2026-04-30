@@ -482,13 +482,13 @@ describe('AiSummaryCard', () => {
         <AiSummaryCard datasetId={42} cachedContent="Prior summary" cachedStaleAt={past} />,
       );
 
-      // before click — cached content shown, stream hook called with null
+      // before click, cached content shown, stream hook called with null
       expect(screen.getByText('Prior summary')).toBeTruthy();
       expect(mockUseAiStream).toHaveBeenLastCalledWith(null);
 
       fireEvent.click(screen.getByRole('button', { name: /refresh insights/i }));
 
-      // after click — skeleton renders, hook called with the real datasetId
+      // after click, skeleton renders, hook called with the real datasetId
       expect(mockUseAiStream).toHaveBeenLastCalledWith(42);
       expect(screen.queryByText('Your data has been updated')).toBeNull();
     });
@@ -577,7 +577,7 @@ describe('AiSummaryCard chart bindings', () => {
       viewport: 'desktop',
     });
 
-    // sheet opens as a Radix dialog — assert the dialog is in the DOM and
+    // sheet opens as a Radix dialog, assert the dialog is in the DOM and
     // the drill-down description text is present. Either check alone would
     // pass on the thumbnail alone; together they prove the sheet mounted.
     expect(screen.getByRole('dialog')).toBeInTheDocument();

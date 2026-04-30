@@ -20,7 +20,7 @@ export async function runCurationPipeline(
   const rows = await dataRowsQueries.getRowsByDataset(orgId, datasetId, client);
 
   if (rows.length === 0) {
-    logger.warn({ orgId, datasetId }, 'curation pipeline got 0 rows — dataset may not exist');
+    logger.warn({ orgId, datasetId }, 'curation pipeline got 0 rows, dataset may not exist');
     return [];
   }
 
@@ -54,9 +54,9 @@ export async function runFullPipeline(
     return { content: cached.content, fromCache: true };
   }
 
-  logger.warn({ orgId, datasetId }, 'ai_summaries cache miss — generating fresh summary');
+  logger.warn({ orgId, datasetId }, 'ai_summaries cache miss, generating fresh summary');
 
-  // Pull the financial subset directly from the business profile JSONB — the runway
+  // Pull the financial subset directly from the business profile JSONB, the runway
   // fields (cashOnHand, cashAsOfDate, businessStartedDate, monthlyFixedCosts) live
   // alongside onboarding fields. Pass only the financial subset into the pipeline.
   const financials = businessProfile
@@ -81,13 +81,13 @@ export async function runFullPipeline(
   const content = await generateInterpretation({ system, user });
   const pipelineStats = insights.map((i) => i.stat);
 
-  // Tier 2 chart-ref check — same defense-in-depth as streamHandler.ts.
+  // Tier 2 chart-ref check, same defense-in-depth as streamHandler.ts.
   // Strip hallucinated stat refs before cache write so non-streaming
   // callers (seed generation, batch runs) don't pollute the cache.
   //
   // We return `cachedContent` (stripped) rather than raw `content` so the
   // first-call response matches what the next cache hit will return. The
-  // alternative — returning raw on first call, stripped on later calls —
+  // alternative, returning raw on first call, stripped on later calls
   // would set a trap where users see different text depending on cache state.
   //
   // No AI_CHART_REF_INVALID analytics emit here because runFullPipeline has
@@ -101,7 +101,7 @@ export async function runFullPipeline(
   if (refReport.invalidRefs.length > 0) {
     logger.warn(
       { orgId, datasetId, invalidRefs: refReport.invalidRefs, promptVersion: metadata.promptVersion },
-      'AI summary referenced unknown stat IDs — stripped before cache',
+      'AI summary referenced unknown stat IDs, stripped before cache',
     );
   }
 

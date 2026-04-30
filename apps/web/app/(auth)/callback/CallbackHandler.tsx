@@ -41,7 +41,7 @@ export default function CallbackHandler({
 
           const stored = sessionStorage.getItem('auth_redirect') ?? '/dashboard';
           sessionStorage.removeItem('auth_redirect');
-          // guard against open redirect — only allow relative paths starting with /
+          // guard against open redirect, only allow relative paths starting with /
           const redirect = stored.startsWith('/') && !stored.startsWith('//') ? stored : '/dashboard';
           router.push(redirect);
         }

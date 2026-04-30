@@ -1,5 +1,5 @@
 /**
- * Seed validation — Stage 3 of the CI pipeline.
+ * Seed validation, Stage 3 of the CI pipeline.
  *
  * Runs the curation pipeline against synthetic seed data and validates
  * deterministic output via snapshot comparison. Catches drift in seed data,
@@ -12,7 +12,7 @@
  *
  * Run: pnpm -C apps/api exec tsx ../../scripts/validate-seed.ts [--update]
  *
- * Note: console.log/error used intentionally — this is a standalone CI script,
+ * Note: console.log/error used intentionally, this is a standalone CI script,
  * not application code. The project's Pino logging rule applies to apps/ only.
  */
 
@@ -156,12 +156,12 @@ function validate() {
 
   // Freeze the date so the snapshot stays deterministic. Otherwise the
   // `{{today}}` placeholder in the prompt template rolls over at UTC midnight
-  // and the hash drifts. Same posture as any other snapshot test — inputs
+  // and the hash drifts. Same posture as any other snapshot test, inputs
   // are fixed, output is fixed. Real runtime uses `new Date()` by default.
   const FROZEN_NOW = new Date('2026-01-15T12:00:00Z');
   const { system, user, metadata } = assemblePrompt(scored, undefined, undefined, FROZEN_NOW);
   // assemblePrompt now returns { system, user } (cacheable + variable). Snapshot
-  // hashes the canonical "what Claude sees" — same join the dropped `.prompt`
+  // hashes the canonical "what Claude sees", same join the dropped `.prompt`
   // back-compat field used, so existing snapshots stay valid across the split.
   const prompt = system ? `${system}\n\n${user}` : user;
   if (!prompt || prompt.length === 0) {
@@ -181,7 +181,7 @@ function validate() {
   console.log(`\nPASS (guards): ${validTypes.length} distinct stat types: [${validTypes.join(', ')}]`);
 
   // phase 2: anomaly-specific assertions. Tracks the seed fixture through scoring
-  // — December revenue spike + October payroll drive the anomalies; 12 months of
+  //, December revenue spike + October payroll drive the anomalies; 12 months of
   // revenue-vs-expense drives margin_trend; per-category series drives trend.
   // category_breakdown no longer makes top-N once trend + margin_trend land in the
   // mix (pre-Epic-8 snapshot pre-dated that scoring reshuffle).
@@ -217,7 +217,7 @@ function validate() {
   if (!existsSync(SNAPSHOT_PATH)) {
     writeSnapshot(actual);
     console.log(`\nSnapshot created: ${SNAPSHOT_PATH}`);
-    console.log('Commit this file — subsequent runs will compare against it.');
+    console.log('Commit this file, subsequent runs will compare against it.');
     return;
   }
 

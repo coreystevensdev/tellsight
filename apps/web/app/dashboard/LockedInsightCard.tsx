@@ -21,7 +21,7 @@ function formatCurrency(n: number): string {
 }
 
 function parseMaskedInput(raw: string): number | null {
-  // raw is already sanitized at input time to digits, ',', '$', '.' — see onChange.
+  // raw is already sanitized at input time to digits, ',', '$', '.', see onChange.
   // Strip display formatting only; no sign handling needed (input rejects '-').
   const cleaned = raw.replace(/[^0-9.]/g, '');
   if (!cleaned) return null;
@@ -39,7 +39,7 @@ function sanitizeInput(raw: string): string {
  * Shared scaffold for owner-input-gated insights. Runway is the first consumer;
  * break-even and future gated stats reuse this component.
  *
- * Deliberately raw Tailwind + semantic HTML — shadcn Card/Button aren't fully
+ * Deliberately raw Tailwind + semantic HTML, shadcn Card/Button aren't fully
  * installed in this codebase yet (Epic 3 retro). The design tokens (border,
  * bg-card, radius) match AiSummaryCard so the feed stays visually coherent.
  */

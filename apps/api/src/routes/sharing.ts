@@ -23,10 +23,10 @@ shareRouter.post('/', async (req, res: Response) => {
     generateShareLink(user.org_id, parsed.data.datasetId, parseInt(user.sub, 10), tx),
   );
 
-  // share_link.created tracking moved client-side (useCreateShareLink.ts) — avoids double-counting
+  // share_link.created tracking moved client-side (useCreateShareLink.ts), avoids double-counting
 
   // Audit: public share links expose dataset-derived AI summaries outside the
-  // org's access boundary. Token-gated, but auditor-visibility matters — who
+  // org's access boundary. Token-gated, but auditor-visibility matters, who
   // shared what, when, from where. Share id over token hash: safer to leak
   // in audit logs if they're ever exported.
   auditAuth(req, AUDIT_ACTIONS.SHARE_CREATED, {
@@ -38,7 +38,7 @@ shareRouter.post('/', async (req, res: Response) => {
   res.status(201).json({ data: result });
 });
 
-// public router — no auth required, token hash is the access control
+// public router, no auth required, token hash is the access control
 export const publicShareRouter = Router();
 
 publicShareRouter.get('/shares/:token', async (req, res: Response) => {
@@ -50,7 +50,7 @@ publicShareRouter.get('/shares/:token', async (req, res: Response) => {
   const insight = await getSharedInsight(token);
 
   // viewCount tracking happens inside getSharedInsight (atomic increment).
-  // SHARE_VIEWED analytics event skipped — analytics_events requires userId,
+  // SHARE_VIEWED analytics event skipped, analytics_events requires userId,
   // and public viewers are anonymous. viewCount covers this metric.
 
   res.json({ data: insight });

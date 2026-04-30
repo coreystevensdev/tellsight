@@ -131,7 +131,7 @@ describe('webhookHandler', () => {
       );
     });
 
-    it('is idempotent — calling twice does not error', async () => {
+    it('is idempotent, calling twice does not error', async () => {
       mockUpsertSubscription.mockResolvedValue({ id: 1 });
 
       await handleWebhookEvent(fakeCheckoutEvent());
@@ -222,7 +222,7 @@ describe('webhookHandler', () => {
       );
     });
 
-    it('is idempotent — duplicate cancellation webhook is a no-op', async () => {
+    it('is idempotent, duplicate cancellation webhook is a no-op', async () => {
       mockGetOrgOwnerId.mockResolvedValue(1);
 
       const event = fakeSubscriptionUpdatedEvent({ cancel_at_period_end: true });
@@ -230,7 +230,7 @@ describe('webhookHandler', () => {
       await handleWebhookEvent(event);
 
       // updateSubscriptionStatus is idempotent at DB level (WHERE status != target)
-      // but the handler calls it both times — DB-layer idempotency handles it
+      // but the handler calls it both times, DB-layer idempotency handles it
       expect(mockUpdateSubscriptionStatus).toHaveBeenCalledTimes(2);
     });
 
@@ -281,7 +281,7 @@ describe('webhookHandler', () => {
       );
     });
 
-    it('is idempotent — duplicate webhook is a no-op at DB level', async () => {
+    it('is idempotent, duplicate webhook is a no-op at DB level', async () => {
       mockGetSubscriptionByStripeId.mockResolvedValue({ orgId: 10, stripeSubscriptionId: 'sub_test_789' });
       mockGetOrgOwnerId.mockResolvedValue(1);
 

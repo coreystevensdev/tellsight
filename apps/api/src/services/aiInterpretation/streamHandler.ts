@@ -24,9 +24,9 @@ function countWords(text: string): number {
 
 function mapStreamError(err: unknown): SseErrorEvent {
   if (err instanceof CircuitOpenError) {
-    return { code: 'AI_UNAVAILABLE', message: 'AI service is temporarily unavailable — try again shortly', retryable: true };
+    return { code: 'AI_UNAVAILABLE', message: 'AI service is temporarily unavailable, try again shortly', retryable: true };
   }
-  // order matters — APIConnectionTimeoutError extends APIConnectionError
+  // order matters, APIConnectionTimeoutError extends APIConnectionError
   if (err instanceof Anthropic.APIConnectionTimeoutError) {
     return { code: 'TIMEOUT', message: 'The analysis took longer than expected', retryable: true };
   }
@@ -156,7 +156,7 @@ export async function streamToSSE(
     clearTimeout(timeout);
     if (clientDisconnected) return { ok: false };
 
-    // free-tier truncation already streamed + ended — skip caching so
+    // free-tier truncation already streamed + ended, skip caching so
     // a pro user requesting the same dataset gets a fresh full generation
     if (truncatedForFree) return { ok: true };
 
@@ -176,7 +176,7 @@ export async function streamToSSE(
 
     const pipelineStats = pipelineInsights.map((i) => i.stat);
 
-    // Tier 2 chart-ref check — strip invalid <stat id="..."/> tokens before
+    // Tier 2 chart-ref check, strip invalid <stat id="..."/> tokens before
     // they reach the cache. Live stream already shipped; clients sanitize
     // client-side via stripStatTags. The cache write below is the
     // defense-in-depth path for future cache hits.
@@ -186,7 +186,7 @@ export async function streamToSSE(
       cachedText = stripInvalidStatRefs(result.fullText, refReport.invalidRefs);
       logger.warn(
         { orgId, datasetId, invalidRefs: refReport.invalidRefs, promptVersion },
-        'AI summary referenced unknown stat IDs — stripped before cache',
+        'AI summary referenced unknown stat IDs, stripped before cache',
       );
       trackEvent(orgId, userId, ANALYTICS_EVENTS.AI_CHART_REF_INVALID, {
         datasetId,
@@ -197,7 +197,7 @@ export async function streamToSSE(
       });
     }
 
-    // Tier 1 hallucination check — fires after stream is delivered to the user.
+    // Tier 1 hallucination check, fires after stream is delivered to the user.
     // Never blocks the response; flagged summaries still cache so we have the evidence.
     const report = validateSummary(result.fullText, pipelineStats);
     if (report.status === 'clean') {
@@ -245,7 +245,7 @@ export async function streamToSSE(
     } catch (cacheErr) {
       logger.warn(
         { orgId, datasetId, err: (cacheErr as Error).message },
-        'failed to cache AI summary — stream already delivered',
+        'failed to cache AI summary, stream already delivered',
       );
     }
 
@@ -259,7 +259,7 @@ export async function streamToSSE(
       return { ok: false };
     }
 
-    // free-tier abort triggers a catch — that's expected, not an error
+    // free-tier abort triggers a catch, that's expected, not an error
     if (truncatedForFree) return { ok: true };
 
     if (timedOut) {
@@ -268,12 +268,12 @@ export async function streamToSSE(
       if (accumulatedText) {
         logger.warn(
           { orgId, datasetId, partialLength: accumulatedText.length },
-          'AI stream timed out — sending partial',
+          'AI stream timed out, sending partial',
         );
         writeSseEvent(res, 'partial', { text: accumulatedText, metadata: validatedMetadata } satisfies SsePartialEvent);
         writeSseEvent(res, 'done', { usage: null, reason: 'timeout' } satisfies SseDoneEvent);
       } else {
-        logger.warn({ orgId, datasetId }, 'AI stream timed out — no text received');
+        logger.warn({ orgId, datasetId }, 'AI stream timed out, no text received');
         writeSseEvent(res, 'error', {
           code: 'TIMEOUT',
           message: 'AI generation timed out',

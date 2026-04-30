@@ -139,7 +139,7 @@ function parseSseLines(
             break;
         }
       } catch {
-        // malformed JSON — skip
+        // malformed JSON, skip
       }
       currentEvent = '';
     }
@@ -187,7 +187,7 @@ export function useAiStream(datasetId: number | null) {
         return;
       }
 
-      // cache hit — JSON response
+      // cache hit, JSON response
       if (res.headers.get('content-type')?.includes('application/json')) {
         const json = await res.json();
         dispatch({ type: 'CACHE_HIT', content: json.data.content, metadata: json.data.metadata ?? null });

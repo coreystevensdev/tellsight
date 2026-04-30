@@ -25,7 +25,7 @@ if (env.SENTRY_DSN) {
  * Mount after authMiddleware on protected routes.
  *
  * org_id and role go to tags (not user custom fields) so the Sentry UI
- * can filter/group errors by them — e.g., "show me all errors from
+ * can filter/group errors by them, e.g., "show me all errors from
  * members only" or "group by org_id." User fields aren't searchable
  * that way by default.
  */

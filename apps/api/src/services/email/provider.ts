@@ -4,7 +4,7 @@ import type { Env } from '../../config.js';
 
 // One active provider at a time, selected via config at boot.
 // Each provider owns its own SDK, retry classification, and PII redaction.
-// Callers work with this interface — never with Resend (or any vendor) SDK directly.
+// Callers work with this interface, never with Resend (or any vendor) SDK directly.
 export interface EmailProvider {
   name: string;
   send(opts: SendEmailOpts): Promise<SendResult>;
@@ -33,8 +33,8 @@ export interface ProviderHealth {
 }
 
 // Thrown when a provider's upstream send fails. retryable=true means 5xx,
-// network, or rate-limit — safe for BullMQ to requeue. retryable=false means
-// 4xx (bad recipient, quota exceeded, unverified domain) — retrying won't help.
+// network, or rate-limit, safe for BullMQ to requeue. retryable=false means
+// 4xx (bad recipient, quota exceeded, unverified domain), retrying won't help.
 export class EmailSendError extends Error {
   readonly retryable: boolean;
   readonly providerStatusCode?: number;
@@ -55,7 +55,7 @@ let activeProvider: EmailProvider | null = null;
 
 export function getEmailProvider(): EmailProvider {
   if (!activeProvider) {
-    throw new Error('Email provider not registered — call registerEmailProvider() at boot');
+    throw new Error('Email provider not registered, call registerEmailProvider() at boot');
   }
   return activeProvider;
 }
@@ -64,7 +64,7 @@ export function registerEmailProvider(provider: EmailProvider): void {
   activeProvider = provider;
 }
 
-// Test-only — lets a test reset module state between runs.
+// Test-only, lets a test reset module state between runs.
 export function resetEmailProvider(): void {
   activeProvider = null;
 }
@@ -75,7 +75,7 @@ export function createPostmarkProvider(_env: Env): EmailProvider {
   return {
     name: 'postmark',
     send: async () => {
-      throw new Error('Postmark provider not implemented — future story');
+      throw new Error('Postmark provider not implemented, future story');
     },
     checkHealth: async () => ({ status: 'ok', latencyMs: 0 }),
   };

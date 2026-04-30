@@ -93,7 +93,7 @@ export async function getRowsByDataset(
 /**
  * SQL-aggregated monthly revenue/expense buckets for a dataset. Returns the
  * same shape `bucketRowsByMonth` produces from raw rows, but lets Postgres do
- * the bucketing — a 50k-row dataset collapses to ~12-60 result rows in the
+ * the bucketing, a 50k-row dataset collapses to ~12-60 result rows in the
  * database, so the API never holds the full row set in memory.
  *
  * Used by the /cash-forecast endpoint where we need aggregates only.

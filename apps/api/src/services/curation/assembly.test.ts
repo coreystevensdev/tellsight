@@ -6,7 +6,7 @@ import { StatType } from './types.js';
 vi.mock('node:fs', () => ({
   // The assembly loader looks for split templates first (-system.md / -user.md),
   // then falls back to the single-file convention. Tests stay on the single-file
-  // path by throwing ENOENT for split filenames — the legacy template content
+  // path by throwing ENOENT for split filenames, the legacy template content
   // below still drives every assertion.
   readFileSync: vi.fn((path: string) => {
     if (path.includes('-system.md') || path.includes('-user.md')) {
@@ -58,7 +58,7 @@ const fixtureInsights: ScoredInsight[] = [
   },
 ];
 
-// The default mock for readFileSync — re-applied in beforeEach so per-test
+// The default mock for readFileSync, re-applied in beforeEach so per-test
 // mockImplementation overrides don't bleed into subsequent tests.
 function setDefaultFsMock(readFileSyncMock: ReturnType<typeof vi.fn>) {
   readFileSyncMock.mockImplementation((path: unknown) => {
@@ -139,7 +139,7 @@ describe('assemblePrompt', () => {
   it('injects stat-ID allowlist with alphabetized order', async () => {
     const { readFileSync } = await import('node:fs');
     // Force single-file fallback so the test's tiny override template is the
-    // entire prompt — split-file mode would compose system + user instead.
+    // entire prompt, split-file mode would compose system + user instead.
     vi.mocked(readFileSync).mockImplementation((path: unknown) => {
       const p = String(path);
       if (p.includes('-system.md') || p.includes('-user.md')) {
@@ -179,7 +179,7 @@ describe('assemblePrompt', () => {
     const { assemblePrompt } = await import('./assembly.js');
     const result = assemblePrompt(fixtureInsights);
 
-    // only check the prompt text — the metadata property is part of AssembledContext, not a data leak
+    // only check the prompt text, the metadata property is part of AssembledContext, not a data leak
     const prompt = result.user;
     expect(prompt).not.toContain('"orgId"');
     expect(prompt).not.toContain('"datasetId"');

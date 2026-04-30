@@ -22,7 +22,7 @@ export function useShareInsight(
   const dataUrlRef = useRef<string | null>(null);
 
   const generatePng = useCallback(async () => {
-    // already generated — skip redundant DOM walk
+    // already generated, skip redundant DOM walk
     if (dataUrlRef.current) return;
 
     if (!nodeRef.current) {

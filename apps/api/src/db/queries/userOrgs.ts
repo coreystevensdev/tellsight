@@ -26,7 +26,7 @@ export async function findMembership(
   });
 }
 
-/** Cross-org lookup — auth flow runs outside RLS context, caller must pass dbAdmin */
+/** Cross-org lookup, auth flow runs outside RLS context, caller must pass dbAdmin */
 export async function getUserOrgs(
   userId: number,
   client: typeof db | DbTransaction = db,

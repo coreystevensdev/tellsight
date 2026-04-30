@@ -61,7 +61,7 @@ export function BillingContent() {
         </div>
         {tier === 'free' && (
           <p className="mt-2 text-sm text-muted-foreground">
-            Upgrade to Pro for full AI-powered business insights — no word limits, no blur.
+            Upgrade to Pro for full AI-powered business insights, no word limits, no blur.
           </p>
         )}
       </div>
@@ -106,7 +106,7 @@ export function BillingContent() {
             disabled={loading}
             className="w-full rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? 'Redirecting to checkout...' : 'Upgrade to Pro — $29/mo'}
+            {loading ? 'Redirecting to checkout...' : 'Upgrade to Pro, $29/mo'}
           </button>
         </div>
       ) : (

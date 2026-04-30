@@ -1,4 +1,4 @@
-# QuickBooks Integration — Implementation Plan
+# QuickBooks Integration, Implementation Plan
 
 **Date:** 2026-04-15
 **Spec:** `docs/superpowers/specs/2026-04-15-quickbooks-integration-design.md`
@@ -7,9 +7,9 @@
 
 ## Why This Order
 
-The dependency chain dictates sequencing: encryption and schema come first because every other story depends on them. OAuth comes before sync because you need tokens before you can call the QB API. The normalizer is isolated from the API client because it's pure logic with zero I/O — testable in isolation. The sync orchestrator ties them together. Frontend stories come last because they consume API endpoints that must already exist.
+The dependency chain dictates sequencing: encryption and schema come first because every other story depends on them. OAuth comes before sync because you need tokens before you can call the QB API. The normalizer is isolated from the API client because it's pure logic with zero I/O, testable in isolation. The sync orchestrator ties them together. Frontend stories come last because they consume API endpoints that must already exist.
 
-Stories 1-4 are strictly sequential (each depends on the prior). Stories 5-6 are sequential (normalizer feeds sync). Stories 7-9 have parallelism opportunity — the frontend stories only need the API routes from Story 3 to exist.
+Stories 1-4 are strictly sequential (each depends on the prior). Stories 5-6 are sequential (normalizer feeds sync). Stories 7-9 have parallelism opportunity, the frontend stories only need the API routes from Story 3 to exist.
 
 ## Key Architectural Decisions
 
@@ -19,12 +19,12 @@ We add a nullable `source_id` varchar column to `data_rows` instead of indexing 
 
 1. **Query performance at scale.** A B-tree on a varchar column is faster than a functional index on jsonb extraction, especially as `data_rows` grows past 1M rows. The query planner handles it better, and the index is smaller.
 2. **Clean upsert SQL.** `ON CONFLICT (org_id, source_id) WHERE source_id IS NOT NULL` is straightforward. The jsonb approach requires a partial expression index that's harder to reason about and maintain.
-3. **Cheap migration.** `ALTER TABLE ADD COLUMN ... DEFAULT NULL` is metadata-only in Postgres — no table rewrite, near-instant even on large tables.
+3. **Cheap migration.** `ALTER TABLE ADD COLUMN ... DEFAULT NULL` is metadata-only in Postgres, no table rewrite, near-instant even on large tables.
 4. **Future-proof.** Every integration adapter (Xero, Square, Stripe) uses the same column. No per-provider jsonb extraction logic.
 
 ### Split normalizer from sync pipeline
 
-The normalizer (QB transaction → `data_rows` shape) is pure logic with zero I/O — 13 transaction types, multi-line handling, label fallback chains. Isolating it in its own story means:
+The normalizer (QB transaction → `data_rows` shape) is pure logic with zero I/O, 13 transaction types, multi-line handling, label fallback chains. Isolating it in its own story means:
 - Focused tests without mocking HTTP or DB
 - Easier code review (the mapping logic is where most bugs will hide)
 - The sync orchestrator (Story QB-6) can trust the normalizer and focus on orchestration concerns
@@ -69,21 +69,21 @@ so that OAuth tokens are encrypted at rest and all QB config is fail-fast valida
 
 5. **Given** a tampered ciphertext (flipped bit in auth tag), **When** `decrypt()` is called, **Then** it throws an error (GCM authentication failure).
 
-6. **Given** QB env vars (`QUICKBOOKS_CLIENT_ID`, `QUICKBOOKS_CLIENT_SECRET`, `QUICKBOOKS_REDIRECT_URI`, `QUICKBOOKS_ENVIRONMENT`), **When** they are present, **Then** config exposes them. **When** absent, **Then** config marks QB as not configured (optional group — API starts without them).
+6. **Given** QB env vars (`QUICKBOOKS_CLIENT_ID`, `QUICKBOOKS_CLIENT_SECRET`, `QUICKBOOKS_REDIRECT_URI`, `QUICKBOOKS_ENVIRONMENT`), **When** they are present, **Then** config exposes them. **When** absent, **Then** config marks QB as not configured (optional group, API starts without them).
 
 ### Completed
 
-- [x] `apps/api/src/config.ts` — 5 optional QB env vars + `isQbConfigured()` function
-- [x] `apps/api/src/services/integrations/encryption.ts` — AES-256-GCM encrypt/decrypt
-- [x] `apps/api/src/services/integrations/encryption.test.ts` — 10 tests, all passing
-- [x] `.env.example` — QB config section (commented out)
-- [x] `apps/api/src/services/integrations/encryption_explained.md` — interview doc
+- [x] `apps/api/src/config.ts`, 5 optional QB env vars + `isQbConfigured()` function
+- [x] `apps/api/src/services/integrations/encryption.ts`, AES-256-GCM encrypt/decrypt
+- [x] `apps/api/src/services/integrations/encryption.test.ts`, 10 tests, all passing
+- [x] `.env.example`, QB config section (commented out)
+- [x] `apps/api/src/services/integrations/encryption_explained.md`, interview doc
 
 ---
 
 ## Story QB-2: Schema, Migrations, Queries, and `source_id` Column
 
-**Status: DONE** — migration `0016_add-integration-tables.sql`, query modules shipped, 14 tests passing.
+**Status: DONE**, migration `0016_add-integration-tables.sql`, query modules shipped, 14 tests passing.
 
 ### Story
 
@@ -111,7 +111,7 @@ so that OAuth tokens, sync history, and integration data rows can be persisted w
   - Add `sourceId` varchar(255) nullable to `dataRows` in `schema.ts`
   - Migration: `ALTER TABLE data_rows ADD COLUMN source_id VARCHAR(255)`
   - Migration: `CREATE UNIQUE INDEX idx_data_rows_source_id ON data_rows (org_id, source_id) WHERE source_id IS NOT NULL`
-  - Existing CSV rows have `source_id = NULL` — the partial index excludes them
+  - Existing CSV rows have `source_id = NULL`, the partial index excludes them
 
 - [ ] **Task 2: Add `integration_connections` table to schema** (AC: 1, 2)
   - `id` serial PK
@@ -147,17 +147,17 @@ so that OAuth tokens, sync history, and integration data rows can be persisted w
   - Index on `sync_jobs(connection_id)`
 
 - [ ] **Task 5: Create `apps/api/src/db/queries/integrationConnections.ts`** (AC: 4)
-  - `getByOrgAndProvider(orgId, provider)` — single row or null
-  - `upsert(data)` — insert or update on conflict `(orgId, provider)`
-  - `updateSyncStatus(id, status, error?)` — partial update
-  - `updateTokens(id, encryptedAccess, encryptedRefresh, expiresAt)` — token refresh
-  - `deleteByOrgAndProvider(orgId, provider)` — cascade handled by FK
-  - `getAllByProvider(provider)` — for scheduler startup (list all QB connections)
+  - `getByOrgAndProvider(orgId, provider)`, single row or null
+  - `upsert(data)`, insert or update on conflict `(orgId, provider)`
+  - `updateSyncStatus(id, status, error?)`, partial update
+  - `updateTokens(id, encryptedAccess, encryptedRefresh, expiresAt)`, token refresh
+  - `deleteByOrgAndProvider(orgId, provider)`, cascade handled by FK
+  - `getAllByProvider(provider)`, for scheduler startup (list all QB connections)
 
 - [ ] **Task 6: Create `apps/api/src/db/queries/syncJobs.ts`** (AC: 5)
-  - `create(data)` — insert, return row
-  - `update(id, data)` — partial update (status, completedAt, rowsSynced, error)
-  - `getRecent(connectionId, limit?)` — last N jobs, newest first
+  - `create(data)`, insert, return row
+  - `update(id, data)`, partial update (status, completedAt, rowsSynced, error)
+  - `getRecent(connectionId, limit?)`, last N jobs, newest first
 
 - [ ] **Task 7: Update `apps/api/src/db/queries/index.ts`** (AC: 4, 5)
   - Add barrel exports for both new query modules
@@ -178,7 +178,7 @@ so that OAuth tokens, sync history, and integration data rows can be persisted w
 
 ### Notes
 
-- The `sourceTypeEnum` already includes `'quickbooks'` — no enum migration needed.
+- The `sourceTypeEnum` already includes `'quickbooks'`, no enum migration needed.
 - RLS pattern from `0010_add-rls-core-tables.sql` and `0011_add-rls-subscriptions.sql`: enable RLS, create `tenant_isolation` policy using `current_setting('app.current_org_id')`, create `admin_bypass` policy using `current_setting('app.is_admin')`.
 - The `source_id` partial index (`WHERE source_id IS NOT NULL`) is key: it lets all existing CSV rows coexist with `NULL` source_id while enforcing uniqueness for integration-sourced rows. Postgres doesn't include NULL values in unique index checks by default, but a partial index makes the intent explicit.
 
@@ -186,7 +186,7 @@ so that OAuth tokens, sync history, and integration data rows can be persisted w
 
 ## Story QB-3: OAuth Flow (Connect, Callback, Disconnect)
 
-**Status: DONE** — `services/integrations/quickbooks/oauth.ts`, `routes/integrations.ts` shipped. Public callback router + protected routes both mounted.
+**Status: DONE**, `services/integrations/quickbooks/oauth.ts`, `routes/integrations.ts` shipped. Public callback router + protected routes both mounted.
 
 ### Story
 
@@ -211,10 +211,10 @@ so that TellSight can access my financial data without me exporting anything.
 ### Tasks
 
 - [ ] **Task 1: Create `apps/api/src/services/integrations/quickbooks/oauth.ts`** (AC: 1, 2, 3, 4)
-  - `generateAuthUrl(orgId)` — builds Intuit OAuth URL, generates random state, returns `{ authUrl, state }`
-  - `exchangeCode(code, realmId)` — POST to Intuit token endpoint, returns `{ accessToken, refreshToken, expiresIn, realmId }`
-  - `refreshAccessToken(encryptedRefreshToken)` — decrypt, call Intuit, encrypt new tokens, return updated fields
-  - `revokeToken(encryptedRefreshToken)` — best-effort POST to Intuit revoke endpoint, catch and log errors
+  - `generateAuthUrl(orgId)`, builds Intuit OAuth URL, generates random state, returns `{ authUrl, state }`
+  - `exchangeCode(code, realmId)`, POST to Intuit token endpoint, returns `{ accessToken, refreshToken, expiresIn, realmId }`
+  - `refreshAccessToken(encryptedRefreshToken)`, decrypt, call Intuit, encrypt new tokens, return updated fields
+  - `revokeToken(encryptedRefreshToken)`, best-effort POST to Intuit revoke endpoint, catch and log errors
   - All HTTP calls use `fetch` with timeout (10s) and structured error handling
   - Intuit base URLs:
     - Sandbox: `https://sandbox-quickbooks.api.intuit.com`
@@ -228,7 +228,7 @@ so that TellSight can access my financial data without me exporting anything.
     - Generate auth URL and state
     - Set `qb_oauth_state` httpOnly cookie (10min, sameSite: lax, path: `/`)
     - Return `{ data: { authUrl } }`
-  - `GET /integrations/quickbooks/callback` (public — mounted before auth middleware)
+  - `GET /integrations/quickbooks/callback` (public, mounted before auth middleware)
     - Validate state against cookie
     - Exchange code for tokens
     - Encrypt tokens, upsert connection
@@ -249,7 +249,7 @@ so that TellSight can access my financial data without me exporting anything.
     - Track `integration.disconnected` event
 
 - [ ] **Task 3: Mount routes in server** (AC: 1, 2)
-  - Mount callback route on public router (before authMiddleware) — same pattern as `/auth` and `/invites`
+  - Mount callback route on public router (before authMiddleware), same pattern as `/auth` and `/invites`
   - Mount remaining QB routes on protected router
   - Add BFF proxy rule in `apps/web/proxy.ts` for `/integrations/*` → `:3001`
 
@@ -271,15 +271,15 @@ so that TellSight can access my financial data without me exporting anything.
 
 ### Notes
 
-- The callback is a browser redirect, not an API call from the frontend. Intuit sends the user's browser to our callback URL. This is why it must be on the public router — the browser won't have auth cookies at that point. CSRF protection comes from the state cookie (set during connect, validated during callback).
+- The callback is a browser redirect, not an API call from the frontend. Intuit sends the user's browser to our callback URL. This is why it must be on the public router, the browser won't have auth cookies at that point. CSRF protection comes from the state cookie (set during connect, validated during callback).
 - Token refresh lives in `oauth.ts` but gets called by the API client (Story QB-4), not by the routes directly.
-- The callback needs the user's `orgId` to store the connection. Options: (a) encode orgId in the state param (signed), (b) read it from the auth cookie if the user happens to still be logged in. Option (a) is more reliable — the state param is already a secure random token, we can make it a signed JWT containing `{ orgId, nonce }`.
+- The callback needs the user's `orgId` to store the connection. Options: (a) encode orgId in the state param (signed), (b) read it from the auth cookie if the user happens to still be logged in. Option (a) is more reliable, the state param is already a secure random token, we can make it a signed JWT containing `{ orgId, nonce }`.
 
 ---
 
 ## Story QB-4: QB API Client (HTTP, Pagination, Token Refresh)
 
-**Status: DONE** — `services/integrations/quickbooks/api.ts` + `errors.ts`, 12 tests.
+**Status: DONE**, `services/integrations/quickbooks/api.ts` + `errors.ts`, 12 tests.
 
 ### Story
 
@@ -306,19 +306,19 @@ so that the normalizer and sync pipeline have a reliable data source.
 ### Tasks
 
 - [ ] **Task 1: Create `apps/api/src/services/integrations/quickbooks/errors.ts`**
-  - `RetryableError extends Error` — BullMQ checks `error.retryable` or we catch by type
-  - `TokenRevokedError extends Error` — triggers reconnect flow
-  - `QbApiError extends Error` — wraps QB API error responses with status code
+  - `RetryableError extends Error`, BullMQ checks `error.retryable` or we catch by type
+  - `TokenRevokedError extends Error`, triggers reconnect flow
+  - `QbApiError extends Error`, wraps QB API error responses with status code
 
 - [ ] **Task 2: Create `apps/api/src/services/integrations/quickbooks/api.ts`** (AC: 1-7)
-  - `createQbClient(connectionId)` — factory that loads connection from DB, returns client object
-  - `client.query(entityType, since?)` — paginated query using QB's SQL-like API
+  - `createQbClient(connectionId)`, factory that loads connection from DB, returns client object
+  - `client.query(entityType, since?)`, paginated query using QB's SQL-like API
     - URL: `GET /v3/company/{realmId}/query?query=SELECT * FROM {type} STARTPOSITION {n} MAXRESULTS 1000`
     - Handles pagination: repeat until result count < maxResults
     - For incremental: append `WHERE MetaData.LastUpdatedTime > '{since}'`
-  - `client.getCompanyInfo()` — `GET /v3/company/{realmId}/companyinfo/{realmId}`
+  - `client.getCompanyInfo()`, `GET /v3/company/{realmId}/companyinfo/{realmId}`
   - Internal `_fetch(url, opts)`:
-    - Checks `accessTokenExpiresAt` — if < 5 min remaining, calls `refreshAccessToken()`
+    - Checks `accessTokenExpiresAt`, if < 5 min remaining, calls `refreshAccessToken()`
     - Sets `Authorization: Bearer {accessToken}`, `Accept: application/json`
     - `AbortSignal.timeout(30_000)` for request timeout
     - On 429/5xx: throw `RetryableError`
@@ -341,15 +341,15 @@ so that the normalizer and sync pipeline have a reliable data source.
 
 ### Notes
 
-- We use raw `fetch` (Node 22 built-in) instead of the `node-quickbooks` npm package. The QB API is REST + SQL-like queries — `fetch` gives us full control over timeout, retry semantics, and token refresh without fighting a wrapper library's opinions.
-- The QB query API uses a SQL-like syntax: `SELECT * FROM Purchase WHERE MetaData.LastUpdatedTime > '2026-04-01T00:00:00Z' STARTPOSITION 1 MAXRESULTS 1000`. It's string concatenation, but the "variables" are ISO dates and integers — no user input, no injection risk.
+- We use raw `fetch` (Node 22 built-in) instead of the `node-quickbooks` npm package. The QB API is REST + SQL-like queries, `fetch` gives us full control over timeout, retry semantics, and token refresh without fighting a wrapper library's opinions.
+- The QB query API uses a SQL-like syntax: `SELECT * FROM Purchase WHERE MetaData.LastUpdatedTime > '2026-04-01T00:00:00Z' STARTPOSITION 1 MAXRESULTS 1000`. It's string concatenation, but the "variables" are ISO dates and integers, no user input, no injection risk.
 - Token refresh is a critical section. If two concurrent requests both detect an expired token, both will try to refresh. The client should use a simple in-memory mutex (or just serialize through a `refreshing` promise) to avoid double-refresh.
 
 ---
 
 ## Story QB-5: Transaction Normalizer
 
-**Status: DONE** — `services/integrations/quickbooks/normalize.ts`, 19 tests across 13 transaction types.
+**Status: DONE**, `services/integrations/quickbooks/normalize.ts`, 19 tests across 13 transaction types.
 
 ### Story
 
@@ -393,9 +393,9 @@ so that the sync pipeline can insert QB data alongside CSV data in a consistent 
   - `NormalizedRow` type: matches `data_rows` insert shape minus `id`, `orgId`, `datasetId`
 
 - [ ] **Task 2: Define QB transaction types** 
-  - `QbTransaction` — minimal type covering the fields we extract (Id, TxnDate, Line[], EntityRef, PrivateNote, DocNumber, MetaData)
-  - `QbLine` — line item shape (Id, Amount, AccountRef, DetailType)
-  - These are partial types — we don't model the full QB API response, just what we consume. Keeps the type surface small and honest.
+  - `QbTransaction`, minimal type covering the fields we extract (Id, TxnDate, Line[], EntityRef, PrivateNote, DocNumber, MetaData)
+  - `QbLine`, line item shape (Id, Amount, AccountRef, DetailType)
+  - These are partial types, we don't model the full QB API response, just what we consume. Keeps the type surface small and honest.
 
 - [ ] **Task 3: Write normalizer tests** (AC: 1-7)
   - Purchase → Expenses parentCategory
@@ -415,15 +415,15 @@ so that the sync pipeline can insert QB data alongside CSV data in a consistent 
 
 ### Notes
 
-- This story has zero I/O dependencies — all tests use fixture objects. It can technically be built in parallel with QB-3 and QB-4. It's sequenced after QB-2 only because it references the `NormalizedRow` type which aligns with the `data_rows` schema.
+- This story has zero I/O dependencies, all tests use fixture objects. It can technically be built in parallel with QB-3 and QB-4. It's sequenced after QB-2 only because it references the `NormalizedRow` type which aligns with the `data_rows` schema.
 - We model QB transaction types as lightweight partial interfaces, not the full Intuit API spec. The full spec has hundreds of fields per transaction type. We extract maybe 8 fields. Modeling the full thing would be noise.
-- `Math.abs(line.Amount)` is intentional — QB sometimes uses negative amounts for credits/refunds. We normalize to positive amounts and use `parentCategory` to encode the direction. The curation pipeline already expects this convention from CSV data.
+- `Math.abs(line.Amount)` is intentional, QB sometimes uses negative amounts for credits/refunds. We normalize to positive amounts and use `parentCategory` to encode the direction. The curation pipeline already expects this convention from CSV data.
 
 ---
 
 ## Story QB-6: Sync Pipeline Orchestrator
 
-**Status: DONE** — `services/integrations/quickbooks/sync.ts`, 18 tests.
+**Status: DONE**, `services/integrations/quickbooks/sync.ts`, 18 tests.
 
 ### Story
 
@@ -433,7 +433,7 @@ so that the BullMQ worker (QB-7) can call a single `runSync()` function.
 
 ### Acceptance Criteria
 
-1. **Given** an initial sync, **When** `runSync(connectionId, 'initial')` is called, **Then** it fetches all 13 transaction types, normalizes them, creates a dataset named `"QuickBooks — {companyName}"`, upserts all rows, sets the dataset as `activeDatasetId`, marks AI summaries stale, and returns `{ rowsSynced }`.
+1. **Given** an initial sync, **When** `runSync(connectionId, 'initial')` is called, **Then** it fetches all 13 transaction types, normalizes them, creates a dataset named `"QuickBooks, {companyName}"`, upserts all rows, sets the dataset as `activeDatasetId`, marks AI summaries stale, and returns `{ rowsSynced }`.
 
 2. **Given** an incremental sync, **When** `runSync(connectionId, 'scheduled')` is called, **Then** it only fetches transactions updated since `lastSyncedAt`, **And** upserts only changed/new rows.
 
@@ -455,8 +455,8 @@ so that the BullMQ worker (QB-7) can call a single `runSync()` function.
     4. Fetch company info (for dataset name)
     5. Determine transaction types to fetch (all 13)
     6. For each type: `client.query(type, since?)` → `normalizeTransaction(tx, type)` → accumulate rows
-    7. Find or create dataset: `"QuickBooks — {companyName}"` with `sourceType: 'quickbooks'`
-    8. `upsertRows(orgId, datasetId, normalizedRows)` — batch of 500
+    7. Find or create dataset: `"QuickBooks, {companyName}"` with `sourceType: 'quickbooks'`
+    8. `upsertRows(orgId, datasetId, normalizedRows)`, batch of 500
     9. On initial: set `activeDatasetId` on the org
     10. Mark AI summaries stale: `aiSummariesQueries.markStale(orgId)`
     11. Update sync job: completed, rowsSynced
@@ -475,7 +475,7 @@ so that the BullMQ worker (QB-7) can call a single `runSync()` function.
   - Return total rows affected (inserted + updated)
 
 - [ ] **Task 3: Add `markStale` to AI summaries queries** (AC: 1)
-  - `aiSummariesQueries.markStale(orgId)` — `UPDATE ai_summaries SET stale_at = now() WHERE org_id = $1 AND stale_at IS NULL`
+  - `aiSummariesQueries.markStale(orgId)`, `UPDATE ai_summaries SET stale_at = now() WHERE org_id = $1 AND stale_at IS NULL`
   - Add to existing `apps/api/src/db/queries/aiSummaries.ts`
 
 - [ ] **Task 4: Write sync pipeline tests** (AC: 1-6)
@@ -496,13 +496,13 @@ so that the BullMQ worker (QB-7) can call a single `runSync()` function.
 ### Notes
 
 - The 13 transaction types: Purchase, Invoice, Payment, SalesReceipt, Bill, BillPayment, JournalEntry, Deposit, Transfer, Estimate, CreditMemo, RefundReceipt, VendorCredit. In practice, most small businesses produce mostly Purchase + Invoice + Payment + SalesReceipt. But fetching all types avoids silent data gaps.
-- `markStale` is additive — it sets `stale_at` only where it's currently NULL. This prevents resetting the stale timestamp on every sync when the user hasn't regenerated the summary yet.
+- `markStale` is additive, it sets `stale_at` only where it's currently NULL. This prevents resetting the stale timestamp on every sync when the user hasn't regenerated the summary yet.
 
 ---
 
 ## Story QB-7: BullMQ Worker + Scheduler
 
-**Status: DONE** — `services/integrations/worker.ts` + `scheduler.ts`, BullMQ installed, 16 tests. Worker runs in-process with graceful shutdown wired into the existing SIGTERM chain.
+**Status: DONE**, `services/integrations/worker.ts` + `scheduler.ts`, BullMQ installed, 16 tests. Worker runs in-process with graceful shutdown wired into the existing SIGTERM chain.
 
 ### Story
 
@@ -530,21 +530,21 @@ so that QB data stays fresh automatically and manual syncs are queued reliably.
 
 - [ ] **Task 1: Install BullMQ**
   - `pnpm add bullmq --filter api`
-  - BullMQ uses the existing Redis connection — no new infrastructure
+  - BullMQ uses the existing Redis connection, no new infrastructure
 
 - [ ] **Task 2: Create `apps/api/src/services/integrations/worker.ts`** (AC: 1, 2, 3, 7)
-  - `initSyncWorker()` — creates BullMQ `Worker` on `quickbooks-sync` queue
+  - `initSyncWorker()`, creates BullMQ `Worker` on `quickbooks-sync` queue
     - Concurrency: 2
     - Processor: calls `runSync(job.data.connectionId, job.data.trigger)`
     - Connection: reuses `config.REDIS_URL`
-  - `getSyncQueue()` — lazy singleton `Queue` instance for enqueuing jobs
-  - `enqueueSyncJob(connectionId, trigger)` — adds job with retry config: `{ attempts: 3, backoff: { type: 'exponential', delay: 30000 } }`
-  - `shutdownWorker()` — `worker.close()` for graceful shutdown
+  - `getSyncQueue()`, lazy singleton `Queue` instance for enqueuing jobs
+  - `enqueueSyncJob(connectionId, trigger)`, adds job with retry config: `{ attempts: 3, backoff: { type: 'exponential', delay: 30000 } }`
+  - `shutdownWorker()`, `worker.close()` for graceful shutdown
 
 - [ ] **Task 3: Create `apps/api/src/services/integrations/scheduler.ts`** (AC: 4, 5, 6)
-  - `registerDailySync(orgId, connectionId)` — adds repeatable job `{ repeat: { pattern: '0 3 * * *' }, jobId: 'qb-daily-{orgId}' }`
-  - `removeDailySync(orgId)` — removes repeatable job by jobId
-  - `initScheduler()` — on startup, queries all QB connections, registers repeatable jobs for each
+  - `registerDailySync(orgId, connectionId)`, adds repeatable job `{ repeat: { pattern: '0 3 * * *' }, jobId: 'qb-daily-{orgId}' }`
+  - `removeDailySync(orgId)`, removes repeatable job by jobId
+  - `initScheduler()`, on startup, queries all QB connections, registers repeatable jobs for each
 
 - [ ] **Task 4: Update `apps/api/src/index.ts`** (AC: 1, 4, 7)
   - In startup sequence (after Redis connects): call `initSyncWorker()` and `initScheduler()` if `isQbConfigured(env)`
@@ -569,15 +569,15 @@ so that QB data stays fresh automatically and manual syncs are queued reliably.
 
 ### Notes
 
-- BullMQ worker runs in the API process, not a separate service. For a portfolio project with one API instance, this is fine. The code is structured to extract into a standalone worker process later — just a new entry point importing the same modules.
-- The `initScheduler()` startup query hits `integration_connections` once — not a performance concern even at scale.
+- BullMQ worker runs in the API process, not a separate service. For a portfolio project with one API instance, this is fine. The code is structured to extract into a standalone worker process later, just a new entry point importing the same modules.
+- The `initScheduler()` startup query hits `integration_connections` once, not a performance concern even at scale.
 - Graceful shutdown is already handled in `index.ts` with a 30s timeout. Adding `shutdownWorker()` to the existing cleanup chain keeps it consistent.
 
 ---
 
-## Story QB-8: Upload Page — Dual Onboarding Card
+## Story QB-8: Upload Page, Dual Onboarding Card
 
-**Status: DONE (2026-04-17)** — `components/integrations/QuickBooksCard.tsx` (4-state machine: loading / disconnected / connected / unavailable). `/upload` restructured as 2fr/1fr grid. OAuth return toasts live in `DashboardShell.tsx`. 10 new tests (6 for the card, 4 for dashboard toast handling).
+**Status: DONE (2026-04-17)**, `components/integrations/QuickBooksCard.tsx` (4-state machine: loading / disconnected / connected / unavailable). `/upload` restructured as 2fr/1fr grid. OAuth return toasts live in `DashboardShell.tsx`. 10 new tests (6 for the card, 4 for dashboard toast handling).
 
 ### Story
 
@@ -595,7 +595,7 @@ so that I can onboard with my existing accounting data in two clicks.
 
 4. **Given** I'm on mobile, **When** I visit `/upload`, **Then** the cards stack vertically (CSV on top, QB below).
 
-5. **Given** I return from Intuit OAuth with `?qb=connected`, **When** the dashboard loads, **Then** a toast shows "QuickBooks connected — syncing your data".
+5. **Given** I return from Intuit OAuth with `?qb=connected`, **When** the dashboard loads, **Then** a toast shows "QuickBooks connected, syncing your data".
 
 ### Tasks
 
@@ -617,7 +617,7 @@ so that I can onboard with my existing accounting data in two clicks.
   - In dashboard page or layout: read `qb` query param
   - `qb=connected` → success toast
   - `qb=denied` → info toast ("QuickBooks connection was cancelled")
-  - `qb=error` → error toast ("Connection failed — please try again")
+  - `qb=error` → error toast ("Connection failed, please try again")
   - Clear query param after showing toast (replace URL)
 
 - [ ] **Task 4: Write frontend tests** (AC: 1-4)
@@ -632,7 +632,7 @@ so that I can onboard with my existing accounting data in two clicks.
 
 ## Story QB-9: Settings > Integrations + Stale Nudge + Analytics Events
 
-**Status: DONE (2026-04-17)** — All tasks shipped. Task 5 (stale banner) implementation: new `getLatestSummary` backend query, `/ai-summaries/:datasetId/cached` route now surfaces `staleAt`, threaded through dashboard page + DashboardShell as `cachedStaleAt` prop. `AiSummaryCard` renders a `StaleBanner` when `cachedStaleAt` is in the past; clicking "Refresh insights" sets a local `refreshing` flag that flips `hasCached` to false, triggering the existing `useAiStream` regeneration path. 5 card tests + 1 route staleAt test added.
+**Status: DONE (2026-04-17)**, All tasks shipped. Task 5 (stale banner) implementation: new `getLatestSummary` backend query, `/ai-summaries/:datasetId/cached` route now surfaces `staleAt`, threaded through dashboard page + DashboardShell as `cachedStaleAt` prop. `AiSummaryCard` renders a `StaleBanner` when `cachedStaleAt` is in the past; clicking "Refresh insights" sets a local `refreshing` flag that flips `hasCached` to false, triggering the existing `useAiStream` regeneration path. 5 card tests + 1 route staleAt test added.
 
 ### Story
 
@@ -654,7 +654,7 @@ so that I can monitor sync health, trigger manual refreshes, disconnect, and ref
 
 6. **Given** I click "Refresh now", **When** the sync is not already running, **Then** a manual sync is triggered and the UI transitions to the syncing state.
 
-7. **Given** a QB sync completes and `aiSummaries.staleAt` is set, **When** I view the dashboard, **Then** a banner appears in the AI summary card: "Your data has been updated — refresh insights?" with a "Refresh insights" button.
+7. **Given** a QB sync completes and `aiSummaries.staleAt` is set, **When** I view the dashboard, **Then** a banner appears in the AI summary card: "Your data has been updated, refresh insights?" with a "Refresh insights" button.
 
 8. **Given** I click "Refresh insights", **When** the AI regeneration completes, **Then** the banner disappears and the new summary displays.
 
@@ -729,7 +729,7 @@ QB-1 (Encryption + Config)               ✅ DONE
             ├─► QB-4 (API Client)                    ✅ DONE
             │    └─► QB-6 (Sync Pipeline)                 ✅ DONE
             │         └─► QB-7 (BullMQ Worker + Scheduler)    ✅ DONE
-            ├─► QB-5 (Normalizer — pure logic)         ✅ DONE
+            ├─► QB-5 (Normalizer, pure logic)         ✅ DONE
             ├─► QB-8 (Upload Page QB Card)               ✅ DONE (2026-04-17)
             └─► QB-9 (Settings + Stale Nudge + Analytics) ✅ DONE (2026-04-17)
 ```
@@ -760,8 +760,8 @@ QB-5 (normalizer) had no I/O dependencies and was built in parallel with QB-4. Q
 
 ## What This Doesn't Cover
 
-- **Xero / Square / Stripe adapters** — same integration framework, different provider implementations. The `provider` column and `services/integrations/{provider}/` structure is ready.
-- **Webhook-based sync** — Intuit supports webhooks for real-time updates. Daily poll is simpler and sufficient for MVP. Webhook support is a natural follow-up.
-- **Multi-company support** — one QB connection per org. If an org has multiple QB companies, they'd need multiple orgs. Not a current requirement.
-- **Historical sync management** — no UI for viewing/retrying past sync jobs. The `sync_jobs` table stores history, but it's only surfaced through the current status endpoint. An admin view could expose it later.
-- **Key rotation** — encryption key is static. In production, add key versioning (prefix ciphertext with key ID) to support rotation without a flag-day migration.
+- **Xero / Square / Stripe adapters**, same integration framework, different provider implementations. The `provider` column and `services/integrations/{provider}/` structure is ready.
+- **Webhook-based sync**, Intuit supports webhooks for real-time updates. Daily poll is simpler and sufficient for MVP. Webhook support is a natural follow-up.
+- **Multi-company support**, one QB connection per org. If an org has multiple QB companies, they'd need multiple orgs. Not a current requirement.
+- **Historical sync management**, no UI for viewing/retrying past sync jobs. The `sync_jobs` table stores history, but it's only surfaced through the current status endpoint. An admin view could expose it later.
+- **Key rotation**, encryption key is static. In production, add key versioning (prefix ciphertext with key ID) to support rotation without a flag-day migration.

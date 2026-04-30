@@ -59,7 +59,7 @@ bad,bad,
 nope,nah,
 also-bad,not-num,`;
 
-/** Header containing a quoted comma — naive split(',') would break this */
+/** Header containing a quoted comma, naive split(',') would break this */
 export const quotedHeaders = `date,amount,category,"Revenue, Q1"
 2025-01-15,1200.00,Revenue,5000.00`;
 

@@ -45,7 +45,7 @@ describe('trackEvent', () => {
     expect(mockRecordEvent).toHaveBeenCalledWith(10, 5, 'user.signed_in', undefined, expect.anything());
   });
 
-  it('does not throw when recordEvent fails — fire-and-forget', async () => {
+  it('does not throw when recordEvent fails, fire-and-forget', async () => {
     mockRecordEvent.mockRejectedValueOnce(new Error('db down'));
 
     // trackEvent returns void, should not throw

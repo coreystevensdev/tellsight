@@ -141,7 +141,7 @@ export default function DatasetManager() {
       });
     } catch (err) {
       patchCard(id, { saving: false, deleting: false, deleteDetail: null });
-      // backend enforces owner-only — surface a clear message instead of a generic one
+      // backend enforces owner-only, surface a clear message instead of a generic one
       const msg = err instanceof Error ? err.message : 'Delete failed';
       setError(msg.toLowerCase().includes('owner')
         ? 'Only org owners can delete datasets.'

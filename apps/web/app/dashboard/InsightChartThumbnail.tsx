@@ -15,7 +15,7 @@ export interface InsightChartThumbnailProps {
 
 // Inline thumbnail rendered next to a tagged paragraph on desktop. Click
 // opens the drill-down sheet (Task 9). Returns null for unmapped stats so
-// the paragraph renders prose-only — by design, not a bug. Runway and
+// the paragraph renders prose-only, by design, not a bug. Runway and
 // cash-forecast both get the real RunwayTrendChart at thumbnail size; the
 // other mapped stats get a chart-icon affordance that fills the same 180×120
 // slot until per-stat thumbnail variants ship in a follow-up.
@@ -32,7 +32,7 @@ export function InsightChartThumbnail({
   const accessibleName = `Open ${config.label} drill-down`;
   // Route runway/cash_forecast to RunwayTrendChart whenever the parent has
   // even attempted to fetch either source (non-undefined props). Empty arrays
-  // still route through — RunwayTrendChart owns its own "more history needed"
+  // still route through, RunwayTrendChart owns its own "more history needed"
   // placeholder so the branching logic stays in one place.
   const showRunwayChart =
     (statId === 'runway' || statId === 'cash_forecast') &&

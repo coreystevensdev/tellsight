@@ -19,7 +19,7 @@ const tokenFormatter = new Intl.NumberFormat('en-US', {
 });
 
 /**
- * Month-to-date Anthropic token spend, estimated. Not an invoice — actual
+ * Month-to-date Anthropic token spend, estimated. Not an invoice, actual
  * billing depends on model variant per request and prompt-caching discounts.
  * Rate card source: shared/constants.CLAUDE_PRICING (Sonnet 4.5 default).
  *

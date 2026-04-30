@@ -96,7 +96,7 @@ function classifyStatNumbers(stat: ComputedStat, sets: AllowedSets): void {
       for (const v of stat.details.basisValues) addC(v);
       return;
     case StatType.CashFlow:
-      // prose strips the sign — "$4k/mo" not "-$4k/mo"
+      // prose strips the sign, "$4k/mo" not "-$4k/mo"
       addC(Math.abs(stat.details.monthlyNet));
       for (const m of stat.details.recentMonths) {
         addC(m.revenue);
@@ -105,7 +105,7 @@ function classifyStatNumbers(stat: ComputedStat, sets: AllowedSets): void {
       }
       return;
     case StatType.Runway:
-      // Currency coverage only — runway months are a plain number in prose
+      // Currency coverage only, runway months are a plain number in prose
       // ("3 months") and the current scanner is currency/percent. A months-unit
       // scanner is out of scope for this story; runway-months fabrications are
       // an acknowledged coverage gap.
@@ -115,7 +115,7 @@ function classifyStatNumbers(stat: ComputedStat, sets: AllowedSets): void {
     case StatType.BreakEven:
       // breakEvenRevenue, monthlyFixedCosts, currentMonthlyRevenue: the three
       // currency tokens the LLM is expected to quote. `gap` is not pushed
-      // separately — it's already expressible as |breakEvenRevenue - currentRevenue|
+      // separately, it's already expressible as |breakEvenRevenue - currentRevenue|
       // via the pairwise-sum loop below. Pushing it would mask the tolerance
       // check. marginPercent is already covered by MarginTrend classification.
       addC(stat.details.breakEvenRevenue);
@@ -125,10 +125,10 @@ function classifyStatNumbers(stat: ComputedStat, sets: AllowedSets): void {
     case StatType.CashForecast:
       // startingBalance and each projected balance anchor the chart's prose
       // rendering. projectedNet values cover prose like "burning about $10k/mo
-      // going forward" — strip sign matching CashFlow's pattern.
+      // going forward", strip sign matching CashFlow's pattern.
       addC(stat.details.startingBalance);
       for (const pm of stat.details.projectedMonths) {
-        // Push magnitudes only — matches CashFlow's pattern at line 100. The
+        // Push magnitudes only, matches CashFlow's pattern at line 100. The
         // CURRENCY_RE at line 26 starts matching at `$`, stripping any leading
         // `-`, so parsed candidates are always non-negative. Pushing the signed
         // balance directly would be dead (it can never match a parsed token)
@@ -137,7 +137,7 @@ function classifyStatNumbers(stat: ComputedStat, sets: AllowedSets): void {
         addC(Math.abs(pm.projectedNet));
       }
       // Deliberately NOT pushed: slope, intercept (regression coefficients the
-      // LLM should not quote — a fabricated slope is a real hallucination).
+      // LLM should not quote, a fabricated slope is a real hallucination).
       return;
   }
 }
@@ -146,7 +146,7 @@ function buildAllowedSets(stats: ComputedStat[]): AllowedSets {
   const sets: AllowedSets = { currency: [], percent: [] };
   for (const s of stats) classifyStatNumbers(s, sets);
 
-  // pairwise sums and differences within currency — covers category totals, period gaps.
+  // pairwise sums and differences within currency, covers category totals, period gaps.
   // cross-kind pairwise (e.g., percent + count) would create spurious matches like 83+12=95.
   const cur = [...sets.currency];
   const derived = new Set(cur);

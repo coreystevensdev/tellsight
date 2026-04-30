@@ -30,7 +30,7 @@ export class CircuitBreaker {
     if (this.state === 'open') {
       if (Date.now() - this.lastFailure >= this.cooldownMs) {
         this.state = 'half-open';
-        logger.info({ breaker: this.name }, 'circuit half-open — sending probe');
+        logger.info({ breaker: this.name }, 'circuit half-open, sending probe');
       } else {
         throw new CircuitOpenError(this.name);
       }
@@ -48,7 +48,7 @@ export class CircuitBreaker {
 
   private onSuccess() {
     if (this.state === 'half-open') {
-      logger.info({ breaker: this.name }, 'circuit closed — probe succeeded');
+      logger.info({ breaker: this.name }, 'circuit closed, probe succeeded');
     }
     this.failures = 0;
     this.state = 'closed';
@@ -64,7 +64,7 @@ export class CircuitBreaker {
       circuitBreakerState.set({ name: this.name }, 1);
       logger.warn(
         { breaker: this.name, failures: this.failures, cooldownMs: this.cooldownMs },
-        'circuit opened — requests will fail fast',
+        'circuit opened, requests will fail fast',
       );
     }
   }
@@ -77,6 +77,6 @@ export class CircuitBreaker {
 export class CircuitOpenError extends Error {
   readonly code = 'CIRCUIT_OPEN';
   constructor(name: string) {
-    super(`Circuit breaker "${name}" is open — service unavailable`);
+    super(`Circuit breaker "${name}" is open, service unavailable`);
   }
 }

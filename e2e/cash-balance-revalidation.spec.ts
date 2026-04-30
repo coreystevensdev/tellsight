@@ -16,7 +16,7 @@ import { DATABASE_ADMIN_URL } from './helpers/config';
  * The `saveCashBalance` handler in DashboardShell.tsx fires `Promise.all` of
  * three SWR mutations (financials, cashHistory, cashForecast) plus a
  * `router.refresh()` afterward. If any of the four settles in the wrong order
- * — or if any future refactor breaks the chain — the LockedInsightCard can
+ *, or if any future refactor breaks the chain, the LockedInsightCard can
  * stick at visible even though cashOnHand is saved, or flicker through a
  * stale UI state.
  *
@@ -43,7 +43,7 @@ async function setupRunwayOnlyFixture() {
     // null), because the Break-Even card's gate is `monthlyFixedCosts == null`.
     //
     // Clearing monthlyFixedCosts would render BOTH cards and produce two
-    // Save buttons — that's what the initial version of this fixture got
+    // Save buttons, that's what the initial version of this fixture got
     // wrong. Setting fixedCosts to a non-null value hides Break-Even
     // unambiguously.
     await sql`
@@ -90,7 +90,7 @@ test.describe('saveCashBalance revalidation', () => {
     // Confirm the button is enabled (valid state inside LockedInsightCard)
     // but don't click it. The button flips to `disabled` synchronously when
     // handleSubmit fires, and Playwright's click-retry mechanics race with
-    // that state change unpredictably — earlier attempts with force:true
+    // that state change unpredictably, earlier attempts with force:true
     // swallowed the actual DOM submit event. Pressing Enter on the input
     // dispatches a native `submit` on the form, which React's onSubmit
     // handler picks up cleanly. More realistic user behavior, too.
@@ -118,10 +118,10 @@ test.describe('saveCashBalance revalidation', () => {
 
     // Heading is a stable anchor across the dashboard RSC tree. If the page
     // redirected (auth loss, error boundary) or crashed during save, this
-    // would fail — the negative signal we care about.
+    // would fail, the negative signal we care about.
     await expect(heading).toBeVisible();
 
-    // Negative assertion — no error toast / alert should be rendered. The
+    // Negative assertion, no error toast / alert should be rendered. The
     // dashboard has a generic error boundary; if revalidation throws, an
     // alert with role="alert" surfaces somewhere in the tree.
     const errorAlert = page.getByRole('alert').filter({ hasText: /error|failed/i });

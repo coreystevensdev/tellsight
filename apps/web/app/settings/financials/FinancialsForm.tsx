@@ -140,7 +140,7 @@ export default function FinancialsForm() {
             Monthly fixed costs
           </label>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Rent, salaries, software subscriptions, insurance. Rough estimates are fine — you can update anytime.
+            Rent, salaries, software subscriptions, insurance. Rough estimates are fine, you can update anytime.
           </p>
           <input
             id="fixed-costs"

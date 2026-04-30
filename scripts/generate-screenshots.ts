@@ -239,7 +239,7 @@ async function main() {
   const chartsRaw = await rawScreenshot(browser, `${BASE_URL}/dashboard`, {
     waitFor: waitForCharts,
     prepare: async (page) => {
-      // AI summary is now below charts — hide it so hero focuses on KPIs + charts
+      // AI summary is now below charts, hide it so hero focuses on KPIs + charts
       await page.evaluate(() => {
         const aiRegion = document.querySelector('div[role="region"][aria-label="AI business summary"]');
         const wrapper = aiRegion?.closest('.mt-6');

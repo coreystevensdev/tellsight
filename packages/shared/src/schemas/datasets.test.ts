@@ -86,7 +86,7 @@ describe('dataset schemas', () => {
       expect(typeof result.amount).toBe('string');
     });
 
-    it('amount is a string — numeric(12,2) returns strings from Drizzle', () => {
+    it('amount is a string, numeric(12,2) returns strings from Drizzle', () => {
       const result = dataRowSchema.parse(validRow);
 
       expect(typeof result.amount).toBe('string');

@@ -42,7 +42,7 @@ export async function removeDailySync(orgId: number): Promise<void> {
 
 /**
  * On API startup: load all QB connections and register their daily syncs.
- * BullMQ's `jobId` on repeatable jobs makes this idempotent — if a job
+ * BullMQ's `jobId` on repeatable jobs makes this idempotent, if a job
  * scheduler already exists for a given org, this is a no-op.
  */
 export async function initScheduler(): Promise<void> {

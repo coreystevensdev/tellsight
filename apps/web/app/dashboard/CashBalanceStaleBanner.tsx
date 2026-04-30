@@ -23,7 +23,7 @@ function initialDismissed(): boolean {
 }
 
 /**
- * Surfaces when cash balance is more than 30 days old. Session-scoped dismissal —
+ * Surfaces when cash balance is more than 30 days old. Session-scoped dismissal
  * the nudge re-appears next visit because fresh data matters more than UI quiet.
  *
  * Suppressed entirely at 180+ days: runway is also suppressed at that age, so the
@@ -94,7 +94,7 @@ export function CashBalanceStaleBanner({
       <div className="flex-1 min-w-[14rem]">
         <p className="text-sm font-medium text-foreground">
           {urgent
-            ? `Cash balance is ${age} days old — runway confidence is low`
+            ? `Cash balance is ${age} days old, runway confidence is low`
             : 'Update your cash balance'}
         </p>
         <p className="mt-0.5 text-xs text-muted-foreground">

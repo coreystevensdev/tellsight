@@ -2,7 +2,7 @@
  * API client for Server Components.
  * Calls the Express API directly via Docker internal networking.
  *
- * NEVER use this in Client Components — use api-client.ts instead.
+ * NEVER use this in Client Components, use api-client.ts instead.
  */
 
 import type { ApiResponse } from 'shared/types';

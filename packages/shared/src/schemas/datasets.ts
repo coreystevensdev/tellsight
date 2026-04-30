@@ -56,7 +56,7 @@ export const dataRowSchema = z.object({
   category: z.string().min(1).max(255),
   parentCategory: z.string().max(255).nullable(),
   date: z.coerce.date(),
-  amount: z.string(), // numeric(12,2) returns string from Drizzle — parse in service layer
+  amount: z.string(), // numeric(12,2) returns string from Drizzle, parse in service layer
   label: z.string().max(255).nullable(),
   metadata: z.record(z.unknown()).nullable(),
   createdAt: z.coerce.date(),

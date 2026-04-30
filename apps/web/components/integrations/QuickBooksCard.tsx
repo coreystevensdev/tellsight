@@ -36,7 +36,7 @@ export function QuickBooksCard() {
       setView(res.data.connected ? 'connected' : 'disconnected');
     } catch (err) {
       if (!mounted.current) return;
-      // 501 means the backend has no QB env vars configured — hide the card
+      // 501 means the backend has no QB env vars configured, hide the card
       // so a demo without Intuit credentials stays clean. Other errors
       // (network drop, 500) surface a retry affordance instead of disappearing.
       if (err instanceof ApiClientError && err.status === 501) {
@@ -177,7 +177,7 @@ export function QuickBooksCard() {
         <div>
           <h2 className="text-sm font-semibold text-foreground">Import from QuickBooks</h2>
           <p className="text-xs text-muted-foreground">
-            Skip the CSV — connect your accounting in two clicks.
+            Skip the CSV, connect your accounting in two clicks.
           </p>
         </div>
       </div>

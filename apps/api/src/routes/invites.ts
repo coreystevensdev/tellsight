@@ -46,10 +46,10 @@ inviteRouter.post('/', roleGuard('owner'), async (req, res: Response) => {
   });
 });
 
-// public router — no auth required
+// public router, no auth required
 export const publicInviteRouter = Router();
 
-// GET /invites/:token — validates an invite (anyone can check)
+// GET /invites/:token, validates an invite (anyone can check)
 publicInviteRouter.get('/invites/:token', async (req, res: Response) => {
   const parsed = inviteTokenParamSchema.safeParse(req.params);
   if (!parsed.success) {

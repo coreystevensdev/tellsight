@@ -38,7 +38,7 @@ function hasFilters(filters: ReturnType<typeof parseFilterParams>): boolean {
   return !!(filters.dateFrom || filters.dateTo || filters.categories || filters.granularity);
 }
 
-// public — unauthenticated visitors get seed org
+// public, unauthenticated visitors get seed org
 dashboardRouter.get('/dashboard/charts', async (req: Request, res: Response) => {
   const filters = parseFilterParams(req.query);
   const filterArg = hasFilters(filters) ? filters : undefined;
@@ -50,11 +50,11 @@ dashboardRouter.get('/dashboard/charts', async (req: Request, res: Response) => 
       const orgId = payload.org_id;
       const userId = Number(payload.sub);
 
-      // orgs table has no org_id — intentional RLS exception
+      // orgs table has no org_id, intentional RLS exception
       const org = await orgsQueries.findOrgById(orgId);
       const orgName = org?.name ?? 'Your Organization';
 
-      // data_rows + datasets are RLS-enabled — run inside tenant context
+      // data_rows + datasets are RLS-enabled, run inside tenant context
       const { chartData, datasets, demoState, activeDatasetId, datasetRowCount, hasMarginSignal } = await withRlsContext(
         orgId,
         payload.isAdmin,
@@ -104,7 +104,7 @@ dashboardRouter.get('/dashboard/charts', async (req: Request, res: Response) => 
         chartCount: chartData.revenueTrend.length + chartData.expenseBreakdown.length,
       });
 
-      // chart.filtered tracking moved client-side (FilterBar.tsx) — richer metadata + no double-counting on page reload
+      // chart.filtered tracking moved client-side (FilterBar.tsx), richer metadata + no double-counting on page reload
 
       logger.info({ orgId, isDemo: false, filtered: hasFilters(filters) }, 'Dashboard charts served');
 
@@ -114,11 +114,11 @@ dashboardRouter.get('/dashboard/charts', async (req: Request, res: Response) => 
       return;
     } catch (err) {
       if (!(err instanceof AuthenticationError)) throw err;
-      // expired or invalid token — fall through to seed org
+      // expired or invalid token, fall through to seed org
     }
   }
 
-  // unauthenticated — seed org via dbAdmin (no tenant context)
+  // unauthenticated, seed org via dbAdmin (no tenant context)
   const orgId = await orgsQueries.getSeedOrgId();
   const [chartData, datasets, hasMarginSignal] = await Promise.all([
     chartsQueries.getChartData(orgId, filterArg, undefined, dbAdmin),
@@ -134,7 +134,7 @@ dashboardRouter.get('/dashboard/charts', async (req: Request, res: Response) => 
   });
 });
 
-// public — returns cached AI summary for seed datasets (anonymous visitors)
+// public, returns cached AI summary for seed datasets (anonymous visitors)
 dashboardRouter.get('/ai-summaries/:datasetId/cached', async (req: Request, res: Response) => {
   const rawId = Number(req.params.datasetId);
   if (!Number.isInteger(rawId) || rawId <= 0) {

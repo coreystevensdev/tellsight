@@ -24,7 +24,7 @@ export function UpgradeCta({ variant, onUpgrade, disabled, disabledTooltip }: Up
         Unlock full analysis
       </h3>
       <p className="mt-1 text-sm text-muted-foreground">
-        Full AI insights, no word limits — <span className="font-medium text-foreground">$29/mo</span>
+        Full AI insights, no word limits, <span className="font-medium text-foreground">$29/mo</span>
       </p>
       <button
         type="button"

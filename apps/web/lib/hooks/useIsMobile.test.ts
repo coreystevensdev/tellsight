@@ -53,7 +53,7 @@ describe('useIsMobile', () => {
     // in jsdom, window exists so this tests the getSnapshot path,
     // but the server snapshot contract is: always return false
     // server snapshot is not directly exported, but the hook
-    // returns false when mql.matches is false — functionally equivalent
+    // returns false when mql.matches is false, functionally equivalent
     matchesValue = false;
     const useIsMobile = await importHook();
     const { result } = renderHook(() => useIsMobile());

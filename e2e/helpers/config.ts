@@ -7,7 +7,7 @@ const resolvedAdminUrl = process.env.DATABASE_ADMIN_URL ?? DEFAULT_ADMIN_URL;
 
 if (!resolvedAdminUrl.includes('localhost') && !resolvedAdminUrl.includes('127.0.0.1') && !resolvedAdminUrl.includes('db:')) {
   throw new Error(
-    `DATABASE_ADMIN_URL points to "${resolvedAdminUrl}" — E2E fixtures refuse to run against non-local databases. ` +
+    `DATABASE_ADMIN_URL points to "${resolvedAdminUrl}", E2E fixtures refuse to run against non-local databases. ` +
     'Set DATABASE_ADMIN_URL to a localhost or docker-compose URL.',
   );
 }

@@ -83,7 +83,7 @@ function normalizeSampleRows(rows: ParsedRow[], rawHeaders: string[]): Record<st
 }
 
 // Known gap: no replay protection. Same token can confirm duplicates within the TTL window.
-// Acceptable for MVP — duplicate uploads are user-visible and self-correcting. To harden:
+// Acceptable for MVP, duplicate uploads are user-visible and self-correcting. To harden:
 // either a UNIQUE(org_id, file_hash) constraint or Redis-based token consumption.
 const PREVIEW_TOKEN_TTL_MS = 30 * 60 * 1000;
 
@@ -109,7 +109,7 @@ function verifyPreviewToken(token: string, buffer: Buffer, orgId: number, secret
 
     const { hash, orgId: tokenOrg, iat, sig } = decoded;
 
-    // cheap rejections first — avoid HMAC + SHA-256 for expired or wrong-org tokens
+    // cheap rejections first, avoid HMAC + SHA-256 for expired or wrong-org tokens
     if (tokenOrg !== orgId) return false;
     if (Date.now() - iat > PREVIEW_TOKEN_TTL_MS) return false;
 
@@ -121,7 +121,7 @@ function verifyPreviewToken(token: string, buffer: Buffer, orgId: number, secret
     const expectedBuf = Buffer.from(expected, 'hex');
     if (sigBuf.length !== expectedBuf.length || !timingSafeEqual(sigBuf, expectedBuf)) return false;
 
-    // file hash is the most expensive check — SHA-256 over up to 10MB
+    // file hash is the most expensive check, SHA-256 over up to 10MB
     const actualHash = Buffer.from(computeFileHash(buffer), 'hex');
     const expectedHash = Buffer.from(hash, 'hex');
     if (actualHash.length !== expectedHash.length || !timingSafeEqual(actualHash, expectedHash)) return false;
@@ -223,7 +223,7 @@ datasetsRouter.post(
       throw new ValidationError('No file provided. Select a CSV file to upload.');
     }
 
-    // TOCTOU gate — reject if the file changed since preview
+    // TOCTOU gate, reject if the file changed since preview
     const token = req.body?.previewToken;
     if (!token || typeof token !== 'string') {
       throw new ValidationError('Missing preview token. Preview your file before confirming.');
@@ -271,7 +271,7 @@ datasetsRouter.post(
 
     // Audit: wholesale data mutation. If a user ever says "I never uploaded
     // that file," this is the source of truth on who/when/where. Action name
-    // is `dataset.uploaded` even though we fire on the confirm step — the
+    // is `dataset.uploaded` even though we fire on the confirm step, the
     // upload→preview→confirm flow is one user-facing operation, and confirm
     // is where rows actually persist.
     auditAuth(req, AUDIT_ACTIONS.DATASET_UPLOADED, {

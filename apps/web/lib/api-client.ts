@@ -5,7 +5,7 @@
  *
  * Includes silent refresh: on 401, attempts token refresh then retries once.
  *
- * NEVER use this in Server Components — use api-server.ts instead.
+ * NEVER use this in Server Components, use api-server.ts instead.
  */
 
 import type { ApiResponse } from 'shared/types';

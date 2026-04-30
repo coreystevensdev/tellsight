@@ -17,7 +17,7 @@ export const StatType = {
 
 export type StatType = (typeof StatType)[keyof typeof StatType];
 
-// typed detail shapes per stat — the contract between computation and scoring layers
+// typed detail shapes per stat, the contract between computation and scoring layers
 
 export interface TotalDetails {
   scope: string;
@@ -79,10 +79,10 @@ export interface SeasonalProjectionDetails {
 }
 
 // Net cash flow over a trailing window. Negative = burning, positive = surplus.
-// MonthlyNet is signed — the prompt layer interprets direction for the owner.
-// `break_even` isn't emitted — computation.ts applies a 5%-of-avg-revenue
+// MonthlyNet is signed, the prompt layer interprets direction for the owner.
+// `break_even` isn't emitted, computation.ts applies a 5%-of-avg-revenue
 // suppression band (see `0.05 * avgMonthlyRevenue` in computeCashFlow) that
-// returns [] instead of labeling the stat break-even — so the literal is
+// returns [] instead of labeling the stat break-even, so the literal is
 // intentionally absent from the union.
 export interface CashFlowDetails {
   monthlyNet: number;
@@ -96,7 +96,7 @@ export interface CashFlowDetails {
 // AND owner has provided a fresh cashOnHand. Confidence softens framing on stale data.
 export interface RunwayDetails {
   cashOnHand: number;
-  monthlyNet: number; // signed — will be negative (burning)
+  monthlyNet: number; // signed, will be negative (burning)
   runwayMonths: number;
   cashAsOfDate: string; // ISO
   confidence: 'high' | 'moderate' | 'low';
@@ -104,7 +104,7 @@ export interface RunwayDetails {
 
 // Monthly revenue needed to cover fixed costs at the current margin. Emitted only
 // when MarginTrend is present, fixed costs are set, and margin is at least 2%.
-// `gap` is signed — positive means revenue is below break-even (still burning);
+// `gap` is signed, positive means revenue is below break-even (still burning);
 // negative means revenue already covers fixed costs.
 export interface BreakEvenDetails {
   monthlyFixedCosts: number;
@@ -126,8 +126,8 @@ export interface ProjectedMonth {
 
 // Three-month forward cash forecast. Linear regression on recent net change,
 // with a rolling-mean fallback when the regression is degenerate (flat input).
-// `crossesZeroAtMonth` is 1-indexed — the first projected month where the running
-// balance dips below zero — or null when balance holds across the window.
+// `crossesZeroAtMonth` is 1-indexed, the first projected month where the running
+// balance dips below zero, or null when balance holds across the window.
 export interface CashForecastDetails {
   startingBalance: number;
   asOfDate: string; // ISO
@@ -268,7 +268,7 @@ export type TransparencyMetadata = z.infer<typeof transparencyMetadataSchema>;
 
 // Split into system + user so the system half can be sent with prompt-cache
 // control on Anthropic. Older single-file templates (v1-v1.5, v1-digest) load
-// entirely into `user` with `system: ''` — the LlmProvider treats empty
+// entirely into `user` with `system: ''`, the LlmProvider treats empty
 // system as "no caching, send only user message".
 export interface AssembledContext {
   system: string;

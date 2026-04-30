@@ -66,7 +66,7 @@ export default function InviteManager() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      setError('Copy failed — select and copy the link manually');
+      setError('Copy failed, select and copy the link manually');
     }
   }
 

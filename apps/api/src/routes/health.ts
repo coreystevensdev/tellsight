@@ -13,13 +13,13 @@ import { getEmailProvider } from '../services/email/index.js';
 
 const router = Router();
 
-// liveness — is the process alive? Never check external deps here.
+// liveness, is the process alive? Never check external deps here.
 // A failed liveness probe restarts the container, so keep it trivial.
 router.get('/health/live', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-// readiness — can this instance serve traffic? Check DB + Redis.
+// readiness, can this instance serve traffic? Check DB + Redis.
 // A failed readiness probe stops routing traffic but doesn't restart.
 router.get('/health/ready', async (_req, res) => {
   const [dbHealth, redisHealth, emailHealth] = await Promise.all([
@@ -73,7 +73,7 @@ async function checkEmailHealth(): Promise<{
     const health = await provider.checkHealth();
     return { provider: provider.name, status: health.status, latencyMs: health.latencyMs };
   } catch {
-    // Provider not registered — surface rather than crash the health route.
+    // Provider not registered, surface rather than crash the health route.
     return { provider: 'none', status: 'unregistered', latencyMs: 0 };
   }
 }

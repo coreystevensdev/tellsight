@@ -24,7 +24,7 @@ function mockGetResponse(overrides: Partial<{ cashOnHand: number; monthlyFixedCo
   mockApiClient.mockResolvedValueOnce({ data: overrides });
 }
 
-describe('FinancialsForm — monthlyFixedCosts field', () => {
+describe('FinancialsForm, monthlyFixedCosts field', () => {
   it('displays a pre-existing value masked as currency on load', async () => {
     mockGetResponse({ monthlyFixedCosts: 10_000 });
 

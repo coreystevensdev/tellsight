@@ -96,7 +96,7 @@ describe('TransparencyPanel', () => {
 
     const panel = screen.getByRole('complementary');
     // If STAT_TYPE_LABELS loses either entry, the raw snake_case key would render
-    // instead — bug Story 8.1 caught for cash_flow, Story 8.2 for runway.
+    // instead, bug Story 8.1 caught for cash_flow, Story 8.2 for runway.
     expect(within(panel).getByText('Cash Flow')).toBeTruthy();
     expect(within(panel).getByText('Runway')).toBeTruthy();
     expect(within(panel).queryByText('cash_flow')).toBeNull();

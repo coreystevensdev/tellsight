@@ -7,7 +7,7 @@ export function roleGuard(requiredRole: GuardRole) {
   return (req: Request, _res: Response, next: NextFunction) => {
     const { user } = req;
 
-    // safety net — roleGuard must run after authMiddleware
+    // safety net, roleGuard must run after authMiddleware
     if (!user) {
       throw new AuthenticationError('Missing auth context');
     }
@@ -26,7 +26,7 @@ export function roleGuard(requiredRole: GuardRole) {
       return next();
     }
 
-    // 'member' — any authenticated user passes (owner or member)
+    // 'member', any authenticated user passes (owner or member)
     next();
   };
 }

@@ -36,7 +36,7 @@ describe('computeCost', () => {
     expect(cost).toBeCloseTo(0.018, 5);
   });
 
-  it('returns null for unknown model — fail-open default', () => {
+  it('returns null for unknown model, fail-open default', () => {
     const cost = computeCost({ input_tokens: 100, output_tokens: 100 }, 'gpt-4');
     expect(cost).toBeNull();
   });

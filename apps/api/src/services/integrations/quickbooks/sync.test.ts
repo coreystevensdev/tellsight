@@ -150,7 +150,7 @@ describe('runSync', () => {
     mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection());
     mockCreateQbClient.mockResolvedValueOnce(mockQbClient());
     mockGetDatasetsByOrg.mockResolvedValueOnce([]);
-    mockCreateDataset.mockResolvedValueOnce({ id: 500, name: 'QuickBooks — Sunrise Cafe' });
+    mockCreateDataset.mockResolvedValueOnce({ id: 500, name: 'QuickBooks, Sunrise Cafe' });
     mockNormalizeTransactions.mockReturnValue([]);
 
     const { runSync } = await import('./sync.js');
@@ -159,7 +159,7 @@ describe('runSync', () => {
     expect(mockCreateDataset).toHaveBeenCalledWith(
       10,
       expect.objectContaining({
-        name: 'QuickBooks — Sunrise Cafe',
+        name: 'QuickBooks, Sunrise Cafe',
         sourceType: 'quickbooks',
       }),
       expect.anything(),
@@ -167,7 +167,7 @@ describe('runSync', () => {
   });
 
   it('reuses existing QB dataset if present', async () => {
-    const existing = { id: 400, name: 'QuickBooks — Old Name', sourceType: 'quickbooks' };
+    const existing = { id: 400, name: 'QuickBooks, Old Name', sourceType: 'quickbooks' };
     mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection());
     mockCreateQbClient.mockResolvedValueOnce(mockQbClient());
     mockGetDatasetsByOrg.mockResolvedValueOnce([existing]);
@@ -177,7 +177,7 @@ describe('runSync', () => {
     await runSync(1, 'scheduled');
 
     expect(mockCreateDataset).not.toHaveBeenCalled();
-    expect(mockUpdateDatasetName).toHaveBeenCalledWith(10, 400, 'QuickBooks — Sunrise Cafe', expect.anything());
+    expect(mockUpdateDatasetName).toHaveBeenCalledWith(10, 400, 'QuickBooks, Sunrise Cafe', expect.anything());
   });
 
   it('sets activeDatasetId only on initial sync', async () => {
@@ -196,7 +196,7 @@ describe('runSync', () => {
   it('does not set activeDatasetId on scheduled sync', async () => {
     mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection({ lastSyncedAt: new Date() }));
     mockCreateQbClient.mockResolvedValueOnce(mockQbClient());
-    mockGetDatasetsByOrg.mockResolvedValueOnce([{ id: 400, sourceType: 'quickbooks', name: 'QuickBooks — Sunrise Cafe' }]);
+    mockGetDatasetsByOrg.mockResolvedValueOnce([{ id: 400, sourceType: 'quickbooks', name: 'QuickBooks, Sunrise Cafe' }]);
     mockNormalizeTransactions.mockReturnValue([]);
 
     const { runSync } = await import('./sync.js');
@@ -210,7 +210,7 @@ describe('runSync', () => {
     mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection({ lastSyncedAt }));
     const client = mockQbClient();
     mockCreateQbClient.mockResolvedValueOnce(client);
-    mockGetDatasetsByOrg.mockResolvedValueOnce([{ id: 400, sourceType: 'quickbooks', name: 'QuickBooks — Sunrise Cafe' }]);
+    mockGetDatasetsByOrg.mockResolvedValueOnce([{ id: 400, sourceType: 'quickbooks', name: 'QuickBooks, Sunrise Cafe' }]);
     mockNormalizeTransactions.mockReturnValue([]);
 
     const { runSync } = await import('./sync.js');

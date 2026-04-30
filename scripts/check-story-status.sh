@@ -13,7 +13,7 @@ if [[ ! -f "$YAML_FILE" ]]; then
   exit 1
 fi
 
-# parse story entries from YAML — lines like "  1-1-monorepo-scaffold...: done"
+# parse story entries from YAML, lines like "  1-1-monorepo-scaffold...: done"
 # process substitution avoids the pipe-subshell trap where variable changes get lost
 while IFS=: read -r key value; do
   slug=$(echo "$key" | xargs)
@@ -25,7 +25,7 @@ while IFS=: read -r key value; do
   file_status=$(grep -m1 '^Status:' "$story_file" | sed 's/^Status:\s*//' | xargs)
 
   if [[ "$file_status" != "$yaml_status" ]]; then
-    echo "MISMATCH: $slug — file says '$file_status', yaml says '$yaml_status'"
+    echo "MISMATCH: $slug, file says '$file_status', yaml says '$yaml_status'"
     mismatches=$((mismatches + 1))
   fi
 done < <(grep -E '^\s+[0-9]+-[0-9]+-' "$YAML_FILE")

@@ -158,7 +158,7 @@ describe('worker', () => {
     it('is a no-op when nothing was initialized', async () => {
       const { shutdownWorker } = await import('./worker.js');
       await shutdownWorker();
-      // should not throw — just verify it returns without error
+      // should not throw, just verify it returns without error
       expect(mockQueueClose).not.toHaveBeenCalled();
       expect(mockWorkerClose).not.toHaveBeenCalled();
     });

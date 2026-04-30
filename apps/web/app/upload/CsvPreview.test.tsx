@@ -55,7 +55,7 @@ describe('CsvPreview', () => {
       <CsvPreview previewData={preview} onConfirm={vi.fn()} onCancel={vi.fn()} isConfirming={false} />,
     );
 
-    // Type badges have the rounded/text-xs class — query by that to avoid colliding with header names
+    // Type badges have the rounded/text-xs class, query by that to avoid colliding with header names
     const badges = container.querySelectorAll('.text-xs.font-normal');
     const badgeTexts = Array.from(badges).map((b) => b.textContent);
     expect(badgeTexts).toEqual(['date', 'number', 'text']);

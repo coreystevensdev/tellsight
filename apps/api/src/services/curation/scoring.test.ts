@@ -108,7 +108,7 @@ describe('scoreInsights', () => {
     const { scoreInsights: scoreHeavyAction } = await import('./scoring.js');
     const heavyAction = scoreHeavyAction(fixtureStats);
 
-    // scoring is responsive to weight changes — both produce valid results
+    // scoring is responsive to weight changes, both produce valid results
     expect(heavyNovelty.length).toBeGreaterThan(0);
     expect(heavyAction.length).toBeGreaterThan(0);
   });
@@ -137,7 +137,7 @@ describe('scoreInsights', () => {
     }
   });
 
-  // CashFlow scoring — burning should rank high, surplus moderate,
+  // CashFlow scoring, burning should rank high, surplus moderate,
   // and cash flow must not outrank MarginTrend shrinking (monotonicity).
 
   const monthsStub = [
@@ -228,13 +228,13 @@ describe('scoreInsights', () => {
     const mt = insights.find((i) => i.stat.statType === StatType.MarginTrend)!;
     // Margin is the leading signal, cash flow is the trailing consequence.
     // Under the default weight config (novelty 0.35, actionability 0.40,
-    // specificity 0.25), both land at 0.840. Strict tie — any inversion
+    // specificity 0.25), both land at 0.840. Strict tie, any inversion
     // would be a scoring regression.
     expect(cf.score).toBeCloseTo(mt.score, 6);
   });
 });
 
-describe('scoreInsights — Runway scoring', () => {
+describe('scoreInsights, Runway scoring', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.resetModules();
@@ -343,7 +343,7 @@ describe('scoreInsights — Runway scoring', () => {
   });
 });
 
-describe('scoreInsights — BreakEven scoring', () => {
+describe('scoreInsights, BreakEven scoring', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.resetModules();
@@ -391,7 +391,7 @@ describe('scoreInsights — BreakEven scoring', () => {
     });
   });
 
-  it('gap < 0 (above break-even) scores the same as gap === 0 — both demoted', async () => {
+  it('gap < 0 (above break-even) scores the same as gap === 0, both demoted', async () => {
     mockConfig(validConfig);
     const { scoreInsights } = await import('./scoring.js');
 
@@ -437,7 +437,7 @@ describe('scoreInsights — BreakEven scoring', () => {
 
     // Intended ranking: runway (0.9025) > burning (0.8400) > break-even gap-positive (0.8270).
     // Runway leads because it carries the most urgent signal. Burning follows because a
-    // binary urgency cue should precede a quantified target. Break-even trails — it
+    // binary urgency cue should precede a quantified target. Break-even trails, it
     // refines the burn signal rather than originating one.
     expect(runway.score).toBeGreaterThan(cashFlow.score);
     expect(cashFlow.score).toBeGreaterThan(be.score);
@@ -456,7 +456,7 @@ describe('scoreInsights — BreakEven scoring', () => {
   });
 });
 
-describe('scoreInsights — CashForecast scoring', () => {
+describe('scoreInsights, CashForecast scoring', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.resetModules();
@@ -557,7 +557,7 @@ describe('scoreInsights — CashForecast scoring', () => {
     const cfl = insights.find((i) => i.stat.statType === StatType.CashFlow)!;
     const be = insights.find((i) => i.stat.statType === StatType.BreakEven)!;
 
-    // Documented hierarchy — if this flips, a weight was tuned and the
+    // Documented hierarchy, if this flips, a weight was tuned and the
     // rationales in computation.ts and scoring.ts need review.
     expect(rw.score).toBeGreaterThan(cf.score);
     expect(cf.score).toBeGreaterThan(cfl.score);

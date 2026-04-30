@@ -116,7 +116,7 @@ describe('DemoModeBanner', () => {
 
       rerender(<DemoModeBanner demoState="user_only" onUploadClick={noop} />);
 
-      // No buttons during dissolve — banner is non-interactive while fading
+      // No buttons during dissolve, banner is non-interactive while fading
       // onAnimationEnd calls setDismissed(true) to unmount; jsdom can't fire CSS
       // animation events, but dismiss behavior is verified in the dismiss suite
       expect(screen.queryByRole('button')).not.toBeInTheDocument();

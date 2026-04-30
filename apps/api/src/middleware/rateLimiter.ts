@@ -8,7 +8,7 @@ import { RATE_LIMITS } from 'shared/constants';
 
 const bypass = env.DISABLE_RATE_LIMIT === 'true';
 
-// in-memory fallbacks — same limits, per-process only
+// in-memory fallbacks, same limits, per-process only
 const authFallback = new RateLimiterMemory({
   points: RATE_LIMITS.auth.max,
   duration: RATE_LIMITS.auth.windowMs / 1000,
@@ -81,8 +81,8 @@ export function rateLimitAuth(req: Request, res: Response, next: NextFunction) {
         logger.warn({ ip: key, path: req.path }, 'Auth rate limit exceeded');
         return sendRateLimited(res, rlRes);
       }
-      // unexpected error — fail open
-      logger.warn({ err: rlRes }, 'Rate limiter error — failing open');
+      // unexpected error, fail open
+      logger.warn({ err: rlRes }, 'Rate limiter error, failing open');
       next();
     });
 }
@@ -92,7 +92,7 @@ export function rateLimitAi(req: Request, res: Response, next: NextFunction) {
   const key = req.user?.sub ?? req.ip ?? 'unknown';
 
   if (!req.user?.sub) {
-    logger.warn({ path: req.path }, 'AI rate limiter missing user — falling back to IP');
+    logger.warn({ path: req.path }, 'AI rate limiter missing user, falling back to IP');
   }
 
   aiLimiter
@@ -104,7 +104,7 @@ export function rateLimitAi(req: Request, res: Response, next: NextFunction) {
         logger.warn({ userId: key, path: req.path }, 'AI rate limit exceeded');
         return sendRateLimited(res, rlRes);
       }
-      logger.warn({ err: rlRes }, 'Rate limiter error — failing open');
+      logger.warn({ err: rlRes }, 'Rate limiter error, failing open');
       next();
     });
 }
@@ -121,14 +121,14 @@ export function rateLimitPublic(req: Request, res: Response, next: NextFunction)
         logger.warn({ ip: key, path: req.path }, 'Public rate limit exceeded');
         return sendRateLimited(res, rlRes);
       }
-      logger.warn({ err: rlRes }, 'Rate limiter error — failing open');
+      logger.warn({ err: rlRes }, 'Rate limiter error, failing open');
       next();
     });
 }
 
 // User-keyed limiter for authenticated dashboard endpoints that do non-trivial
 // compute per request (SQL aggregations, regression math). Sits between `ai`
-// (too tight for normal dashboard usage — 5/min LLM-call budget) and `public`
+// (too tight for normal dashboard usage, 5/min LLM-call budget) and `public`
 // (IP-keyed; penalizes shared networks). Falls back to IP only if somehow
 // called before auth middleware populates req.user.
 export function rateLimitDashboardCompute(req: Request, res: Response, next: NextFunction) {
@@ -136,7 +136,7 @@ export function rateLimitDashboardCompute(req: Request, res: Response, next: Nex
   const key = req.user?.sub ?? req.ip ?? 'unknown';
 
   if (!req.user?.sub) {
-    logger.warn({ path: req.path }, 'Dashboard rate limiter missing user — falling back to IP');
+    logger.warn({ path: req.path }, 'Dashboard rate limiter missing user, falling back to IP');
   }
 
   dashboardComputeLimiter
@@ -148,7 +148,7 @@ export function rateLimitDashboardCompute(req: Request, res: Response, next: Nex
         logger.warn({ userId: key, path: req.path }, 'Dashboard rate limit exceeded');
         return sendRateLimited(res, rlRes);
       }
-      logger.warn({ err: rlRes }, 'Rate limiter error — failing open');
+      logger.warn({ err: rlRes }, 'Rate limiter error, failing open');
       next();
     });
 }

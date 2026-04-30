@@ -5,7 +5,7 @@ import { orgs, users, userOrgs, datasets, subscriptions } from '../schema.js';
 import { getMonthToDateAiUsage } from './analyticsEvents.js';
 
 /**
- * Cross-org queries — no orgId param. Gated by roleGuard('admin') at the route layer.
+ * Cross-org queries, no orgId param. Gated by roleGuard('admin') at the route layer.
  */
 
 export async function getAllOrgs() {
@@ -127,7 +127,7 @@ export async function getAdminStats() {
       requestCount: aiUsage.requestCount,
       // Estimated cost from month-to-date token totals against the default
       // model's rate card. Treat as a rough operational signal, not an
-      // invoice — actual Anthropic billing depends on the model variant
+      // invoice, actual Anthropic billing depends on the model variant
       // selected per request and any prompt caching discounts.
       estimatedCostUsd: estimateClaudeCostUsd(aiUsage.inputTokens, aiUsage.outputTokens),
     },

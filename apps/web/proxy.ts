@@ -10,7 +10,7 @@ function getJwtSecret(): Uint8Array | null {
   if (!webEnv.JWT_SECRET) {
     if (!jwtSecretWarned && webEnv.NODE_ENV !== 'production') {
       jwtSecretWarned = true;
-      console.warn('[proxy] JWT_SECRET not set — protected route verification skipped in dev');
+      console.warn('[proxy] JWT_SECRET not set, protected route verification skipped in dev');
     }
     return null;
   }

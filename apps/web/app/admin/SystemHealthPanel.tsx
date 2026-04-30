@@ -86,7 +86,7 @@ export function SystemHealthPanel() {
       <CardContent>
         {showWarning && (
           <p className="mb-3 text-xs text-yellow-600">
-            Unable to refresh — showing last known status
+            Unable to refresh, showing last known status
           </p>
         )}
         <Table>

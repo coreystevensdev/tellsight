@@ -388,7 +388,7 @@ describe('integrations routes', () => {
 });
 
 // Run the full middleware + handler chain for a route.
-// Each middleware must fully complete before we advance — we wait on the
+// Each middleware must fully complete before we advance, we wait on the
 // current promise and only advance when done, since Express middleware
 // typically call next() without awaiting it themselves.
 interface RouteLayer {

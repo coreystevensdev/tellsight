@@ -1,4 +1,4 @@
-// Standalone seed script — runs after migrations, before the Express app boots.
+// Standalone seed script, runs after migrations, before the Express app boots.
 // Same exceptions as migrate.ts:
 //   - process.env: config.ts validates ALL env vars. Seed runs before app context exists.
 //   - console.log: Pino is app-level. Seed output uses console.
@@ -20,7 +20,7 @@ if (!dbUrl) {
 const client = postgres(dbUrl, { max: 1 });
 const db = drizzle(client, { schema });
 
-// 12 months of demo data for Sunrise Cafe — a fictional coffee shop.
+// 12 months of demo data for Sunrise Cafe, a fictional coffee shop.
 // Ends at the current month so date presets always show recent data.
 // Anomalies baked in so the curation pipeline has something to interpret.
 function buildSeedRows(orgId: number, datasetId: number) {
@@ -52,7 +52,7 @@ function buildSeedRows(orgId: number, datasetId: number) {
     const months = Array.from({ length: lastM - firstM + 1 }, (_, i) => firstM + i);
 
     for (const m of months) {
-      // Revenue: $12k–$18k monthly baseline in 2024, +12% in 2025. December spike both years.
+      // Revenue: $12k-$18k monthly baseline in 2024, +12% in 2025. December spike both years.
       const monthlyRevenue = m === 11 ? 28000 : parseFloat(lerp('12000.00', '18000.00', m));
       const monthlyPayroll = (year >= 2025 && m === 9) ? 9200 : parseFloat(lerp('5500.00', '6500.00', m));
       const isQ3Dip = year >= 2025 && m >= 6 && m <= 8;
@@ -113,7 +113,7 @@ function buildSeedRows(orgId: number, datasetId: number) {
   return rows;
 }
 
-// Linear interpolation across 12 months — returns string amount.
+// Linear interpolation across 12 months, returns string amount.
 // monthIndex 0 → minVal, monthIndex 11 → maxVal.
 function lerp(minVal: string, maxVal: string, monthIndex: number): string {
   const min = parseFloat(minVal);
@@ -122,16 +122,16 @@ function lerp(minVal: string, maxVal: string, monthIndex: number): string {
   return (min + (max - min) * t).toFixed(2);
 }
 
-const FALLBACK_SEED_SUMMARY = `Revenue grew 12% year-over-year — from $187K in 2024 to $210K in 2025. December remained the standout month both years, hitting $31K in 2025 versus $28K the year before. The growth is real but concentrated in seasonal peaks.
+const FALLBACK_SEED_SUMMARY = `Revenue grew 12% year-over-year, from $187K in 2024 to $210K in 2025. December remained the standout month both years, hitting $31K in 2025 versus $28K the year before. The growth is real but concentrated in seasonal peaks.
 
-Payroll spiked to $9,200 in October 2025, about 45% above normal. That didn't happen in 2024, so it's not seasonal — worth investigating whether it's a one-time bonus or a staffing change that sticks. If it repeats, it eats most of the revenue gains.
+Payroll spiked to $9,200 in October 2025, about 45% above normal. That didn't happen in 2024, so it's not seasonal, worth investigating whether it's a one-time bonus or a staffing change that sticks. If it repeats, it eats most of the revenue gains.
 
-Marketing got slashed to $200–$300/month during Q3 2025, down from $800–$1,200 the rest of the year. Revenue didn't dip, which suggests the cafe's regulars aren't ad-driven. The same period in 2024 kept full marketing spend with no revenue difference — strong signal to keep Q3 lean.
+Marketing got slashed to $200-$300/month during Q3 2025, down from $800-$1,200 the rest of the year. Revenue didn't dip, which suggests the cafe's regulars aren't ad-driven. The same period in 2024 kept full marketing spend with no revenue difference, strong signal to keep Q3 lean.
 
-Margins are tighter than they look. After expenses, most months net $2K–$4K. The December spike papers over thin months. A cash reserve from holiday season would smooth out the year without forcing cuts.`;
+Margins are tighter than they look. After expenses, most months net $2K-$4K. The December spike papers over thin months. A cash reserve from holiday season would smooth out the year without forcing cuts.`;
 
 async function seed() {
-  // app_admin role has BYPASSRLS — no SET LOCAL needed
+  // app_admin role has BYPASSRLS, no SET LOCAL needed
   await db.transaction(async (tx) => {
     // Idempotency: check if seed org + seed dataset already exist
     const existing = await tx.query.orgs.findFirst({
@@ -146,19 +146,19 @@ async function seed() {
         ),
       });
       if (seedDataset) {
-        console.info(`Seed data already exists for "${SEED_ORG.name}" — skipping`);
+        console.info(`Seed data already exists for "${SEED_ORG.name}", skipping`);
         return;
       }
     }
 
-    // Upsert org — ON CONFLICT prevents race condition if two containers start simultaneously
+    // Upsert org, ON CONFLICT prevents race condition if two containers start simultaneously
     const [org] = await tx
       .insert(schema.orgs)
       .values({ name: SEED_ORG.name, slug: SEED_ORG.slug })
       .onConflictDoNothing({ target: schema.orgs.slug })
       .returning();
 
-    // If upsert returned nothing, the org already existed — look it up
+    // If upsert returned nothing, the org already existed, look it up
     const fallbackOrg = org ?? await tx.query.orgs.findFirst({
       where: eq(schema.orgs.slug, SEED_ORG.slug),
     });
@@ -169,7 +169,7 @@ async function seed() {
       .insert(schema.datasets)
       .values({
         orgId,
-        name: 'Sunrise Cafe 2024–2025 Financials',
+        name: 'Sunrise Cafe 2024-2025 Financials',
         sourceType: 'csv',
         isSeedData: true,
       })
@@ -188,7 +188,7 @@ async function seed() {
     const apiKey = process.env.CLAUDE_API_KEY;
     const hasRealKey = apiKey && !apiKey.includes('placeholder');
     if (!hasRealKey) {
-      // Hardcoded fallback — the dashboard works out of the box with no API key.
+      // Hardcoded fallback, the dashboard works out of the box with no API key.
       // Matches the seed data: 12 months for Sunrise Cafe, Dec revenue spike,
       // Oct payroll anomaly, Q3 marketing dip.
       await tx.insert(schema.aiSummaries).values({
@@ -205,7 +205,7 @@ async function seed() {
         promptVersion: 'v1',
         isSeed: true,
       });
-      console.info('Seed AI summary inserted (hardcoded fallback — no API key)');
+      console.info('Seed AI summary inserted (hardcoded fallback, no API key)');
     } else {
       try {
         const { computeStats } = await import('../services/curation/computation.js');
@@ -216,7 +216,7 @@ async function seed() {
         const claude = new Anthropic({
           apiKey: process.env.CLAUDE_API_KEY,
           maxRetries: 2,
-          timeout: 30_000, // longer timeout for seed — runs once, not on hot path
+          timeout: 30_000, // longer timeout for seed, runs once, not on hot path
         });
 
         const dbRows = rows.map((r, i) => ({
@@ -260,7 +260,7 @@ async function seed() {
 
         console.info(`Seed AI summary generated (${content.length} chars, ${message.usage.output_tokens} tokens)`);
       } catch (err) {
-        console.warn('Seed summary generation failed — continuing without it:', (err as Error).message);
+        console.warn('Seed summary generation failed, continuing without it:', (err as Error).message);
       }
     }
   });

@@ -11,14 +11,14 @@ export async function createOrg(data: { name: string; slug: string }) {
   return org;
 }
 
-/** Cross-org lookup — orgs table is the org entity itself (intentional exception) */
+/** Cross-org lookup, orgs table is the org entity itself (intentional exception) */
 export async function findOrgBySlug(slug: string) {
   return db.query.orgs.findFirst({
     where: eq(orgs.slug, slug),
   });
 }
 
-/** Cross-org lookup — orgs table is the org entity itself (intentional exception) */
+/** Cross-org lookup, orgs table is the org entity itself (intentional exception) */
 export async function findOrgById(orgId: number) {
   return db.query.orgs.findFirst({
     where: eq(orgs.id, orgId),
@@ -31,7 +31,7 @@ export async function getSeedOrgId(): Promise<number> {
   if (cachedSeedOrgId !== null) return cachedSeedOrgId;
 
   const org = await findOrgBySlug(SEED_ORG.slug);
-  if (!org) throw new Error(`Seed org "${SEED_ORG.slug}" not found — has the seed script run?`);
+  if (!org) throw new Error(`Seed org "${SEED_ORG.slug}" not found, has the seed script run?`);
 
   cachedSeedOrgId = org.id;
   return org.id;
@@ -65,7 +65,7 @@ export async function setActiveDataset(
   return updated ?? null;
 }
 
-/** Admin query — bypasses RLS to list all orgs that have an active dataset. */
+/** Admin query, bypasses RLS to list all orgs that have an active dataset. */
 export async function getAllOrgsWithActiveDataset() {
   return dbAdmin.query.orgs.findMany({
     where: isNotNull(orgs.activeDatasetId),

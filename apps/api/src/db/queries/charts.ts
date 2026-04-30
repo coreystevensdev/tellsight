@@ -40,8 +40,8 @@ function scopeConditions(orgId: number, datasetId?: number): SQL[] {
  * Aggregates data_rows into chart-ready structures using SQL aggregation.
  *
  * Two queries:
- * 1. Metadata (unfiltered) — distinct expense categories + date range
- * 2. Aggregated buckets (filtered) — SUM(amount) grouped by time bucket + category
+ * 1. Metadata (unfiltered), distinct expense categories + date range
+ * 2. Aggregated buckets (filtered), SUM(amount) grouped by time bucket + category
  *
  * Returns ~50-200 rows from the DB instead of 2,000 individual data_rows.
  */

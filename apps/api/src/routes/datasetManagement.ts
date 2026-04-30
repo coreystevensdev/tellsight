@@ -18,7 +18,7 @@ function parseDatasetId(raw: string | undefined): number {
   return id;
 }
 
-// GET /datasets/manage — list non-seed datasets for the org
+// GET /datasets/manage, list non-seed datasets for the org
 datasetManagementRouter.get('/manage', async (req, res: Response) => {
   const user = requireUser(req);
   const { org_id: orgId, isAdmin } = user;
@@ -31,7 +31,7 @@ datasetManagementRouter.get('/manage', async (req, res: Response) => {
   res.json({ data: datasets });
 });
 
-// GET /datasets/manage/:id — single dataset with row/summary/share counts
+// GET /datasets/manage/:id, single dataset with row/summary/share counts
 datasetManagementRouter.get('/manage/:id', async (req, res: Response) => {
   const user = requireUser(req);
   const { org_id: orgId, isAdmin } = user;
@@ -49,7 +49,7 @@ datasetManagementRouter.get('/manage/:id', async (req, res: Response) => {
   res.json({ data: result });
 });
 
-// PATCH /datasets/manage/:id — rename
+// PATCH /datasets/manage/:id, rename
 datasetManagementRouter.patch('/manage/:id', async (req, res: Response) => {
   const user = requireUser(req);
   const { org_id: orgId, sub, isAdmin } = user;
@@ -82,7 +82,7 @@ datasetManagementRouter.patch('/manage/:id', async (req, res: Response) => {
   res.json({ data: updated });
 });
 
-// DELETE /datasets/manage/:id — owner only, cascades, auto-switches active dataset
+// DELETE /datasets/manage/:id, owner only, cascades, auto-switches active dataset
 datasetManagementRouter.delete('/manage/:id', roleGuard('owner'), async (req, res: Response) => {
   const user = requireUser(req);
   const { org_id: orgId, sub, isAdmin } = user;
@@ -130,7 +130,7 @@ datasetManagementRouter.delete('/manage/:id', roleGuard('owner'), async (req, re
   res.json({ data: { deleted: true, newActiveDatasetId } });
 });
 
-// POST /datasets/manage/:id/activate — set as org's active dataset
+// POST /datasets/manage/:id/activate, set as org's active dataset
 datasetManagementRouter.post('/manage/:id/activate', async (req, res: Response) => {
   const user = requireUser(req);
   const { org_id: orgId, sub, isAdmin } = user;

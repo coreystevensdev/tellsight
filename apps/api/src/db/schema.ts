@@ -32,7 +32,7 @@ export const orgs = pgTable('orgs', {
   name: varchar({ length: 255 }).notNull(),
   slug: varchar({ length: 255 }).notNull().unique(),
   businessProfile: jsonb('business_profile'),
-  // Circular FK with datasets — constraint lives in the migration, not here
+  // Circular FK with datasets, constraint lives in the migration, not here
   activeDatasetId: integer('active_dataset_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
@@ -333,7 +333,7 @@ export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
 }));
 
 // Append-only history of cash balance updates. Runway-over-time depends on
-// this existing from day one — backfilling snapshots is impossible.
+// this existing from day one, backfilling snapshots is impossible.
 export const cashBalanceSnapshots = pgTable(
   'cash_balance_snapshots',
   {

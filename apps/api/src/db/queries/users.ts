@@ -2,21 +2,21 @@ import { eq } from 'drizzle-orm';
 import { db } from '../../lib/db.js';
 import { users } from '../schema.js';
 
-/** Cross-org lookup — users table has no org_id (intentional exception for auth flows) */
+/** Cross-org lookup, users table has no org_id (intentional exception for auth flows) */
 export async function findUserByEmail(email: string) {
   return db.query.users.findFirst({
     where: eq(users.email, email),
   });
 }
 
-/** Cross-org lookup — users table has no org_id (intentional exception for auth flows) */
+/** Cross-org lookup, users table has no org_id (intentional exception for auth flows) */
 export async function findUserByGoogleId(googleId: string) {
   return db.query.users.findFirst({
     where: eq(users.googleId, googleId),
   });
 }
 
-/** Cross-org lookup — users table has no org_id (intentional exception for auth flows) */
+/** Cross-org lookup, users table has no org_id (intentional exception for auth flows) */
 export async function findUserById(userId: number) {
   return db.query.users.findFirst({
     where: eq(users.id, userId),

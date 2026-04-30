@@ -23,7 +23,7 @@ export function ThemeToggle() {
   }
 
   if (!mounted) {
-    // SSR placeholder — same dimensions, no icon to avoid hydration mismatch
+    // SSR placeholder, same dimensions, no icon to avoid hydration mismatch
     return (
       <button className="inline-flex h-9 w-9 items-center justify-center rounded-md" disabled aria-hidden>
         <span className="h-4 w-4" />

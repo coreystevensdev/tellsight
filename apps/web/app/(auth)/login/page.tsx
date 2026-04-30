@@ -3,7 +3,7 @@ import { TellsightLogo } from '@/components/common/TellsightLogo';
 import LoginButton from './LoginButton';
 
 export const metadata: Metadata = {
-  title: 'Sign In — Tellsight',
+  title: 'Sign In, Tellsight',
 };
 
 export default async function LoginPage({
@@ -16,7 +16,7 @@ export default async function LoginPage({
 
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-background overflow-hidden">
-      {/* dot grid background — communicates "data" without being literal */}
+      {/* dot grid background, communicates "data" without being literal */}
       <div
         className="absolute inset-0 opacity-[0.4] dark:opacity-[0.15]"
         style={{

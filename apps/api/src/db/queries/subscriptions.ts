@@ -22,7 +22,7 @@ export async function getActiveTier(
           or(
             // active: period still valid OR period not yet populated (just-completed checkout)
             and(eq(subscriptions.status, 'active'), or(gt(subscriptions.currentPeriodEnd, now), isNull(subscriptions.currentPeriodEnd))),
-            // canceled but within paid period — access continues until currentPeriodEnd
+            // canceled but within paid period, access continues until currentPeriodEnd
             and(eq(subscriptions.status, 'canceled'), isNotNull(subscriptions.currentPeriodEnd), gt(subscriptions.currentPeriodEnd, now)),
           ),
         ),
@@ -30,7 +30,7 @@ export async function getActiveTier(
       .limit(1);
     return result.length > 0 ? 'pro' : 'free';
   } catch {
-    // table may not exist yet pre-Epic 5 — all users are free
+    // table may not exist yet pre-Epic 5, all users are free
     return 'free';
   }
 }
@@ -102,7 +102,7 @@ export async function updateSubscriptionStatus(
     .where(
       and(
         eq(subscriptions.stripeSubscriptionId, stripeSubscriptionId),
-        // idempotent — replay is a no-op when already in target status
+        // idempotent, replay is a no-op when already in target status
         ne(subscriptions.status, status),
       ),
     );

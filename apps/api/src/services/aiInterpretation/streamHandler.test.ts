@@ -295,7 +295,7 @@ describe('streamToSSE', () => {
         };
       },
     );
-    // default beforeEach already returns clean — reassert for clarity
+    // default beforeEach already returns clean, reassert for clarity
     mockValidateSummary.mockReturnValue({
       status: 'clean',
       numbersChecked: 3,
@@ -496,7 +496,7 @@ describe('streamToSSE', () => {
     });
   });
 
-  it('flushes headers before pipeline runs — all errors are SSE-delivered', async () => {
+  it('flushes headers before pipeline runs, all errors are SSE-delivered', async () => {
     const callOrder: string[] = [];
     mockRunCurationPipeline.mockImplementation(async () => {
       callOrder.push('pipeline');
@@ -544,7 +544,7 @@ describe('streamToSSE', () => {
     const { logger } = await import('../../lib/logger.js');
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({ err: 'DB constraint violation' }),
-      'failed to cache AI summary — stream already delivered',
+      'failed to cache AI summary, stream already delivered',
     );
   });
 
@@ -579,7 +579,7 @@ describe('streamToSSE', () => {
       mockStreamInterpretation.mockImplementation(
         async (_prompt: string, onText: (d: string) => void) => {
           onText(longText);
-          // abort fires synchronously inside onText — just throw
+          // abort fires synchronously inside onText, just throw
           throw new Error('aborted');
         },
       );
@@ -685,7 +685,7 @@ describe('streamToSSE', () => {
         async (_prompt: string, onText: (d: string) => void, signal?: AbortSignal) => {
           abortSignal = signal;
           onText(longText);
-          // abort fires synchronously inside onText — just throw
+          // abort fires synchronously inside onText, just throw
           throw new Error('aborted');
         },
       );

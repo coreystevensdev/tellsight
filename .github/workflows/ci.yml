@@ -51,7 +51,7 @@ jobs:
         env:
           CI: "true"
 
-  # API tests — Vitest + Drizzle ORM + Anthropic SDK module graph exceeds GitHub
+  # API tests, Vitest + Drizzle ORM + Anthropic SDK module graph exceeds GitHub
   # Actions free-tier runner memory (7GB) during module resolution. All 445 tests
   # pass locally. Marked continue-on-error until we move to larger runners.
   test-api:
@@ -181,7 +181,7 @@ jobs:
   # endpoint to return 200. Not blocked on test-api (continue-on-error: true);
   # if docker-smoke is green, the main pipeline passed. Secrets required:
   # RAILWAY_DEPLOY_HOOK_URL, VERCEL_DEPLOY_HOOK_URL, PRODUCTION_URL.
-  # Preflight step cleanly skips when any secret is missing — keeps CI green
+  # Preflight step cleanly skips when any secret is missing, keeps CI green
   # during the infra-provisioning window before Railway + Vercel exist.
   deploy:
     name: Deploy to Production

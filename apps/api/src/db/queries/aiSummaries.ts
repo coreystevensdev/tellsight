@@ -18,7 +18,7 @@ export async function getCachedSummary(
 }
 
 /** Returns the most recent summary regardless of staleness.
- *  Callers that need the staleness signal (e.g., the "data updated — refresh?"
+ *  Callers that need the staleness signal (e.g., the "data updated, refresh?"
  *  banner) use this; the streaming cache-hit path keeps using getCachedSummary. */
 export async function getLatestSummary(
   orgId: number,
@@ -58,7 +58,7 @@ export async function storeSummary(
 }
 
 /** Invalidates cached summaries. Pass datasetId to scope invalidation
- *  to the affected dataset only — avoids unnecessary Claude API calls. */
+ *  to the affected dataset only, avoids unnecessary Claude API calls. */
 export async function markStale(
   orgId: number,
   client: typeof db | DbTransaction = db,

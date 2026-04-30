@@ -23,7 +23,7 @@ export async function subscriptionGate(req: Request, _res: Response, next: NextF
   try {
     req.subscriptionTier = await subscriptionsQueries.getActiveTier(orgId);
   } catch (err) {
-    logger.warn({ orgId, err: (err as Error).message }, 'subscription lookup failed — defaulting to free');
+    logger.warn({ orgId, err: (err as Error).message }, 'subscription lookup failed, defaulting to free');
     req.subscriptionTier = 'free';
   }
 

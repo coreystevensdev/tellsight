@@ -72,9 +72,9 @@ export function initSyncWorker(): Worker {
         );
         return result;
       } catch (err) {
-        // TokenRevokedError is terminal — don't retry
+        // TokenRevokedError is terminal, don't retry
         if (err instanceof TokenRevokedError) {
-          logger.warn({ jobId: job.id, connectionId }, 'QB token revoked — marking job unrecoverable');
+          logger.warn({ jobId: job.id, connectionId }, 'QB token revoked, marking job unrecoverable');
           throw new Error(`Token revoked: ${err.message}`);
         }
         throw err;

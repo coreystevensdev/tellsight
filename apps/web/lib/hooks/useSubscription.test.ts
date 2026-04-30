@@ -14,7 +14,7 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
-// fresh SWR cache per test — prevents deduplication across tests
+// fresh SWR cache per test, prevents deduplication across tests
 function wrapper({ children }: { children: ReactNode }) {
   return createElement(
     SWRConfig,
@@ -23,7 +23,7 @@ function wrapper({ children }: { children: ReactNode }) {
   );
 }
 
-// dynamic imports per test avoid Vitest module caching — each test gets a fresh hook instance
+// dynamic imports per test avoid Vitest module caching, each test gets a fresh hook instance
 describe('useSubscription', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -75,7 +75,7 @@ describe('useSubscription', () => {
   });
 
   it('uses fallbackData when provided', async () => {
-    // fetch never resolves — fallbackData should surface immediately
+    // fetch never resolves, fallbackData should surface immediately
     mockFetch.mockReturnValue(new Promise(() => {}));
 
     const { useSubscription } = await import('./useSubscription.js');

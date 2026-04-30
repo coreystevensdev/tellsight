@@ -172,7 +172,7 @@ function detectAnomalies(groups: Map<string, CategoryGroup>): ComputedStat[] {
     const q3 = quantile(sorted, 0.75);
     const iqr = q3 - q1;
 
-    // all identical values — no anomalies possible
+    // all identical values, no anomalies possible
     if (iqr === 0) continue;
 
     const lower = q1 - 1.5 * iqr;
@@ -421,7 +421,7 @@ export type MonthlyBucketMap = Map<string, { revenue: number; expenses: number }
 
 /**
  * Group rows into monthly revenue/expenses buckets. The single row-access
- * seam for cash-flow analysis — every downstream function works on the map,
+ * seam for cash-flow analysis, every downstream function works on the map,
  * not rows. Mirrors the convention `computeMarginTrend` and
  * `monthlyNetsWindow` have used internally since 8.1; extracted here so the
  * SQL path can reuse the downstream analysis unchanged.
@@ -452,7 +452,7 @@ export function bucketRowsByMonth(rows: DataRow[]): MonthlyBucketMap {
  * guards (zero-revenue month, non-positive avg revenue, break-even band),
  * and emits a CashFlowStat or [].
  *
- * This is the shared analytical core — both computeCashFlow(rows) (for the
+ * This is the shared analytical core, both computeCashFlow(rows) (for the
  * curation pipeline) and the /cash-forecast endpoint (for SQL-aggregated data)
  * call this. Suppression semantics are identical across both paths.
  */
@@ -469,7 +469,7 @@ export function cashFlowFromBuckets(
     return { month: m, revenue: bucket.revenue, expenses: bucket.expenses, net: bucket.revenue - bucket.expenses };
   });
 
-  // Guards run in order — each is a reason to say nothing rather than say
+  // Guards run in order, each is a reason to say nothing rather than say
   // something misleading. A data gap or ill-defined threshold should never
   // turn into AI commentary.
   if (recentMonths.some((m) => m.revenue === 0)) return [];
@@ -493,7 +493,7 @@ export function cashFlowFromBuckets(
 
 /**
  * Trailing-window cash flow from raw rows. Thin wrapper over the bucket-based
- * analysis — see cashFlowFromBuckets for the suppression contract.
+ * analysis, see cashFlowFromBuckets for the suppression contract.
  */
 export function computeCashFlow(rows: DataRow[], trailingMonths = 3): CashFlowStat[] {
   return cashFlowFromBuckets(bucketRowsByMonth(rows), trailingMonths);
@@ -511,9 +511,9 @@ export function runwayConfidence(
 /**
  * Consumes an already-computed CashFlowStat (never raw DataRow[]) plus an
  * owner-provided cash balance. Privacy boundary: everything here is already
- * aggregated — the LLM gets numbers, not rows.
+ * aggregated, the LLM gets numbers, not rows.
  *
- * Suppression cases return [] rather than throw — nothing honest to say.
+ * Suppression cases return [] rather than throw, nothing honest to say.
  *   - No cash flow signal (business not burning, or cash flow suppressed upstream)
  *   - No cashOnHand or zero balance
  *   - Missing cashAsOfDate (can't derive confidence)
@@ -568,7 +568,7 @@ export function computeRunway(
  * computeBreakEven treat pre-revenue businesses as "gap equals the full target."
  *
  * Not pulled from CashFlowStat.details.recentMonths because CashFlow suppresses
- * for near-break-even businesses — borrowing its data would silently suppress
+ * for near-break-even businesses, borrowing its data would silently suppress
  * break-even for healthy orgs that genuinely need the reassuring framing.
  */
 function latestMonthlyRevenue(rows: DataRow[]): number {
@@ -601,19 +601,19 @@ export function breakEvenConfidence(
 
 /**
  * Consumes an already-computed MarginTrendStat plus two scalars. Privacy
- * boundary: no DataRow[] — the aggregation is done upstream.
+ * boundary: no DataRow[], the aggregation is done upstream.
  *
- * Suppression cases return [] — six of them, each a reason to say nothing
+ * Suppression cases return [], six of them, each a reason to say nothing
  * rather than something misleading:
  *   - No margin signal (MarginTrend suppressed: too little data or zero revenue)
  *   - monthlyFixedCosts null/undefined/zero (nothing to solve for)
  *   - currentMonthlyRevenue is NaN (upstream aggregation bug guard)
  *   - Non-positive margin (negative break-even is nonsensical; zero is infinite)
- *   - Margin below 2% (produces implausibly large break-even — 1% margin
+ *   - Margin below 2% (produces implausibly large break-even, 1% margin
  *     on $10k fixed costs = $1M revenue target, which misleads more than informs)
  *
  * The 2% threshold is editorial, not mathematical. CashFlow uses a 5% band for
- * its own suppression — different concerns, different thresholds, both documented.
+ * its own suppression, different concerns, different thresholds, both documented.
  */
 export function computeBreakEven(
   marginStats: MarginTrendStat[],
@@ -651,7 +651,7 @@ export function computeBreakEven(
 
 /**
  * Net cash flow per month on pre-aggregated buckets. Drops zero-revenue
- * months (gap handling — same as cashFlowFromBuckets), returns the most
+ * months (gap handling, same as cashFlowFromBuckets), returns the most
  * recent `windowSize` months in chronological order. Output feeds directly
  * into computeCashForecast.
  */
@@ -665,7 +665,7 @@ export function netsFromBuckets(
   const nets: number[] = [];
   for (const m of allMonths) {
     const bucket = buckets.get(m)!;
-    if (bucket.revenue === 0) continue; // gap month — don't forecast on zero-revenue signal
+    if (bucket.revenue === 0) continue; // gap month, don't forecast on zero-revenue signal
     months.push(m);
     nets.push(bucket.revenue - bucket.expenses);
   }
@@ -675,7 +675,7 @@ export function netsFromBuckets(
 }
 
 /**
- * Monthly nets window from raw rows. Thin wrapper — see netsFromBuckets.
+ * Monthly nets window from raw rows. Thin wrapper, see netsFromBuckets.
  * This is the legacy row-based entry point; endpoints that already have
  * pre-aggregated data (SQL GROUP BY) should call netsFromBuckets directly
  * to avoid the row fetch.
@@ -687,7 +687,7 @@ export function monthlyNetsWindow(
   return netsFromBuckets(bucketRowsByMonth(rows), windowSize);
 }
 
-// `true` when any net is more than 2σ from the window mean — flags an outlier
+// `true` when any net is more than 2σ from the window mean, flags an outlier
 // month that should soften forecast confidence even with enough data points.
 function hasVolatileNets(values: number[]): boolean {
   if (values.length < 2) return false;
@@ -716,11 +716,11 @@ function nextMonthKey(yyyymm: string, delta: number): string {
  * is degenerate (all nets identical), which honestly reflects "no clear trend"
  * without suppressing a useful forecast.
  *
- * Privacy boundary: signature takes aggregated scalars only — monthlyNets is
+ * Privacy boundary: signature takes aggregated scalars only, monthlyNets is
  * the { months, nets } output of monthlyNetsWindow. No DataRow[] ever enters
  * this function. Matches the 8.3 computeBreakEven boundary exactly.
  *
- * Suppression cases return [] — each a reason to say nothing rather than
+ * Suppression cases return [], each a reason to say nothing rather than
  * something misleading:
  *   - No cash flow signal (CashFlow suppressed upstream)
  *   - No cashOnHand, or zero balance (nowhere to start the trajectory)
@@ -755,7 +755,7 @@ export function computeCashForecast(
   // Apr, May, Jun with March missing). The regression treats these as evenly
   // spaced, projecting the trend over the observed non-gap months into the
   // next three calendar months. Businesses with persistent seasonal gaps may
-  // see the slope understate the forward direction — acceptable for a v1
+  // see the slope understate the forward direction, acceptable for a v1
   // forecast; noted for future weighted-regression work.
   const points: [number, number][] = nets.map((y, i) => [i, y]);
   const reg = linearRegression(points);
@@ -787,7 +787,7 @@ export function computeCashForecast(
   const crossIdx = projectedMonths.findIndex((pm) => pm.projectedBalance < 0);
   const crossesZeroAtMonth: number | null = crossIdx === -1 ? null : crossIdx + 1;
 
-  // First-match rule table — expressed as data so the contract reads like AC #12.
+  // First-match rule table, expressed as data so the contract reads like AC #12.
   // The final `true` default absorbs three 'moderate' cases the explicit rules
   // don't hit: (a) 31-90 days old with non-volatile nets, (b) fresh with a 2σ
   // outlier, (c) fewer than 31 days old but volatile. None earn 'high'; rule

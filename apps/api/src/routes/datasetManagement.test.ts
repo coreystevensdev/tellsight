@@ -236,9 +236,9 @@ describe('DELETE /datasets/manage/:id', () => {
     mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload);
     mockGetDatasetWithCounts.mockResolvedValueOnce({ id: 4, name: 'Active Dataset', orgId: 1, rowCount: 200, summaryCount: 3, shareCount: 2 });
     mockDeleteDataset.mockResolvedValueOnce(undefined);
-    // ON DELETE SET NULL cleared active_dataset_id — it's null now
+    // ON DELETE SET NULL cleared active_dataset_id, it's null now
     mockGetActiveDatasetId.mockResolvedValueOnce(null);
-    // remaining datasets — pick the first non-seed one
+    // remaining datasets, pick the first non-seed one
     mockGetDatasetsByOrg.mockResolvedValueOnce([
       { id: 6, name: 'Next Newest', isSeedData: false },
       { id: 1, name: 'Seed', isSeedData: true },

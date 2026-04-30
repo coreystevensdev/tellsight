@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 
 import { env } from '../../config.js';
 
-// Purpose prefix in the HMAC input prevents cross-context reuse — a valid access
+// Purpose prefix in the HMAC input prevents cross-context reuse, a valid access
 // token or share token cannot be replayed as an unsubscribe token, because the
 // signature is bound to the literal string 'unsubscribe:'.
 const PURPOSE = 'unsubscribe';

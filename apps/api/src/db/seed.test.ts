@@ -221,9 +221,9 @@ describe('seed data generation', () => {
   });
 
   describe('admin role connection', () => {
-    it('no longer calls SET LOCAL — app_admin role has BYPASSRLS', async () => {
+    it('no longer calls SET LOCAL, app_admin role has BYPASSRLS', async () => {
       // With the dual-role pattern, seed.ts connects as app_admin (BYPASSRLS).
-      // Verify that tx.execute is NOT called — no SET LOCAL needed.
+      // Verify that tx.execute is NOT called, no SET LOCAL needed.
       mockOrgsFindFirst.mockResolvedValueOnce({ id: 1, slug: 'seed-demo' });
       mockDatasetsFindFirst.mockResolvedValueOnce({ id: 5, orgId: 1, isSeedData: true });
 

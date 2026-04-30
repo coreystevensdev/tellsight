@@ -1,4 +1,4 @@
-# QuickBooks Integration — Design Spec
+# QuickBooks Integration, Design Spec
 
 **Date:** 2026-04-15
 **Status:** Approved
@@ -12,12 +12,12 @@ Users currently get data into TellSight by uploading CSVs. Most small businesses
 
 | Decision | Choice | Reasoning |
 |----------|--------|-----------|
-| Tier gating | Available to all (free + pro) | QB connect is an easier onboarding path than CSV — don't gate it |
+| Tier gating | Available to all (free + pro) | QB connect is an easier onboarding path than CSV, don't gate it |
 | Data pull scope | All available data, all types | Pull everything QB offers. Normalize transactions to `data_rows`, store rest in `metadata` jsonb. Avoids re-syncing history when future features need it. |
 | Sync frequency | Daily auto (3am UTC) + manual refresh | Keeps data fresh without burning API quota. User can force-refresh anytime. |
 | Date range | All available (no artificial limit) | QB Online holds ~7 years. Let the date range filter handle scoping. |
 | Sync architecture | BullMQ (Redis-backed job queue) | Production-grade: retry, concurrency control, crash recovery, scheduling. Redis already running. |
-| AI summary on sync | Mark stale + nudge | Avoids burning Claude credits on every daily sync. User sees "data updated — refresh insights?" banner. |
+| AI summary on sync | Mark stale + nudge | Avoids burning Claude credits on every daily sync. User sees "data updated, refresh insights?" banner. |
 | Connect UI location | Upload page (shortcut) + Settings → Integrations (management) | Onboard where users look for data, manage where users look for settings. |
 | Disconnect behavior | Keep data, delete connection | User keeps their `data_rows` and charts. Only the OAuth link is severed. |
 
@@ -76,7 +76,7 @@ CREATE TABLE sync_jobs (
 - `data_rows.source_type`: `'quickbooks'` already in the enum
 - `data_rows.parent_category`: maps to QB account type (`'Income'` or `'Expenses'`)
 - `data_rows.metadata` jsonb: stores full QB transaction response (vendor, memo, doc number, QB account code, QB transaction ID)
-- `datasets.source_type`: `'quickbooks'` — one dataset per QB connection
+- `datasets.source_type`: `'quickbooks'`, one dataset per QB connection
 
 ### Idempotency
 
@@ -90,7 +90,7 @@ Each QB transaction gets `metadata.qb_id` set to its QuickBooks transaction ID. 
 - Algorithm: AES-256-GCM
 - Key: `ENCRYPTION_KEY` in config.ts (32-byte hex string)
 - Each token gets a unique IV (stored alongside ciphertext as `iv:authTag:ciphertext` in the column)
-- Decrypt only when making QB API calls — never expose plaintext tokens in logs or responses
+- Decrypt only when making QB API calls, never expose plaintext tokens in logs or responses
 
 ## OAuth Flow
 
@@ -107,19 +107,19 @@ Each QB transaction gets `metadata.qb_id` set to its QuickBooks transaction ID. 
 9. Backend exchanges code for access + refresh tokens (server-to-server POST to Intuit token endpoint)
 10. Encrypt tokens, create `integration_connections` row
 11. Enqueue `initial-sync` job via BullMQ
-12. Redirect to `/dashboard` (frontend shows "QuickBooks connected — syncing your data" toast via query param)
+12. Redirect to `/dashboard` (frontend shows "QuickBooks connected, syncing your data" toast via query param)
 
 ### Token refresh
 
 Before any QB API call:
-1. Check `access_token_expires_at` — if > 5 minutes remaining, proceed
+1. Check `access_token_expires_at`, if > 5 minutes remaining, proceed
 2. If expired or near-expiry: decrypt refresh token, call Intuit token endpoint
 3. Intuit returns new access + refresh tokens (both rotate)
 4. Re-encrypt, update `integration_connections` row
 5. Proceed with API call using fresh access token
 
-If refresh fails (401 — token revoked by user in QuickBooks):
-1. Set `sync_status: 'error'`, `sync_error: 'QuickBooks access was revoked — please reconnect'`
+If refresh fails (401, token revoked by user in QuickBooks):
+1. Set `sync_status: 'error'`, `sync_error: 'QuickBooks access was revoked, please reconnect'`
 2. UI shows reconnect prompt on next load
 
 ### Disconnect
@@ -129,17 +129,17 @@ If refresh fails (401 — token revoked by user in QuickBooks):
 3. Best-effort revoke at Intuit's endpoint (fire-and-forget)
 4. Delete `integration_connections` row (cascades to `sync_jobs`)
 5. Remove BullMQ repeatable job for this org
-6. Datasets with `source_type: 'quickbooks'` remain — user keeps their historical data
+6. Datasets with `source_type: 'quickbooks'` remain, user keeps their historical data
 7. Track `integration.disconnected` analytics event
 
 ### Config additions (config.ts)
 
 ```
-QUICKBOOKS_CLIENT_ID      — Intuit developer app client ID
-QUICKBOOKS_CLIENT_SECRET  — Intuit developer app client secret
-QUICKBOOKS_REDIRECT_URI   — callback URL (e.g., https://app.tellsight.com/integrations/quickbooks/callback)
-QUICKBOOKS_ENVIRONMENT    — 'sandbox' | 'production'
-ENCRYPTION_KEY            — 32-byte hex for AES-256-GCM token encryption
+QUICKBOOKS_CLIENT_ID     , Intuit developer app client ID
+QUICKBOOKS_CLIENT_SECRET , Intuit developer app client secret
+QUICKBOOKS_REDIRECT_URI  , callback URL (e.g., https://app.tellsight.com/integrations/quickbooks/callback)
+QUICKBOOKS_ENVIRONMENT   , 'sandbox' | 'production'
+ENCRYPTION_KEY           , 32-byte hex for AES-256-GCM token encryption
 ```
 
 ## Sync Architecture
@@ -161,9 +161,9 @@ ENCRYPTION_KEY            — 32-byte hex for AES-256-GCM token encryption
 
 ### Sync pipeline (shared by all job types)
 
-1. **Update status** — set `integration_connections.sync_status = 'syncing'`, create `sync_jobs` row
+1. **Update status**, set `integration_connections.sync_status = 'syncing'`, create `sync_jobs` row
 2. **Refresh token** if needed (see OAuth section)
-3. **Fetch from QB API** — paginated, 1000 items per request:
+3. **Fetch from QB API**, paginated, 1000 items per request:
    - Transaction types: Purchase, Invoice, Payment, SalesReceipt, Bill, BillPayment, JournalEntry, Deposit, Transfer, Estimate, CreditMemo, RefundReceipt, VendorCredit
    - For initial sync: `SELECT * FROM {TransactionType}`
    - For incremental: `SELECT * FROM {TransactionType} WHERE MetaData.LastUpdatedTime > '{last_synced_at}'`
@@ -176,12 +176,12 @@ ENCRYPTION_KEY            — 32-byte hex for AES-256-GCM token encryption
    - `label` ← vendor/customer name or memo
    - `metadata` ← full QB transaction JSON including `qb_id`, `TxnType`, `DocNumber`, `PrivateNote`, etc.
    - `source_type` ← `'quickbooks'`
-5. **Upsert** — batch insert/update using QB transaction ID as idempotency key
-6. **Update dataset** — create dataset `"QuickBooks — {company_name}"` on initial sync, or update `name` if company name changed
-7. **Set active** — on initial sync, set this dataset as the org's `active_dataset_id`
-8. **Mark stale** — call `aiSummaries.markStale(orgId)` so the dashboard shows the refresh nudge
-9. **Complete** — update `sync_jobs` row (completed_at, rows_synced), set connection `sync_status: 'idle'`, `last_synced_at: now()`
-10. **Track event** — `integration.synced` with `{ provider, trigger, rowsSynced }`
+5. **Upsert**, batch insert/update using QB transaction ID as idempotency key
+6. **Update dataset**, create dataset `"QuickBooks, {company_name}"` on initial sync, or update `name` if company name changed
+7. **Set active**, on initial sync, set this dataset as the org's `active_dataset_id`
+8. **Mark stale**, call `aiSummaries.markStale(orgId)` so the dashboard shows the refresh nudge
+9. **Complete**, update `sync_jobs` row (completed_at, rows_synced), set connection `sync_status: 'idle'`, `last_synced_at: now()`
+10. **Track event**, `integration.synced` with `{ provider, trigger, rowsSynced }`
 
 ### Error handling
 
@@ -206,15 +206,15 @@ On API startup:
 
 ### New routes
 
-Most routes mount at `/integrations/quickbooks` on the protected router. The callback is an exception — it mounts on the public router (before `authMiddleware`) because Intuit redirects the browser there without auth cookies. CSRF protection comes from the state cookie instead.
+Most routes mount at `/integrations/quickbooks` on the protected router. The callback is an exception, it mounts on the public router (before `authMiddleware`) because Intuit redirects the browser there without auth cookies. CSRF protection comes from the state cookie instead.
 
 | Method | Route | Auth | Purpose |
 |--------|-------|------|---------|
 | `POST` | `/integrations/quickbooks/connect` | Required | Generate OAuth URL, set state cookie |
-| `GET` | `/integrations/quickbooks/callback` | Public (state cookie validates) | OAuth callback — exchange code, store tokens, enqueue sync |
+| `GET` | `/integrations/quickbooks/callback` | Public (state cookie validates) | OAuth callback, exchange code, store tokens, enqueue sync |
 | `GET` | `/integrations/quickbooks/status` | Required | Connection info + sync status |
 | `POST` | `/integrations/quickbooks/sync` | Required | Trigger manual refresh |
-| `DELETE` | `/integrations/quickbooks` | Required (owner only) | Disconnect — revoke token, delete connection |
+| `DELETE` | `/integrations/quickbooks` | Required (owner only) | Disconnect, revoke token, delete connection |
 
 ### Response shapes
 
@@ -254,14 +254,14 @@ Most routes mount at `/integrations/quickbooks` on the protected router. The cal
 
 ### Analytics events
 
-- `integration.connected` — `{ provider: 'quickbooks', realmId }`
-- `integration.disconnected` — `{ provider: 'quickbooks' }`
-- `integration.synced` — `{ provider: 'quickbooks', trigger: 'initial' | 'scheduled' | 'manual', rowsSynced }`
-- `integration.sync_failed` — `{ provider: 'quickbooks', error, trigger }`
+- `integration.connected`, `{ provider: 'quickbooks', realmId }`
+- `integration.disconnected`, `{ provider: 'quickbooks' }`
+- `integration.synced`, `{ provider: 'quickbooks', trigger: 'initial' | 'scheduled' | 'manual', rowsSynced }`
+- `integration.sync_failed`, `{ provider: 'quickbooks', error, trigger }`
 
 ## Frontend
 
-### 1. Upload page — dual onboarding
+### 1. Upload page, dual onboarding
 
 Modify the existing upload page to show two options side-by-side:
 
@@ -299,7 +299,7 @@ New settings page showing connection status:
 - Frontend polls `GET /integrations/quickbooks/status` every 5 seconds while `syncStatus === 'syncing'`
 - Stops polling when status changes to `'idle'` or `'error'`
 
-### 3. Dashboard — stale data nudge
+### 3. Dashboard, stale data nudge
 
 When AI summary is stale (data synced since last AI generation):
 - Show a banner inside the AI summary card: "Your data has been updated"
@@ -322,7 +322,7 @@ SETTINGS
 | Scenario | Response | UI |
 |----------|----------|-----|
 | QB OAuth denied by user | Redirect to `/dashboard?qb=denied` | Toast: "QuickBooks connection was cancelled" |
-| State token mismatch | Redirect to `/dashboard?qb=error` | Toast: "Connection failed — please try again" |
+| State token mismatch | Redirect to `/dashboard?qb=error` | Toast: "Connection failed, please try again" |
 | Token exchange fails | Redirect to `/dashboard?qb=error` | Same toast |
 | Sync fails (API error) | `sync_status: 'error'` in DB | Settings shows error + retry option |
 | Token revoked externally | `sync_status: 'error'` | Settings shows "Reconnect" |
@@ -380,36 +380,36 @@ All optional with defaults for development (integration disabled when not config
 ## Dependencies
 
 **New npm packages:**
-- `bullmq` — job queue (Redis-backed, already have Redis)
-- `node-quickbooks` or raw `fetch` — QB API client (raw fetch preferred for control)
+- `bullmq`, job queue (Redis-backed, already have Redis)
+- `node-quickbooks` or raw `fetch`, QB API client (raw fetch preferred for control)
 
 **No new infrastructure.** Redis already running, Postgres already running.
 
 ## Files to Create or Modify
 
 ### New files
-- `apps/api/src/services/integrations/quickbooks/oauth.ts` — OAuth flow (connect, callback, refresh, revoke)
-- `apps/api/src/services/integrations/quickbooks/sync.ts` — sync pipeline (fetch, normalize, upsert)
-- `apps/api/src/services/integrations/quickbooks/api.ts` — QB API client (paginated fetch, token refresh)
-- `apps/api/src/services/integrations/quickbooks/normalize.ts` — transaction → data_rows mapping
-- `apps/api/src/services/integrations/encryption.ts` — AES-256-GCM encrypt/decrypt
-- `apps/api/src/services/integrations/worker.ts` — BullMQ worker setup
-- `apps/api/src/routes/integrations.ts` — 5 API routes
-- `apps/api/src/routes/integrations.test.ts` — route tests
-- `apps/api/src/db/queries/integrationConnections.ts` — CRUD for connections
-- `apps/api/src/db/queries/syncJobs.ts` — CRUD for sync history
-- `apps/api/drizzle/migrations/0016_add-integration-tables.sql` — migration
-- `apps/web/app/settings/integrations/page.tsx` — settings page
-- `apps/web/app/settings/integrations/IntegrationsManager.tsx` — client component
-- `apps/web/components/integrations/QuickBooksCard.tsx` — upload page card
+- `apps/api/src/services/integrations/quickbooks/oauth.ts`, OAuth flow (connect, callback, refresh, revoke)
+- `apps/api/src/services/integrations/quickbooks/sync.ts`, sync pipeline (fetch, normalize, upsert)
+- `apps/api/src/services/integrations/quickbooks/api.ts`, QB API client (paginated fetch, token refresh)
+- `apps/api/src/services/integrations/quickbooks/normalize.ts`, transaction → data_rows mapping
+- `apps/api/src/services/integrations/encryption.ts`, AES-256-GCM encrypt/decrypt
+- `apps/api/src/services/integrations/worker.ts`, BullMQ worker setup
+- `apps/api/src/routes/integrations.ts`, 5 API routes
+- `apps/api/src/routes/integrations.test.ts`, route tests
+- `apps/api/src/db/queries/integrationConnections.ts`, CRUD for connections
+- `apps/api/src/db/queries/syncJobs.ts`, CRUD for sync history
+- `apps/api/drizzle/migrations/0016_add-integration-tables.sql`, migration
+- `apps/web/app/settings/integrations/page.tsx`, settings page
+- `apps/web/app/settings/integrations/IntegrationsManager.tsx`, client component
+- `apps/web/components/integrations/QuickBooksCard.tsx`, upload page card
 
 ### Modified files
-- `apps/api/src/db/schema.ts` — add `integrationConnections` + `syncJobs` tables
-- `apps/api/src/db/queries/index.ts` — export new query modules
-- `apps/api/src/routes/protected.ts` — mount integrations router
-- `apps/api/src/config.ts` — add QB + encryption env vars
-- `apps/api/src/index.ts` — initialize BullMQ worker on startup
-- `apps/web/app/upload/UploadDropzone.tsx` — add QB connect card alongside CSV
-- `apps/web/app/dashboard/AiSummaryCard.tsx` — add stale data nudge banner
-- `apps/web/components/layout/Sidebar.tsx` — add Integrations link
-- `packages/shared/src/constants/index.ts` — add integration analytics events
+- `apps/api/src/db/schema.ts`, add `integrationConnections` + `syncJobs` tables
+- `apps/api/src/db/queries/index.ts`, export new query modules
+- `apps/api/src/routes/protected.ts`, mount integrations router
+- `apps/api/src/config.ts`, add QB + encryption env vars
+- `apps/api/src/index.ts`, initialize BullMQ worker on startup
+- `apps/web/app/upload/UploadDropzone.tsx`, add QB connect card alongside CSV
+- `apps/web/app/dashboard/AiSummaryCard.tsx`, add stale data nudge banner
+- `apps/web/components/layout/Sidebar.tsx`, add Integrations link
+- `packages/shared/src/constants/index.ts`, add integration analytics events

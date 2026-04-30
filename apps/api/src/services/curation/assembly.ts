@@ -12,11 +12,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_VERSION = 'v1.6';
 const usd = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
 
-// Signed currency with explicit `+` for positives — used for CashFlow and
+// Signed currency with explicit `+` for positives, used for CashFlow and
 // Runway net figures where the reader expects to see direction at a glance.
 const usdSigned = (n: number) => `${n >= 0 ? '+' : '-'}$${usd.format(Math.abs(n))}`;
 
-// Signed currency that omits the `+` for positives — used for break-even gap
+// Signed currency that omits the `+` for positives, used for break-even gap
 // and forecast balances where a bare `$X` reads naturally and `-$X` flags
 // the negative case. Matches the editorial posture of the owner framing.
 const usdMinus = (n: number) => (n >= 0 ? `$${usd.format(n)}` : `-$${usd.format(Math.abs(n))}`);
@@ -41,7 +41,7 @@ function loadTemplate(version: string): SplitTemplate {
       user: readFileSync(splitUser, 'utf-8'),
     };
   } catch {
-    // Split files absent — fall back to single-file convention.
+    // Split files absent, fall back to single-file convention.
   }
 
   const singlePath = resolve(dir, `${version}.md`);
@@ -91,28 +91,28 @@ function formatStat(insight: ScoredInsight): string {
       return `- [${category}] Year-over-Year (${stat.details.month}): $${usd.format(stat.details.currentYear)} in ${stat.details.currentYearLabel} vs $${usd.format(stat.details.priorYear)} in ${stat.details.priorYearLabel} (${stat.details.changePercent >= 0 ? '+' : ''}${stat.details.changePercent.toFixed(1)}%, relevance: ${score.toFixed(2)})`;
     case StatType.MarginTrend: {
       const dir = stat.details.direction;
-      return `- [Overall] Margin Trend: ${dir} — recent ${stat.details.recentMarginPercent.toFixed(1)}% vs prior ${stat.details.priorMarginPercent.toFixed(1)}% (revenue ${stat.details.revenueGrowthPercent >= 0 ? '+' : ''}${stat.details.revenueGrowthPercent.toFixed(1)}%, expenses ${stat.details.expenseGrowthPercent >= 0 ? '+' : ''}${stat.details.expenseGrowthPercent.toFixed(1)}%, relevance: ${score.toFixed(2)})`;
+      return `- [Overall] Margin Trend: ${dir}, recent ${stat.details.recentMarginPercent.toFixed(1)}% vs prior ${stat.details.priorMarginPercent.toFixed(1)}% (revenue ${stat.details.revenueGrowthPercent >= 0 ? '+' : ''}${stat.details.revenueGrowthPercent.toFixed(1)}%, expenses ${stat.details.expenseGrowthPercent >= 0 ? '+' : ''}${stat.details.expenseGrowthPercent.toFixed(1)}%, relevance: ${score.toFixed(2)})`;
     }
     case StatType.SeasonalProjection:
       return `- [${category}] Seasonal Projection: ${stat.details.projectedMonth} estimated at $${usd.format(stat.details.projectedAmount)} based on ${stat.details.basisMonths.join(', ')} (confidence: ${stat.details.confidence}, relevance: ${score.toFixed(2)})`;
     case StatType.CashFlow:
-      return `- [Overall] Cash Flow: ${stat.details.direction} — net ${usdSigned(stat.details.monthlyNet)}/mo over ${stat.details.trailingMonths} months (${stat.details.monthsBurning} burning, relevance: ${score.toFixed(2)})`;
+      return `- [Overall] Cash Flow: ${stat.details.direction}, net ${usdSigned(stat.details.monthlyNet)}/mo over ${stat.details.trailingMonths} months (${stat.details.monthsBurning} burning, relevance: ${score.toFixed(2)})`;
     case StatType.Runway: {
       const cash = `$${usd.format(stat.details.cashOnHand)}`;
       const asOf = stat.details.cashAsOfDate.slice(0, 10); // YYYY-MM-DD
-      return `- [Overall] Runway: ${stat.details.runwayMonths.toFixed(1)} months — net ${usdSigned(stat.details.monthlyNet)}/mo, cash ${cash} as of ${asOf} (confidence: ${stat.details.confidence}, relevance: ${score.toFixed(2)})`;
+      return `- [Overall] Runway: ${stat.details.runwayMonths.toFixed(1)} months, net ${usdSigned(stat.details.monthlyNet)}/mo, cash ${cash} as of ${asOf} (confidence: ${stat.details.confidence}, relevance: ${score.toFixed(2)})`;
     }
     case StatType.BreakEven: {
       const be = `$${usd.format(stat.details.breakEvenRevenue)}`;
       const cur = `$${usd.format(stat.details.currentMonthlyRevenue)}`;
-      return `- [Overall] Break-Even: ${be}/mo at ${stat.details.marginPercent.toFixed(1)}% margin — current revenue ${cur}/mo, gap ${usdMinus(stat.details.gap)} (confidence: ${stat.details.confidence}, relevance: ${score.toFixed(2)})`;
+      return `- [Overall] Break-Even: ${be}/mo at ${stat.details.marginPercent.toFixed(1)}% margin, current revenue ${cur}/mo, gap ${usdMinus(stat.details.gap)} (confidence: ${stat.details.confidence}, relevance: ${score.toFixed(2)})`;
     }
     case StatType.CashForecast: {
       const chain = [stat.details.startingBalance, ...stat.details.projectedMonths.map((p) => p.projectedBalance)]
         .map(usdMinus)
         .join(' → ');
       const crossing = stat.details.crossesZeroAtMonth !== null
-        ? ` — balance crosses zero around month ${stat.details.crossesZeroAtMonth}`
+        ? `, balance crosses zero around month ${stat.details.crossesZeroAtMonth}`
         : '';
       return `- [Overall] Cash Forecast: balance ${chain} over next 3 months${crossing} (method: ${stat.details.method}, confidence: ${stat.details.confidence}, relevance: ${score.toFixed(2)})`;
     }

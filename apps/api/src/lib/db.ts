@@ -20,5 +20,5 @@ export const adminClient = postgres(env.DATABASE_ADMIN_URL, {
 export const db = drizzle(queryClient, { schema });
 export const dbAdmin = drizzle(adminClient, { schema });
 
-/** Transaction client type — use for query functions that optionally accept a tx */
+/** Transaction client type, use for query functions that optionally accept a tx */
 export type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];

@@ -51,11 +51,11 @@ export async function generateMetadata({
   const result = await fetchShare(token);
 
   if (!result.ok) {
-    return { title: 'Shared Insight — Tellsight' };
+    return { title: 'Shared Insight, Tellsight' };
   }
 
   const { orgName, aiSummaryContent } = result.data;
-  // strip <stat id="..."/> tokens before truncation — otherwise social
+  // strip <stat id="..."/> tokens before truncation, otherwise social
   // unfurls (Twitter/Facebook/iMessage) surface raw markup when a tag
   // lands inside the truncation window
   const cleanContent = stripAllStatTags(aiSummaryContent);
@@ -63,7 +63,7 @@ export async function generateMetadata({
   const description = truncateAtWord(cleanContent, 150);
 
   return {
-    title: `${orgName} — Business Insight`,
+    title: `${orgName}, Business Insight`,
     openGraph: {
       title: ogTitle,
       description,

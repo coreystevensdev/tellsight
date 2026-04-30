@@ -3,9 +3,9 @@ export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 export const AI_TIMEOUT_MS = 15_000; // 15s total, TTFT < 2s
 export const FREE_PREVIEW_WORD_LIMIT = 50;
 
-// Anthropic API pricing per 1M tokens (Sonnet 4.5 default — model configured
+// Anthropic API pricing per 1M tokens (Sonnet 4.5 default, model configured
 // via CLAUDE_MODEL env var, defaulting to claude-sonnet-4-5-20250929). These
-// are estimates for the admin dashboard cost tile — NOT billing. Update when
+// are estimates for the admin dashboard cost tile, NOT billing. Update when
 // the default model changes or Anthropic publishes new rates.
 export const CLAUDE_PRICING = {
   'claude-sonnet-4-5-20250929': { inputPerMillion: 3, outputPerMillion: 15 },
@@ -50,7 +50,7 @@ export const SHARES = {
   TOKEN_BYTES: 32,
 } as const;
 
-// dot-notation past-tense — matches the pattern in analytics_events.event_name
+// dot-notation past-tense, matches the pattern in analytics_events.event_name
 export const ANALYTICS_EVENTS = {
   USER_SIGNED_UP: 'user.signed_up',
   USER_SIGNED_IN: 'user.signed_in',
@@ -97,13 +97,13 @@ export type AnalyticsEventName =
   (typeof ANALYTICS_EVENTS)[keyof typeof ANALYTICS_EVENTS];
 
 // Inline chart-reference token emitted by the LLM to bind a paragraph to a
-// chart — see Story 8.5. Centralized here so every consumer (validator,
+// chart, see Story 8.5. Centralized here so every consumer (validator,
 // stream hook, post-stream parser, shared-link strip, OG metadata strip)
 // sees the same definition. If the token shape ever changes, this is the
 // only file that needs to know.
 //
 // Factory-style exports because a shared RegExp with the /g flag carries
-// lastIndex state across uses — each caller gets a fresh regex.
+// lastIndex state across uses, each caller gets a fresh regex.
 export function statTagGlobal(): RegExp {
   return /<stat\s+id="\w+"\s*\/>/g;
 }
@@ -115,7 +115,7 @@ export function statTagOpenFragment(): RegExp {
 }
 
 // Convenience: strip all fully-formed <stat id="..."/> tokens from text.
-// Does NOT handle boundary-split fragments — that's useAiStream's concern
+// Does NOT handle boundary-split fragments, that's useAiStream's concern
 // (mid-stream UX) and this helper is for post-stream or server-side calls
 // where the full text is already in hand.
 export function stripAllStatTags(text: string): string {
@@ -186,7 +186,7 @@ export const AUDIT_ACTIONS = {
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 
 export const AI_DISCLAIMER =
-  'AI-generated analysis — not financial advice. Verify with your accountant.' as const;
+  'AI-generated analysis, not financial advice. Verify with your accountant.' as const;
 
 export const DEMO_MODE_STATES = {
   SEED_ONLY: 'seed_only',

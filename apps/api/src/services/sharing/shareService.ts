@@ -21,10 +21,10 @@ export async function generateShareLink(
 ) {
   const summary = await aiSummariesQueries.getCachedSummary(orgId, datasetId, client);
   if (!summary) {
-    throw new ValidationError('Generate an AI summary first — no cached summary exists for this dataset');
+    throw new ValidationError('Generate an AI summary first, no cached summary exists for this dataset');
   }
 
-  // orgs table has no RLS — no org_id column, it IS the org entity
+  // orgs table has no RLS, no org_id column, it IS the org entity
   const org = await orgsQueries.findOrgById(orgId);
   if (!org) {
     throw new NotFoundError('Organization not found');
@@ -53,7 +53,7 @@ export async function generateShareLink(
   return { id: share.id, token: raw, url: `${env.APP_URL}/share/${raw}`, expiresAt: share.expiresAt };
 }
 
-/** Public share lookup — uses dbAdmin because there's no authenticated user to set RLS context */
+/** Public share lookup, uses dbAdmin because there's no authenticated user to set RLS context */
 export async function getSharedInsight(rawToken: string) {
   const tokenHash = hashToken(rawToken);
   const share = await sharesQueries.findByTokenHash(tokenHash, dbAdmin);

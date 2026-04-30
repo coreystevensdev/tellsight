@@ -30,7 +30,7 @@ const breaker = new CircuitBreaker({
   isIgnored: (err) => err instanceof AbortedByClient,
 });
 
-// bind once — avoids the literal `breaker.exec(` on every call site, which a
+// bind once, avoids the literal `breaker.exec(` on every call site, which a
 // repo-wide security lint flags as shell-exec even though it's CircuitBreaker.
 const runInBreaker = breaker.exec.bind(breaker);
 
@@ -73,7 +73,7 @@ async function anthropicGenerate(input: PromptInput): Promise<string> {
       const text = block?.type === 'text' ? block.text : '';
 
       // Post-call cost gate. Tokens are already spent by the time we know
-      // the cost, so this is an anomaly detector — the next request gets
+      // the cost, so this is an anomaly detector, the next request gets
       // the benefit. Real prevention is upstream (max_tokens, timeout).
       // Anomalies are NOT recorded into median history; recording would
       // raise the floor and let the next anomaly slip through.
@@ -84,7 +84,7 @@ async function anthropicGenerate(input: PromptInput): Promise<string> {
           aiCostBudgetExceeded.inc({ caller: 'generate' });
           logger.warn(
             { cost, cap: budget.cap, median: budget.median, model: env.CLAUDE_MODEL },
-            'Claude API cost budget exceeded — request refused',
+            'Claude API cost budget exceeded, request refused',
           );
           throw new CostBudgetExceededError(cost, budget.cap);
         }
@@ -98,7 +98,7 @@ async function anthropicGenerate(input: PromptInput): Promise<string> {
 
       return text;
     } catch (err) {
-      // Cost gate threw our domain error — propagate unchanged so the error
+      // Cost gate threw our domain error, propagate unchanged so the error
       // handler returns 503 with the typed COST_BUDGET_EXCEEDED code.
       if (err instanceof CostBudgetExceededError) throw err;
 
@@ -120,7 +120,7 @@ async function anthropicStream(
   onText: (delta: string) => void,
   signal?: AbortSignal,
 ): Promise<StreamResult> {
-  // client-initiated aborts are intentional — don't let them trip the breaker
+  // client-initiated aborts are intentional, don't let them trip the breaker
   return runInBreaker(async () => {
     try {
       const stream = client.messages.stream({
@@ -141,7 +141,7 @@ async function anthropicStream(
       const finalMessage = await stream.finalMessage();
 
       // Streaming is log-only on overrun: the content already shipped to the
-      // user via onText callbacks. Throwing here would be wasted — they got
+      // user via onText callbacks. Throwing here would be wasted, they got
       // the answer. We still skip recording into median history so the floor
       // stays representative of normal cost.
       const cost = computeCost(finalMessage.usage);
@@ -151,7 +151,7 @@ async function anthropicStream(
           aiCostBudgetExceeded.inc({ caller: 'stream' });
           logger.warn(
             { cost, cap: budget.cap, median: budget.median, model: env.CLAUDE_MODEL },
-            'Claude API stream cost budget exceeded — content delivered, anomaly logged',
+            'Claude API stream cost budget exceeded, content delivered, anomaly logged',
           );
         } else {
           recordCost(cost);
@@ -199,7 +199,7 @@ export const anthropicProvider: LlmProvider = {
 
 // Self-register at module load. Callers that need the provider reach it via
 // getProvider(); test files that mock this module entirely will skip this line,
-// which is fine — those tests don't exercise the provider seam.
+// which is fine, those tests don't exercise the provider seam.
 registerProvider(anthropicProvider);
 
 // Wrappers route through getProvider() so a future provider swap is a config

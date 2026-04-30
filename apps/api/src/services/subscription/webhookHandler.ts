@@ -57,7 +57,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     stripeSessionId: session.id,
   });
 
-  logger.info({ orgId, userId, sessionId: session.id }, 'Checkout completed — org upgraded to Pro');
+  logger.info({ orgId, userId, sessionId: session.id }, 'Checkout completed, org upgraded to Pro');
 }
 
 async function handleSubscriptionUpdated(subscription: SubscriptionWebhookPayload) {
@@ -74,7 +74,7 @@ async function handleSubscriptionUpdated(subscription: SubscriptionWebhookPayloa
   // always keep period dates fresh regardless of cancellation state
   const rowsUpdated = await subscriptionsQueries.updateSubscriptionPeriod(stripeSubscriptionId, currentPeriodEnd, dbAdmin);
   if (rowsUpdated === 0) {
-    logger.warn({ orgId, stripeSubscriptionId }, 'subscription.updated received but no matching subscription row — possible out-of-order webhook');
+    logger.warn({ orgId, stripeSubscriptionId }, 'subscription.updated received but no matching subscription row, possible out-of-order webhook');
   }
 
   if (cancelAtPeriodEnd) {
@@ -84,11 +84,11 @@ async function handleSubscriptionUpdated(subscription: SubscriptionWebhookPayloa
     if (ownerId) {
       trackEvent(orgId, ownerId, ANALYTICS_EVENTS.SUBSCRIPTION_CANCELLED, { stripeSubscriptionId });
     } else {
-      logger.warn({ orgId, stripeSubscriptionId }, 'No org owner found — skipping cancellation analytics');
+      logger.warn({ orgId, stripeSubscriptionId }, 'No org owner found, skipping cancellation analytics');
     }
 
     // Audit: payment-state transitions drive refunds, renewals, support disputes.
-    // System event (webhook origin, no request) — user-triggered from the Stripe
+    // System event (webhook origin, no request), user-triggered from the Stripe
     // customer portal, but reaches us server-to-server. Attach ownerId when known;
     // orgId is always known from subscription metadata.
     auditSystem({
@@ -106,9 +106,9 @@ async function handleSubscriptionUpdated(subscription: SubscriptionWebhookPayloa
     await subscriptionsQueries.updateSubscriptionStatus(stripeSubscriptionId, 'active', currentPeriodEnd, dbAdmin);
     logger.info({ orgId, stripeSubscriptionId }, 'Subscription reactivated');
   } else if (subscription.status === 'past_due') {
-    // analytics fired by handleInvoicePaymentFailed — omitted here to avoid double-counting
+    // analytics fired by handleInvoicePaymentFailed, omitted here to avoid double-counting
     await subscriptionsQueries.updateSubscriptionStatus(stripeSubscriptionId, 'past_due', currentPeriodEnd, dbAdmin);
-    logger.info({ orgId, stripeSubscriptionId }, 'Subscription past_due — payment failed');
+    logger.info({ orgId, stripeSubscriptionId }, 'Subscription past_due, payment failed');
   }
 }
 
@@ -123,13 +123,13 @@ async function handleInvoicePaymentFailed(invoice: InvoiceWebhookPayload) {
     : invoice.subscription?.id ?? null;
 
   if (!stripeSubscriptionId) {
-    logger.warn({ invoiceId: invoice.id }, 'invoice.payment_failed without subscription — skipping');
+    logger.warn({ invoiceId: invoice.id }, 'invoice.payment_failed without subscription, skipping');
     return;
   }
 
   const sub = await subscriptionsQueries.getSubscriptionByStripeId(stripeSubscriptionId, dbAdmin);
   if (!sub) {
-    logger.warn({ stripeSubscriptionId }, 'invoice.payment_failed for unknown subscription — skipping');
+    logger.warn({ stripeSubscriptionId }, 'invoice.payment_failed for unknown subscription, skipping');
     return;
   }
 
@@ -139,10 +139,10 @@ async function handleInvoicePaymentFailed(invoice: InvoiceWebhookPayload) {
   if (ownerId) {
     trackEvent(sub.orgId, ownerId, ANALYTICS_EVENTS.SUBSCRIPTION_PAYMENT_FAILED, { stripeSubscriptionId });
   } else {
-    logger.warn({ orgId: sub.orgId, stripeSubscriptionId }, 'No org owner found — skipping payment failure analytics');
+    logger.warn({ orgId: sub.orgId, stripeSubscriptionId }, 'No org owner found, skipping payment failure analytics');
   }
 
-  logger.info({ orgId: sub.orgId, stripeSubscriptionId }, 'Payment failed — subscription marked past_due');
+  logger.info({ orgId: sub.orgId, stripeSubscriptionId }, 'Payment failed, subscription marked past_due');
 }
 
 async function handleSubscriptionDeleted(subscription: SubscriptionWebhookPayload) {
@@ -160,8 +160,8 @@ async function handleSubscriptionDeleted(subscription: SubscriptionWebhookPayloa
   if (ownerId) {
     trackEvent(orgId, ownerId, ANALYTICS_EVENTS.SUBSCRIPTION_EXPIRED, { stripeSubscriptionId });
   } else {
-    logger.warn({ orgId, stripeSubscriptionId }, 'No org owner found — skipping expiration analytics');
+    logger.warn({ orgId, stripeSubscriptionId }, 'No org owner found, skipping expiration analytics');
   }
 
-  logger.info({ orgId, stripeSubscriptionId }, 'Subscription deleted — marked expired');
+  logger.info({ orgId, stripeSubscriptionId }, 'Subscription deleted, marked expired');
 }

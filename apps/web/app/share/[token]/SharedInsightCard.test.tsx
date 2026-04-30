@@ -7,7 +7,7 @@ afterEach(cleanup);
 
 const baseProps = {
   orgName: 'Acme Corp',
-  dateRange: 'Jan 2026 — Mar 2026',
+  dateRange: 'Jan 2026, Mar 2026',
   aiSummaryContent: 'Revenue grew 12% quarter-over-quarter.\n\nExpenses remained stable with a slight decrease in marketing spend.',
 };
 
@@ -16,7 +16,7 @@ describe('SharedInsightCard', () => {
     render(<SharedInsightCard {...baseProps} />);
 
     expect(screen.getByText('Acme Corp')).toBeInTheDocument();
-    expect(screen.getByText('Jan 2026 — Mar 2026')).toBeInTheDocument();
+    expect(screen.getByText('Jan 2026, Mar 2026')).toBeInTheDocument();
   });
 
   it('splits AI summary into paragraphs on double newline', () => {
@@ -33,7 +33,7 @@ describe('SharedInsightCard', () => {
   });
 
   it('never renders sharer identity', () => {
-    // no matter what props we pass, there's nowhere for identity to appear —
+    // no matter what props we pass, there's nowhere for identity to appear
     // the component doesn't accept sharer info at all (privacy-by-architecture)
     render(<SharedInsightCard {...baseProps} />);
 

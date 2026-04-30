@@ -119,7 +119,7 @@ function ShareOptions({
       )}
       {linkClipboardFailed && (
         <p className="px-3 py-2 text-xs text-warning" role="status" aria-live="polite">
-          Link created but clipboard unavailable — copy from the URL bar.
+          Link created but clipboard unavailable, copy from the URL bar.
         </p>
       )}
       {feedback !== 'idle' && (

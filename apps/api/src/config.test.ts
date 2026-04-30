@@ -44,7 +44,7 @@ function baseEnv(overrides: Record<string, string> = {}) {
   };
 }
 
-describe('envSchema — email provider coupling', () => {
+describe('envSchema, email provider coupling', () => {
   it('accepts EMAIL_PROVIDER=resend when RESEND_API_KEY is set', () => {
     const result = envSchema.safeParse(
       baseEnv({ EMAIL_PROVIDER: 'resend', RESEND_API_KEY: 're_abc' }),
@@ -93,8 +93,8 @@ describe('envSchema — email provider coupling', () => {
   });
 });
 
-describe('envSchema — CAN-SPAM + delivery guards (no placeholder defaults)', () => {
-  it('requires EMAIL_FROM_ADDRESS — fails when omitted', () => {
+describe('envSchema, CAN-SPAM + delivery guards (no placeholder defaults)', () => {
+  it('requires EMAIL_FROM_ADDRESS, fails when omitted', () => {
     const env = baseEnv();
     delete (env as Record<string, string>).EMAIL_FROM_ADDRESS;
     const result = envSchema.safeParse(env);
@@ -104,7 +104,7 @@ describe('envSchema — CAN-SPAM + delivery guards (no placeholder defaults)', (
     expect(result.error.issues.some((i) => i.path[0] === 'EMAIL_FROM_ADDRESS')).toBe(true);
   });
 
-  it('requires EMAIL_MAILING_ADDRESS — fails when omitted', () => {
+  it('requires EMAIL_MAILING_ADDRESS, fails when omitted', () => {
     const env = baseEnv();
     delete (env as Record<string, string>).EMAIL_MAILING_ADDRESS;
     const result = envSchema.safeParse(env);

@@ -40,7 +40,7 @@ export function useCreateShareLink() {
 
       const { data } = (await res.json()) as { data: { url: string } };
 
-      // commit the URL before attempting clipboard — the share exists in the DB
+      // commit the URL before attempting clipboard, the share exists in the DB
       setShareUrl(data.url);
       setStatus('done');
       trackClientEvent(ANALYTICS_EVENTS.SHARE_LINK_CREATED, { datasetId });

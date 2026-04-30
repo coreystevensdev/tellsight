@@ -51,7 +51,7 @@ describe('csvAdapter.parse', () => {
 
   it('returns row-specific errors for invalid dates', () => {
     const result = csvAdapter.parse(toBuffer(invalidDates));
-    // both rows have bad dates — but only 2 rows total, so >50% fail = rejected
+    // both rows have bad dates, but only 2 rows total, so >50% fail = rejected
     expect(result.rows).toHaveLength(0);
     expect(result.rowCount).toBe(2);
   });

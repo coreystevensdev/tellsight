@@ -11,8 +11,8 @@ interface DemoModeBannerProps {
 }
 
 const MESSAGES: Partial<Record<DemoModeState, string>> = {
-  seed_only: "You're viewing sample data — upload your own CSV to see real insights",
-  empty: 'Get started — upload a CSV to see AI-powered insights',
+  seed_only: "You're viewing sample data, upload your own CSV to see real insights",
+  empty: 'Get started, upload a CSV to see AI-powered insights',
 };
 
 export function DemoModeBanner({ demoState, onUploadClick }: DemoModeBannerProps) {
@@ -31,7 +31,7 @@ export function DemoModeBanner({ demoState, onUploadClick }: DemoModeBannerProps
 
   if (dismissed) return null;
 
-  // Dissolving — show old message with fade-out, no interactive elements
+  // Dissolving, show old message with fade-out, no interactive elements
   if (dissolving && dissolveMessage) {
     return (
       <div

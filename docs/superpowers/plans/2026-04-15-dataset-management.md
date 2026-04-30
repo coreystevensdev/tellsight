@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add multi-dataset support — users can list, rename, delete, activate datasets, and switch which one the dashboard displays.
+**Goal:** Add multi-dataset support, users can list, rename, delete, activate datasets, and switch which one the dashboard displays.
 
 **Architecture:** One new column on `orgs` (`active_dataset_id`), five new API routes on the existing `/datasets` router, a new `/settings/datasets` management page, and a clickable chip on the dashboard header. Dashboard route gains `?dataset=` query param support.
 
@@ -429,7 +429,7 @@ datasetManagementRouter.patch('/manage/:id', async (req, res: Response) => {
 
   const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
   if (!name || name.length > 255) {
-    throw new ValidationError('Name must be 1–255 characters');
+    throw new ValidationError('Name must be 1-255 characters');
   }
 
   const existing = await withRlsContext(orgId, user.isAdmin, (tx) =>
@@ -597,7 +597,7 @@ git commit -m "feat: set active dataset on upload confirm"
 
 ---
 
-## Task 6: Dashboard Route — Dataset Switching
+## Task 6: Dashboard Route, Dataset Switching
 
 **Files:**
 - Modify: `apps/api/src/routes/dashboard.ts`
@@ -631,7 +631,7 @@ const queryDatasetId = req.query.dataset ? parseInt(req.query.dataset as string,
 let datasetId: number | null = null;
 
 if (queryDatasetId && !isNaN(queryDatasetId)) {
-  // URL override — validate it belongs to this org
+  // URL override, validate it belongs to this org
   const found = datasets.find((d) => d.id === queryDatasetId);
   if (found) datasetId = found.id;
 }
@@ -675,14 +675,14 @@ git commit -m "feat: dashboard supports dataset switching via query param and ac
 
 ---
 
-## Task 7: Backend Tests — Management Routes
+## Task 7: Backend Tests, Management Routes
 
 **Files:**
 - Create: `apps/api/src/routes/datasetManagement.test.ts`
 
 - [ ] **Step 1: Write the test file**
 
-Create `apps/api/src/routes/datasetManagement.test.ts`. Follow the exact mocking pattern from `dashboard.test.ts` — all mocks before imports:
+Create `apps/api/src/routes/datasetManagement.test.ts`. Follow the exact mocking pattern from `dashboard.test.ts`, all mocks before imports:
 
 ```typescript
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -937,14 +937,14 @@ git commit -m "test: add dataset management route tests"
 
 ---
 
-## Task 8: Dashboard Test — Dataset Switching
+## Task 8: Dashboard Test, Dataset Switching
 
 **Files:**
 - Modify: `apps/api/src/routes/dashboard.test.ts`
 
 - [ ] **Step 1: Add dataset switching tests**
 
-Add a new `describe` block to the existing dashboard test file for the `?dataset=` query param behavior. The exact mock setup depends on what's already mocked — follow the existing pattern. Add these test cases:
+Add a new `describe` block to the existing dashboard test file for the `?dataset=` query param behavior. The exact mock setup depends on what's already mocked, follow the existing pattern. Add these test cases:
 
 ```typescript
 describe('dataset query param', () => {
@@ -997,7 +997,7 @@ git commit -m "test: add dashboard dataset switching tests"
 
 ---
 
-## Task 9: Frontend — Sidebar Update
+## Task 9: Frontend, Sidebar Update
 
 **Files:**
 - Modify: `apps/web/components/layout/Sidebar.tsx`
@@ -1067,7 +1067,7 @@ git commit -m "feat: add Datasets link to sidebar under Settings section"
 
 ---
 
-## Task 10: Frontend — Dataset Management Page
+## Task 10: Frontend, Dataset Management Page
 
 **Files:**
 - Create: `apps/web/app/settings/datasets/page.tsx`
@@ -1082,7 +1082,7 @@ import type { Metadata } from 'next';
 import DatasetManager from './DatasetManager';
 
 export const metadata: Metadata = {
-  title: 'Datasets — Tellsight',
+  title: 'Datasets, Tellsight',
 };
 
 export default function DatasetsPage() {
@@ -1363,7 +1363,7 @@ export default function DatasetManager() {
 }
 ```
 
-Note: The delete button visibility should be conditional on the user's role. Since the client component doesn't have direct access to the JWT role, the simplest approach is to let the API return 403 and handle it gracefully. Alternatively, pass `isOwner` as a prop from the server component. For now, show the button to everyone and handle 403 on the client — the API enforces the real authorization.
+Note: The delete button visibility should be conditional on the user's role. Since the client component doesn't have direct access to the JWT role, the simplest approach is to let the API return 403 and handle it gracefully. Alternatively, pass `isOwner` as a prop from the server component. For now, show the button to everyone and handle 403 on the client, the API enforces the real authorization.
 
 - [ ] **Step 3: Run type-check**
 
@@ -1379,7 +1379,7 @@ git commit -m "feat: add dataset management page"
 
 ---
 
-## Task 11: Frontend — Dashboard Chip
+## Task 11: Frontend, Dashboard Chip
 
 **Files:**
 - Create: `apps/web/components/datasets/DatasetChip.tsx`

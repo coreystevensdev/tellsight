@@ -410,7 +410,7 @@ describe('streamInterpretation', () => {
 
     const { streamInterpretation } = await import('./claudeClient.js');
 
-    // Critical: streaming MUST NOT throw on overrun — content already shipped.
+    // Critical: streaming MUST NOT throw on overrun, content already shipped.
     const result = await streamInterpretation({ system: '', user: 'test' }, () => {});
 
     expect(result.fullText).toBe('expensive answer already shipped');

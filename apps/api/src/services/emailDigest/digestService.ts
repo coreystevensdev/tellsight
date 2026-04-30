@@ -64,7 +64,7 @@ export async function processAllDigests(): Promise<DigestResult[]> {
           const unsubscribeUrl = `${dashboardUrl}/unsubscribe/digest/${signUnsubscribeToken(membership.user.id, org.id)}`;
           const ok = await sendDigestEmail({
             to: membership.user.email,
-            subject: `${org.name} — Weekly insights`,
+            subject: `${org.name}, Weekly insights`,
             html: renderProDigest({ orgName: org.name, summary, dashboardUrl, unsubscribeUrl }),
           });
 
@@ -86,7 +86,7 @@ export async function processAllDigests(): Promise<DigestResult[]> {
           const unsubscribeUrl = `${dashboardUrl}/unsubscribe/digest/${signUnsubscribeToken(membership.user.id, org.id)}`;
           const ok = await sendDigestEmail({
             to: membership.user.email,
-            subject: `${org.name} — Your weekly update is ready`,
+            subject: `${org.name}, Your weekly update is ready`,
             html: renderFreeTeaser({ orgName: org.name, dashboardUrl, unsubscribeUrl }),
           });
 
@@ -108,7 +108,7 @@ export async function processAllDigests(): Promise<DigestResult[]> {
         'Digest processed for org',
       );
     } catch (err) {
-      logger.error({ orgId: org.id, err }, 'Digest failed for org — continuing with next');
+      logger.error({ orgId: org.id, err }, 'Digest failed for org, continuing with next');
       results.push({ orgId: org.id, orgName: org.name, tier: 'free', emailsSent: 0, emailsFailed: 0 });
     }
   }

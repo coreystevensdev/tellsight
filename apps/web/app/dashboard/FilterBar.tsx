@@ -49,7 +49,7 @@ export function computeDateRange(preset: string): { from: string; to: string } |
   return { from: from.toISOString().slice(0, 10), to };
 }
 
-// generic accessible dropdown — trigger + listbox with keyboard nav
+// generic accessible dropdown, trigger + listbox with keyboard nav
 function FilterDropdown({
   label,
   icon: Icon,

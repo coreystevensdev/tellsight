@@ -13,7 +13,7 @@ CREATE POLICY "analytics_events_tenant_isolation" ON "analytics_events"
   WITH CHECK (org_id = current_setting('app.current_org_id', true)::integer);
 --> statement-breakpoint
 
--- Admin bypass: analytics_events — platform admins see all events for system-wide reporting
+-- Admin bypass: analytics_events, platform admins see all events for system-wide reporting
 CREATE POLICY "analytics_events_admin_bypass" ON "analytics_events"
   FOR ALL
   USING (COALESCE(current_setting('app.is_admin', true)::boolean, false) = true);

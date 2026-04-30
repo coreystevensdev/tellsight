@@ -5,7 +5,7 @@ import { logger } from './logger.js';
 export const redis = new Redis(env.REDIS_URL, {
   maxRetriesPerRequest: 3,
   lazyConnect: true,
-  enableOfflineQueue: false, // fail fast — affects all redis consumers (rate limiter, cache, sessions)
+  enableOfflineQueue: false, // fail fast, affects all redis consumers (rate limiter, cache, sessions)
 });
 
 redis.on('error', (err) => {

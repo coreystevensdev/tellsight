@@ -48,13 +48,13 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      {/* Hero — oversized headline with live transformation visual */}
+      {/* Hero, oversized headline with live transformation visual */}
       <section className="relative overflow-hidden">
         <GridBg />
         <div className="relative mx-auto max-w-6xl px-4 pt-16 md:px-6 md:pt-28">
           <div className="flex items-center gap-2 text-sm font-medium text-primary">
             <span className="inline-flex h-2 w-2 rounded-full bg-success animate-pulse" aria-hidden="true" />
-            Live demo — no signup needed
+            Live demo, no signup needed
           </div>
 
           <h1 className="mt-5 max-w-4xl text-[2.75rem] font-bold leading-[1.05] tracking-[-0.025em] text-foreground md:text-6xl lg:text-7xl">
@@ -71,7 +71,7 @@ export default function LandingPage() {
           </h1>
 
           <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground md:text-xl">
-            Upload a CSV from Square, QuickBooks, or your bank. Get charts in seconds —
+            Upload a CSV from Square, QuickBooks, or your bank. Get charts in seconds
             and an AI summary that reads your numbers like a financial analyst.
           </p>
 
@@ -103,7 +103,7 @@ export default function LandingPage() {
             </Link>
           </div>
 
-          {/* Transformation preview — shows what the product actually does */}
+          {/* Transformation preview, shows what the product actually does */}
           <div className="relative mt-16 pb-20 md:mt-20 md:pb-28">
             <div className="grid gap-6 md:grid-cols-[1fr_auto_1.1fr] md:items-center md:gap-4">
               {/* CSV row */}
@@ -153,7 +153,7 @@ export default function LandingPage() {
                   AI analysis
                 </div>
                 <p className="mt-3 text-sm leading-[1.7] text-card-foreground md:text-[15px]">
-                  Revenue grew <span className="font-semibold text-foreground">18%</span> in March —
+                  Revenue grew <span className="font-semibold text-foreground">18%</span> in March
                   driven by a surge in catering orders on weekends. Payroll held steady, so{' '}
                   <span className="font-semibold text-foreground">margin expanded to 34%</span>.
                   If you&apos;re planning April hires, the weekend volume is your signal.
@@ -167,7 +167,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Deeper insight example — longer, more specific */}
+      {/* Deeper insight example, longer, more specific */}
       <section className="relative">
         <div className="mx-auto max-w-6xl px-4 py-16 md:px-6 md:py-24">
           <div className="grid gap-10 md:grid-cols-[1fr_1.3fr] md:items-start md:gap-16">
@@ -179,7 +179,7 @@ export default function LandingPage() {
               <p className="mt-4 text-muted-foreground">
                 Real output from a landscaping company&apos;s 12 months of Square data.
                 The AI flagged the seasonal dip and connected it to their snow
-                removal revenue gap — something a chart alone wouldn&apos;t tell you.
+                removal revenue gap, something a chart alone wouldn&apos;t tell you.
               </p>
               <p className="mt-3 text-sm text-muted-foreground">
                 Every insight links back to the exact numbers. Click
@@ -209,7 +209,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* How it works — 3 steps, not 4 features */}
+      {/* How it works, 3 steps, not 4 features */}
       <section className="border-t border-border/40">
         <div className="mx-auto max-w-6xl px-4 py-16 md:px-6 md:py-24">
           <div className="grid gap-8 md:grid-cols-3 md:gap-12">
@@ -218,7 +218,7 @@ export default function LandingPage() {
               <h3 className="mt-3 text-base font-semibold text-foreground">Upload your CSV</h3>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                 Export from Square, QuickBooks, Wave, or any tool.
-                We need date, amount, and category columns — that&apos;s it.
+                We need date, amount, and category columns, that&apos;s it.
                 Bad rows get flagged, not silently dropped.
               </p>
             </div>
@@ -246,7 +246,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Trust strip — concrete details, not marketing */}
+      {/* Trust strip, concrete details, not marketing */}
       <section className="border-t border-border/40 bg-muted/30">
         <div className="mx-auto grid max-w-6xl grid-cols-2 gap-px md:grid-cols-4">
           {[
@@ -263,7 +263,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Privacy section — proves the trust strip's "Raw data never reaches AI" tile */}
+      {/* Privacy section, proves the trust strip's "Raw data never reaches AI" tile */}
       <section className="border-t border-border/40">
         <div className="mx-auto max-w-4xl px-4 py-14 md:px-6 md:py-20">
           <h2 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">
@@ -339,7 +339,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* A note from the maker — deliberately off-rhythm (narrower, left-aligned) to break the centered sections around it */}
+      {/* A note from the maker, deliberately off-rhythm (narrower, left-aligned) to break the centered sections around it */}
       <section className="border-t border-border/40 bg-muted/20">
         <div className="mx-auto max-w-4xl px-4 py-14 md:px-6 md:py-20">
           <div className="md:grid md:grid-cols-[140px_1fr] md:gap-10">
@@ -349,18 +349,18 @@ export default function LandingPage() {
             <div className="mt-4 md:mt-0">
               <p className="text-base leading-relaxed text-foreground md:text-lg">
                 I kept watching small business owners open their dashboards, squint,
-                and close the laptop. The numbers were all there — nobody could tell
+                and close the laptop. The numbers were all there, nobody could tell
                 what any of it meant. Tellsight is the thing I wished existed:
                 interpretation, not just visualization.
               </p>
               <p className="mt-4 text-base leading-relaxed text-muted-foreground">
                 If you try it and the AI gets something wrong, tell me directly.
                 I read every note and use them to tune the prompts. That&apos;s the
-                advantage of a small product — the person who built it is also the
+                advantage of a small product, the person who built it is also the
                 person who fixes it.
               </p>
               <p className="mt-6 text-sm text-foreground">
-                — Corey, maker of Tellsight
+               , Corey, maker of Tellsight
                 <br />
                 <a
                   href="https://github.com/coreystevensdev/tellsight/issues"
@@ -376,7 +376,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Bottom CTA — short */}
+      {/* Bottom CTA, short */}
       <section className="border-t border-border/40">
         <div className="mx-auto max-w-6xl px-4 py-16 text-center md:px-6 md:py-20">
           <h2 className="text-2xl font-bold text-foreground">
@@ -384,7 +384,7 @@ export default function LandingPage() {
           </h2>
           <p className="mx-auto mt-3 max-w-md text-muted-foreground">
             No signup, no credit card, no &quot;book a call.&quot; It runs on sample data
-            from a coffee shop — 12 months of revenue and expenses.
+            from a coffee shop, 12 months of revenue and expenses.
           </p>
           <Link
             href="/dashboard"

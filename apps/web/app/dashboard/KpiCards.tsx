@@ -64,7 +64,7 @@ export function KpiCards({ revenueTrend, expenseBreakdown }: KpiCardsProps) {
   const netProfit = totalRevenue - totalExpenses;
   const topCategory = expenseBreakdown[0];
 
-  // YoY for the most recent month — compare to same month last year if available
+  // YoY for the most recent month, compare to same month last year if available
   const revenueTrend12 = revenueTrend.length >= 13
     ? (() => {
         const last = revenueTrend[revenueTrend.length - 1]!.revenue;

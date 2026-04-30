@@ -36,7 +36,7 @@ export async function generateInvite(
   return { token: raw, expiresAt: invite.expiresAt };
 }
 
-/** Public invite validation — uses dbAdmin because there's no authenticated user to set RLS context */
+/** Public invite validation, uses dbAdmin because there's no authenticated user to set RLS context */
 export async function validateInviteToken(token: string) {
   const tokenHash = hashToken(token);
   const invite = await orgInvitesQueries.findByTokenHash(tokenHash, dbAdmin);
@@ -50,24 +50,24 @@ export async function validateInviteToken(token: string) {
   }
 
   if (invite.expiresAt < new Date()) {
-    throw new ValidationError('This invite link has expired — ask the org owner for a new one');
+    throw new ValidationError('This invite link has expired, ask the org owner for a new one');
   }
 
   return invite;
 }
 
-/** Invite redemption happens during OAuth callback — no RLS context, uses dbAdmin */
+/** Invite redemption happens during OAuth callback, no RLS context, uses dbAdmin */
 export async function redeemInvite(inviteId: number, orgId: number, userId: number) {
   const existing = await userOrgsQueries.findMembership(orgId, userId, dbAdmin);
   if (existing) {
     await orgInvitesQueries.markUsed(inviteId, userId, dbAdmin);
-    logger.info({ orgId, userId }, 'Invite redeemed by existing member — skipped');
+    logger.info({ orgId, userId }, 'Invite redeemed by existing member, skipped');
     return { alreadyMember: true };
   }
 
   await userOrgsQueries.addMember(orgId, userId, 'member', dbAdmin);
   await orgInvitesQueries.markUsed(inviteId, userId, dbAdmin);
 
-  logger.info({ orgId, userId, inviteId }, 'Invite redeemed — user joined org');
+  logger.info({ orgId, userId, inviteId }, 'Invite redeemed, user joined org');
   return { alreadyMember: false };
 }

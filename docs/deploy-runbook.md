@@ -1,6 +1,6 @@
 # Deploy Runbook
 
-Operational guide for the deployed production stack (Vercel + Railway + Neon + Upstash + Cloudflare). First-time bring-up lives in `_bmad-output/implementation-artifacts/tech-spec-production-deployment.md` — this doc is what you reach for after the stack is live.
+Operational guide for the deployed production stack (Vercel + Railway + Neon + Upstash + Cloudflare). First-time bring-up lives in `_bmad-output/implementation-artifacts/tech-spec-production-deployment.md`, this doc is what you reach for after the stack is live.
 
 **Crisis mode cheat sheet:**
 
@@ -23,14 +23,14 @@ curl -fsS https://{DOMAIN}/api/health/ready | jq
 
 ### Automatic (normal path)
 
-Merging a PR to `main` triggers the full CI pipeline. The `deploy` job fires after `docker-smoke` passes — no manual action needed. Sequence:
+Merging a PR to `main` triggers the full CI pipeline. The `deploy` job fires after `docker-smoke` passes, no manual action needed. Sequence:
 
 1. GitHub Actions runs quality → test-shared-web → seed-validation → e2e → docker-smoke
 2. `deploy` job fires Vercel deploy hook, then Railway deploy hook
 3. Post-deploy health poll waits up to 5 minutes for `https://{DOMAIN}/api/health/ready` to return `{"status":"ok"}`
 4. CI turns green when health is confirmed
 
-Watch the Actions tab for live status. If health poll fails, the job red-Xs but the deploy has already landed — investigate via logs before reverting.
+Watch the Actions tab for live status. If health poll fails, the job red-Xs but the deploy has already landed, investigate via logs before reverting.
 
 ### Manual deploy (force a redeploy)
 
@@ -76,7 +76,7 @@ Use when: frontend regression, bad env var, broken build picked up a stale API.
 1. Railway dashboard → service `api` → Deployments tab
 2. Find the previous successful deployment
 3. **Redeploy** button
-4. TTL: 60–90 seconds, includes container restart + migration lock acquisition
+4. TTL: 60-90 seconds, includes container restart + migration lock acquisition
 
 Use when: API regression, bad env var, dependency conflict.
 
@@ -85,7 +85,7 @@ Use when: API regression, bad env var, dependency conflict.
 Destructive. Only use when the fix cannot roll forward (bad migration, data corruption, wrong tenant writes).
 
 1. Neon dashboard → project → Branches tab
-2. Find a branch or snapshot from before the incident (PITR window covers up to your retention tier — check tier)
+2. Find a branch or snapshot from before the incident (PITR window covers up to your retention tier, check tier)
 3. **Restore** or create a new branch from that point
 4. Update `DATABASE_URL` + `DATABASE_ADMIN_URL` on Railway to the restored branch's pooler connection strings
 5. Redeploy Railway (picks up new env)
@@ -94,7 +94,7 @@ Use when: schema migration can't be reversed, seed regression, data-layer corrup
 
 ### D. Combined rollback
 
-Bad release that touched schema + code: roll DB back first (Neon), then roll app back (Railway + Vercel). Always DB first — the app expects the schema it was built against.
+Bad release that touched schema + code: roll DB back first (Neon), then roll app back (Railway + Vercel). Always DB first, the app expects the schema it was built against.
 
 ---
 
@@ -110,7 +110,7 @@ railway logs --service api
 vercel logs <deployment-url> --follow
 ```
 
-Both support `--help` for filters, durations, and output formats. Tailing costs nothing — run them liberally.
+Both support `--help` for filters, durations, and output formats. Tailing costs nothing, run them liberally.
 
 ### Health probes
 
@@ -125,7 +125,7 @@ curl -fsS https://{DOMAIN}/api/health/ready | jq
 curl -fsS https://api.{DOMAIN}/health/ready | jq
 ```
 
-If `/health/ready` returns 503, the body tells you which service degraded (DB or Redis). `/health/live` going red means the process itself is dead — check Railway deployment logs.
+If `/health/ready` returns 503, the body tells you which service degraded (DB or Redis). `/health/live` going red means the process itself is dead, check Railway deployment logs.
 
 ### Metrics endpoint (bearer-gated in prod)
 
@@ -147,7 +147,7 @@ All rotations follow the same pattern: update in the source-of-truth provider, t
 
 ### `JWT_SECRET`
 
-**Impact**: every user re-authenticates. No grace-period overlap — a single secret is in force at any moment. Schedule during low-traffic window.
+**Impact**: every user re-authenticates. No grace-period overlap, a single secret is in force at any moment. Schedule during low-traffic window.
 
 1. Generate: `openssl rand -base64 48`
 2. Update Railway: Variables → `JWT_SECRET` → new value → Save
@@ -168,7 +168,7 @@ Vercel and Railway **must** share the exact same value. Drift between the two br
 5. Redeploy Railway (single redeploy covers both)
 6. Trigger a test webhook from Stripe; confirm signature verification succeeds in Railway logs
 
-Never roll the webhook secret without also updating Railway in the same window — signature verification fails silently until the env var catches up.
+Never roll the webhook secret without also updating Railway in the same window, signature verification fails silently until the env var catches up.
 
 ### `CLAUDE_API_KEY`
 
@@ -214,6 +214,6 @@ Only rotate if the domain itself is changing.
 
 ## Appendix: Known Limitations
 
-- **JWT rotation forces re-login** — no dual-secret overlap. Accepted trade-off documented in tech-spec Task 8. Future enhancement: grace-period rotation that accepts both the old and new secret for N minutes.
-- **Railway deploy job is fire-and-forget** — the GitHub Actions `deploy` job returns success when the hook accepts the trigger, not when the container is healthy. The 5-minute health poll catches most failures but cannot distinguish "deploy pending" from "deploy started". Upgrade to polling Railway's deployment status API post-launch if stability warrants.
-- **Single-region deployment** — Railway us-east, Neon us-east-2, Upstash us-east-1. Cross-region failover is not wired. If any provider's us-east has a regional outage, the app is down. Multi-region is a post-launch scaling decision, not a Day 1 requirement.
+- **JWT rotation forces re-login**, no dual-secret overlap. Accepted trade-off documented in tech-spec Task 8. Future enhancement: grace-period rotation that accepts both the old and new secret for N minutes.
+- **Railway deploy job is fire-and-forget**, the GitHub Actions `deploy` job returns success when the hook accepts the trigger, not when the container is healthy. The 5-minute health poll catches most failures but cannot distinguish "deploy pending" from "deploy started". Upgrade to polling Railway's deployment status API post-launch if stability warrants.
+- **Single-region deployment**, Railway us-east, Neon us-east-2, Upstash us-east-1. Cross-region failover is not wired. If any provider's us-east has a regional outage, the app is down. Multi-region is a post-launch scaling decision, not a Day 1 requirement.

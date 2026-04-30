@@ -17,7 +17,7 @@ describe('unsubscribeToken', () => {
   it('rejects a tampered signature', () => {
     const token = signUnsubscribeToken(42, 7);
     const [userId, orgId, sig] = token.split('.');
-    // Flip a character in the signature — authentic tokens and tampered tokens
+    // Flip a character in the signature, authentic tokens and tampered tokens
     // differ by at least one base64url character, which fails timing-safe compare.
     const flipped = sig!.slice(0, -1) + (sig!.slice(-1) === 'A' ? 'B' : 'A');
     const tampered = `${userId}.${orgId}.${flipped}`;
@@ -51,7 +51,7 @@ describe('unsubscribeToken', () => {
   });
 
   it('rejects a token signed for a different purpose (domain separation)', () => {
-    // A forged signature using the same secret but a different purpose prefix —
+    // A forged signature using the same secret but a different purpose prefix
     // simulates someone trying to replay a non-unsubscribe HMAC as an
     // unsubscribe token. Purpose prefix keeps contexts separate.
     const forged = createHmac('sha256', 'a'.repeat(32))
@@ -61,7 +61,7 @@ describe('unsubscribeToken', () => {
     expect(verifyUnsubscribeToken(token)).toBeNull();
   });
 
-  it('is deterministic — same input produces same token (allows idempotent verification)', () => {
+  it('is deterministic, same input produces same token (allows idempotent verification)', () => {
     const token1 = signUnsubscribeToken(42, 7);
     const token2 = signUnsubscribeToken(42, 7);
     expect(token1).toBe(token2);

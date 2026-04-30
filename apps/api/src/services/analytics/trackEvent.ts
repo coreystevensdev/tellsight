@@ -4,9 +4,9 @@ import { dbAdmin } from '../../lib/db.js';
 import { analyticsEventsQueries } from '../../db/queries/index.js';
 
 /**
- * Fire-and-forget event tracker. Logs errors but never throws —
+ * Fire-and-forget event tracker. Logs errors but never throws
  * analytics failures must not block user-facing operations.
- * Uses dbAdmin to bypass RLS — fire-and-forget runs outside any
+ * Uses dbAdmin to bypass RLS, fire-and-forget runs outside any
  * transaction, so SET LOCAL context wouldn't apply anyway.
  */
 export function trackEvent(

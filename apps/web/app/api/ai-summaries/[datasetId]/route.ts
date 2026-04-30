@@ -35,7 +35,7 @@ export async function GET(
     return NextResponse.json(data, { status });
   }
 
-  // SSE stream — passthrough without buffering
+  // SSE stream, passthrough without buffering
   if (upstream.headers.get('content-type')?.includes('text/event-stream')) {
     return new Response(upstream.body, {
       status: 200,
@@ -48,7 +48,7 @@ export async function GET(
     });
   }
 
-  // JSON cache hit — forward directly
+  // JSON cache hit, forward directly
   let data: unknown;
   try {
     data = await upstream.json();

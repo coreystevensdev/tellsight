@@ -16,7 +16,7 @@ interface ResendDeps {
   logger?: Logger;
   resend?: Resend;
   clock?: () => number;
-  // Sentry seam — tests pass a stub so we can assert call shape without
+  // Sentry seam, tests pass a stub so we can assert call shape without
   // wiring the Sentry transport through the full init path.
   sentry?: Pick<typeof Sentry, 'captureException'>;
 }
@@ -80,7 +80,7 @@ export function createResendProvider(env: Env, deps: ResendDeps = {}): EmailProv
           },
           'email send threw',
         );
-        throw new EmailSendError('Resend send threw — network or SDK error', {
+        throw new EmailSendError('Resend send threw, network or SDK error', {
           retryable: true,
           cause: err,
         });
@@ -127,7 +127,7 @@ export function createResendProvider(env: Env, deps: ResendDeps = {}): EmailProv
       }
 
       // Resend's discriminated response says one of `data` or `error` is always set.
-      // If we reach this branch with no error, a missing id means something is wrong —
+      // If we reach this branch with no error, a missing id means something is wrong
       // treat it as a retryable failure rather than reporting a fake success.
       const providerMessageId = response.data?.id;
       if (!providerMessageId) {
@@ -181,7 +181,7 @@ function isRetryableStatus(statusCode: number | null): boolean {
 
 // RFC 5322 display-name rules: any of "(),.:;<>@[]\\ or a double-quote in the name
 // forces it to be wrapped in "..." with embedded " and \ escaped. Typical product
-// names (e.g. "Kiln Insights") don't trip this — but a name like Smith, Jones
+// names (e.g. "Kiln Insights") don't trip this, but a name like Smith, Jones
 // would silently break the header without quoting.
 function formatFromAddress(name: string, address: string): string {
   const needsQuoting = /[(),.:;<>@[\]\\"]/.test(name);

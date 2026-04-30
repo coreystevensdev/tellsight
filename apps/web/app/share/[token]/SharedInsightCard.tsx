@@ -7,7 +7,7 @@ interface SharedInsightCardProps {
   aiSummaryContent: string;
 }
 
-// Shared pages render prose only — no chart affordances are wired here
+// Shared pages render prose only, no chart affordances are wired here
 // (no chart data, no JS state). We strip <stat id="..."/> tokens so the
 // raw markup never leaks into the shared view, even for cached summaries
 // generated under prompt v1.4+.
@@ -48,7 +48,7 @@ export default function SharedInsightCard({
           href="/login"
           className="inline-flex h-12 w-full items-center justify-center rounded-lg bg-primary px-6 text-base font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:w-auto md:min-w-[320px]"
         >
-          Get insights like these for your business — Free to start
+          Get insights like these for your business, Free to start
         </Link>
       </div>
     </article>

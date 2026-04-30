@@ -29,7 +29,7 @@ export async function findByHash(
   });
 }
 
-/** Looks up a token by hash regardless of revocation status — used for reuse detection */
+/** Looks up a token by hash regardless of revocation status, used for reuse detection */
 export async function findAnyByHash(
   tokenHash: string,
   client: typeof db | DbTransaction,
@@ -51,7 +51,7 @@ export async function revokeToken(
   return token;
 }
 
-/** Cross-org revocation — revokes all tokens for a user across all orgs (security: full logout) */
+/** Cross-org revocation, revokes all tokens for a user across all orgs (security: full logout) */
 export async function revokeAllForUser(
   userId: number,
   client: typeof db | DbTransaction,

@@ -17,7 +17,7 @@ export function QbReturnToast() {
     firedRef.current = true;
     if (qb === 'connected') {
       toast.success('QuickBooks connected', {
-        description: 'We\u2019re syncing your transactions now — this can take a few minutes.',
+        description: 'We\u2019re syncing your transactions now, this can take a few minutes.',
       });
     } else if (qb === 'denied') {
       toast.info('QuickBooks connection cancelled', {
@@ -25,7 +25,7 @@ export function QbReturnToast() {
       });
     } else if (qb === 'error') {
       toast.error('QuickBooks connection failed', {
-        description: 'Something went wrong on the way back from QuickBooks. Retry from Settings > Integrations — we haven\u2019t saved any of your data.',
+        description: 'Something went wrong on the way back from QuickBooks. Retry from Settings > Integrations, we haven\u2019t saved any of your data.',
       });
     }
 

@@ -141,7 +141,7 @@ export async function handleGoogleCallback(code: string, inviteToken?: string) {
       avatarUrl: profile.avatarUrl ?? undefined,
     });
 
-    // invited user — redeem invite, then use invite's org as primary
+    // invited user, redeem invite, then use invite's org as primary
     if (invite) {
       await redeemInvite(invite.id, invite.orgId, existingUser.id);
       const membership = await userOrgsQueries.findMembership(invite.orgId, existingUser.id, dbAdmin);
@@ -181,7 +181,7 @@ export async function handleGoogleCallback(code: string, inviteToken?: string) {
     avatarUrl: profile.avatarUrl ?? undefined,
   });
 
-  // invited new user — join the invite's org, skip auto-org creation
+  // invited new user, join the invite's org, skip auto-org creation
   if (invite) {
     await redeemInvite(invite.id, invite.orgId, user.id);
     const membership = await userOrgsQueries.findMembership(invite.orgId, user.id, dbAdmin);
@@ -192,7 +192,7 @@ export async function handleGoogleCallback(code: string, inviteToken?: string) {
     return { user, org: invite.org, membership, isNewUser: true };
   }
 
-  // no invite — default behavior: create org, user becomes owner
+  // no invite, default behavior: create org, user becomes owner
   const orgName = `${profile.name}'s Organization`;
   const slug = await generateUniqueSlug(profile.name);
   const org = await orgsQueries.createOrg({ name: orgName, slug });

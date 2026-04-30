@@ -265,7 +265,7 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
     { revalidateOnFocus: false },
   );
 
-  // Three-month forward forecast — point estimate trajectory. Client-side gate
+  // Three-month forward forecast, point estimate trajectory. Client-side gate
   // mirrors the server's suppression logic: the API returns `data: null` when
   // cashOnHand/cashAsOfDate are missing, so we don't issue the round trip when
   // we already know it can't form a forecast. Staleness + thin-history cases
@@ -297,7 +297,7 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
       method: 'PUT',
       body: JSON.stringify({ cashOnHand: value }),
     });
-    // revalidate all three keys — cash-history and cash-forecast both depend
+    // revalidate all three keys, cash-history and cash-forecast both depend
     // on the updated balance; this closes the latent staleness gap from 8.2
     await Promise.all([refreshFinancials(), refreshCashHistory(), refreshCashForecast()]);
     router.refresh();
@@ -339,7 +339,7 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
 
   return (
     <>
-      {/* useSearchParams is request-time data — keep it in a leaf under Suspense so
+      {/* useSearchParams is request-time data, keep it in a leaf under Suspense so
           the rest of the shell stays statically renderable under Next.js 16. */}
       <Suspense fallback={null}>
         <QbReturnToast />

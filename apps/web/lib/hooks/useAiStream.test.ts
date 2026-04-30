@@ -246,7 +246,7 @@ describe('stripStatTags', () => {
   });
 
   it('hides an incomplete trailing tag fragment', () => {
-    // chunk arrives mid-tag — the fragment must not render
+    // chunk arrives mid-tag, the fragment must not render
     expect(stripStatTags('prose <stat')).toBe('prose ');
     expect(stripStatTags('prose <stat id')).toBe('prose ');
     expect(stripStatTags('prose <stat id="runw')).toBe('prose ');

@@ -1,4 +1,4 @@
-# CI-only overrides — port exposure without dev-mode targets.
+# CI-only overrides, port exposure without dev-mode targets.
 # Used with: docker compose -f docker-compose.yml -f docker-compose.ci.yml up
 # Keeps production build targets from the base compose while exposing
 # ports for curl health checks and Playwright.

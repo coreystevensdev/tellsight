@@ -49,7 +49,7 @@ export type ExternalService =
   | 'Claude API'
   | 'Google OAuth'
   | 'Intuit OAuth'
-  | 'Intuit OAuth — token revoked';
+  | 'Intuit OAuth, token revoked';
 
 export class ExternalServiceError extends AppError {
   readonly service: ExternalService;
@@ -61,9 +61,9 @@ export class ExternalServiceError extends AppError {
 }
 
 // Operator-side safety guard, not a user-tier issue. Use 503 because the user
-// did nothing wrong — we refused the call to protect a shared budget. Distinct
-// from QuotaExceededError (402 — user needs to upgrade) and from
-// ExternalServiceError (502 — upstream actually failed). The cost was real
+// did nothing wrong, we refused the call to protect a shared budget. Distinct
+// from QuotaExceededError (402, user needs to upgrade) and from
+// ExternalServiceError (502, upstream actually failed). The cost was real
 // and incurred; this error documents that we caught it post-hoc.
 export class CostBudgetExceededError extends AppError {
   readonly observedUsd: number;
@@ -81,7 +81,7 @@ export class CostBudgetExceededError extends AppError {
   }
 }
 
-// For invariants the server should uphold — not user-facing auth failures.
+// For invariants the server should uphold, not user-facing auth failures.
 // Use this when the cause is misconfigured code (missing middleware, unreachable
 // branch) rather than a bad request. Two audiences, two messages:
 //   - devMessage: the specific bug, for logs and Sentry
