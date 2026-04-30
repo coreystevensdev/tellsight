@@ -62,3 +62,10 @@ _bmad/
 _bmad-output/
 CLAUDE.md
 .claude/
+
+# Internal planning docs (local-only)
+docs/superpowers/
+docs/go-to-market-plan.md
+docs/pro-web-search-plan.md
+docs/quickbooks-implementation-plan.md
+docs/deployment-roadmap_explained.md
