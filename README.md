@@ -11,7 +11,7 @@
 
 ## Overview
 
-**Live demo:** _(deploying soon, target 2026-05-04)_
+**Live demo:** _(deploying shortly)_
 
 Most analytics tools show you what happened. This one tells you what it means. Upload a CSV, get instant charts, and let AI interpret the trends, anomalies, and opportunities your data reveals. No data science degree required.
 
