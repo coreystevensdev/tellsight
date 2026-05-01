@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-If you find a security issue in TellSight, please email **cstevens3446@gmail.com** with:
+If you find a security issue in Tellsight, please email **cstevens3446@gmail.com** with:
 
 - A description of the issue.
 - Steps to reproduce, ideally with the smallest input that triggers it.
@@ -18,7 +18,7 @@ This project tracks `main` only. There are no maintained release branches at thi
 
 ## Threat model context
 
-TellSight is a multi-tenant SaaS application with several security-relevant surfaces. Reports about any of the following are especially welcome:
+Tellsight is a multi-tenant SaaS application with several security-relevant surfaces. Reports about any of the following are especially welcome:
 
 - **Privacy contract bypasses.** The core thesis is that the AI pipeline sees computed statistics, never raw rows of customer data. Any code path that could route raw rows or row-level identifiers to the LLM (system prompt, user prompt, tool inputs, structured-output schema fields) is a high-severity bug. The curation pipeline (`computation` → `scoring` → `assembly`) is the boundary; reports should reference where the leak occurs in that chain.
 - **Row-level security (RLS) bypasses.** PostgreSQL RLS policies enforce org isolation on every table. A query that returns rows belonging to a different `org_id` than the authenticated user's is an isolation breach. Reports identifying a specific endpoint and the SQL that crosses the boundary are most useful.

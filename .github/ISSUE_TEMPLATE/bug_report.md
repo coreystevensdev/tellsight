@@ -29,4 +29,4 @@ labels: bug
 
 ### Anything else
 
-<!-- Console errors, network response shape, screenshots. Please redact any real customer data before sharing, TellSight's privacy contract means I'd rather see a synthetic repro than a real-data trace. -->
+<!-- Console errors, network response shape, screenshots. Please redact any real customer data before sharing, Tellsight's privacy contract means I'd rather see a synthetic repro than a real-data trace. -->
