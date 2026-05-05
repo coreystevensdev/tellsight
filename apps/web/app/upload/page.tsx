@@ -1,3 +1,4 @@
+import { InvoiceFlowCard } from './InvoiceFlowCard';
 import { UploadDropzone } from './UploadDropzone';
 import { QuickBooksCard } from '@/components/integrations/QuickBooksCard';
 
@@ -10,6 +11,7 @@ export default function UploadPage() {
           <UploadDropzone />
           <QuickBooksCard />
         </div>
+        <InvoiceFlowCard className="mt-6" />
       </div>
     </main>
   );
