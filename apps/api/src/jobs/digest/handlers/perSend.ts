@@ -73,7 +73,7 @@ export async function handlePerSendJob(job: Job): Promise<void> {
   const bullets = parseSummaryToBullets(row.content);
   const dashboardUrl = buildDashboardUrl(row.datasetId);
   const unsubscribeUrl = buildUnsubscribeUrl(userId);
-  const headers = buildListUnsubscribeHeaders(unsubscribeUrl, env.EMAIL_FROM_ADDRESS);
+  const headers = buildListUnsubscribeHeaders(unsubscribeUrl);
 
   try {
     const result = await sendEmail({
@@ -158,25 +158,14 @@ export async function handlePerSendJob(job: Job): Promise<void> {
 }
 
 // Pair of headers Gmail/Yahoo 2024 sender rules require for one-click
-// unsubscribe to count. Both go or neither goes; List-Unsubscribe-Post is
-// meaningless without List-Unsubscribe and would confuse downstream tooling
-// if shipped alone.
+// unsubscribe to count. URL-only per RFC 8058: the mailto: half was dropped
+// in Story 9.4 because we don't operate an unsubscribe@<domain> inbox and
+// advertising one that bounces is a deliverability footgun.
 export function buildListUnsubscribeHeaders(
   unsubscribeUrl: string,
-  fromAddress: string,
 ): { 'List-Unsubscribe': string; 'List-Unsubscribe-Post': string } {
-  // lastIndexOf handles RFC 5322 quoted-local-parts ("a@b"@example.com)
-  // where a naive split would return the wrong segment.
-  const at = fromAddress.lastIndexOf('@');
-  if (at < 0 || at === fromAddress.length - 1) {
-    // env.EMAIL_FROM_ADDRESS is z.string().email() so this can't happen at
-    // runtime; the throw stays visible if a test bypasses Zod with a
-    // malformed mock.
-    throw new Error(`EMAIL_FROM_ADDRESS missing domain: "${fromAddress}"`);
-  }
-  const domain = fromAddress.slice(at + 1);
   return {
-    'List-Unsubscribe': `<${unsubscribeUrl}>, <mailto:unsubscribe@${domain}>`,
+    'List-Unsubscribe': `<${unsubscribeUrl}>`,
     'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
   };
 }

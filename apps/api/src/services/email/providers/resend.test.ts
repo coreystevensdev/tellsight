@@ -286,14 +286,14 @@ describe('resend provider', () => {
       subject: 's',
       react: template(),
       headers: {
-        'List-Unsubscribe': '<https://app/u>, <mailto:unsubscribe@kiln.app>',
+        'List-Unsubscribe': '<https://app/u>',
         'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
       },
     });
 
     const [payload] = send.mock.calls[0]! as [Record<string, unknown>];
     expect(payload.headers).toEqual({
-      'List-Unsubscribe': '<https://app/u>, <mailto:unsubscribe@kiln.app>',
+      'List-Unsubscribe': '<https://app/u>',
       'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
     });
   });

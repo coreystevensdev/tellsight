@@ -108,7 +108,7 @@ describe('console provider', () => {
       subject: 's',
       react: template(),
       headers: {
-        'List-Unsubscribe': `<https://app.tellsight.com/unsubscribe/digest/42.${realToken}>, <mailto:unsubscribe@tellsight.test>`,
+        'List-Unsubscribe': `<https://app.tellsight.com/unsubscribe/digest/42.${realToken}>`,
         'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
       },
     });
@@ -116,7 +116,6 @@ describe('console provider', () => {
     const [payload] = info.mock.calls[0]! as [Record<string, { 'List-Unsubscribe': string }>];
     const logged = payload.headers!['List-Unsubscribe'];
     expect(logged).toContain('/unsubscribe/digest/42.***');
-    expect(logged).toContain('mailto:unsubscribe@tellsight.test');
     expect(logged).not.toContain(realToken);
   });
 
@@ -249,11 +248,11 @@ describe('redactUnsubscribeToken', () => {
     );
   });
 
-  it('preserves non-token URL segments (mailto, brackets, commas)', () => {
+  it('preserves non-token URL segments (other protocols, brackets, commas)', () => {
     const input =
-      '<https://app.tellsight.com/unsubscribe/digest/7.sig123>, <mailto:unsubscribe@tellsight.test>';
+      '<https://app.tellsight.com/unsubscribe/digest/7.sig123>, <https://example.org/contact>';
     expect(redactUnsubscribeToken(input)).toBe(
-      '<https://app.tellsight.com/unsubscribe/digest/7.***>, <mailto:unsubscribe@tellsight.test>',
+      '<https://app.tellsight.com/unsubscribe/digest/7.***>, <https://example.org/contact>',
     );
   });
 

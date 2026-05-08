@@ -121,7 +121,7 @@ describe('happy path', () => {
     );
   });
 
-  it('attaches paired List-Unsubscribe headers derived from the unsubscribe URL', async () => {
+  it('attaches a URL-only List-Unsubscribe header (RFC 8058) derived from the unsubscribe URL', async () => {
     mockUpsertDefaults.mockResolvedValueOnce({ userId: 7, cadence: 'weekly', lastSentAt: null });
     mockGetById.mockResolvedValueOnce(okSummary);
     mockSendEmail.mockResolvedValueOnce({
@@ -137,8 +137,9 @@ describe('happy path', () => {
     };
     expect(opts.headers).toBeDefined();
     expect(opts.headers!['List-Unsubscribe']).toMatch(
-      /^<https:\/\/app\.tellsight\.com\/unsubscribe\/digest\/.+>, <mailto:unsubscribe@tellsight\.test>$/,
+      /^<https:\/\/app\.tellsight\.com\/unsubscribe\/digest\/.+>$/,
     );
+    expect(opts.headers!['List-Unsubscribe']).not.toContain('mailto:');
     expect(opts.headers!['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click');
   });
 
