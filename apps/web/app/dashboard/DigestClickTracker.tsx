@@ -27,7 +27,7 @@ export function DigestClickTracker() {
     if (!token) return;
 
     const ssKey = SS_PREFIX + token;
-    if (typeof window !== 'undefined' && window.sessionStorage.getItem(ssKey)) {
+    if (window.sessionStorage.getItem(ssKey)) {
       firedRef.current = true;
       return;
     }

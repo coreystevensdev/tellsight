@@ -3,7 +3,7 @@ import http from 'node:http';
 import express from 'express';
 import type { AddressInfo } from 'node:net';
 
-const mockTrackEvent = vi.fn();
+const mockTrackEvent = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../services/analytics/trackEvent.js', () => ({
   trackEvent: mockTrackEvent,

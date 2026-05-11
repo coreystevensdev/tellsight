@@ -62,8 +62,8 @@ describe('getEmailComplianceMetrics', () => {
     mockExecute.mockResolvedValueOnce([
       {
         total_pro_users: '15', cadence_active_users: '12',
-        unsub_7d: '2', bounce_7d: '0', complaint_7d: '1', sent_7d: '100',
-        unsub_30d: '5', bounce_30d: '0', complaint_30d: '2', sent_30d: '400',
+        unsub_7d: '2', bounce_7d: '0', complaint_7d: '1', sent_7d: '100', opened_7d: '45', clicked_7d: '12',
+        unsub_30d: '5', bounce_30d: '0', complaint_30d: '2', sent_30d: '400', opened_30d: '180', clicked_30d: '48',
       },
     ]);
 
@@ -72,7 +72,11 @@ describe('getEmailComplianceMetrics', () => {
     expect(m.totalProUsers).toBe(15);
     expect(m.cadenceActiveUsers).toBe(12);
     expect(m.d7.complained).toBe(1);
+    expect(m.d7.opened).toBe(45);
+    expect(m.d7.clicked).toBe(12);
     expect(m.d30.bounced).toBe(0);
+    expect(m.d30.opened).toBe(180);
+    expect(m.d30.clicked).toBe(48);
   });
 
   it('embeds bounce, complaint, and sent event names in the SQL bindings', async () => {

@@ -211,8 +211,6 @@ export function buildDashboardUrl(datasetId: number, trackingToken?: string): st
 }
 
 export function buildUnsubscribeUrl(userId: number): string {
-  // Path scheme matches the existing Next.js page at /unsubscribe/digest/[token].
-  // Story 9.4 may reshape, but for 9.3 the frontend expects this exact path.
   const token = signUnsubscribeToken(userId);
   return new URL(`/unsubscribe/digest/${encodeURIComponent(token)}`, env.APP_URL).toString();
 }

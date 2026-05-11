@@ -66,8 +66,8 @@ export function verifyDigestTrackingToken(token: string): DigestTrackingPayload 
 
   const { userId, orgId, weekStart, sig } = decoded;
   const expected = sign({ userId, orgId, weekStart });
-  const providedBuf = Buffer.from(sig);
-  const expectedBuf = Buffer.from(expected);
+  const providedBuf = Buffer.from(sig, 'base64url');
+  const expectedBuf = Buffer.from(expected, 'base64url');
   if (providedBuf.length !== expectedBuf.length) return null;
   if (!timingSafeEqual(providedBuf, expectedBuf)) return null;
 
