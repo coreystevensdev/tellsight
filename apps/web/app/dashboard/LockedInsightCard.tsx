@@ -35,14 +35,6 @@ function sanitizeInput(raw: string): string {
   return raw.replace(/[^0-9.,$]/g, '');
 }
 
-/**
- * Shared scaffold for owner-input-gated insights. Runway is the first consumer;
- * break-even and future gated stats reuse this component.
- *
- * Deliberately raw Tailwind + semantic HTML, shadcn Card/Button aren't fully
- * installed in this codebase yet (Epic 3 retro). The design tokens (border,
- * bg-card, radius) match AiSummaryCard so the feed stays visually coherent.
- */
 export function LockedInsightCard({
   title,
   description,

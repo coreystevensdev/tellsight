@@ -1,13 +1,4 @@
-/**
- * API client for Client Components.
- * All requests go through the Next.js BFF proxy at /api/*
- * which forwards to the Express API with cookie passthrough.
- *
- * Includes silent refresh: on 401, attempts token refresh then retries once.
- *
- * NEVER use this in Server Components, use api-server.ts instead.
- */
-
+// Client Components only. Server Components use api-server.ts (direct internal network call).
 import type { ApiResponse } from 'shared/types';
 
 const API_BASE = '/api';

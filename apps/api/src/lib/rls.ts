@@ -25,12 +25,6 @@ export async function withRlsContext<T>(
   });
 }
 
-/**
- * User-scoped sibling of withRlsContext for tables whose RLS policy reads
- * app.current_user_id (e.g., digest_preferences). Org-scoped tables stay on
- * withRlsContext, separate helpers keep call-site signatures honest about
- * which RLS scope each query needs.
- */
 export async function withUserRlsContext<T>(
   userId: number,
   isAdmin: boolean,

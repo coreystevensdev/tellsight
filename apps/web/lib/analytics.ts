@@ -1,7 +1,3 @@
-/**
- * Fire-and-forget client-side analytics. No await, no error throw
- * mirrors the backend trackEvent pattern.
- */
 export function trackClientEvent(
   eventName: string,
   metadata?: Record<string, unknown>,

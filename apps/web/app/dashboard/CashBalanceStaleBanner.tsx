@@ -22,13 +22,6 @@ function initialDismissed(): boolean {
   return window.sessionStorage.getItem(DISMISS_KEY) === '1';
 }
 
-/**
- * Surfaces when cash balance is more than 30 days old. Session-scoped dismissal
- * the nudge re-appears next visit because fresh data matters more than UI quiet.
- *
- * Suppressed entirely at 180+ days: runway is also suppressed at that age, so the
- * banner would point to a feature that isn't rendering.
- */
 export function CashBalanceStaleBanner({
   cashAsOfDate,
   now = new Date(),
@@ -48,6 +41,7 @@ export function CashBalanceStaleBanner({
 
   const age = ageInDays(asOf, now);
   if (age <= 30) return null;
+  // Runway card suppresses at 180+ days too, so the banner would reference a hidden feature.
   if (age > 180) return null;
 
   const parsed = Number(raw.replace(/[^0-9.]/g, ''));
