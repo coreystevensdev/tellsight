@@ -101,9 +101,9 @@ export const analyticsEvents = pgTable(
   'analytics_events',
   {
     id: integer().primaryKey().generatedAlwaysAsIdentity(),
-    // Nullable since Story 9.4: system-emitted webhook events (Resend bounce/
-    // complaint) have no recoverable user/org context. RLS filter still excludes
-    // NULL-org rows from tenant reads; admin-only via dbAdmin.
+    // Nullable: system-emitted webhook events (Resend bounce/complaint) have no
+    // recoverable user/org context. RLS still excludes NULL-org rows from tenant
+    // reads; visible only via dbAdmin.
     orgId: integer('org_id').references(() => orgs.id, { onDelete: 'cascade' }),
     userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }),
     eventName: varchar('event_name', { length: 100 }).notNull(),
@@ -205,9 +205,9 @@ export const aiSummaries = pgTable(
   ],
 );
 
-// Per-user, not per-org. One unsubscribe stops all digests for the user across
-// every org membership (Epic 9 decision C). Worker code touches this via
-// dbAdmin; user-facing routes (Story 9.4) will use db with current_user_id set.
+// Per-user, not per-org. One unsubscribe stops all digests across every org
+// membership. Worker fan-out uses dbAdmin; user-facing routes use db with
+// current_user_id RLS context.
 export const digestPreferences = pgTable('digest_preferences', {
   userId: integer('user_id')
     .primaryKey()

@@ -4,9 +4,9 @@
 // prose-only, no chip, no thumbnail. Adding a new stat-chart pairing
 // means adding an entry here and nothing else.
 //
-// CRITICAL: do NOT call STAT_CHART_MAP[id] without nullish-checking. The
-// type is Partial<Record<...>>; unmapped IDs return undefined and silent
-// null is the correct render path.
+// Do NOT call STAT_CHART_MAP[id] without nullish-checking. The type is
+// Partial<Record<...>>; unmapped IDs return undefined and prose-only
+// rendering is the correct fallback.
 
 export type MappedStatId =
   | 'runway'

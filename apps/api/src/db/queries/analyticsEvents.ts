@@ -74,8 +74,8 @@ export async function getAllAnalyticsEvents(opts: AdminEventsFilter) {
       createdAt: analyticsEvents.createdAt,
     })
     .from(analyticsEvents)
-    // leftJoin: system-emitted rows have NULL org_id/user_id (Story 9.4) and
-    // would silently drop from the admin feed if these were inner joins.
+    // leftJoin: system-emitted rows (webhook events) have NULL org_id/user_id
+    // and would silently drop from the admin feed if these were inner joins.
     .leftJoin(orgs, eq(orgs.id, analyticsEvents.orgId))
     .leftJoin(users, eq(users.id, analyticsEvents.userId))
     .where(where)

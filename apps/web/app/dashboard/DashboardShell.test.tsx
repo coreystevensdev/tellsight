@@ -62,7 +62,7 @@ vi.mock('./charts/LazyChart', () => ({
   LazyChart: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
-vi.mock('./contexts/SidebarContext', () => ({
+vi.mock('./SidebarContext', () => ({
   useSidebar: () => ({ setOrgName: vi.fn() }),
 }));
 

@@ -13,7 +13,7 @@ import { apiClient } from '@/lib/api-client';
 import { trackClientEvent } from '@/lib/analytics';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { useSubscription } from '@/lib/hooks/useSubscription';
-import { useSidebar } from './contexts/SidebarContext';
+import { useSidebar } from './SidebarContext';
 import { RevenueChart } from './charts/RevenueChart';
 import { ExpenseChart } from './charts/ExpenseChart';
 import { ExpenseTrendChart } from './charts/ExpenseTrendChart';
@@ -258,9 +258,9 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
     { revalidateOnFocus: false },
   );
 
-  // Cash history feeds the runway thumbnail in Story 8.5. We only fetch once
-  // the user has data (demo mode datasets get no runway anyway) and only when
-  // they've saved at least one balance (no history = no chart).
+  // Cash history feeds the runway thumbnail. Only fetch once the user has
+  // data (demo datasets get no runway) and only when they've saved at least
+  // one balance (no history = no chart).
   const { data: cashHistory, mutate: refreshCashHistory } = useSWR<{ balance: number; asOfDate: string }[]>(
     hasAnyData && financials?.cashOnHand != null ? '/org/financials/cash-history?limit=24' : null,
     async (key: string) => (await apiClient<{ balance: number; asOfDate: string }[]>(key)).data,

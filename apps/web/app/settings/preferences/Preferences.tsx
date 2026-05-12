@@ -14,7 +14,7 @@ const themes = [
 
 const noop = () => () => {};
 
-export default function PreferencesManager() {
+export default function Preferences() {
   const { theme, setTheme } = useTheme();
   const mounted = useSyncExternalStore(noop, () => true, () => false);
   const current = mounted ? (theme ?? 'system') : 'system';

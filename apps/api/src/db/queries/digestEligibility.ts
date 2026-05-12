@@ -65,7 +65,7 @@ export function buildEligibilityQuery(
 /**
  * Single-query enumeration of orgs that should receive a weekly digest.
  *
- * Eligibility rules (Story 9.2 AC #2):
+ * Eligibility rules:
  *   - subscription.status='active' AND subscription.plan='pro'
  *   - org has an activeDataset that was created within the last 30 days
  *   - at least one org member has digest_preferences.cadence != 'off' (NULL
@@ -98,8 +98,8 @@ const SIX_DAYS_AGO = sql`now() - interval '6 days'`;
  *   - cadence='weekly' (or NULL, which defaults to weekly per table DEFAULT)
  *   - last_sent_at IS NULL OR last_sent_at < now() - interval '6 days'
  *
- * Monthly-cadence users get skipped at launch (Epic 9 decision A, weekly only
- * at launch). Off-cadence users skip via the cadence filter. Per-user dedupe
+ * Monthly-cadence users are skipped (weekly-only launch scope). Off-cadence
+ * users skip via the cadence filter. Per-user dedupe
  * via the last_sent_at filter prevents a multi-org user from receiving N
  * digests per week.
  *

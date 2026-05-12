@@ -18,16 +18,9 @@ const tokenFormatter = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 1,
 });
 
-/**
- * Month-to-date Anthropic token spend, estimated. Not an invoice, actual
- * billing depends on model variant per request and prompt-caching discounts.
- * Rate card source: shared/constants.CLAUDE_PRICING (Sonnet 4.5 default).
- *
- * Purpose: catch cost spikes from prompt-version bumps before the monthly
- * Anthropic bill lands. Each Epic 8 prompt version bump (4 in the epic)
- * invalidated `ai_summaries` cache, triggering fresh generations on next
- * read. Without this tile, that cost spike is invisible until accounting.
- */
+// Prompt-version bumps invalidate ai_summaries cache and trigger fresh
+// generations. Without this tile, the resulting cost spike is invisible
+// until the monthly Anthropic bill lands.
 export function AiUsageTile({ usage }: AiUsageTileProps) {
   const inputLabel = tokenFormatter.format(usage.inputTokens);
   const outputLabel = tokenFormatter.format(usage.outputTokens);

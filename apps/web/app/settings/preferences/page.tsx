@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
-import PreferencesManager from './PreferencesManager';
+import Preferences from './Preferences';
 
 export const metadata: Metadata = {
   title: 'Preferences, Tellsight',
 };
 
 export default function PreferencesPage() {
-  return <PreferencesManager />;
+  return <Preferences />;
 }

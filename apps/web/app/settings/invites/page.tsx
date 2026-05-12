@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import InviteManager from './InviteManager';
+import Invites from './Invites';
 
 export const metadata: Metadata = {
   title: 'Invite Team Members, Tellsight',
@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 export default function InvitesPage() {
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
-      <InviteManager />
+      <Invites />
     </div>
   );
 }

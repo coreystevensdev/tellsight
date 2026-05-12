@@ -40,7 +40,7 @@ function emptyCardState(name: string): CardState {
   };
 }
 
-export default function DatasetManager() {
+export default function Datasets() {
   const [datasets, setDatasets] = useState<DatasetItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

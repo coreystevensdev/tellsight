@@ -2,7 +2,7 @@ import { cookies } from 'next/headers';
 import { AUTH } from 'shared/constants';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { AppHeader } from '@/components/layout/AppHeader';
-import { SidebarProvider } from '@/app/dashboard/contexts/SidebarContext';
+import { SidebarProvider } from '@/app/dashboard/SidebarContext';
 import { extractIsAdmin } from '@/lib/auth-utils';
 
 export default async function AdminLayout({

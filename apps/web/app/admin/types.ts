@@ -51,9 +51,9 @@ export interface AiUsageStats {
 export interface AnalyticsEventRow {
   id: number;
   eventName: string;
-  // Nullable since Story 9.4: system-emitted webhook events (Resend bounce/
-  // complaint) carry no user/org context; the admin events feed renders these
-  // with placeholders ("system" / "<system>").
+  // Nullable: system-emitted webhook events (Resend bounce/complaint) carry
+  // no user/org context; the admin events feed renders these with
+  // placeholders ("system" / "<system>").
   orgName: string | null;
   userEmail: string | null;
   metadata: Record<string, unknown> | null;

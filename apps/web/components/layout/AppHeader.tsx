@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { LogIn, Menu, User } from 'lucide-react';
-import { useSidebar } from '@/app/dashboard/contexts/SidebarContext';
+import { useSidebar } from '@/app/dashboard/SidebarContext';
 import { TellsightLogo } from '@/components/common/TellsightLogo';
 
 interface AppHeaderProps {

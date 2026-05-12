@@ -22,7 +22,7 @@ const SEND_CONCURRENCY = 10;
 // Send worker rate limiter: caps outbound mail at 10/sec in-process. Two-layer
 // defense: (1) limiter throttles below Resend's plan tier; (2) Resend 429s
 // classify as retryable EmailSendError so BullMQ backoff handles any miss.
-// Tune `max` down if Story 9.5 surfaces sustained 429 metrics.
+// Tune `max` down if the compliance panel surfaces sustained 429 metrics.
 const SEND_LIMITER_MAX = 10;
 const SEND_LIMITER_DURATION_MS = 1_000;
 
@@ -46,8 +46,8 @@ function attachStandardListeners(worker: Worker, label: string): void {
 // handler's retry-rethrow path means the terminal `digest_failed` event is
 // never emitted from inside the handler. The worker-level failed listener
 // fires once per attempt, so we wait until attemptsMade >= total attempts
-// before emitting the analytics event. Story 9.5's dashboards depend on this
-// to surface sustained provider issues.
+// before emitting the analytics event; the compliance dashboard depends on this
+// to surface sustained provider failures.
 function attachSendFailedAnalytics(worker: Worker): void {
   worker.on('failed', (job, err) => {
     if (!job) return;

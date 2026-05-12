@@ -3,7 +3,6 @@
 // resend.domains.list() here would cost a real API call every 30s per instance
 // and couple liveness to an external SLA we don't control. Fail-open remains
 // the posture for this endpoint.
-// See Story 9.1 AC #10 for rationale.
 import { Router } from 'express';
 import { sql } from 'drizzle-orm';
 

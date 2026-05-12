@@ -212,9 +212,9 @@ export async function handlePerSendJob(job: Job): Promise<void> {
 }
 
 // Pair of headers Gmail/Yahoo 2024 sender rules require for one-click
-// unsubscribe to count. URL-only per RFC 8058: the mailto: half was dropped
-// in Story 9.4 because we don't operate an unsubscribe@<domain> inbox and
-// advertising one that bounces is a deliverability footgun.
+// unsubscribe to count. URL-only per RFC 8058: no mailto: half because we
+// don't operate an unsubscribe@<domain> inbox and advertising one that
+// bounces is a deliverability footgun.
 export function buildListUnsubscribeHeaders(
   unsubscribeUrl: string,
 ): { 'List-Unsubscribe': string; 'List-Unsubscribe-Post': string } {

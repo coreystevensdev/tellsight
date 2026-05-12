@@ -11,7 +11,7 @@
 
 ## Overview
 
-**Live demo:** _(deploying shortly)_
+**Live demo:** [tellsight.coreystevens.dev](https://tellsight.coreystevens.dev)
 
 Most analytics tools show what happened. This one explains what it means. Upload a CSV of business data, get charts, then a Claude-generated interpretation of what the trends and anomalies actually mean. Multi-tenant Postgres with row-level security, SSE streaming for the AI summary, Stripe billing. The AI only ever sees computed statistics, never raw rows.
 
@@ -137,7 +137,6 @@ e2e/               Playwright E2E tests
 
 A few honest gaps:
 
-- **Live demo not yet deployed.** Until it lands, local Docker Compose is the only way to evaluate end-to-end.
 - **Synthetic seed data only.** The 12 months of demo data are generated to exercise the pipeline; real CSVs with unusual category mixes or column names may surface edge cases the seed doesn't cover.
 - **Curation pipeline scoring is heuristic.** The "rank by relevance" step uses hand-tuned weights, not a learned model. Fine for the demo dataset; real datasets may need re-weighting per industry.
 - **AI summary trust comes from Claude alone.** No second-opinion model, no rule-based validator over the output. The privacy-by-architecture stance keeps raw rows away from the LLM, but it also means there's no automated way to verify a summary against the underlying data; the user has to cross-check against the charts.

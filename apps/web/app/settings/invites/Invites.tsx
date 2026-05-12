@@ -15,7 +15,7 @@ interface ActiveInvite {
   createdBy: number;
 }
 
-export default function InviteManager() {
+export default function Invites() {
   const [invite, setInvite] = useState<GeneratedInvite | null>(null);
   const [activeInvites, setActiveInvites] = useState<ActiveInvite[]>([]);
   const [loading, setLoading] = useState(false);

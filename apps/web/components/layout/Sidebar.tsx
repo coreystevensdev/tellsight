@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { LayoutDashboard, Upload, ShieldCheck, Activity, X, Users, Database, SlidersHorizontal, Plug, DollarSign, Mail } from 'lucide-react';
 import { TellsightLogo } from '@/components/common/TellsightLogo';
 import { cn } from '@/lib/utils';
-import { useSidebar } from '@/app/dashboard/contexts/SidebarContext';
+import { useSidebar } from '@/app/dashboard/SidebarContext';
 import { ThemeToggle } from '@/components/common/ThemeToggle';
 
 const NAV_ITEMS = [

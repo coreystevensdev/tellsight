@@ -4,8 +4,8 @@ import { buildHeaderMap } from './csvAdapter.js';
 /**
  * Shape that matches data_rows insert requirements. The normalizer
  * transforms raw CSV strings into typed values the DB layer expects.
- * orgId, datasetId, and sourceType are assigned at persistence time
- * (Story 2.3), not here.
+ * orgId, datasetId, and sourceType are assigned at persistence time,
+ * not here.
  */
 export interface NormalizedRow {
   category: string;

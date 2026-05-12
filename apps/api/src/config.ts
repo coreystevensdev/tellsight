@@ -34,7 +34,7 @@ export const envSchema = z
     // rejects every request when the secret is absent (no signature can verify).
     RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
 
-    // Email service (Story 9.1), provider abstraction, console default outside production.
+    // Email provider abstraction, console default outside production.
     EMAIL_PROVIDER: z.enum(['resend', 'console', 'postmark']).default('console'),
     // FROM address + mailing address are REQUIRED (no defaults). A placeholder default
     // would let a deployer forget these and ship from example.com / with a fake physical

@@ -30,7 +30,7 @@ export async function getActiveTier(
       .limit(1);
     return result.length > 0 ? 'pro' : 'free';
   } catch {
-    // table may not exist yet pre-Epic 5, all users are free
+    // subscriptions table may not exist in fresh installs; treat as free
     return 'free';
   }
 }

@@ -5,11 +5,11 @@ vi.mock('next/navigation', () => ({
   usePathname: vi.fn(() => '/dashboard'),
 }));
 
-vi.mock('@/app/dashboard/contexts/SidebarContext', () => ({
+vi.mock('@/app/dashboard/SidebarContext', () => ({
   useSidebar: vi.fn(),
 }));
 
-import { useSidebar } from '@/app/dashboard/contexts/SidebarContext';
+import { useSidebar } from '@/app/dashboard/SidebarContext';
 import { Sidebar } from './Sidebar';
 
 function mockSidebar(overrides: Partial<ReturnType<typeof useSidebar>> = {}) {

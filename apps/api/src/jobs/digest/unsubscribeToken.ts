@@ -6,10 +6,8 @@ import { env } from '../../config.js';
 // access token or share token cannot be replayed as an unsubscribe token,
 // because the signature is bound to the literal string 'unsubscribe:'.
 //
-// User-scoped (not per-org) per Epic 9 decision C: digest_preferences are
-// keyed on user_id, so one click stops all digests for the user across every
-// org membership. Old emailDigest helper used (userId, orgId); new shape
-// drops orgId.
+// User-scoped (not per-org): digest_preferences are keyed on user_id, so one
+// click stops all digests across every org membership.
 const PURPOSE = 'unsubscribe';
 
 function sign(userId: number): string {

@@ -15,7 +15,7 @@ interface QbStatus {
   connectedAt?: string;
 }
 
-export default function IntegrationsManager() {
+export default function Integrations() {
   const [qb, setQb] = useState<QbStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

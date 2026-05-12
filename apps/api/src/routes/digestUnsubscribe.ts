@@ -12,9 +12,8 @@ export const publicDigestUnsubscribeRouter = Router();
 // links for previews). Idempotent: unsubscribing an already-opted-out user is a
 // no-op. The Next.js page at /unsubscribe/digest/[token] calls this.
 //
-// Token shape switched to user-scoped (one-arg) per Epic 9 decision C: one
-// click stops all digests across every org membership. Old per-org
-// (userId, orgId) shape retired with services/emailDigest/.
+// User-scoped token (one arg): one click stops all digests across every org
+// membership.
 publicDigestUnsubscribeRouter.post('/digest/unsubscribe/:token', async (req, res: Response) => {
   const { token } = req.params;
   const verified = verifyUnsubscribeToken(token ?? '');
