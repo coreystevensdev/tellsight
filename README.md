@@ -13,15 +13,15 @@
 
 **Live demo:** [tellsight.coreystevens.dev](https://tellsight.coreystevens.dev)
 
-Most analytics tools show what happened. This one explains what it means. Upload a CSV of business data, get charts, then a Claude-generated interpretation of what the trends and anomalies actually mean. Multi-tenant Postgres with row-level security, SSE streaming for the AI summary, Stripe billing. The AI only ever sees computed statistics, never raw rows.
+Most analytics tools show numbers. This one explains what they mean, and delivers the interpretation to your inbox every week. Connect QuickBooks or upload a CSV, get charts, then a plain-English explanation of what the trends actually mean for your business. Multi-tenant Postgres with row-level security, SSE streaming for AI summaries, BullMQ-powered weekly digest, Stripe billing. The AI only ever sees computed statistics, never raw rows.
 
 ## Problem
 
-Small businesses can't afford data scientists, and enterprise analytics platforms overwhelm non-technical users with dashboards full of numbers but no guidance. The gap isn't visualization. Plenty of tools make charts. The gap is interpretation: what do these numbers actually mean for my business?
+Small businesses can't afford data scientists, and enterprise analytics platforms overwhelm non-technical users with dashboards full of numbers but no guidance. The Federal Reserve's 2026 Small Business Survey puts a number on it: owners who don't feel in control of their financials are 8x more likely to report high financial stress than those who do. The gap isn't visualization. Plenty of tools make charts. The gap is interpretation: what do these numbers actually mean for my business?
 
 ## Solution
 
-Upload a CSV of your business data. The dashboard instantly visualizes revenue trends, expense breakdowns, and category comparisons. Then AI reads the computed statistics (not your raw data) and explains what's happening in plain English: which costs are rising faster than revenue, where seasonal patterns suggest opportunities, what anomalies deserve attention.
+Upload a CSV or connect QuickBooks directly via OAuth. The dashboard instantly visualizes revenue trends, expense breakdowns, and category comparisons. Then AI reads the computed statistics (not your raw data) and explains what's happening in plain English: which costs are rising faster than revenue, where seasonal patterns suggest opportunities, what anomalies deserve attention. QuickBooks users skip the CSV export entirely. Pro users get that interpretation delivered as a weekly email digest, with week-over-week context built in, so the analysis arrives without having to remember to log in.
 
 ## Features
 
@@ -43,6 +43,8 @@ Upload a CSV of your business data. The dashboard instantly visualizes revenue t
 - **Shareable insights.** Generate PNG snapshots or shareable links for team collaboration.
 - **Dark mode.** System preference detection + manual toggle with oklch color tokens.
 - **Demo mode.** Pre-loaded seed data with cached AI summary, zero configuration needed.
+- **QuickBooks integration.** Connect a QBO account via OAuth and sync directly. The same curation pipeline that reads CSVs reads QuickBooks data; same privacy guarantees apply.
+- **Weekly email digest.** Pro users get a plain-English summary delivered weekly. Each digest carries context from the prior week so the interpretation builds over time rather than repeating the same snapshot.
 
 ## Architecture
 
@@ -141,6 +143,7 @@ A few honest gaps:
 - **Curation pipeline scoring is heuristic.** The "rank by relevance" step uses hand-tuned weights, not a learned model. Fine for the demo dataset; real datasets may need re-weighting per industry.
 - **AI summary trust comes from Claude alone.** No second-opinion model, no rule-based validator over the output. The privacy-by-architecture stance keeps raw rows away from the LLM, but it also means there's no automated way to verify a summary against the underlying data; the user has to cross-check against the charts.
 - **Free-tier AI preview is capped at ~150 words.** Enough to evaluate quality, but a hard ceiling that Pro tier removes.
+- **QuickBooks is the only native connector.** Shopify, Stripe, and bank-feed integrations are planned. Until those ship, non-QBO data sources require a CSV export.
 
 ## Sister project
 
