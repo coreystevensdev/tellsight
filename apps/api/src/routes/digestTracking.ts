@@ -61,7 +61,7 @@ digestTrackingRouter.get('/track/digest/open', (req, res) => {
     weekStart: verified.weekStart,
     userAgent,
     openedAt: new Date().toISOString(),
-  }).catch((err: unknown) => logger.warn({ err }, 'Digest open tracking failed'));
+  });
 
   logger.info(
     {
@@ -105,7 +105,7 @@ digestTrackingRouter.post('/track/digest/click', (req, res) => {
     weekStart: verified.weekStart,
     utmCampaign: 'weekly-digest',
     destination: '/dashboard',
-  }).catch((err: unknown) => logger.warn({ err }, 'Digest click tracking failed'));
+  });
 
   logger.info(
     {
