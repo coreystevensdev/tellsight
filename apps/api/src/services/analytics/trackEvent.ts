@@ -3,12 +3,7 @@ import { logger } from '../../lib/logger.js';
 import { dbAdmin } from '../../lib/db.js';
 import { analyticsEventsQueries } from '../../db/queries/index.js';
 
-/**
- * Fire-and-forget event tracker. Logs errors but never throws
- * analytics failures must not block user-facing operations.
- * Uses dbAdmin to bypass RLS, fire-and-forget runs outside any
- * transaction, so SET LOCAL context wouldn't apply anyway.
- */
+// dbAdmin: fire-and-forget runs outside any transaction, SET LOCAL context wouldn't apply.
 export function trackEvent(
   orgId: number,
   userId: number,
@@ -22,13 +17,8 @@ export function trackEvent(
     });
 }
 
-/**
- * System-emitted variant for events with no recoverable user/org context
- * (e.g., Resend webhook bounce/complaint events when the per-send tag is
- * missing or malformed). Writes a row with NULL org_id and NULL user_id;
- * the existing RLS policy excludes these from tenant reads, so they're
- * platform-admin-visible only via dbAdmin (compliance dashboard, admin feed).
- */
+// NULL org/user: RLS excludes these rows from tenant reads; visible only via
+// dbAdmin (compliance dashboard, admin feed). Used when webhook context is lost.
 export function trackEventSystem(
   eventName: AnalyticsEventName,
   metadata?: Record<string, unknown>,

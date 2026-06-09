@@ -34,12 +34,12 @@ import { DemoModeBanner } from '@/components/common/DemoModeBanner';
 import { useExportPdf } from '@/lib/hooks/useExportPdf';
 import { KpiCards } from './KpiCards';
 import { OnboardingModal } from './OnboardingModal';
-import { DatasetChip } from '@/components/datasets/DatasetChip';
+import { DatasetChip } from '@/components/DatasetChip';
 import { QbReturnToast } from './QbReturnToast';
 import { LockedInsightCard } from './LockedInsightCard';
 import { CashBalanceStaleBanner } from './CashBalanceStaleBanner';
 import { DigestClickTracker } from './DigestClickTracker';
-import { LastDigestIndicator } from '@/components/insights/LastDigestIndicator';
+import { LastDigestIndicator } from '@/components/LastDigestIndicator';
 import type { OrgFinancials } from 'shared/types';
 
 interface DashboardShellProps {

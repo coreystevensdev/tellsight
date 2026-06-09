@@ -1,6 +1,6 @@
 import { InvoiceFlowCard } from './InvoiceFlowCard';
 import { UploadDropzone } from './UploadDropzone';
-import { QuickBooksCard } from '@/components/integrations/QuickBooksCard';
+import { QuickBooksCard } from '@/components/QuickBooksCard';
 
 export default function UploadPage() {
   return (
