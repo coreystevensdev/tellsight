@@ -70,6 +70,8 @@ flowchart LR
 
 The browser never talks to Express directly. Everything routes through a Next.js BFF proxy (same-origin, no CORS). The curation pipeline computes statistics locally, scores them by relevance, then assembles a prompt from the top insights. Raw data never reaches the LLM. Only computed statistics. This privacy-by-architecture approach means the AI interprets trends and anomalies without ever seeing individual rows.
 
+The Claude integration calls `@anthropic-ai/sdk` directly rather than going through a framework like LangChain, behind a small in-house provider seam that owns retries, a circuit breaker, a cost gate, and prompt caching. The reasoning is written up in [ADR 0001](docs/adr/0001-anthropic-sdk-over-langchain.md).
+
 ## Tech Stack
 
 | Layer | Technology | Why |
@@ -141,7 +143,7 @@ A few honest gaps:
 
 - **Synthetic seed data only.** The 12 months of demo data are generated to exercise the pipeline; real CSVs with unusual category mixes or column names may surface edge cases the seed doesn't cover.
 - **Curation pipeline scoring is heuristic.** The "rank by relevance" step uses hand-tuned weights, not a learned model. Fine for the demo dataset; real datasets may need re-weighting per industry.
-- **AI summary trust comes from Claude alone.** No second-opinion model, no rule-based validator over the output. The privacy-by-architecture stance keeps raw rows away from the LLM, but it also means there's no automated way to verify a summary against the underlying data; the user has to cross-check against the charts.
+- **No offline eval harness over the generated summaries.** CI validates the curation pipeline's output deterministically (the stats and prompt that go *into* the model), but there's no scored eval suite, no faithfulness or answer-relevance metric, over what comes *out*. The privacy-by-architecture stance keeps raw rows away from the LLM, which also means there's no automated way to grade a summary against the underlying data. Trust currently rests on Claude alone plus the user cross-checking against the charts. A Ragas-style scorer against a labeled set is the obvious next step and isn't built.
 - **Free-tier AI preview is capped at ~150 words.** Enough to evaluate quality, but a hard ceiling that Pro tier removes.
 - **QuickBooks is the only native connector.** Shopify, Stripe, and bank-feed integrations are planned. Until those ship, non-QBO data sources require a CSV export.
 
