@@ -126,6 +126,13 @@ export const sourceTypeEnum = pgEnum('source_type', [
   'plaid',
 ]);
 
+export const digestValenceEnum = pgEnum('digest_valence', [
+  'positive',
+  'concerning',
+  'watching',
+  'neutral',
+]);
+
 export const datasets = pgTable(
   'datasets',
   {
@@ -219,6 +226,42 @@ export const digestPreferences = pgTable('digest_preferences', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+// Append-only delivery record, one row per org per week. Immutable: never
+// staled or deleted by application logic (mirrors cash_balance_snapshots).
+// dataset_id and summary_id are set-null on delete, not cascade, so the
+// longitudinal record outlives the data it was generated from, a deleted
+// dataset must not erase the week-over-week history that feeds next week's
+// prior-context.
+export const digestHistory = pgTable(
+  'digest_history',
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    orgId: integer('org_id')
+      .notNull()
+      .references(() => orgs.id, { onDelete: 'cascade' }),
+    datasetId: integer('dataset_id').references(() => datasets.id, {
+      onDelete: 'set null',
+    }),
+    summaryId: integer('summary_id').references(() => aiSummaries.id, {
+      onDelete: 'set null',
+    }),
+    weekStart: timestamp('week_start', { withTimezone: true }).notNull(),
+    subjectLine: text('subject_line').notNull(),
+    stateSentence: text('state_sentence').notNull(),
+    valence: digestValenceEnum('valence').notNull(),
+    // ComputedStat[] snapshot, top-N scored stats only. Privacy boundary:
+    // computed statistics, never DataRow[]. Typed at the query-helper layer.
+    keyStats: jsonb('key_stats').notNull(),
+    milestones: jsonb('milestones').notNull().default('[]'),
+    sentAt: timestamp('sent_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    // One delivery record per org per week. Also the BullMQ-retry guard:
+    // a re-enqueued send can't double-write the same week.
+    uniqueIndex('idx_digest_history_org_week').on(table.orgId, table.weekStart),
+  ],
+);
 
 export const shares = pgTable(
   'shares',
@@ -392,6 +435,21 @@ export const digestPreferencesRelations = relations(digestPreferences, ({ one })
   }),
 }));
 
+export const digestHistoryRelations = relations(digestHistory, ({ one }) => ({
+  org: one(orgs, {
+    fields: [digestHistory.orgId],
+    references: [orgs.id],
+  }),
+  dataset: one(datasets, {
+    fields: [digestHistory.datasetId],
+    references: [datasets.id],
+  }),
+  summary: one(aiSummaries, {
+    fields: [digestHistory.summaryId],
+    references: [aiSummaries.id],
+  }),
+}));
+
 export const orgsRelations = relations(orgs, ({ many, one }) => ({
   userOrgs: many(userOrgs),
   refreshTokens: many(refreshTokens),
@@ -402,6 +460,7 @@ export const orgsRelations = relations(orgs, ({ many, one }) => ({
   aiSummaries: many(aiSummaries),
   subscription: one(subscriptions),
   integrationConnections: many(integrationConnections),
+  digestHistory: many(digestHistory),
   activeDataset: one(datasets, {
     fields: [orgs.activeDatasetId],
     references: [datasets.id],

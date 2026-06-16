@@ -169,6 +169,13 @@
       "when": 1778544300000,
       "tag": "0023_analytics_events_relax_user_org_not_null",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1781913600000,
+      "tag": "0024_add-digest-history",
+      "breakpoints": true
     }
   ]
 }
