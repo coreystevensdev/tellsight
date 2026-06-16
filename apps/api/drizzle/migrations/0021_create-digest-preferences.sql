@@ -3,7 +3,7 @@
 -- Rows are upserted lazily on first digest attempt; no backfill needed because
 -- every column has a sensible DEFAULT.
 
-CREATE TABLE "digest_preferences" (
+CREATE TABLE IF NOT EXISTS "digest_preferences" (
   "user_id" integer PRIMARY KEY REFERENCES "users"("id") ON DELETE CASCADE,
   "cadence" text NOT NULL DEFAULT 'weekly',
   "timezone" text NOT NULL DEFAULT 'UTC',
@@ -16,7 +16,7 @@ CREATE TABLE "digest_preferences" (
 );
 --> statement-breakpoint
 
-CREATE INDEX "idx_digest_preferences_last_sent_at"
+CREATE INDEX IF NOT EXISTS "idx_digest_preferences_last_sent_at"
   ON "digest_preferences" ("last_sent_at");
 --> statement-breakpoint
 
@@ -25,12 +25,16 @@ ALTER TABLE "digest_preferences" ENABLE ROW LEVEL SECURITY;
 
 -- User-scoped policy: every read/mutation must match the authenticated user.
 -- Worker code bypasses RLS via dbAdmin (platform operation, see queries/digestPreferences.ts).
+DROP POLICY IF EXISTS "digest_preferences_owner" ON "digest_preferences";
+--> statement-breakpoint
 CREATE POLICY "digest_preferences_owner" ON "digest_preferences"
   FOR ALL
   USING (user_id = current_setting('app.current_user_id', true)::integer)
   WITH CHECK (user_id = current_setting('app.current_user_id', true)::integer);
 --> statement-breakpoint
 
+DROP POLICY IF EXISTS "digest_preferences_admin_bypass" ON "digest_preferences";
+--> statement-breakpoint
 CREATE POLICY "digest_preferences_admin_bypass" ON "digest_preferences"
   FOR ALL
   USING (COALESCE(current_setting('app.is_admin', true)::boolean, false) = true);

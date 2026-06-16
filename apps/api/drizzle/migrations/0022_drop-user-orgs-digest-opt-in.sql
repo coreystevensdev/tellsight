@@ -3,4 +3,4 @@
 -- on user_orgs predates Epic 9 and the new orchestrator never reads it.
 -- Pure ALTER, no data migration, existing rows lose only the boolean field.
 
-ALTER TABLE "user_orgs" DROP COLUMN "digest_opt_in";
+ALTER TABLE "user_orgs" DROP COLUMN IF EXISTS "digest_opt_in";

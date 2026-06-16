@@ -141,6 +141,34 @@
       "when": 1777939200000,
       "tag": "0019_add-cash-balance-snapshots",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1778544000000,
+      "tag": "0020_add-ai-summaries-digest-fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1778544100000,
+      "tag": "0021_create-digest-preferences",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1778544200000,
+      "tag": "0022_drop-user-orgs-digest-opt-in",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1778544300000,
+      "tag": "0023_analytics_events_relax_user_org_not_null",
+      "breakpoints": true
     }
   ]
 }
