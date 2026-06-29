@@ -30,6 +30,10 @@ export function classifyValence(stats: readonly ComputedStat[]): DigestValence {
 
   // A runway in the 3-6 band counts as negative here: < 3 already returned above,
   // so this clause only sees the watching tier.
+  // Guard styles differ on purpose. cashFlow/margin compare to a string literal, so
+  // `?.` is safe (undefined fails the ===). forecast/breakEven need explicit
+  // `!== undefined` because `forecast?.…crossesZeroAtMonth !== null` would read true
+  // when no forecast exists (undefined !== null), flipping the result. Don't unify these.
   const hasNegative =
     (runway !== undefined && runway.details.runwayMonths < RUNWAY_POSITIVE_THRESHOLD) ||
     cashFlow?.details.direction === 'burning' ||
