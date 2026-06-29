@@ -9,7 +9,9 @@
     "type-check": "turbo type-check",
     "test": "turbo test",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
-    "screenshots": "pnpm -C apps/api exec tsx ../../scripts/generate-screenshots.ts"
+    "screenshots": "pnpm -C apps/api exec tsx ../../scripts/generate-screenshots.ts",
+    "eval": "pnpm -C apps/api exec tsx ../../scripts/eval-summaries.ts",
+    "test:eval": "pnpm -C apps/api exec vitest run -c ../../scripts/vitest.config.ts"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

@@ -49,6 +49,9 @@ Thumbs.db
 # Interview documentation companions
 *_explained.md
 
+# Eval harness run artifact (regenerated per run, never committed)
+scripts/eval-fixtures/scorecard.json
+
 # Local dev overrides
 docker-compose.override.yml
 
