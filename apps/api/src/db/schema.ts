@@ -300,6 +300,7 @@ export const subscriptions = pgTable(
     stripeSubscriptionId: varchar('stripe_subscription_id', { length: 255 }),
     status: varchar({ length: 50 }).notNull().default('inactive'),
     plan: varchar({ length: 50 }).notNull().default('free'),
+    agentEnabled: boolean('agent_enabled').notNull().default(false),
     currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -461,6 +462,7 @@ export const orgsRelations = relations(orgs, ({ many, one }) => ({
   subscription: one(subscriptions),
   integrationConnections: many(integrationConnections),
   digestHistory: many(digestHistory),
+  agentProposals: many(agentProposals),
   activeDataset: one(datasets, {
     fields: [orgs.activeDatasetId],
     references: [datasets.id],
@@ -565,10 +567,62 @@ export const sharesRelations = relations(shares, ({ one }) => ({
   }),
 }));
 
+export const agentProposalStatusEnum = pgEnum('agent_proposal_status', [
+  'pending',
+  'approved',
+  'rejected',
+  'expired',
+  'notified',
+]);
+
+export const agentProposals = pgTable(
+  'agent_proposals',
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    orgId: integer('org_id')
+      .notNull()
+      .references(() => orgs.id, { onDelete: 'cascade' }),
+    kind: text().notNull(),
+    severity: text().notNull(),
+    title: varchar({ length: 120 }).notNull(),
+    explanation: text().notNull(),
+    recommendation: text().notNull(),
+    confidence: numeric({ precision: 4, scale: 3 }).notNull(),
+    evidence: jsonb().notNull(),
+    action: jsonb(),
+    dedupKey: text('dedup_key').notNull(),
+    lane: text().notNull(),
+    period: text().notNull(),
+    status: agentProposalStatusEnum().notNull().default('pending'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    resolvedByUserId: integer('resolved_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+  },
+  (table) => [
+    index('idx_agent_proposals_org_status').on(table.orgId, table.status),
+    index('idx_agent_proposals_org_dedup_key').on(table.orgId, table.dedupKey),
+    index('idx_agent_proposals_expires_at').on(table.expiresAt),
+  ],
+);
+
 export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
   org: one(orgs, {
     fields: [subscriptions.orgId],
     references: [orgs.id],
+  }),
+}));
+
+export const agentProposalsRelations = relations(agentProposals, ({ one }) => ({
+  org: one(orgs, {
+    fields: [agentProposals.orgId],
+    references: [orgs.id],
+  }),
+  resolvedByUser: one(users, {
+    fields: [agentProposals.resolvedByUserId],
+    references: [users.id],
   }),
 }));
 

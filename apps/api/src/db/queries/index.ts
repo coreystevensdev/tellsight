@@ -18,3 +18,4 @@ export * as orgFinancialsQueries from './orgFinancials.js';
 export * as digestPreferencesQueries from './digestPreferences.js';
 export * as digestEligibilityQueries from './digestEligibility.js';
 export * as digestHistoryQueries from './digestHistory.js';
+export * as agentProposalsQueries from './agentProposals.js';

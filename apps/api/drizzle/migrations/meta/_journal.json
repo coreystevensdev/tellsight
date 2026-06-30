@@ -176,6 +176,13 @@
       "when": 1781913600000,
       "tag": "0024_add-digest-history",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1782000000000,
+      "tag": "0025_add-agent-tables",
+      "breakpoints": true
     }
   ]
 }
