@@ -72,6 +72,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Build shared package
+        run: pnpm -C packages/shared build
+
       - name: Run API tests
         working-directory: apps/api
         run: npx vitest run
