@@ -60,7 +60,8 @@ describe('schema validation', () => {
   });
 
   it('drops a proposal missing a required field', () => {
-    const { title: _omit, ...noTitle } = validProposal();
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { title, ...noTitle } = validProposal();
     const raw = JSON.stringify([noTitle]);
 
     expect(parseProposals(raw, allowed)).toEqual([]);

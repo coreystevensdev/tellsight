@@ -43,10 +43,10 @@ const bannedPatterns = BANNED_IMPERATIVES.map((p) => ({
 
 // A financial verb counts as a command only when it heads a sentence (start of
 // text or right after sentence punctuation / a line break) or follows a 2nd-person
-// modal ("you should buy"). Mid-sentence, hedged mentions ("whether to invest")
-// are left alone, the hedge family is the legal-safe way to raise them.
+// strong modal ("you should buy"). Soft advisory modals ("could", "can") are not
+// included — "you could invest the surplus" is approved hedge territory, not a command.
 const commandRe = new RegExp(
-  `(?:^|[.!?]\\s+|\\n\\s*|\\byou\\s+(?:should|need to|must|could|can|ought to)\\s+)(${FINANCIAL_VERBS.join('|')})\\b`,
+  `(?:^|[.!?]\\s+|\\n\\s*|\\byou\\s+(?:should|need to|must|ought to)\\s+)(${FINANCIAL_VERBS.join('|')})\\b`,
   'gi',
 );
 
