@@ -36,7 +36,8 @@ const proposedActionSchema = z.object({
 // Advisory posture is a legal boundary, not a style preference: insights are
 // fine, financial directives need RIA registration. Reject the directive voice
 // at the contract so a stray "you should" fails validation instead of shipping.
-const DIRECTIVE = /\byou (should|must|need to|have to)\b/i;
+// Must align with scripts/eval-fixtures/legal-posture.ts BANNED_IMPERATIVES.
+const DIRECTIVE = /\b(you\s+(?:should|must|need\s+to|ought\s+to)|i\s+recommend|i['d]\s+recommend|i\s+suggest\s+you)\b/i;
 
 export const agentProposalSchema = z.object({
   kind: z.enum(FINDING_KINDS),

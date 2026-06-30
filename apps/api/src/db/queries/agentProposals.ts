@@ -25,6 +25,13 @@ export interface InsertProposalInput {
 type Client = typeof dbAdmin | DbTransaction;
 
 export async function insertProposal(input: InsertProposalInput, client: Client = dbAdmin) {
+  // Validate numeric(4,3) string format: confidence must be parseable and in [0, 1]
+  const conf = parseFloat(input.confidence);
+  if (isNaN(conf) || conf < 0 || conf > 1) {
+    const summary = input.confidence.substring(0, 20);
+    throw new Error(`confidence must be numeric string in [0, 1], got "${summary}${input.confidence.length > 20 ? '...' : ''}"`);
+  }
+
   const [row] = await client
     .insert(agentProposals)
     .values({
