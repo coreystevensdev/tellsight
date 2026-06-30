@@ -9,8 +9,6 @@ const ctx = (seen: string[] = []): GateContext => ({ recentDedupKeys: new Set(se
 // Fills required fields with safe defaults so each test states only what it varies.
 function p(over: Partial<AgentProposal> = {}): AgentProposal {
   return {
-    id: '00000000-0000-0000-0000-000000000001',
-    orgId: '00000000-0000-0000-0000-000000000002',
     kind: 'trend',
     severity: 'notice',
     title: 'Test finding',
@@ -33,6 +31,11 @@ const action = (over: Partial<ProposedAction> = {}): ProposedAction => ({
 describe('routeProposal', () => {
   it('suppresses below the confidence floor', () => {
     expect(routeProposal(p({ confidence: 0.4 }), cfg, ctx()).lane).toBe('suppress');
+  });
+
+  it('auto-notifies a proposal at exactly the confidence floor (strict less-than)', () => {
+    // minConfidence = 0.6; the check is `< 0.6`, so 0.6 itself must pass through
+    expect(routeProposal(p({ confidence: 0.6 }), cfg, ctx()).lane).toBe('auto_notify');
   });
 
   it('auto-notifies a fresh informational finding', () => {

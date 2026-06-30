@@ -29,7 +29,6 @@ export async function insertProposal(input: InsertProposalInput, client: Client 
     .insert(agentProposals)
     .values({
       ...input,
-      evidence: input.evidence,
       action: input.action ?? null,
     })
     .returning({ id: agentProposals.id });
@@ -72,12 +71,14 @@ export async function resolveProposal(
 }
 
 // Mark auto_notify proposals as notified after the digest includes them.
-export async function markNotified(ids: number[], client: Client = dbAdmin) {
+// orgId is required to ensure a worker processing one org can't accidentally
+// mark proposals belonging to a different org.
+export async function markNotified(orgId: number, ids: number[], client: Client = dbAdmin) {
   if (ids.length === 0) return;
   await client
     .update(agentProposals)
     .set({ status: 'notified', resolvedAt: new Date() })
-    .where(inArray(agentProposals.id, ids));
+    .where(and(eq(agentProposals.orgId, orgId), inArray(agentProposals.id, ids)));
 }
 
 // Expiry sweep: called by the nightly worker. Returns the ids that were

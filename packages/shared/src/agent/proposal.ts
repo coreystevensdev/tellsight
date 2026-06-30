@@ -39,12 +39,13 @@ const proposedActionSchema = z.object({
 const DIRECTIVE = /\byou (should|must|need to|have to)\b/i;
 
 export const agentProposalSchema = z.object({
-  id: z.string().uuid(),
-  orgId: z.string().uuid(),
   kind: z.enum(FINDING_KINDS),
   severity: z.enum(['info', 'notice', 'warning', 'critical']),
   title: z.string().min(1).max(120),
-  explanation: z.string().min(1),
+  explanation: z
+    .string()
+    .min(1)
+    .refine((s) => !DIRECTIVE.test(s), 'explanation must be advisory, not directive'),
   recommendation: z
     .string()
     .min(1)
