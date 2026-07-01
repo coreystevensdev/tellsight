@@ -45,3 +45,22 @@ What we give up:
 - LangChain (TypeScript). Rejected: the abstractions it charges for (chains, agents, retrieval) are not used here, so the dependency is cost without benefit. The one thing it would buy us, provider swappability, is 27 lines of our own interface.
 - LangChain plus LangSmith tracing. Tracing is genuinely useful, but it does not require adopting the orchestration framework. Structured Pino logs plus Sentry already cover the single-call observability we need; per-call usage and cost are logged on every request.
 - No abstraction at all (call the SDK inline at each site). Rejected: it would scatter Anthropic types across services and make a provider swap a multi-file migration. The thin seam costs almost nothing and removes that coupling.
+
+## Revisited 2026-06-30 (agent tier shipped)
+
+The agent tier landed and did not change this decision. "Adding agents" here means a single structured-generation call followed by deterministic code, not a model-driven agent loop, so the reconsider-trigger named above ("a genuine agent or multi-step chain") is not met.
+
+The path is three stages, and only the first touches the model:
+
+1. One call through the existing provider seam produces a JSON array of proposals, prompted by `services/curation/config/prompt-templates/v1-agent-{system,user}.md` and fed the same curated `ComputedStat[]` the interpretation path uses.
+2. `parseProposals()` (`apps/api/src/services/curation/parseProposals.ts`) validates each item against `agentProposalSchema` and drops any whose `evidence` cites a stat ID outside the allowed set. Pure function, no model call.
+3. `routeProposal()` (`packages/shared/src/agent/gate.ts`) assigns each proposal a lane, `auto_notify`, `needs_approval`, or `suppress`, by a fixed precedence: confidence floor first, then a mutating or over-threshold action forces a human, then dedup, else auto-notify. Pure and side-effect-free; the caller does the IO and writes the audit row.
+
+No `tools`, no `tool_use` / `tool_choice`, no observe-act loop, no second model call. The model emits data; our code makes every control-flow decision. It is the interpretation pipeline's shape (curated input, one call, structured output, deterministic handling) applied to a different output type.
+
+Adopting LangChain now would still buy nothing this path uses, and it would cost two things we want in plain, tested code we own:
+
+- The safety gate. `routeProposal` is what keeps a low-confidence or mutating proposal from auto-executing. That policy belongs in an audited pure function, not inside a framework's agent executor.
+- The privacy edge. The "evidence must cite an allowed stat ID, else drop" rule in `parseProposals` enforces the no-raw-data-leak boundary at the output. A generic output parser would not scope that for us.
+
+What would reopen the question: proposals that require the model to call tools and observe results across multiple turns, which is a real tool-use agent. Even then the first move is to grow the provider seam's `PromptInput` and return type to carry tool calls (the Anthropic SDK supports tool use natively), and to lean on Postgres plus BullMQ for any durable human-in-the-loop state, rather than adopt an orchestration framework. Status stays Accepted.
