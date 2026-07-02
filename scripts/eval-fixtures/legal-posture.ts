@@ -7,22 +7,18 @@
 //     lines 5,7,12 -> approved hedges ("could indicate", "worth investigating", ...)
 // If that template's boundaries change, update these to match, otherwise the eval
 // stops measuring what production actually enforces.
+//
+// BANNED_IMPERATIVES is shared with the runtime proposal validator
+// (packages/shared/src/agent/proposal.ts) so the QA scorer here and the API
+// boundary check can't drift. The financial-verb and hedge lists stay local:
+// proposal.ts has no equivalent, so there's nothing to share.
+
+import { BANNED_IMPERATIVES } from '../../packages/shared/src/agent/constants.js';
 
 export interface LegalPostureResult {
   pass: boolean;
   violations: string[];
 }
-
-// Imperatives the template forbids outright. Word-boundary anchored so "should"
-// inside "shoulder" never trips, and the multi-word phrases match as units.
-const BANNED_IMPERATIVES = [
-  'you should',
-  'you need to',
-  'you must',
-  'i recommend',
-  "i'd recommend",
-  'i suggest you',
-];
 
 // Base-form verbs only. The \b after each base means gerunds and past tense
 // ("hiring", "invested", "fired") don't match, those describe, they don't command.
@@ -45,8 +41,10 @@ const bannedPatterns = BANNED_IMPERATIVES.map((p) => ({
 // text or right after sentence punctuation / a line break) or follows a 2nd-person
 // strong modal ("you should buy"). Soft advisory modals ("could", "can") are not
 // included — "you could invest the surplus" is approved hedge territory, not a command.
+// The trailing (?!-) drops hyphenated compound nouns that only look like commands
+// at a sentence start: "Sell-through improved", "Buy-in from staff", "Fire-sale pricing".
 const commandRe = new RegExp(
-  `(?:^|[.!?]\\s+|\\n\\s*|\\byou\\s+(?:should|need to|must|ought to)\\s+)(${FINANCIAL_VERBS.join('|')})\\b`,
+  `(?:^|[.!?]\\s+|\\n\\s*|\\byou\\s+(?:should|need to|must|ought to)\\s+)(${FINANCIAL_VERBS.join('|')})\\b(?!-)`,
   'gi',
 );
 

@@ -40,6 +40,11 @@ const SCORECARD_PATH = resolve(__dirname, 'eval-fixtures', 'scorecard.json');
 const FROZEN_NOW = new Date('2026-01-15T12:00:00Z');
 const SAMPLES = 3;
 
+// Only the initial value of the reported version; the real one is read back from
+// assemblePrompt's metadata per fixture, so a default-version bump can't leave the
+// scorecard lying about which prompt was scored.
+const DEFAULT_PROMPT_VERSION = 'v1.6';
+
 // Floors apply to the mean (the number that lands in the README). Legal posture
 // is a floor of its own: it must pass on every sample, not on average.
 const FLOORS = { faithfulness: 0.85, completeness: 0.8 };
@@ -132,6 +137,22 @@ async function scoreCompleteness(
 ): Promise<number> {
   const raw = await provider.generate(completenessJudge(answerKey, summary));
   const { items } = parseJudge(raw, completenessSchema, 'completeness');
+
+  // The judge is told to echo the exact statType literal. If it drifts (returns
+  // "Cash Flow" instead of "cash_flow", or drops an item), the set lookup below
+  // scores that item as not-addressed and completeness silently reads worse than
+  // reality. Surface the drift so it doesn't get mistaken for a real regression.
+  const keySet = new Set<string>(answerKey);
+  const returned = new Set(items.map((i) => i.statType));
+  const unknown = [...new Set(items.map((i) => i.statType))].filter((t) => !keySet.has(t));
+  const missing = answerKey.filter((t) => !returned.has(t));
+  if (unknown.length > 0) {
+    console.error(`  completeness judge returned unrecognized statTypes (echo drift?): ${unknown.join(', ')}`);
+  }
+  if (missing.length > 0) {
+    console.error(`  completeness judge omitted answer-key items: ${missing.join(', ')}`);
+  }
+
   const addressed = new Set(items.filter((i) => i.addressed).map((i) => i.statType));
   const covered = answerKey.filter((t) => addressed.has(t)).length;
   return covered / answerKey.length;
@@ -154,9 +175,9 @@ function printScorecardTable(rows: FixtureScore[]): void {
 async function scoreFixture(
   provider: LlmProvider,
   fixture: (typeof FIXTURES)[number],
-): Promise<FixtureScore> {
+): Promise<{ score: FixtureScore; promptVersion: string }> {
   const scored = scoreInsights(fixture.build());
-  const { system, user } = assemblePrompt(scored, undefined, undefined, FROZEN_NOW);
+  const { system, user, metadata } = assemblePrompt(scored, undefined, undefined, FROZEN_NOW);
   const groundTruth = extractStatSummaries(user);
 
   const samples: SampleScore[] = [];
@@ -181,14 +202,17 @@ async function scoreFixture(
   const faithVals = samples.map((s) => s.faithfulness);
   const compVals = samples.map((s) => s.completeness);
   return {
-    id: fixture.id,
-    label: fixture.label,
-    faithfulness: { mean: mean(faithVals), min: Math.min(...faithVals) },
-    completeness: { mean: mean(compVals), min: Math.min(...compVals) },
-    legalPosture: {
-      pass: samples.every((s) => s.legalPass),
-      violations: [...new Set(samples.flatMap((s) => s.legalViolations))],
+    score: {
+      id: fixture.id,
+      label: fixture.label,
+      faithfulness: { mean: mean(faithVals), min: Math.min(...faithVals) },
+      completeness: { mean: mean(compVals), min: Math.min(...compVals) },
+      legalPosture: {
+        pass: samples.every((s) => s.legalPass),
+        violations: [...new Set(samples.flatMap((s) => s.legalViolations))],
+      },
     },
+    promptVersion: metadata.promptVersion,
   };
 }
 
@@ -211,8 +235,11 @@ async function main(): Promise<void> {
 
   console.log(`Running ${FIXTURES.length} fixtures x ${SAMPLES} samples...`);
   const results: FixtureScore[] = [];
+  let promptVersion = DEFAULT_PROMPT_VERSION;
   for (const fixture of FIXTURES) {
-    results.push(await scoreFixture(provider, fixture));
+    const { score, promptVersion: version } = await scoreFixture(provider, fixture);
+    promptVersion = version;
+    results.push(score);
   }
 
   const aggregate = {
@@ -222,10 +249,16 @@ async function main(): Promise<void> {
   };
 
   const scorecard = {
-    promptVersion: 'v1.6',
+    promptVersion, // the version assemblePrompt actually rendered, not a hardcoded guess
     generatedAt: new Date().toISOString(), // lives only here, never in the printed/compared surface
     samplesPerFixture: SAMPLES,
     floors: FLOORS,
+    // The faithfulness/completeness judges request temperature 0 in-prompt, but the
+    // LlmProvider interface exposes no temperature knob, so the API runs at the
+    // provider default. Recorded here so the scores aren't read as if they were
+    // fully deterministic. See story EVAL.1 Dev Agent Record (carry-forward to a
+    // provider `generate(input, opts?)` overload).
+    judgeTemperature: 'provider default (temperature 0 requested in-prompt, not enforced at the API)',
     fixtures: results,
     aggregate,
   };

@@ -9,6 +9,9 @@
 // surplus anyway, because these fixtures exercise the pipeline + judges over
 // arbitrary stat sets, not just live-shaped ones. The harness runs each set
 // through real scoreInsights -> assemblePrompt, so a regression there still shows.
+// The surplus (+$9k/mo) and the runway burn (-$6k/mo) are deliberately different
+// magnitudes: an identical figure with a flipped sign would put a same-number
+// contradiction into the faithfulness judge's ground truth and muddy the score.
 
 import type { ComputedStat, StatType } from '../../apps/api/src/services/curation/types.js';
 
@@ -51,9 +54,9 @@ export function healthyGrowth(): ComputedStat[] {
     {
       statType: 'cash_flow',
       category: null,
-      value: 6000,
+      value: 9000,
       details: {
-        monthlyNet: 6000,
+        monthlyNet: 9000,
         trailingMonths: 6,
         direction: 'surplus',
         monthsBurning: 0,
@@ -206,8 +209,11 @@ export const FIXTURES: EvalFixture[] = [
     build: cashCrunch,
   },
   {
+    // AC2 frames this as "a December revenue anomaly", but AnomalyDetails carries
+    // no month field, so the calendar month isn't encodable in the stat. The label
+    // describes what the data actually is: a revenue spike anomaly, not a dated one.
     id: 'seasonal-anomaly',
-    label: 'December revenue spike, seasonal projection, year-over-year, category trend',
+    label: 'Revenue spike anomaly, seasonal projection, year-over-year, category trend',
     answerKey: ['anomaly', 'year_over_year', 'seasonal_projection', 'trend'],
     build: seasonalAnomaly,
   },

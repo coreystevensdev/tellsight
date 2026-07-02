@@ -70,6 +70,15 @@ year, all worth investigating with your accountant.`;
     expect(r.violations.some((v) => v.startsWith('financial command'))).toBe(false);
   });
 
+  it.each([
+    'Sell-through improved across every category, worth investigating.',
+    'Buy-in from the team was strong last quarter, worth investigating.',
+    'Fire-sale pricing dented margins in March, worth investigating.',
+  ])('does not flag a hyphenated compound noun at a sentence start: %s', (text) => {
+    const r = scoreLegalPosture(text);
+    expect(r.violations.some((v) => v.startsWith('financial command'))).toBe(false);
+  });
+
   it('does not flag hedged suggestions that mention a financial verb', () => {
     const text = `You might want to look into whether to invest the surplus, worth
 investigating with your accountant.`;

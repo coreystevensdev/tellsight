@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { BANNED_IMPERATIVES } from './constants.js';
+
 // The cross-boundary contract for the agent tier. The API produces proposals
 // (LLM output, schema-validated on return); the web Action drawer renders them
 // and shows why each was routed. Both sides import this one definition, so a
@@ -36,8 +38,12 @@ const proposedActionSchema = z.object({
 // Advisory posture is a legal boundary, not a style preference: insights are
 // fine, financial directives need RIA registration. Reject the directive voice
 // at the contract so a stray "you should" fails validation instead of shipping.
-// Must align with scripts/eval-fixtures/legal-posture.ts BANNED_IMPERATIVES.
-const DIRECTIVE = /\b(you\s+(?:should|must|need\s+to|ought\s+to)|i\s+recommend|i'd\s+recommend|i\s+suggest\s+you)\b/i;
+// Built from the shared BANNED_IMPERATIVES so this and legal-posture.ts stay in
+// lockstep; interior spaces become \s+ so "you   should" or a line break still trips.
+const DIRECTIVE = new RegExp(
+  `\\b(?:${BANNED_IMPERATIVES.map((p) => p.replace(/ /g, '\\s+')).join('|')})\\b`,
+  'i',
+);
 
 export const agentProposalSchema = z.object({
   kind: z.enum(FINDING_KINDS),
