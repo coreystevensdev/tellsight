@@ -8,8 +8,8 @@
  * generations, and judges them with an LLM (faithfulness, completeness) plus a
  * deterministic string scan (legal posture).
  *
- * Run: pnpm -C apps/api exec tsx ../../scripts/eval-summaries.ts
- * Needs CLAUDE_API_KEY. Costs tokens (N samples x 3 fixtures x ~3 calls each).
+ * Run: pnpm eval  (from the repo root; loads .env, then runs this via tsx)
+ * Needs a real CLAUDE_API_KEY. Costs tokens (N samples x 3 fixtures x ~3 calls each).
  *
  * console.log/error is intentional, this is a standalone script, not app code;
  * the Pino rule applies to apps/ only (same posture as validate-seed.ts).

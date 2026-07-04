@@ -10,7 +10,7 @@
     "test": "turbo test",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "screenshots": "pnpm -C apps/api exec tsx ../../scripts/generate-screenshots.ts",
-    "eval": "pnpm -C apps/api exec tsx ../../scripts/eval-summaries.ts",
+    "eval": "if [ -f .env ]; then set -a; . ./.env; set +a; fi; pnpm -C apps/api exec tsx ../../scripts/eval-summaries.ts",
     "test:eval": "pnpm -C apps/api exec vitest run -c ../../scripts/vitest.config.ts"
   },
   "pnpm": {
