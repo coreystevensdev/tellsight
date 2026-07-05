@@ -1,7 +1,7 @@
 import type { ComputedStat } from '../../services/curation/types.js';
 import type { DigestValence } from '../../db/queries/digestHistory.js';
 
-// Shared with Story 11.4 milestone detection; exported so the boundaries can't drift.
+// Exported so threshold consumers share a single definition and can't drift independently.
 export const RUNWAY_CONCERNING_THRESHOLD = 3; // runwayMonths < 3 → concerning
 export const RUNWAY_POSITIVE_THRESHOLD = 6; // runwayMonths >= 6 → positive
 

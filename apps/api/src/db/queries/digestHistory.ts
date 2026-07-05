@@ -53,8 +53,6 @@ export async function getTrailingDigests(
 // unique index is the BullMQ-retry guard: if a send job is re-enqueued after a
 // transient failure, the second attempt must not create a duplicate week.
 //
-// TODO(you): implement the insert. The decision worth making is what happens
-// when the unique index is hit on a retry. See the prompt for the trade-offs.
 export async function saveDigestHistory(
   input: SaveDigestHistoryInput,
   client: Client = dbAdmin,

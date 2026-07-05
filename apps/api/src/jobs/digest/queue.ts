@@ -3,12 +3,11 @@ import type { ConnectionOptions } from 'bullmq';
 
 import { env } from '../../config.js';
 
-// Three queues, not one. Story 9.2's spec asked for "single shared queue with
-// three workers filtering by job name", but BullMQ OSS has no native job-name
-// routing, multiple workers on one queue compete for jobs randomly, and a
-// processor that early-returns marks the job complete (hiding it from the
-// other workers). Three queues is the only shape that gives the spec's intent:
-// independent concurrency per job type plus a per-send rate limiter.
+// Three queues, not one. A single shared queue with multiple workers fails
+// under BullMQ OSS: there is no native job-name routing, workers compete for
+// jobs randomly, and a processor that early-returns marks the job complete
+// (hiding it from other workers). Three named queues give independent
+// concurrency per job type plus a per-send rate limiter.
 //
 // Trade-off: three sets of Redis keys, three Worker connections. Cost is
 // negligible; benefit is correctness under BullMQ semantics.

@@ -3,7 +3,7 @@
  *
  * Purpose: catch a single Claude call that costs dramatically more than the
  * usual one, a runaway prompt, a multi-page payload, a pricing
- * misconfiguration. Modelled on InvoiceFlow's cost.ts (NFR-R4 there).
+ * misconfiguration. Modelled on InvoiceFlow's cost.ts.
  *
  * Invariants worth knowing:
  *   - Per-instance state. Each Node process has its own history and median.
