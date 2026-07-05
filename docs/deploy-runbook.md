@@ -62,8 +62,10 @@ NODE_ENV=production
 EMAIL_FROM_ADDRESS=demo@yourdomain.dev   # EMAIL_PROVIDER defaults to console; nothing sends
 EMAIL_MAILING_ADDRESS=123 Demo St, City, ST   # CAN-SPAM field
 
-# Web (Vercel)
-PUBLIC_API_URL=https://<api>.up.railway.app
+# Web (Vercel) — server-side only, never exposed to the browser
+API_INTERNAL_URL=https://<api>.up.railway.app   # BFF proxy target
+JWT_SECRET=<same value as Railway>               # proxy.ts verifies tokens
+NODE_ENV=production
 ```
 
 Everything else (`CLAUDE_MODEL`, `PORT`, `EMAIL_PROVIDER`, `ANALYTICS_RETENTION_DAYS`, Sentry, Resend, QuickBooks, `METRICS_TOKEN`, `COOKIE_DOMAIN`) has a default or is optional.
