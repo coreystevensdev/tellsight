@@ -221,6 +221,10 @@ export type ComputedStat =
   | BreakEvenStat
   | CashForecastStat;
 
+// Citation target for the audit drawer and NL Q&A: a ComputedStat with a stable instance id.
+// The id is derived (see statInstanceId in computation.ts), never stored on ComputedStat itself.
+export type IdentifiedStat = ComputedStat & { id: string };
+
 export interface ScoredInsight {
   stat: ComputedStat;
   score: number;

@@ -11,6 +11,7 @@ import {
 
 import type {
   ComputedStat,
+  IdentifiedStat,
   CashFlowStat,
   RunwayStat,
   BreakEvenStat,
@@ -875,4 +876,41 @@ export function computeStats(
     ...breakEvenStats,
     ...cashForecastStats,
   ];
+}
+
+// Per-instance id for the audit drawer and NL Q&A citation system.
+// Different from allowedStatIds (assembly.ts), which refers to stat *types*, not instances.
+export function statInstanceId(stat: ComputedStat, datasetId: number): string {
+  return `${datasetId}:${stat.statType}:${stat.category ?? '_'}:${statDiscriminator(stat)}`;
+}
+
+function statDiscriminator(stat: ComputedStat): string {
+  switch (stat.statType) {
+    case StatType.Total:
+    case StatType.Average:
+      return stat.details.scope;
+    case StatType.YearOverYear:
+      return `${stat.details.currentYear}-${stat.details.month}`;
+    case StatType.SeasonalProjection:
+      return stat.details.projectedMonth;
+    case StatType.CashFlow:
+      return `w${stat.details.trailingMonths}`;
+    case StatType.Anomaly:
+      // anomaly identity is the value: no date/month on AnomalyDetails
+      return `v${stat.value}`;
+    default:
+      return '_';
+  }
+}
+
+// Maps stats to IdentifiedStat[], deduping byte-identical entries (keeps first).
+// The only practical collision is two same-value anomalies in one category, which
+// are indistinguishable and cannot be cited apart anyway.
+export function assignIds(stats: ComputedStat[], datasetId: number): IdentifiedStat[] {
+  const byId = new Map<string, IdentifiedStat>();
+  for (const s of stats) {
+    const id = statInstanceId(s, datasetId);
+    if (!byId.has(id)) byId.set(id, { ...s, id });
+  }
+  return [...byId.values()];
 }
