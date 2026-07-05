@@ -82,7 +82,7 @@ vi.mock('../middleware/rateLimiter.js', () => ({
 
 const { createTestApp } = await import('../test/helpers/testApp.js');
 const { authMiddleware } = await import('../middleware/authMiddleware.js');
-const { datasetManagementRouter } = await import('./datasetManagement.js');
+const { datasetsManageRouter } = await import('./datasets-manage.js');
 
 const ownerPayload = { sub: '1', org_id: 1, role: 'owner' as const, isAdmin: false, iat: 0, exp: 0 };
 const memberPayload = { sub: '2', org_id: 1, role: 'member' as const, isAdmin: false, iat: 0, exp: 0 };
@@ -95,7 +95,7 @@ let baseUrl: string;
 beforeAll(async () => {
   const result = await createTestApp((app) => {
     app.use(authMiddleware);
-    app.use('/datasets', datasetManagementRouter);
+    app.use('/datasets', datasetsManageRouter);
   });
   server = result.server;
   baseUrl = result.baseUrl;

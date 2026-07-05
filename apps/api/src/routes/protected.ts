@@ -3,7 +3,7 @@ import { authMiddleware } from '../middleware/authMiddleware.js';
 import { sentryUserContext } from '../lib/sentry.js';
 import { inviteRouter } from './invites.js';
 import { datasetsRouter } from './datasets.js';
-import { datasetManagementRouter } from './datasetManagement.js';
+import { datasetsManageRouter } from './datasets-manage.js';
 import { aiSummaryRouter } from './aiSummary.js';
 import { subscriptionsRouter } from './subscriptions.js';
 import { analyticsRouter } from './analytics.js';
@@ -24,7 +24,7 @@ protectedRouter.use(sentryUserContext);
 
 protectedRouter.use('/invites', inviteRouter);
 protectedRouter.use('/datasets', datasetsRouter);
-protectedRouter.use('/datasets', datasetManagementRouter);
+protectedRouter.use('/datasets', datasetsManageRouter);
 
 protectedRouter.use('/ai-summaries', aiSummaryRouter);
 protectedRouter.use('/subscriptions', subscriptionsRouter);
