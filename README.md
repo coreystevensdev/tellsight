@@ -4,6 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/coreystevensdev/tellsight/actions/workflows/ci.yml"><img src="https://github.com/coreystevensdev/tellsight/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <img src="https://img.shields.io/badge/tests-1%2C628-brightgreen.svg" alt="1,628 tests">
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License">
   <img src="https://img.shields.io/badge/Next.js-16-black.svg" alt="Next.js 16">
   <img src="https://img.shields.io/badge/TypeScript-5.9-3178c6.svg" alt="TypeScript">
@@ -115,6 +116,10 @@ docker compose up
 ```
 
 The app starts at [http://localhost:3000](http://localhost:3000) with seed data pre-loaded. The dashboard shows charts and an AI summary immediately, no account needed.
+
+Observability stack starts alongside the app:
+- Prometheus scrapes the API at `:9090`
+- Grafana dashboard (HTTP latency percentiles, AI token rate, SSE streams) at `:3002` (login: admin/admin)
 
 ### Local Development
 
