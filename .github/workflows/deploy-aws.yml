@@ -1,0 +1,106 @@
+name: Deploy to AWS ECS
+
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy:
+    name: Build, Push, Deploy
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image tags
+        id: tags
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          ECR_API: ${{ secrets.ECR_API_REPO }}
+          ECR_WEB: ${{ secrets.ECR_WEB_REPO }}
+        run: |
+          SHORT="${HEAD_SHA:0:7}"
+          echo "short_sha=$SHORT" >> "$GITHUB_OUTPUT"
+          echo "api_image=${ECR_API}:sha-${SHORT}" >> "$GITHUB_OUTPUT"
+          echo "web_image=${ECR_WEB}:sha-${SHORT}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.api
+          target: production
+          push: true
+          tags: |
+            ${{ steps.tags.outputs.api_image }}
+            ${{ secrets.ECR_API_REPO }}:latest
+
+      - name: Build and push web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.web
+          target: production
+          push: true
+          tags: |
+            ${{ steps.tags.outputs.web_image }}
+            ${{ secrets.ECR_WEB_REPO }}:latest
+
+      - name: Deploy API service to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition-family: ${{ secrets.ECS_API_TASK_FAMILY }}
+          service: ${{ secrets.ECS_API_SERVICE }}
+          cluster: ${{ secrets.ECS_CLUSTER }}
+          image-uri: ${{ steps.tags.outputs.api_image }}
+          container-name: api
+          wait-for-service-stability: true
+
+      - name: Deploy web service to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition-family: ${{ secrets.ECS_WEB_TASK_FAMILY }}
+          service: ${{ secrets.ECS_WEB_SERVICE }}
+          cluster: ${{ secrets.ECS_CLUSTER }}
+          image-uri: ${{ steps.tags.outputs.web_image }}
+          container-name: web
+          wait-for-service-stability: true
+
+      - name: Smoke test production
+        env:
+          PROD_URL: ${{ secrets.PRODUCTION_URL }}
+        run: |
+          echo "Polling $PROD_URL/api/health/ready..."
+          for i in $(seq 1 30); do
+            body=$(curl -fsS "$PROD_URL/api/health/ready" 2>/dev/null || true)
+            if echo "$body" | grep -q '"status":"ok"'; then
+              echo "Healthy after $((i * 10))s"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Production did not become healthy within 5 minutes"
+          exit 1
