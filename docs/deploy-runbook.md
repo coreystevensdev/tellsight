@@ -19,6 +19,67 @@ curl -fsS https://{DOMAIN}/api/health/ready | jq
 
 ---
 
+## 0. First-Time Provisioning
+
+Everything above assumes the stack already exists. This section stands it up the first time. The CI `deploy` job only fires hooks at already-provisioned Vercel + Railway projects, so the first deploy is manual.
+
+### Managed-Postgres RLS gotcha (read first)
+
+`docker/init.sql` runs `ALTER ROLE app_admin BYPASSRLS`, which needs **superuser**. Neon and RDS do **not** grant superuser, so that line fails there. You do not need it: the RLS policies use `ENABLE ROW LEVEL SECURITY`, not `FORCE`, so the **table owner bypasses RLS by ownership**. Requirements on managed Postgres:
+
+- Run migrations as the **owner** role, and use that same role as `DATABASE_ADMIN_URL`. Ownership gives it the RLS bypass (matches `seed.ts`, which assumes admin bypasses RLS with no `SET LOCAL`).
+- `app_user` is a **separate, non-owner** role with DML grants only. It is subject to RLS, isolated per request by `app.current_org_id`.
+- Skip the `BYPASSRLS` line. Do not put the app's tables under `FORCE ROW LEVEL SECURITY`, or ownership stops bypassing.
+
+`app_user` grants (managed-safe, drop the `BYPASSRLS` line from `init.sql`):
+
+```sql
+CREATE ROLE app_user LOGIN PASSWORD '<pass>';
+GRANT CONNECT ON DATABASE <db> TO app_user;
+GRANT USAGE ON SCHEMA public TO app_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO app_user;
+```
+
+### Required env vars (14, all validated fail-fast by `config.ts`)
+
+The app refuses to boot if any are missing. `CLAUDE_API_KEY` is **required** (not optional, despite older docs) because the cache keeps usage low, not the config lax. Because the dashboard is public, the demo renders with zero login, so Stripe/Google only need to be present to boot, not functional.
+
+```bash
+# API (Railway)
+DATABASE_URL=postgresql://app_user:PASS@<host>/<db>?sslmode=require        # restricted, non-owner
+DATABASE_ADMIN_URL=postgresql://<owner>:PASS@<host>/<db>?sslmode=require   # owns tables -> RLS bypass
+REDIS_URL=rediss://default:PASS@<upstash-host>:6379
+CLAUDE_API_KEY=sk-ant-...
+STRIPE_SECRET_KEY=sk_test_...            # test mode is fine
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PRICE_ID=price_...
+GOOGLE_CLIENT_ID=...                     # add the production redirect URI in Google Console
+GOOGLE_CLIENT_SECRET=...
+JWT_SECRET=<openssl rand -base64 48>
+APP_URL=https://<app>.vercel.app
+NODE_ENV=production
+EMAIL_FROM_ADDRESS=demo@yourdomain.dev   # EMAIL_PROVIDER defaults to console; nothing sends
+EMAIL_MAILING_ADDRESS=123 Demo St, City, ST   # CAN-SPAM field
+
+# Web (Vercel)
+PUBLIC_API_URL=https://<api>.up.railway.app
+```
+
+Everything else (`CLAUDE_MODEL`, `PORT`, `EMAIL_PROVIDER`, `ANALYTICS_RETENTION_DAYS`, Sentry, Resend, QuickBooks, `METRICS_TOKEN`, `COOKIE_DOMAIN`) has a default or is optional.
+
+### Ordered steps
+
+1. **Postgres (Neon or Supabase):** create the DB; create `app_user` (restricted) with the grants above; confirm the owner role for `DATABASE_ADMIN_URL`. Skip `BYPASSRLS`.
+2. **Redis (Upstash):** create the DB; copy the `rediss://` URL.
+3. **API (Railway):** deploy `apps/api` via its Dockerfile; paste the 14 vars. The entrypoint runs migrations + seed automatically (idempotent, advisory-locked).
+4. **Web (Vercel):** import the repo, root `apps/web`; set `PUBLIC_API_URL` + `APP_URL`.
+5. **Verify:** `curl -fsS https://<app>.vercel.app/api/health/ready | jq` returns `{"status":"ok"}`; open the dashboard and confirm charts + the pre-cached AI summary render with no login.
+6. **Wire auto-deploy:** set repo secrets `VERCEL_DEPLOY_HOOK_URL`, `RAILWAY_DEPLOY_HOOK_URL`, `PRODUCTION_URL`. The `deploy` job then activates on every push to `main`.
+7. **Demo link:** point the README/profile demo URL at the live `*.vercel.app` (custom domain optional; do it later).
+
+---
+
 ## 1. How to Deploy
 
 ### Automatic (normal path)
