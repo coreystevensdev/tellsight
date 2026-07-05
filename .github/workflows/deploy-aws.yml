@@ -1,4 +1,4 @@
-name: Deploy to AWS ECS
+name: Deploy to AWS EC2
 
 on:
   workflow_run:
@@ -11,8 +11,8 @@ permissions:
   contents: read
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   AWS_REGION: us-east-1
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   deploy:
@@ -43,7 +43,6 @@ jobs:
           ECR_WEB: ${{ secrets.ECR_WEB_REPO }}
         run: |
           SHORT="${HEAD_SHA:0:7}"
-          echo "short_sha=$SHORT" >> "$GITHUB_OUTPUT"
           echo "api_image=${ECR_API}:sha-${SHORT}" >> "$GITHUB_OUTPUT"
           echo "web_image=${ECR_WEB}:sha-${SHORT}" >> "$GITHUB_OUTPUT"
 
@@ -69,32 +68,95 @@ jobs:
             ${{ steps.tags.outputs.web_image }}
             ${{ secrets.ECR_WEB_REPO }}:latest
 
-      - name: Deploy API service to ECS
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-        with:
-          task-definition-family: ${{ secrets.ECS_API_TASK_FAMILY }}
-          service: ${{ secrets.ECS_API_SERVICE }}
-          cluster: ${{ secrets.ECS_CLUSTER }}
-          image-uri: ${{ steps.tags.outputs.api_image }}
-          container-name: api
-          wait-for-service-stability: true
+      # Write .env and restart containers via SSM (no SSH key stored anywhere).
+      # All secrets are consumed via env: -- they are masked in CI logs and
+      # never directly interpolated into a run: command string.
+      - name: Deploy via SSM
+        env:
+          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          CLAUDE_MODEL: ${{ secrets.CLAUDE_MODEL }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          STRIPE_PRICE_ID: ${{ secrets.STRIPE_PRICE_ID }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          ECR_API_REPO: ${{ secrets.ECR_API_REPO }}
+        run: |
+          python3 - << 'PY'
+          import base64, json, os, subprocess, sys, time
 
-      - name: Deploy web service to ECS
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-        with:
-          task-definition-family: ${{ secrets.ECS_WEB_TASK_FAMILY }}
-          service: ${{ secrets.ECS_WEB_SERVICE }}
-          cluster: ${{ secrets.ECS_CLUSTER }}
-          image-uri: ${{ steps.tags.outputs.web_image }}
-          container-name: web
-          wait-for-service-stability: true
+          env_lines = [
+              f"DATABASE_URL={os.environ['DATABASE_URL']}",
+              f"DATABASE_ADMIN_URL={os.environ['DATABASE_URL']}",
+              f"CLAUDE_API_KEY={os.environ['CLAUDE_API_KEY']}",
+              f"CLAUDE_MODEL={os.environ.get('CLAUDE_MODEL', 'claude-sonnet-4-6')}",
+              f"STRIPE_SECRET_KEY={os.environ['STRIPE_SECRET_KEY']}",
+              f"STRIPE_WEBHOOK_SECRET={os.environ['STRIPE_WEBHOOK_SECRET']}",
+              f"STRIPE_PRICE_ID={os.environ['STRIPE_PRICE_ID']}",
+              f"GOOGLE_CLIENT_ID={os.environ['GOOGLE_CLIENT_ID']}",
+              f"GOOGLE_CLIENT_SECRET={os.environ['GOOGLE_CLIENT_SECRET']}",
+              f"JWT_SECRET={os.environ['JWT_SECRET']}",
+          ]
+          # Base64-encode so no shell-quoting issues when the string hits the EC2 shell.
+          env_b64 = base64.b64encode("\n".join(env_lines).encode()).decode()
+          ecr_host = os.environ['ECR_API_REPO'].split('/')[0]
 
-      - name: Smoke test production
+          commands = [
+              f"printf '%s' '{env_b64}' | base64 -d > /opt/tellsight/.env",
+              f"aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin {ecr_host}",
+              "cd /opt/tellsight && docker compose pull",
+              "docker compose up -d --remove-orphans",
+          ]
+
+          send = subprocess.run([
+              "aws", "ssm", "send-command",
+              "--instance-ids", os.environ['EC2_INSTANCE_ID'],
+              "--document-name", "AWS-RunShellScript",
+              "--parameters", json.dumps({"commands": commands}),
+              "--output", "json",
+          ], capture_output=True, text=True)
+
+          if send.returncode != 0:
+              print(send.stderr, file=sys.stderr)
+              sys.exit(1)
+
+          cmd_id = json.loads(send.stdout)["Command"]["CommandId"]
+          instance_id = os.environ['EC2_INSTANCE_ID']
+          print(f"SSM command ID: {cmd_id}")
+
+          for _ in range(36):
+              time.sleep(5)
+              poll = subprocess.run([
+                  "aws", "ssm", "get-command-invocation",
+                  "--command-id", cmd_id,
+                  "--instance-id", instance_id,
+                  "--output", "json",
+              ], capture_output=True, text=True)
+              if poll.returncode != 0:
+                  continue
+              inv = json.loads(poll.stdout)
+              status = inv.get("Status", "")
+              print(f"Status: {status}")
+              if status == "Success":
+                  print(inv.get("StandardOutputContent", ""))
+                  sys.exit(0)
+              if status in ("Failed", "TimedOut", "Cancelled"):
+                  print(inv.get("StandardErrorContent", ""), file=sys.stderr)
+                  sys.exit(1)
+
+          print("Timed out waiting for SSM command to complete", file=sys.stderr)
+          sys.exit(1)
+          PY
+
+      - name: Smoke test
         env:
           PROD_URL: ${{ secrets.PRODUCTION_URL }}
         run: |
           echo "Polling $PROD_URL/api/health/ready..."
-          for i in $(seq 1 30); do
+          for i in $(seq 1 18); do
             body=$(curl -fsS "$PROD_URL/api/health/ready" 2>/dev/null || true)
             if echo "$body" | grep -q '"status":"ok"'; then
               echo "Healthy after $((i * 10))s"
@@ -102,5 +164,5 @@ jobs:
             fi
             sleep 10
           done
-          echo "Production did not become healthy within 5 minutes"
+          echo "Production did not become healthy within 3 minutes"
           exit 1
