@@ -3,6 +3,7 @@
 </p>
 
 <p align="center">
+  <a href="https://tellsight.coreystevens.dev"><img src="https://img.shields.io/badge/live--demo-tellsight.coreystevens.dev-2563eb?style=flat" alt="Live demo"></a>
   <a href="https://github.com/coreystevensdev/tellsight/actions/workflows/ci.yml"><img src="https://github.com/coreystevensdev/tellsight/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/tests-1%2C628-brightgreen.svg" alt="1,628 tests">
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License">
@@ -22,7 +23,7 @@ Small businesses can't afford data scientists, and enterprise analytics platform
 
 ## Solution
 
-Upload a CSV or connect QuickBooks directly via OAuth (the only two supported data sources today -- Shopify, Stripe, and bank-feed connectors are planned but not yet built). The dashboard instantly visualizes revenue trends, expense breakdowns, and category comparisons. Then AI reads the computed statistics (not your raw data) and explains what's happening in plain English: which costs are rising faster than revenue, where seasonal patterns suggest opportunities, what anomalies deserve attention. QuickBooks users skip the CSV export entirely. Pro users get that interpretation delivered as a weekly email digest, with week-over-week context built in, so the analysis arrives without having to remember to log in.
+Upload a CSV or connect QuickBooks directly via OAuth (the only two supported data sources today; Shopify, Stripe, and bank-feed connectors are planned but not yet built). The dashboard instantly visualizes revenue trends, expense breakdowns, and category comparisons. Then AI reads the computed statistics (not your raw data) and explains what's happening in plain English: which costs are rising faster than revenue, where seasonal patterns suggest opportunities, what anomalies deserve attention. QuickBooks users skip the CSV export entirely. Pro users get that interpretation delivered as a weekly email digest, with week-over-week context built in, so the analysis arrives without having to remember to log in.
 
 ## Features
 
