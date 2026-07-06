@@ -92,7 +92,6 @@ export async function getChartData(
     })(),
   ]);
 
-  // -- metadata (unfiltered) --
   const meta = metaRows[0];
   const dateRange = meta?.minDate && meta?.maxDate
     ? { min: meta.minDate, max: meta.maxDate }
@@ -118,7 +117,6 @@ export async function getChartData(
     availableCategories = [...catSet].sort();
   }
 
-  // -- reshape aggregated rows into chart series --
   const activeCategories = filters?.categories?.length
     ? new Set(filters.categories)
     : null;
@@ -148,7 +146,6 @@ export async function getChartData(
     }
   }
 
-  // -- build output series --
   const revenueTrend = [...revenueByBucket.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, revenue]) => ({ month: bucketLabel(key, granularity), revenue: round2(revenue) }));

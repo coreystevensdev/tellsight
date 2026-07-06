@@ -204,7 +204,7 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
     setFilters(next);
   }, []);
 
-  const handleResetFilters = useCallback(() => {
+  const resetFilters = useCallback(() => {
     setFilters(EMPTY_FILTERS);
   }, []);
 
@@ -212,7 +212,7 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
     router.push('/upload');
   }, [router]);
 
-  const handleToggleTransparency = useCallback(() => {
+  const toggleTransparency = useCallback(() => {
     setTransparencyOpen((prev) => {
       const opening = !prev;
       if (opening && !firedRef.current) {
@@ -321,7 +321,7 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
       cachedMetadata={cachedMetadata}
       cachedStaleAt={cachedStaleAt}
       tier={tier}
-      onToggleTransparency={handleToggleTransparency}
+      onToggleTransparency={toggleTransparency}
       transparencyOpen={transparencyOpen}
       onMetadataReady={handleMetadataReady}
       onStreamComplete={handleStreamComplete}
@@ -401,7 +401,7 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
                 <ChartSkeleton variant="bar" />
               </div>
             ) : !hasData && hasActiveFilters ? (
-              <FilteredEmptyState onReset={handleResetFilters} />
+              <FilteredEmptyState onReset={resetFilters} />
             ) : !hasData ? (
               <EmptyState />
             ) : (

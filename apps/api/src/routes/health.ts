@@ -1,8 +1,7 @@
 // Email health is intentionally static-ok. Vendor availability surfaces via
-// send-failure logs + Sentry (AC #5, #6), not liveness probes. Probing
-// resend.domains.list() here would cost a real API call every 30s per instance
-// and couple liveness to an external SLA we don't control. Fail-open remains
-// the posture for this endpoint.
+// send-failure logs + Sentry, not liveness probes. Probing resend.domains.list()
+// here would cost a real API call every 30s per instance and couple liveness to
+// an external SLA we don't control. Fail-open remains the posture for this endpoint.
 import { Router } from 'express';
 import { sql } from 'drizzle-orm';
 

@@ -19,7 +19,7 @@ export default function Preferences() {
   const mounted = useSyncExternalStore(noop, () => true, () => false);
   const current = mounted ? (theme ?? 'system') : 'system';
 
-  function handleChange(value: string) {
+  function selectTheme(value: string) {
     setTheme(value);
     trackClientEvent('theme.changed', { theme: value });
   }
@@ -37,7 +37,7 @@ export default function Preferences() {
           {themes.map(({ value, label, description, icon: Icon }) => (
             <button
               key={value}
-              onClick={() => handleChange(value)}
+              onClick={() => selectTheme(value)}
               className={cn(
                 'flex flex-col items-center gap-2 rounded-lg border p-5 text-center transition-colors',
                 current === value

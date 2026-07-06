@@ -34,9 +34,9 @@ function orgJobName(orgId: number, weekStart: Date): string {
 
 /**
  * Enumerates eligible orgs and fans out per-org jobs. Per-org failures during
- * enqueue (rare: Redis blip) are logged with orgId and skipped, partial batch
- * is better than zero batch (AC #4). DB errors during eligibility lookup
- * propagate and trigger BullMQ retry on the orchestrator job itself.
+ * enqueue (rare: Redis blip) are logged with orgId and skipped; a partial batch
+ * is better than zero batch. DB errors during eligibility lookup propagate and
+ * trigger BullMQ retry on the orchestrator job itself.
  */
 export async function handleOrchestratorJob(job: Job): Promise<void> {
   const correlationId = randomUUID();

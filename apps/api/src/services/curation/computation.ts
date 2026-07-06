@@ -788,12 +788,11 @@ export function computeCashForecast(
   const crossIdx = projectedMonths.findIndex((pm) => pm.projectedBalance < 0);
   const crossesZeroAtMonth: number | null = crossIdx === -1 ? null : crossIdx + 1;
 
-  // First-match rule table, expressed as data so the contract reads like AC #12.
-  // The final `true` default absorbs three 'moderate' cases the explicit rules
-  // don't hit: (a) 31-90 days old with non-volatile nets, (b) fresh with a 2σ
-  // outlier, (c) fewer than 31 days old but volatile. None earn 'high'; rule
-  // 3's `ageInDays > 90` only catches the "stale cash" slice. Everything else
-  // that isn't squarely 'high' or 'low' lands here.
+  // First-match rule table. The final `true` default absorbs three 'moderate'
+  // cases the explicit rules don't hit: (a) 31-90 days old with non-volatile
+  // nets, (b) fresh with a 2σ outlier, (c) fewer than 31 days old but volatile.
+  // None earn 'high'; rule 3's `ageInDays > 90` only catches the "stale cash"
+  // slice. Everything else that isn't squarely 'high' or 'low' lands here.
   const rules: Array<[boolean, 'high' | 'moderate' | 'low']> = [
     [method === 'rolling_mean',                                        'low'],
     [months.length < 6,                                                'low'],

@@ -43,9 +43,9 @@ function mapStreamError(err: unknown): SseErrorEvent {
     return { code: 'AI_AUTH_ERROR', message: 'AI service configuration error', retryable: false };
   }
   if (err instanceof Anthropic.BadRequestError) {
-    return { code: 'STREAM_ERROR', message: 'Something went wrong generating insights', retryable: false };
+    return { code: 'STREAM_ERROR', message: 'Request rejected by AI service', retryable: false };
   }
-  return { code: 'STREAM_ERROR', message: 'Something went wrong generating insights', retryable: true };
+  return { code: 'STREAM_ERROR', message: 'AI stream failed', retryable: true };
 }
 
 export interface StreamOutcome {
@@ -96,7 +96,6 @@ export async function streamToSSE(
     clearTimeout(timeout);
   });
 
-  // -- pipeline phase (separate catch for PIPELINE_ERROR) --
   let promptInput: { system: string; user: string };
   let validatedMetadata: ReturnType<typeof transparencyMetadataSchema.parse>;
   let promptVersion: string;
@@ -117,14 +116,13 @@ export async function streamToSSE(
     );
     writeSseEvent(res, 'error', {
       code: 'PIPELINE_ERROR',
-      message: 'Something went wrong preparing your analysis',
+      message: 'Failed to prepare data for analysis',
       retryable: true,
     } satisfies SseErrorEvent);
     safeEnd();
     return { ok: false };
   }
 
-  // -- stream phase --
   try {
     logger.info({ orgId, datasetId, promptVersion, tier }, 'starting AI summary stream');
 

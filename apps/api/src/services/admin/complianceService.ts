@@ -19,8 +19,8 @@ export interface WindowCounts {
 export interface EmailComplianceMetrics {
   totalProUsers: number;
   // Denominator for the unsubscribe rate: current count of users whose
-  // cadence is something other than 'off'. AC #9's fallback when no snapshot
-  // table exists. Fine for trend signal; not a perfect window-start figure.
+  // cadence is something other than 'off'. Fallback when no snapshot table
+  // exists. Fine for trend signal; not a perfect window-start figure.
   cadenceActiveUsers: number;
   d7: WindowCounts;
   d30: WindowCounts;

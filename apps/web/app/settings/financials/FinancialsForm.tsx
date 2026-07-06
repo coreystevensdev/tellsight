@@ -51,7 +51,7 @@ export default function FinancialsForm() {
   const parsedCash = parseCurrency(cash);
   const parsedFixedCosts = parseCurrency(fixedCosts);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function saveFinancials(e: React.FormEvent) {
     e.preventDefault();
     if (submitting) return;
     if (parsedFixedCosts != null && parsedFixedCosts > 9_999_999) return;
@@ -104,7 +104,7 @@ export default function FinancialsForm() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={saveFinancials} className="space-y-5">
         <div>
           <label htmlFor="cash" className="block text-sm font-medium text-foreground">
             Current cash on hand

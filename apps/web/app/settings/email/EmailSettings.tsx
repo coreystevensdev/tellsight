@@ -43,7 +43,7 @@ export default function EmailSettings({ initial }: Props) {
   const showUnsubscribedBanner = initial.cadence === 'off' && initial.unsubscribedAt !== null;
   const unsubscribedOn = formatDate(initial.unsubscribedAt);
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function saveEmailPreferences(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     setError(null);
@@ -81,7 +81,7 @@ export default function EmailSettings({ initial }: Props) {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-8">
+      <form onSubmit={saveEmailPreferences} className="space-y-8">
         <section>
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Digest cadence</h2>
           <fieldset className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">

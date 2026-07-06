@@ -42,7 +42,7 @@ function attachStandardListeners(worker: Worker, label: string): void {
   });
 }
 
-// AC #8: when retryable failures exhaust BullMQ's attempt budget, the per-send
+// When retryable failures exhaust BullMQ's attempt budget, the per-send
 // handler's retry-rethrow path means the terminal `digest_failed` event is
 // never emitted from inside the handler. The worker-level failed listener
 // fires once per attempt, so we wait until attemptsMade >= total attempts
