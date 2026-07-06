@@ -3,7 +3,6 @@
 </p>
 
 <p align="center">
-  <a href="https://tellsight.coreystevens.dev"><img src="https://img.shields.io/badge/live--demo-tellsight.coreystevens.dev-2563eb?style=flat" alt="Live demo"></a>
   <a href="https://github.com/coreystevensdev/tellsight/actions/workflows/ci.yml"><img src="https://github.com/coreystevensdev/tellsight/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/tests-1%2C628-brightgreen.svg" alt="1,628 tests">
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License">
@@ -13,7 +12,7 @@
 
 ## Overview
 
-**Deploy:** AWS ECS Fargate + RDS PostgreSQL + ElastiCache Redis. See [infra/README.md](infra/README.md) for the Terraform runbook.
+**Deploy:** AWS EC2 t2.micro + RDS PostgreSQL 16 + Redis 7 (Docker Compose, co-located). GitHub Actions OIDC deploys via SSM SendCommand; no SSH key stored. See [infra/README.md](infra/README.md) for the Terraform runbook.
 
 Most analytics tools show numbers. This one explains what they mean, and delivers the interpretation to your inbox every week. Connect QuickBooks or upload a CSV (the only two data sources supported today), get charts, then a plain-English explanation of what the trends actually mean for your business. Multi-tenant Postgres with row-level security, SSE streaming for AI summaries, BullMQ-powered weekly digest, Stripe billing. The AI only ever sees computed statistics, never raw rows. 1,628 Vitest tests plus Playwright E2E, with the curation pipeline's financial math the most heavily covered.
 
@@ -91,7 +90,7 @@ A separate agent pass runs on the same computed statistics using dedicated promp
 | Monorepo | pnpm workspaces, Turborepo | Shared schemas between frontend/backend |
 | Testing | Vitest, Playwright | Fast unit tests, browser-based E2E and screenshots |
 | CI/CD | GitHub Actions (5-stage pipeline) | Lint, test, seed validation, E2E, Docker smoke |
-| Infrastructure | AWS ECS Fargate, RDS PostgreSQL, ElastiCache, ALB | Zero EC2 management, private subnets, circuit-breaker rollback |
+| Infrastructure | AWS EC2 t2.micro, RDS PostgreSQL 16, Redis 7 (co-located container) | Free-tier eligible ($0/month for 12 months); Docker Compose on EC2 trades HA for zero infra cost |
 | IaC | Terraform 1.9, GitHub OIDC (no long-lived keys) | Reproducible infra, scoped IAM roles for CI |
 
 ## Getting Started
