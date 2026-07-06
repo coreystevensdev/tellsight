@@ -146,7 +146,7 @@ describe('resolveProposal', () => {
   it('returns { id, orgId } when a pending proposal is resolved', async () => {
     const { client, mocks } = updateReturningClient([{ id: 5, orgId: 1 }]);
 
-    const result = await resolveProposal(5, 'approved', 99, client);
+    const result = await resolveProposal(5, 'approved', 99, 1, client);
 
     expect(result).toEqual({ id: 5, orgId: 1 });
     expect(mocks.set).toHaveBeenCalledWith(
@@ -157,13 +157,13 @@ describe('resolveProposal', () => {
   it('returns null when no pending proposal matches (already resolved or wrong id)', async () => {
     const { client } = updateReturningClient([]);
 
-    expect(await resolveProposal(5, 'rejected', 99, client)).toBeNull();
+    expect(await resolveProposal(5, 'rejected', 99, 1, client)).toBeNull();
   });
 
   it('passes rejected status correctly', async () => {
     const { client, mocks } = updateReturningClient([{ id: 3, orgId: 2 }]);
 
-    await resolveProposal(3, 'rejected', 12, client);
+    await resolveProposal(3, 'rejected', 12, 2, client);
 
     expect(mocks.set).toHaveBeenCalledWith(expect.objectContaining({ status: 'rejected' }));
   });

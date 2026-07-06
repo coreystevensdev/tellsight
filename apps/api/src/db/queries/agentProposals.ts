@@ -63,16 +63,22 @@ export async function getRecentDedupKeys(
 
 // Approve or reject a single proposal. The caller is responsible for writing
 // the PROPOSAL_APPROVED / PROPOSAL_REJECTED audit row via auditSystem().
+// orgId is required so a user can only resolve proposals belonging to their org.
 export async function resolveProposal(
   proposalId: number,
   status: 'approved' | 'rejected',
   resolvedByUserId: number,
+  orgId: number,
   client: Client = dbAdmin,
 ) {
   const [row] = await client
     .update(agentProposals)
     .set({ status, resolvedAt: new Date(), resolvedByUserId })
-    .where(and(eq(agentProposals.id, proposalId), eq(agentProposals.status, 'pending')))
+    .where(and(
+      eq(agentProposals.id, proposalId),
+      eq(agentProposals.orgId, orgId),
+      eq(agentProposals.status, 'pending'),
+    ))
     .returning({ id: agentProposals.id, orgId: agentProposals.orgId });
   return row ?? null;
 }
