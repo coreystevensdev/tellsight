@@ -10,7 +10,7 @@ import { ANALYTICS_EVENTS, AUDIT_ACTIONS } from 'shared/constants';
 import { logger } from '../lib/logger.js';
 import { auditAuth } from '../services/audit/auditService.js';
 
-export const datasetManagementRouter = Router();
+export const datasetsManageRouter = Router();
 
 function parseDatasetId(raw: string | undefined): number {
   const id = parseInt(raw ?? '', 10);
@@ -19,7 +19,7 @@ function parseDatasetId(raw: string | undefined): number {
 }
 
 // GET /datasets/manage, list non-seed datasets for the org
-datasetManagementRouter.get('/manage', async (req, res: Response) => {
+datasetsManageRouter.get('/manage', async (req, res: Response) => {
   const user = requireUser(req);
   const { org_id: orgId, isAdmin } = user;
 
@@ -32,7 +32,7 @@ datasetManagementRouter.get('/manage', async (req, res: Response) => {
 });
 
 // GET /datasets/manage/:id, single dataset with row/summary/share counts
-datasetManagementRouter.get('/manage/:id', async (req, res: Response) => {
+datasetsManageRouter.get('/manage/:id', async (req, res: Response) => {
   const user = requireUser(req);
   const { org_id: orgId, isAdmin } = user;
   const datasetId = parseDatasetId(req.params.id);
@@ -50,7 +50,7 @@ datasetManagementRouter.get('/manage/:id', async (req, res: Response) => {
 });
 
 // PATCH /datasets/manage/:id, rename
-datasetManagementRouter.patch('/manage/:id', async (req, res: Response) => {
+datasetsManageRouter.patch('/manage/:id', async (req, res: Response) => {
   const user = requireUser(req);
   const { org_id: orgId, sub, isAdmin } = user;
   const userId = parseInt(sub, 10);
@@ -83,7 +83,7 @@ datasetManagementRouter.patch('/manage/:id', async (req, res: Response) => {
 });
 
 // DELETE /datasets/manage/:id, owner only, cascades, auto-switches active dataset
-datasetManagementRouter.delete('/manage/:id', roleGuard('owner'), async (req, res: Response) => {
+datasetsManageRouter.delete('/manage/:id', roleGuard('owner'), async (req, res: Response) => {
   const user = requireUser(req);
   const { org_id: orgId, sub, isAdmin } = user;
   const userId = parseInt(sub, 10);
@@ -131,7 +131,7 @@ datasetManagementRouter.delete('/manage/:id', roleGuard('owner'), async (req, re
 });
 
 // POST /datasets/manage/:id/activate, set as org's active dataset
-datasetManagementRouter.post('/manage/:id/activate', async (req, res: Response) => {
+datasetsManageRouter.post('/manage/:id/activate', async (req, res: Response) => {
   const user = requireUser(req);
   const { org_id: orgId, sub, isAdmin } = user;
   const userId = parseInt(sub, 10);

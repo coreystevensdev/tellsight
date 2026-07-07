@@ -12,7 +12,7 @@ proposalsRouter.get('/', async (req: Request, res: Response) => {
 proposalsRouter.patch('/:id', async (req: Request, res: Response) => {
   const orgId = req.user!.org_id;
   const userId = parseInt(req.user!.sub, 10);
-  const proposalId = parseInt(req.params.id, 10);
+  const proposalId = parseInt(req.params.id as string, 10);
 
   if (isNaN(proposalId)) {
     res.status(400).json({ error: 'invalid proposal id' });
