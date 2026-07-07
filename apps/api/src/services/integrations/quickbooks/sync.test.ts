@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const mockGetByOrgAndProvider = vi.fn();
+const mockGetByIdAndProvider = vi.fn();
 const mockUpdateSyncStatus = vi.fn();
 const mockUpdateLastSyncedAt = vi.fn();
 const mockSyncJobCreate = vi.fn();
@@ -56,7 +56,7 @@ vi.mock('../../../db/schema.js', () => ({
 
 vi.mock('../../../db/queries/index.js', () => ({
   integrationConnectionsQueries: {
-    getByOrgAndProvider: mockGetByOrgAndProvider,
+    getByIdAndProvider: mockGetByIdAndProvider,
     updateSyncStatus: mockUpdateSyncStatus,
     updateLastSyncedAt: mockUpdateLastSyncedAt,
   },
@@ -140,14 +140,14 @@ describe('runSync', () => {
   });
 
   it('throws when connection not found', async () => {
-    mockGetByOrgAndProvider.mockResolvedValueOnce(null);
+    mockGetByIdAndProvider.mockResolvedValueOnce(null);
 
     const { runSync } = await import('./sync.js');
     await expect(runSync(999, 'initial')).rejects.toThrow('Connection 999 not found');
   });
 
   it('creates dataset on initial sync', async () => {
-    mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection());
+    mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
     mockCreateQbClient.mockResolvedValueOnce(mockQbClient());
     mockGetDatasetsByOrg.mockResolvedValueOnce([]);
     mockCreateDataset.mockResolvedValueOnce({ id: 500, name: 'QuickBooks, Sunrise Cafe' });
@@ -155,6 +155,9 @@ describe('runSync', () => {
 
     const { runSync } = await import('./sync.js');
     await runSync(1, 'initial');
+
+    // The connection is fetched by its own id (1), not treated as an org id.
+    expect(mockGetByIdAndProvider).toHaveBeenCalledWith(1, 'quickbooks');
 
     expect(mockCreateDataset).toHaveBeenCalledWith(
       10,
@@ -168,7 +171,7 @@ describe('runSync', () => {
 
   it('reuses existing QB dataset if present', async () => {
     const existing = { id: 400, name: 'QuickBooks, Old Name', sourceType: 'quickbooks' };
-    mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection());
+    mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
     mockCreateQbClient.mockResolvedValueOnce(mockQbClient());
     mockGetDatasetsByOrg.mockResolvedValueOnce([existing]);
     mockNormalizeTransactions.mockReturnValue([]);
@@ -181,7 +184,7 @@ describe('runSync', () => {
   });
 
   it('sets activeDatasetId only on initial sync', async () => {
-    mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection());
+    mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
     mockCreateQbClient.mockResolvedValueOnce(mockQbClient());
     mockGetDatasetsByOrg.mockResolvedValueOnce([]);
     mockCreateDataset.mockResolvedValueOnce({ id: 500 });
@@ -194,7 +197,7 @@ describe('runSync', () => {
   });
 
   it('does not set activeDatasetId on scheduled sync', async () => {
-    mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection({ lastSyncedAt: new Date() }));
+    mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection({ lastSyncedAt: new Date() }));
     mockCreateQbClient.mockResolvedValueOnce(mockQbClient());
     mockGetDatasetsByOrg.mockResolvedValueOnce([{ id: 400, sourceType: 'quickbooks', name: 'QuickBooks, Sunrise Cafe' }]);
     mockNormalizeTransactions.mockReturnValue([]);
@@ -207,7 +210,7 @@ describe('runSync', () => {
 
   it('passes lastSyncedAt to incremental queries', async () => {
     const lastSyncedAt = new Date('2026-04-10T00:00:00Z');
-    mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection({ lastSyncedAt }));
+    mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection({ lastSyncedAt }));
     const client = mockQbClient();
     mockCreateQbClient.mockResolvedValueOnce(client);
     mockGetDatasetsByOrg.mockResolvedValueOnce([{ id: 400, sourceType: 'quickbooks', name: 'QuickBooks, Sunrise Cafe' }]);
@@ -220,7 +223,7 @@ describe('runSync', () => {
   });
 
   it('passes undefined since for initial sync', async () => {
-    mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection({ lastSyncedAt: new Date() }));
+    mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection({ lastSyncedAt: new Date() }));
     const client = mockQbClient();
     mockCreateQbClient.mockResolvedValueOnce(client);
     mockGetDatasetsByOrg.mockResolvedValueOnce([]);
@@ -234,7 +237,7 @@ describe('runSync', () => {
   });
 
   it('fetches all 13 transaction types', async () => {
-    mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection());
+    mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
     const client = mockQbClient();
     mockCreateQbClient.mockResolvedValueOnce(client);
     mockGetDatasetsByOrg.mockResolvedValueOnce([]);
@@ -248,7 +251,7 @@ describe('runSync', () => {
   });
 
   it('marks AI summaries stale after successful sync', async () => {
-    mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection());
+    mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
     mockCreateQbClient.mockResolvedValueOnce(mockQbClient());
     mockGetDatasetsByOrg.mockResolvedValueOnce([]);
     mockCreateDataset.mockResolvedValueOnce({ id: 500 });
@@ -261,7 +264,7 @@ describe('runSync', () => {
   });
 
   it('updates sync_jobs on completion', async () => {
-    mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection());
+    mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
     const client = mockQbClient({
       query: vi.fn().mockResolvedValue([{ Id: 'tx-1' }]),
     });
@@ -285,7 +288,7 @@ describe('runSync', () => {
   });
 
   it('updates connection status to idle after sync', async () => {
-    mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection());
+    mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
     mockCreateQbClient.mockResolvedValueOnce(mockQbClient());
     mockGetDatasetsByOrg.mockResolvedValueOnce([]);
     mockCreateDataset.mockResolvedValueOnce({ id: 500 });
@@ -300,7 +303,7 @@ describe('runSync', () => {
   });
 
   it('marks sync_jobs and connection as failed on error', async () => {
-    mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection());
+    mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
     mockCreateQbClient.mockRejectedValueOnce(new Error('Token revoked'));
 
     const { runSync } = await import('./sync.js');
@@ -315,7 +318,7 @@ describe('runSync', () => {
   });
 
   it('fires integration.synced event with owner userId', async () => {
-    mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection());
+    mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
     mockCreateQbClient.mockResolvedValueOnce(mockQbClient());
     mockGetDatasetsByOrg.mockResolvedValueOnce([]);
     mockCreateDataset.mockResolvedValueOnce({ id: 500 });
@@ -332,7 +335,7 @@ describe('runSync', () => {
   });
 
   it('fires integration.sync_failed event on error', async () => {
-    mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection());
+    mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
     mockCreateQbClient.mockRejectedValueOnce(new Error('API timeout'));
     mockGetOrgOwnerId.mockResolvedValueOnce(42);
 

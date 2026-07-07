@@ -24,6 +24,24 @@ export async function getByOrgAndProvider(
   return result[0] ?? null;
 }
 
+export async function getByIdAndProvider(
+  id: number,
+  provider: string,
+  client: typeof db | DbTransaction = db,
+): Promise<IntegrationConnection | null> {
+  const result = await client
+    .select()
+    .from(integrationConnections)
+    .where(
+      and(
+        eq(integrationConnections.id, id),
+        eq(integrationConnections.provider, provider),
+      ),
+    )
+    .limit(1);
+  return result[0] ?? null;
+}
+
 export async function upsert(
   data: InsertConnection,
   client: typeof db | DbTransaction = db,

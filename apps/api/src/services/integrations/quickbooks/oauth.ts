@@ -87,7 +87,7 @@ export async function refreshAccessToken(connectionId: number): Promise<{
   encryptedRefreshToken: string;
   accessTokenExpiresAt: Date;
 }> {
-  const connection = await integrationConnectionsQueries.getByOrgAndProvider(connectionId, 'quickbooks');
+  const connection = await integrationConnectionsQueries.getByIdAndProvider(connectionId, 'quickbooks');
   if (!connection) throw new Error(`Connection ${connectionId} not found`);
 
   const refreshToken = decrypt(connection.encryptedRefreshToken);

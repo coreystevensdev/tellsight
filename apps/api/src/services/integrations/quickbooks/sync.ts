@@ -52,7 +52,7 @@ export async function runSync(
   connectionId: number,
   trigger: SyncTrigger,
 ): Promise<SyncResult> {
-  const connection = await integrationConnectionsQueries.getByOrgAndProvider(
+  const connection = await integrationConnectionsQueries.getByIdAndProvider(
     connectionId,
     'quickbooks',
   );

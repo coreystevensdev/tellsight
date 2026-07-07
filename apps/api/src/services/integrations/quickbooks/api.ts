@@ -20,7 +20,7 @@ interface QbClient {
 }
 
 export async function createQbClient(connectionId: number): Promise<QbClient> {
-  const connection = await integrationConnectionsQueries.getByOrgAndProvider(connectionId, 'quickbooks');
+  const connection = await integrationConnectionsQueries.getByIdAndProvider(connectionId, 'quickbooks');
   if (!connection) throw new Error(`Connection ${connectionId} not found`);
 
   const realmId = connection.providerTenantId;

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import { RetryableError, TokenRevokedError } from './errors.js';
 
-const mockGetByOrgAndProvider = vi.fn();
+const mockGetByIdAndProvider = vi.fn();
 const mockRefreshAccessToken = vi.fn();
 const mockDecrypt = vi.fn();
 
@@ -16,7 +16,7 @@ vi.mock('../../../lib/logger.js', () => ({
 
 vi.mock('../../../db/queries/index.js', () => ({
   integrationConnectionsQueries: {
-    getByOrgAndProvider: mockGetByOrgAndProvider,
+    getByIdAndProvider: mockGetByIdAndProvider,
   },
 }));
 
@@ -66,7 +66,7 @@ describe('QB API client', () => {
 
   describe('createQbClient', () => {
     it('throws if connection not found', async () => {
-      mockGetByOrgAndProvider.mockResolvedValueOnce(null);
+      mockGetByIdAndProvider.mockResolvedValueOnce(null);
 
       const { createQbClient } = await import('./api.js');
       await expect(createQbClient(999)).rejects.toThrow('Connection 999 not found');
@@ -75,7 +75,7 @@ describe('QB API client', () => {
 
   describe('query', () => {
     it('fetches single page of transactions', async () => {
-      mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection());
+      mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
       const purchases = Array.from({ length: 5 }, (_, i) => ({ Id: String(i + 1) }));
       mockFetch.mockResolvedValueOnce(
         jsonResponse({ QueryResponse: { Purchase: purchases } }),
@@ -94,7 +94,7 @@ describe('QB API client', () => {
     });
 
     it('paginates when results fill a page', async () => {
-      mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection());
+      mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
       const fullPage = Array.from({ length: 1000 }, (_, i) => ({ Id: String(i + 1) }));
       const partialPage = Array.from({ length: 42 }, (_, i) => ({ Id: String(1001 + i) }));
 
@@ -114,7 +114,7 @@ describe('QB API client', () => {
     });
 
     it('appends WHERE clause for incremental sync', async () => {
-      mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection());
+      mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
       mockFetch.mockResolvedValueOnce(jsonResponse({ QueryResponse: { Bill: [] } }));
 
       const since = new Date('2026-04-10T03:00:00Z');
@@ -127,7 +127,7 @@ describe('QB API client', () => {
     });
 
     it('returns empty array when no results', async () => {
-      mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection());
+      mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
       mockFetch.mockResolvedValueOnce(jsonResponse({ QueryResponse: {} }));
 
       const { createQbClient } = await import('./api.js');
@@ -141,7 +141,7 @@ describe('QB API client', () => {
   describe('token refresh', () => {
     it('refreshes token when near expiry', async () => {
       const nearExpiry = new Date(Date.now() + 2 * 60 * 1000); // 2 min from now (< 5 min buffer)
-      mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection({ accessTokenExpiresAt: nearExpiry }));
+      mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection({ accessTokenExpiresAt: nearExpiry }));
       mockRefreshAccessToken.mockResolvedValueOnce({
         encryptedAccessToken: 'new-enc-access',
         encryptedRefreshToken: 'new-enc-refresh',
@@ -161,7 +161,7 @@ describe('QB API client', () => {
     });
 
     it('skips refresh when token is still valid', async () => {
-      mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection());
+      mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
       mockFetch.mockResolvedValueOnce(jsonResponse({ QueryResponse: {} }));
 
       const { createQbClient } = await import('./api.js');
@@ -174,7 +174,7 @@ describe('QB API client', () => {
 
   describe('error handling', () => {
     it('throws RetryableError on 429', async () => {
-      mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection());
+      mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 429,
@@ -188,7 +188,7 @@ describe('QB API client', () => {
     });
 
     it('throws RetryableError on 5xx', async () => {
-      mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection());
+      mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 503,
@@ -202,7 +202,7 @@ describe('QB API client', () => {
     });
 
     it('throws TokenRevokedError on 401', async () => {
-      mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection());
+      mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 401,
@@ -218,7 +218,7 @@ describe('QB API client', () => {
 
   describe('getCompanyInfo', () => {
     it('returns company name', async () => {
-      mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection());
+      mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
       mockFetch.mockResolvedValueOnce(
         jsonResponse({ CompanyInfo: { CompanyName: 'Sunrise Cafe' } }),
       );
@@ -233,7 +233,7 @@ describe('QB API client', () => {
     });
 
     it('falls back to default name when missing', async () => {
-      mockGetByOrgAndProvider.mockResolvedValueOnce(mockConnection());
+      mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
       mockFetch.mockResolvedValueOnce(jsonResponse({}));
 
       const { createQbClient } = await import('./api.js');
