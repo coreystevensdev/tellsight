@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-import { RetryableError, TokenRevokedError } from './errors.js';
+import { RetryableError, TokenRevokedError, ConnectionNotFoundError } from './errors.js';
 
 const mockGetByIdAndProvider = vi.fn();
 const mockRefreshAccessToken = vi.fn();
@@ -65,10 +65,12 @@ describe('QB API client', () => {
   });
 
   describe('createQbClient', () => {
-    it('throws if connection not found', async () => {
+    it('throws a terminal ConnectionNotFoundError if connection not found', async () => {
       mockGetByIdAndProvider.mockResolvedValueOnce(null);
 
       const { createQbClient } = await import('./api.js');
+      await expect(createQbClient(999)).rejects.toBeInstanceOf(ConnectionNotFoundError);
+      mockGetByIdAndProvider.mockResolvedValueOnce(null);
       await expect(createQbClient(999)).rejects.toThrow('Connection 999 not found');
     });
   });

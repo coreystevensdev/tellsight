@@ -3,7 +3,7 @@ import { logger } from '../../../lib/logger.js';
 import { decrypt } from '../encryption.js';
 import { integrationConnectionsQueries } from '../../../db/queries/index.js';
 import { refreshAccessToken } from './oauth.js';
-import { RetryableError, TokenRevokedError, QbApiError } from './errors.js';
+import { RetryableError, TokenRevokedError, QbApiError, ConnectionNotFoundError } from './errors.js';
 
 const BASE_URLS = {
   sandbox: 'https://sandbox-quickbooks.api.intuit.com',
@@ -21,7 +21,7 @@ interface QbClient {
 
 export async function createQbClient(connectionId: number): Promise<QbClient> {
   const connection = await integrationConnectionsQueries.getByIdAndProvider(connectionId, 'quickbooks');
-  if (!connection) throw new Error(`Connection ${connectionId} not found`);
+  if (!connection) throw new ConnectionNotFoundError(connectionId);
 
   const realmId = connection.providerTenantId;
   const baseUrl = BASE_URLS[env.QUICKBOOKS_ENVIRONMENT ?? 'sandbox'];

@@ -14,6 +14,7 @@ import {
 } from '../../../db/queries/index.js';
 import { trackEvent } from '../../analytics/trackEvent.js';
 import { createQbClient } from './api.js';
+import { ConnectionNotFoundError } from './errors.js';
 import { normalizeTransactions } from './normalize.js';
 import type { NormalizedQbRow, QbTransaction, QbTransactionType } from './types.js';
 
@@ -56,7 +57,7 @@ export async function runSync(
     connectionId,
     'quickbooks',
   );
-  if (!connection) throw new Error(`Connection ${connectionId} not found`);
+  if (!connection) throw new ConnectionNotFoundError(connectionId);
 
   const orgId = connection.orgId;
   const isInitial = trigger === 'initial';

@@ -28,9 +28,17 @@ class FakeWorker {
   }
 }
 
+class FakeUnrecoverableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnrecoverableError';
+  }
+}
+
 vi.mock('bullmq', () => ({
   Queue: FakeQueue,
   Worker: FakeWorker,
+  UnrecoverableError: FakeUnrecoverableError,
 }));
 
 vi.mock('../../config.js', () => ({
@@ -117,16 +125,34 @@ describe('worker', () => {
       expect(result).toEqual({ rowsSynced: 47, datasetId: 99 });
     });
 
-    it('wraps TokenRevokedError as terminal error', async () => {
+    it('wraps TokenRevokedError as an unrecoverable error', async () => {
       const { TokenRevokedError } = await import('./quickbooks/errors.js');
       mockRunSync.mockRejectedValueOnce(new TokenRevokedError('revoked'));
 
       const { initSyncWorker } = await import('./worker.js');
       initSyncWorker();
 
-      await expect(
-        capturedProcessor!({ id: 'job-2', data: { connectionId: 20, trigger: 'scheduled' } }),
-      ).rejects.toThrow('Token revoked');
+      const caught = await capturedProcessor!({ id: 'job-2', data: { connectionId: 20, trigger: 'scheduled' } })
+        .then(() => null)
+        .catch((e: Error) => e);
+
+      expect(caught).toBeInstanceOf(FakeUnrecoverableError);
+      expect(caught?.message).toContain('Token revoked');
+    });
+
+    it('marks ConnectionNotFoundError as unrecoverable so it is not retried', async () => {
+      const { ConnectionNotFoundError } = await import('./quickbooks/errors.js');
+      mockRunSync.mockRejectedValueOnce(new ConnectionNotFoundError(20));
+
+      const { initSyncWorker } = await import('./worker.js');
+      initSyncWorker();
+
+      const caught = await capturedProcessor!({ id: 'job-4', data: { connectionId: 20, trigger: 'scheduled' } })
+        .then(() => null)
+        .catch((e: Error) => e);
+
+      expect(caught).toBeInstanceOf(FakeUnrecoverableError);
+      expect(caught?.message).toContain('Connection 20 not found');
     });
 
     it('re-throws retryable errors unchanged', async () => {

@@ -139,10 +139,12 @@ describe('runSync', () => {
     mockGetOrgOwnerId.mockResolvedValue(1);
   });
 
-  it('throws when connection not found', async () => {
-    mockGetByIdAndProvider.mockResolvedValueOnce(null);
+  it('throws a terminal ConnectionNotFoundError when connection not found', async () => {
+    mockGetByIdAndProvider.mockResolvedValue(null);
 
     const { runSync } = await import('./sync.js');
+    const { ConnectionNotFoundError } = await import('./errors.js');
+    await expect(runSync(999, 'initial')).rejects.toBeInstanceOf(ConnectionNotFoundError);
     await expect(runSync(999, 'initial')).rejects.toThrow('Connection 999 not found');
   });
 

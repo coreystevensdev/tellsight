@@ -1,10 +1,10 @@
-import { Queue, Worker } from 'bullmq';
+import { Queue, UnrecoverableError, Worker } from 'bullmq';
 import type { ConnectionOptions, Job } from 'bullmq';
 
 import { env } from '../../config.js';
 import { logger } from '../../lib/logger.js';
 import { runSync, type SyncTrigger } from './quickbooks/sync.js';
-import { TokenRevokedError } from './quickbooks/errors.js';
+import { TokenRevokedError, ConnectionNotFoundError } from './quickbooks/errors.js';
 
 export const SYNC_QUEUE_NAME = 'quickbooks-sync';
 const WORKER_CONCURRENCY = 2;
@@ -72,10 +72,16 @@ export function initSyncWorker(): Worker {
         );
         return result;
       } catch (err) {
-        // TokenRevokedError is terminal, don't retry
+        // Terminal failures. A revoked token needs a reconnect and a missing
+        // connection row is gone for good, so retrying either wastes MAX_ATTEMPTS.
+        // UnrecoverableError tells BullMQ to fail the job now instead of backing off.
         if (err instanceof TokenRevokedError) {
           logger.warn({ jobId: job.id, connectionId }, 'QB token revoked, marking job unrecoverable');
-          throw new Error(`Token revoked: ${err.message}`);
+          throw new UnrecoverableError(`Token revoked: ${err.message}`);
+        }
+        if (err instanceof ConnectionNotFoundError) {
+          logger.warn({ jobId: job.id, connectionId }, 'QB connection not found, marking job unrecoverable');
+          throw new UnrecoverableError(err.message);
         }
         throw err;
       }
