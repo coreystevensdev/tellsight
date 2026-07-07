@@ -44,6 +44,15 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     return;
   }
 
+  // upsertSubscription is idempotent, but the upgrade analytics is not. On a
+  // redelivered checkout the org is already active/pro on this subscription, so
+  // treat the replay as a no-op for analytics to avoid double-counting upgrades.
+  const existing = await subscriptionsQueries.getSubscriptionByOrgId(orgId, dbAdmin);
+  const alreadyUpgraded =
+    existing?.stripeSubscriptionId === subscriptionId &&
+    existing.status === 'active' &&
+    existing.plan === 'pro';
+
   await subscriptionsQueries.upsertSubscription({
     orgId,
     stripeCustomerId: customerId,
@@ -52,6 +61,11 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     plan: 'pro',
     currentPeriodEnd: null,
   }, dbAdmin);
+
+  if (alreadyUpgraded) {
+    logger.info({ orgId, userId, sessionId: session.id }, 'Duplicate checkout webhook, org already Pro, skipping upgrade analytics');
+    return;
+  }
 
   trackEvent(orgId, userId, ANALYTICS_EVENTS.SUBSCRIPTION_UPGRADED, {
     stripeSessionId: session.id,
@@ -78,29 +92,36 @@ async function handleSubscriptionUpdated(subscription: SubscriptionWebhookPayloa
   }
 
   if (cancelAtPeriodEnd) {
-    await subscriptionsQueries.updateSubscriptionStatus(stripeSubscriptionId, 'canceled', currentPeriodEnd, dbAdmin);
+    const statusChanged = await subscriptionsQueries.updateSubscriptionStatus(stripeSubscriptionId, 'canceled', currentPeriodEnd, dbAdmin);
 
-    const ownerId = await userOrgsQueries.getOrgOwnerId(orgId, dbAdmin);
-    if (ownerId) {
-      trackEvent(orgId, ownerId, ANALYTICS_EVENTS.SUBSCRIPTION_CANCELLED, { stripeSubscriptionId });
+    // A redelivered webhook leaves the row already at 'canceled', so the guarded
+    // update touches no rows. Skip analytics and audit on replay; firing them
+    // again would double-count cancellations and duplicate the audit trail.
+    if (statusChanged === 0) {
+      logger.info({ orgId, stripeSubscriptionId }, 'Duplicate cancellation webhook, subscription already canceled, skipping side effects');
     } else {
-      logger.warn({ orgId, stripeSubscriptionId }, 'No org owner found, skipping cancellation analytics');
+      const ownerId = await userOrgsQueries.getOrgOwnerId(orgId, dbAdmin);
+      if (ownerId) {
+        trackEvent(orgId, ownerId, ANALYTICS_EVENTS.SUBSCRIPTION_CANCELLED, { stripeSubscriptionId });
+      } else {
+        logger.warn({ orgId, stripeSubscriptionId }, 'No org owner found, skipping cancellation analytics');
+      }
+
+      // Audit: payment-state transitions drive refunds, renewals, support disputes.
+      // System event (webhook origin, no request), user-triggered from the Stripe
+      // customer portal, but reaches us server-to-server. Attach ownerId when known;
+      // orgId is always known from subscription metadata.
+      auditSystem({
+        orgId,
+        userId: ownerId ?? null,
+        action: AUDIT_ACTIONS.SUBSCRIPTION_CANCELLED,
+        targetType: 'subscription',
+        targetId: stripeSubscriptionId,
+        metadata: { currentPeriodEnd: currentPeriodEnd.toISOString() },
+      });
+
+      logger.info({ orgId, stripeSubscriptionId, cancelAtPeriodEnd }, 'Subscription canceled');
     }
-
-    // Audit: payment-state transitions drive refunds, renewals, support disputes.
-    // System event (webhook origin, no request), user-triggered from the Stripe
-    // customer portal, but reaches us server-to-server. Attach ownerId when known;
-    // orgId is always known from subscription metadata.
-    auditSystem({
-      orgId,
-      userId: ownerId ?? null,
-      action: AUDIT_ACTIONS.SUBSCRIPTION_CANCELLED,
-      targetType: 'subscription',
-      targetId: stripeSubscriptionId,
-      metadata: { currentPeriodEnd: currentPeriodEnd.toISOString() },
-    });
-
-    logger.info({ orgId, stripeSubscriptionId, cancelAtPeriodEnd }, 'Subscription canceled');
   } else if (subscription.status === 'active') {
     // user reactivated before period ended
     await subscriptionsQueries.updateSubscriptionStatus(stripeSubscriptionId, 'active', currentPeriodEnd, dbAdmin);
@@ -133,7 +154,12 @@ async function handleInvoicePaymentFailed(invoice: InvoiceWebhookPayload) {
     return;
   }
 
-  await subscriptionsQueries.updateSubscriptionStatus(stripeSubscriptionId, 'past_due', undefined, dbAdmin);
+  const statusChanged = await subscriptionsQueries.updateSubscriptionStatus(stripeSubscriptionId, 'past_due', undefined, dbAdmin);
+
+  if (statusChanged === 0) {
+    logger.info({ orgId: sub.orgId, stripeSubscriptionId }, 'Duplicate payment-failed webhook, subscription already past_due, skipping analytics');
+    return;
+  }
 
   const ownerId = await userOrgsQueries.getOrgOwnerId(sub.orgId, dbAdmin);
   if (ownerId) {
@@ -154,7 +180,12 @@ async function handleSubscriptionDeleted(subscription: SubscriptionWebhookPayloa
     return;
   }
 
-  await subscriptionsQueries.updateSubscriptionStatus(stripeSubscriptionId, 'expired', undefined, dbAdmin);
+  const statusChanged = await subscriptionsQueries.updateSubscriptionStatus(stripeSubscriptionId, 'expired', undefined, dbAdmin);
+
+  if (statusChanged === 0) {
+    logger.info({ orgId, stripeSubscriptionId }, 'Duplicate deletion webhook, subscription already expired, skipping analytics');
+    return;
+  }
 
   const ownerId = await userOrgsQueries.getOrgOwnerId(orgId, dbAdmin);
   if (ownerId) {

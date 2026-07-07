@@ -5,6 +5,7 @@ const mockUpsertSubscription = vi.fn();
 const mockUpdateSubscriptionPeriod = vi.fn();
 const mockUpdateSubscriptionStatus = vi.fn();
 const mockGetSubscriptionByStripeId = vi.fn();
+const mockGetSubscriptionByOrgId = vi.fn();
 const mockGetOrgOwnerId = vi.fn();
 const mockTrackEvent = vi.fn();
 const mockAuditRecord = vi.fn().mockResolvedValue(undefined);
@@ -15,6 +16,7 @@ vi.mock('../../db/queries/index.js', () => ({
     updateSubscriptionPeriod: mockUpdateSubscriptionPeriod,
     updateSubscriptionStatus: mockUpdateSubscriptionStatus,
     getSubscriptionByStripeId: mockGetSubscriptionByStripeId,
+    getSubscriptionByOrgId: mockGetSubscriptionByOrgId,
   },
   userOrgsQueries: {
     getOrgOwnerId: mockGetOrgOwnerId,
@@ -106,6 +108,11 @@ function fakeSubscriptionDeletedEvent(overrides = {}): Stripe.Event {
 describe('webhookHandler', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: a status write touched one row (the common, first-delivery case).
+    // Duplicate-event tests override this to return 0 for the replay.
+    mockUpdateSubscriptionStatus.mockResolvedValue(1);
+    // Default: no prior subscription row, so checkout is a genuine first upgrade.
+    mockGetSubscriptionByOrgId.mockResolvedValue(null);
   });
 
   describe('checkout.session.completed', () => {
@@ -138,6 +145,24 @@ describe('webhookHandler', () => {
       await handleWebhookEvent(fakeCheckoutEvent());
 
       expect(mockUpsertSubscription).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not re-fire upgrade analytics when the org is already Pro (redelivered event)', async () => {
+      mockUpsertSubscription.mockResolvedValue({ id: 1 });
+      // First delivery: no prior row, analytics fires once.
+      await handleWebhookEvent(fakeCheckoutEvent());
+      expect(mockTrackEvent).toHaveBeenCalledTimes(1);
+
+      // Redelivery: org already active/pro on the same subscription, skip analytics.
+      mockGetSubscriptionByOrgId.mockResolvedValueOnce({
+        stripeSubscriptionId: 'sub_test_789',
+        status: 'active',
+        plan: 'pro',
+      });
+      await handleWebhookEvent(fakeCheckoutEvent());
+
+      expect(mockUpsertSubscription).toHaveBeenCalledTimes(2);
+      expect(mockTrackEvent).toHaveBeenCalledTimes(1);
     });
 
     it('skips processing when metadata is missing orgId', async () => {
@@ -222,16 +247,22 @@ describe('webhookHandler', () => {
       );
     });
 
-    it('is idempotent, duplicate cancellation webhook is a no-op', async () => {
+    it('is idempotent, duplicate cancellation webhook does not double-fire analytics', async () => {
       mockGetOrgOwnerId.mockResolvedValue(1);
 
       const event = fakeSubscriptionUpdatedEvent({ cancel_at_period_end: true });
-      await handleWebhookEvent(event);
+
+      // First delivery flips status to canceled (one row touched), analytics fires.
+      mockUpdateSubscriptionStatus.mockResolvedValueOnce(1);
       await handleWebhookEvent(event);
 
-      // updateSubscriptionStatus is idempotent at DB level (WHERE status != target)
-      // but the handler calls it both times, DB-layer idempotency handles it
+      // Redelivery: row already canceled, guarded update touches no rows.
+      mockUpdateSubscriptionStatus.mockResolvedValueOnce(0);
+      await handleWebhookEvent(event);
+
       expect(mockUpdateSubscriptionStatus).toHaveBeenCalledTimes(2);
+      expect(mockTrackEvent).toHaveBeenCalledTimes(1);
+      expect(mockAuditRecord).toHaveBeenCalledTimes(1);
     });
 
     it('handles missing orgId metadata gracefully', async () => {
@@ -281,15 +312,20 @@ describe('webhookHandler', () => {
       );
     });
 
-    it('is idempotent, duplicate webhook is a no-op at DB level', async () => {
+    it('is idempotent, duplicate webhook does not double-fire analytics', async () => {
       mockGetSubscriptionByStripeId.mockResolvedValue({ orgId: 10, stripeSubscriptionId: 'sub_test_789' });
       mockGetOrgOwnerId.mockResolvedValue(1);
 
-      await handleWebhookEvent(fakeInvoicePaymentFailedEvent());
+      // First delivery flips status to past_due, analytics fires.
+      mockUpdateSubscriptionStatus.mockResolvedValueOnce(1);
       await handleWebhookEvent(fakeInvoicePaymentFailedEvent());
 
-      // handler calls updateSubscriptionStatus both times, DB WHERE clause deduplicates
+      // Redelivery: already past_due, no row touched, analytics skipped.
+      mockUpdateSubscriptionStatus.mockResolvedValueOnce(0);
+      await handleWebhookEvent(fakeInvoicePaymentFailedEvent());
+
       expect(mockUpdateSubscriptionStatus).toHaveBeenCalledTimes(2);
+      expect(mockTrackEvent).toHaveBeenCalledTimes(1);
     });
 
     it('handles missing subscription gracefully', async () => {
@@ -359,6 +395,19 @@ describe('webhookHandler', () => {
 
       expect(mockUpdateSubscriptionStatus).not.toHaveBeenCalled();
       expect(mockTrackEvent).not.toHaveBeenCalled();
+    });
+
+    it('does not re-fire expiration analytics on a redelivered deletion event', async () => {
+      mockGetOrgOwnerId.mockResolvedValue(1);
+
+      mockUpdateSubscriptionStatus.mockResolvedValueOnce(1);
+      await handleWebhookEvent(fakeSubscriptionDeletedEvent());
+
+      mockUpdateSubscriptionStatus.mockResolvedValueOnce(0);
+      await handleWebhookEvent(fakeSubscriptionDeletedEvent());
+
+      expect(mockUpdateSubscriptionStatus).toHaveBeenCalledTimes(2);
+      expect(mockTrackEvent).toHaveBeenCalledTimes(1);
     });
   });
 

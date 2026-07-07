@@ -91,8 +91,8 @@ export async function updateSubscriptionStatus(
   status: string,
   currentPeriodEnd?: Date,
   client: typeof db | DbTransaction = db,
-) {
-  await client
+): Promise<number> {
+  const result = await client
     .update(subscriptions)
     .set({
       status,
@@ -105,7 +105,9 @@ export async function updateSubscriptionStatus(
         // idempotent, replay is a no-op when already in target status
         ne(subscriptions.status, status),
       ),
-    );
+    )
+    .returning({ id: subscriptions.id });
+  return result.length;
 }
 
 export async function getSubscriptionByStripeId(
