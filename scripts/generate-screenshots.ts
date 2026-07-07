@@ -17,9 +17,7 @@ const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000';
 const VIEWPORT = { width: 1280, height: 900 };
 const SETTLE_MS = 1200;
 
-// ---------------------------------------------------------------------------
 // Browser frame template (macOS-style window chrome)
-// ---------------------------------------------------------------------------
 
 function browserFrameHtml(screenshotBase64: string, url: string, darkMode: boolean): string {
   const bg = darkMode ? '#1a1a2e' : '#f5f5f7';
@@ -52,9 +50,7 @@ function browserFrameHtml(screenshotBase64: string, url: string, darkMode: boole
 </html>`;
 }
 
-// ---------------------------------------------------------------------------
 // Hero banner template
-// ---------------------------------------------------------------------------
 
 function heroBannerHtml(): string {
   return `<!DOCTYPE html>
@@ -128,9 +124,7 @@ function heroBannerHtml(): string {
 </html>`;
 }
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 async function waitForCharts(page: Page) {
   await page.waitForFunction(
@@ -209,9 +203,7 @@ async function wrapInFrame(browser: Browser, raw: Buffer, url: string, name: str
   await context.close();
 }
 
-// ---------------------------------------------------------------------------
 // Main
-// ---------------------------------------------------------------------------
 
 async function main() {
   if (!existsSync(OUT_DIR)) mkdirSync(OUT_DIR, { recursive: true });
