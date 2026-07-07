@@ -4,7 +4,7 @@ import express from 'express';
 import type { AddressInfo } from 'node:net';
 import { Webhook } from 'svix';
 
-// 32 random bytes, base64 — svix accepts whsec_<base64> as the shared secret.
+// 32 random bytes, base64: svix accepts whsec_<base64> as the shared secret.
 const TEST_SECRET = 'whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw';
 
 const mockTrackEvent = vi.fn();

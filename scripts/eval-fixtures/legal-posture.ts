@@ -40,7 +40,7 @@ const bannedPatterns = BANNED_IMPERATIVES.map((p) => ({
 // A financial verb counts as a command only when it heads a sentence (start of
 // text or right after sentence punctuation / a line break) or follows a 2nd-person
 // strong modal ("you should buy"). Soft advisory modals ("could", "can") are not
-// included — "you could invest the surplus" is approved hedge territory, not a command.
+// included, "you could invest the surplus" is approved hedge territory, not a command.
 // The trailing (?!-) drops hyphenated compound nouns that only look like commands
 // at a sentence start: "Sell-through improved", "Buy-in from staff", "Fire-sale pricing".
 const commandRe = new RegExp(

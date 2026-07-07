@@ -4,7 +4,7 @@ import postgres from 'postgres';
 
 import * as schema from '../schema.js';
 
-// SQL-shape test rig — Drizzle backed by a real postgres-js tag (lazy
+// SQL-shape test rig: Drizzle backed by a real postgres-js tag (lazy
 // connection, never opens a socket because we only call `.toSQL()`). Drizzle
 // requires the tag to expose `.parsers`, so a hand-rolled fake doesn't work.
 // AC #14b asks for "fixture db" coverage; without infra-grade Postgres in
@@ -19,7 +19,7 @@ const inertClient = postgres('postgres://test:test@localhost:1/test', {
 });
 const inertDb = drizzle(inertClient, { schema });
 
-// Execute-path test rig — chain mocks let us assert post-query JS logic
+// Execute-path test rig: chain mocks let us assert post-query JS logic
 // (.filter narrowing, return shape) without needing a Drizzle round-trip.
 const mockEligibilityLimit = vi.fn<(n: number) => Promise<unknown[]>>();
 const mockEligibilityOrderBy = vi.fn(() => ({ limit: mockEligibilityLimit }));
@@ -57,7 +57,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe('buildEligibilityQuery — SQL shape (AC #2, AC #14b)', () => {
+describe('buildEligibilityQuery: SQL shape (AC #2, AC #14b)', () => {
   it('emits all five required predicates in the WHERE clause', () => {
     const { sql } = buildEligibilityQuery(inertDb as never).toSQL();
 
@@ -72,7 +72,7 @@ describe('buildEligibilityQuery — SQL shape (AC #2, AC #14b)', () => {
     expect(sql).toMatch(/"digest_preferences"\."cadence"/);
   });
 
-  it('binds the literal values "active" and "pro" — not their negations', () => {
+  it('binds the literal values "active" and "pro", not their negations', () => {
     const { params } = buildEligibilityQuery(inertDb as never).toSQL();
     // params is the param array Drizzle would send to postgres. Both literals
     // must be present so a typo (e.g., "Active", "PRO") fails the test.
@@ -124,7 +124,7 @@ describe('buildEligibilityQuery — SQL shape (AC #2, AC #14b)', () => {
   });
 });
 
-describe('findEligibleOrgs — execute path', () => {
+describe('findEligibleOrgs: execute path', () => {
   it('returns rows shaped as EligibleOrg with non-null activeDatasetId', async () => {
     mockEligibilityLimit.mockResolvedValueOnce([
       { id: 10, name: 'Acme', activeDatasetId: 100, businessProfile: { businessType: 'agency' } },
@@ -168,7 +168,7 @@ describe('findEligibleOrgs — execute path', () => {
   });
 });
 
-describe('findOrgRecipients — execute path', () => {
+describe('findOrgRecipients: execute path', () => {
   it('returns user rows shaped as DigestRecipient', async () => {
     mockRecipientsWhere.mockResolvedValueOnce([
       { userId: 1, email: 'a@x.com', name: 'Alice' },
