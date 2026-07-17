@@ -73,3 +73,6 @@ docs/go-to-market-plan.md
 docs/pro-web-search-plan.md
 docs/quickbooks-implementation-plan.md
 docs/deployment-roadmap_explained.md
+.bmad-loop/runs/
+.bmad-loop/cache/
+.bmad-loop/policy.toml
