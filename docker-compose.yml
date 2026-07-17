@@ -2,7 +2,7 @@ services:
   db:
     image: postgres:18.2
     ports:
-      - '5432:5432'
+      - '5433:5432'
     environment:
       POSTGRES_USER: app_admin
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}

@@ -1,5 +1,5 @@
 const DEFAULT_JWT_SECRET = 'ci-test-secret-that-is-at-least-32-chars-long-for-validation';
-const DEFAULT_ADMIN_URL = 'postgresql://app_admin:app@localhost:5432/analytics';
+const DEFAULT_ADMIN_URL = 'postgresql://app_admin:app@localhost:5433/analytics';
 
 export const JWT_SECRET = process.env.JWT_SECRET ?? DEFAULT_JWT_SECRET;
 
