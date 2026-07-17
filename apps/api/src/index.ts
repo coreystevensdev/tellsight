@@ -31,6 +31,15 @@ import {
   shutdownDigestWorkers,
   closeDigestQueues,
 } from './jobs/digest/index.js';
+import {
+  initAlertsCronJob,
+  initAlertsOrchestratorWorker,
+  initAlertsEvaluateOrgWorker,
+  initAlertsSendWorker,
+  shutdownAlertsCron,
+  shutdownAlertsWorkers,
+  closeAlertsQueues,
+} from './jobs/alerts/index.js';
 import { initEmailProvider } from './services/email/index.js';
 import { redis } from './lib/redis.js';
 import { queryClient, adminClient } from './lib/db.js';
@@ -131,6 +140,13 @@ async function start() {
   initDigestSendWorker();
   await initDigestCronJob();
 
+  // Alerts pipeline: same three-queue shape as digest (orchestrator, evaluate-org,
+  // send), fed by this daily cron plus the on-CSV-upload trigger in datasets.ts.
+  initAlertsOrchestratorWorker();
+  initAlertsEvaluateOrgWorker();
+  initAlertsSendWorker();
+  await initAlertsCronJob();
+
   const server = app.listen(env.PORT, () => {
     logger.info({ port: env.PORT, env: env.NODE_ENV }, 'API server started');
   });
@@ -154,6 +170,9 @@ async function start() {
         await shutdownDigestCron();
         await shutdownDigestWorkers();
         await closeDigestQueues();
+        await shutdownAlertsCron();
+        await shutdownAlertsWorkers();
+        await closeAlertsQueues();
         await shutdownWorker();
         await redis.quit();
         await queryClient.end({ timeout: 5 });

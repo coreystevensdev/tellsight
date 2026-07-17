@@ -98,6 +98,8 @@ export const ANALYTICS_EVENTS = {
   ALERT_RULE_CREATED: 'alert_rule.created',
   ALERT_RULE_UPDATED: 'alert_rule.updated',
   ALERT_RULE_DELETED: 'alert_rule.deleted',
+  ALERT_FIRED: 'alert.fired',
+  ALERT_QUOTA_SUPPRESSED: 'alert.quota_suppressed',
 } as const;
 
 export type AnalyticsEventName =

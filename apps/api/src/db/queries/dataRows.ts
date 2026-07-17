@@ -79,6 +79,29 @@ export async function getRowCount(
   return row?.value ?? 0;
 }
 
+/**
+ * Earliest/latest row date for a dataset, aggregated in SQL so callers never
+ * see the underlying rows. Backs the alerts on-upload trigger's >=30-day
+ * history gate (Story 10.2): a partial-month upload shouldn't fire a
+ * runway/burn alert off a thin sample.
+ */
+export async function getDateRange(
+  orgId: number,
+  datasetId: number,
+  client: typeof db | DbTransaction = db,
+): Promise<{ earliest: Date; latest: Date } | null> {
+  const [row] = await client
+    .select({
+      earliest: sql<string>`min(${dataRows.date})`,
+      latest: sql<string>`max(${dataRows.date})`,
+    })
+    .from(dataRows)
+    .where(and(eq(dataRows.orgId, orgId), eq(dataRows.datasetId, datasetId)));
+
+  if (!row?.earliest || !row.latest) return null;
+  return { earliest: new Date(row.earliest), latest: new Date(row.latest) };
+}
+
 export async function getRowsByDataset(
   orgId: number,
   datasetId: number,

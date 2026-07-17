@@ -20,3 +20,5 @@ export * as digestEligibilityQueries from './digestEligibility.js';
 export * as digestHistoryQueries from './digestHistory.js';
 export * as agentProposalsQueries from './agentProposals.js';
 export * as alertRulesQueries from './alertRules.js';
+export * as alertRuleFiresQueries from './alertRuleFires.js';
+export * as alertEligibilityQueries from './alertEligibility.js';

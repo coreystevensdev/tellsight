@@ -1,6 +1,6 @@
+import { randomUUID, createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
-import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import multer from 'multer';
 import { MAX_FILE_SIZE, CSV_MAX_ROWS, MAX_DATASETS_PER_ORG, ANALYTICS_EVENTS, AUDIT_ACTIONS } from 'shared/constants';
 import { requireUser } from '../lib/requireUser.js';
@@ -15,6 +15,7 @@ import { normalizeHeader } from '../services/dataIngestion/index.js';
 import { datasetsQueries, orgsQueries } from '../db/queries/index.js';
 import { withRlsContext } from '../lib/rls.js';
 import { env } from '../config.js';
+import { enqueueAlertsOnUploadCheck } from '../jobs/alerts/index.js';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -267,6 +268,12 @@ datasetsRouter.post(
     trackEvent(orgId, userId, ANALYTICS_EVENTS.DATASET_CONFIRMED, {
       datasetId: result.datasetId,
       rowCount: result.rowCount,
+    });
+
+    // Fire-and-forget: a Redis blip here must never fail the upload response.
+    // The evaluator re-checks tier/rules/history itself, this just wakes it up.
+    enqueueAlertsOnUploadCheck(orgId, result.datasetId, randomUUID()).catch((err) => {
+      logger.error({ err, orgId, datasetId: result.datasetId }, 'Failed to enqueue alerts on-upload check');
     });
 
     // Audit: wholesale data mutation. If a user ever says "I never uploaded

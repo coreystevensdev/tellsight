@@ -11,6 +11,7 @@ import {
   uniqueIndex,
   numeric,
   date,
+  doublePrecision,
 } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 
@@ -664,7 +665,7 @@ export const alertRules = pgTable(
   ],
 );
 
-export const alertRulesRelations = relations(alertRules, ({ one }) => ({
+export const alertRulesRelations = relations(alertRules, ({ one, many }) => ({
   org: one(orgs, {
     fields: [alertRules.orgId],
     references: [orgs.id],
@@ -672,6 +673,46 @@ export const alertRulesRelations = relations(alertRules, ({ one }) => ({
   createdByUser: one(users, {
     fields: [alertRules.createdByUserId],
     references: [users.id],
+  }),
+  fires: many(alertRuleFires),
+}));
+
+// Append-only ledger, one row per fire decision. orgId is denormalized off
+// alertRules (rather than joined at query time) because the evaluator's
+// quota check counts fires per org and RLS needs org_id on the row itself.
+// ruleId cascades with the rule; a deleted rule's fire history goes with it,
+// same lifecycle as the rule row it belonged to.
+export const alertRuleFires = pgTable(
+  'alert_rule_fires',
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    orgId: integer('org_id')
+      .notNull()
+      .references(() => orgs.id, { onDelete: 'cascade' }),
+    ruleId: integer('rule_id')
+      .notNull()
+      .references(() => alertRules.id, { onDelete: 'cascade' }),
+    ruleKind: alertRuleKindEnum('rule_kind').notNull(),
+    trigger: text().notNull(),
+    thresholdValue: jsonb('threshold_value').notNull(),
+    currentValue: doublePrecision('current_value').notNull(),
+    band: integer().notNull(),
+    firedAt: timestamp('fired_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('idx_alert_rule_fires_rule_id').on(table.ruleId, table.firedAt.desc()),
+    index('idx_alert_rule_fires_org_id').on(table.orgId, table.firedAt.desc()),
+  ],
+);
+
+export const alertRuleFiresRelations = relations(alertRuleFires, ({ one }) => ({
+  org: one(orgs, {
+    fields: [alertRuleFires.orgId],
+    references: [orgs.id],
+  }),
+  rule: one(alertRules, {
+    fields: [alertRuleFires.ruleId],
+    references: [alertRules.id],
   }),
 }));
 

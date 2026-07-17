@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockFindMany = vi.fn();
 const mockValues = vi.fn().mockResolvedValue(undefined);
+const mockSelectWhere = vi.fn<(...args: unknown[]) => Promise<unknown[]>>();
 
 vi.mock('../../lib/db.js', () => ({
   db: {
@@ -11,10 +12,13 @@ vi.mock('../../lib/db.js', () => ({
       },
     },
     insert: vi.fn().mockReturnValue({ values: mockValues }),
+    select: vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({ where: mockSelectWhere }),
+    }),
   },
 }));
 
-const { insertBatch, getByDateRange, getByCategory, getRowsByDataset } =
+const { insertBatch, getByDateRange, getByCategory, getRowsByDataset, getDateRange } =
   await import('./dataRows.js');
 
 describe('dataRows queries', () => {
@@ -99,6 +103,29 @@ describe('dataRows queries', () => {
 
       expect(mockFindMany).toHaveBeenCalledOnce();
       expect(result).toEqual(rows);
+    });
+  });
+
+  describe('getDateRange', () => {
+    it('returns the earliest/latest date as Date objects', async () => {
+      mockSelectWhere.mockResolvedValueOnce([
+        { earliest: '2026-01-01', latest: '2026-06-15' },
+      ]);
+
+      const result = await getDateRange(10, 1);
+
+      expect(result).toEqual({
+        earliest: new Date('2026-01-01'),
+        latest: new Date('2026-06-15'),
+      });
+    });
+
+    it('returns null when the dataset has no rows', async () => {
+      mockSelectWhere.mockResolvedValueOnce([{ earliest: null, latest: null }]);
+
+      const result = await getDateRange(10, 1);
+
+      expect(result).toBeNull();
     });
   });
 });
