@@ -73,3 +73,18 @@ export type {
   UpdateEmailPreferencesInput,
   EmailPreferencesResponse,
 } from './emailPreferences.js';
+
+export {
+  ALERT_RULE_KINDS,
+  alertRuleSchema,
+  createAlertRuleSchema,
+  updateAlertRuleSchema,
+} from './alert-rules.js';
+
+export type {
+  AlertRuleKind,
+  AlertRuleInput,
+  AlertRuleThreshold,
+  CreateAlertRuleInput,
+  UpdateAlertRuleInput,
+} from './alert-rules.js';

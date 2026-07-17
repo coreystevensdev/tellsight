@@ -95,6 +95,9 @@ export const ANALYTICS_EVENTS = {
   FINANCIALS_UPDATED: 'financials.updated',
   FORECAST_REQUESTED: 'forecast.requested',
   RUNWAY_ENABLED: 'runway.enabled',
+  ALERT_RULE_CREATED: 'alert_rule.created',
+  ALERT_RULE_UPDATED: 'alert_rule.updated',
+  ALERT_RULE_DELETED: 'alert_rule.deleted',
 } as const;
 
 export type AnalyticsEventName =

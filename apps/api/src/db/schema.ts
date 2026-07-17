@@ -626,6 +626,55 @@ export const agentProposalsRelations = relations(agentProposals, ({ one }) => ({
   }),
 }));
 
+export const alertRuleKindEnum = pgEnum('alert_rule_kind', [
+  'runway_runs_short',
+  'margin_drops',
+  'cash_burn_spikes',
+  'breakeven_gap_widens',
+  'anomaly_fires',
+]);
+
+// First soft-delete precedent in this schema: deletedAt keeps the row (and its
+// FK) resolvable for the Story 10.2 fire ledger after an owner removes a rule.
+// createdByUserId is set-null, not cascade like org_invites.created_by, a rule
+// is an org asset that should keep firing after its creator leaves the org.
+export const alertRules = pgTable(
+  'alert_rules',
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    orgId: integer('org_id')
+      .notNull()
+      .references(() => orgs.id, { onDelete: 'cascade' }),
+    createdByUserId: integer('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    kind: alertRuleKindEnum().notNull(),
+    threshold: jsonb().notNull(),
+    enabled: boolean().default(true).notNull(),
+    muteUntil: timestamp('mute_until', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('idx_alert_rules_org_id').on(table.orgId),
+    index('idx_alert_rules_org_enabled')
+      .on(table.orgId, table.enabled)
+      .where(sql`${table.deletedAt} is null`),
+  ],
+);
+
+export const alertRulesRelations = relations(alertRules, ({ one }) => ({
+  org: one(orgs, {
+    fields: [alertRules.orgId],
+    references: [orgs.id],
+  }),
+  createdByUser: one(users, {
+    fields: [alertRules.createdByUserId],
+    references: [users.id],
+  }),
+}));
+
 export const integrationConnectionsRelations = relations(integrationConnections, ({ one, many }) => ({
   org: one(orgs, {
     fields: [integrationConnections.orgId],
