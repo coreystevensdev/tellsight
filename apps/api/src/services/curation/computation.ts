@@ -898,13 +898,19 @@ function statDiscriminator(stat: ComputedStat): string {
       // anomaly identity is the value: no date/month on AnomalyDetails
       return `v${stat.value}`;
     default:
+      // trend, category_breakdown, margin_trend, runway, break_even, cash_forecast:
+      // each producer emits at most one stat per (category, statType), so a fixed
+      // placeholder is a safe id. If a producer ever emits more than one, the second
+      // instance silently collides and assignIds drops it -- add a real discriminator
+      // before that becomes possible.
       return '_';
   }
 }
 
 // Maps stats to IdentifiedStat[], deduping byte-identical entries (keeps first).
-// The only practical collision is two same-value anomalies in one category, which
-// are indistinguishable and cannot be cited apart anyway.
+// Relies on each producer function emitting at most one stat per (category, statType),
+// except Anomaly, whose only possible collision is two same-value anomalies in one
+// category -- byte-identical (same zScore/deviation) and not citable apart anyway.
 export function assignIds(stats: ComputedStat[], datasetId: number): IdentifiedStat[] {
   const byId = new Map<string, IdentifiedStat>();
   for (const s of stats) {

@@ -4,8 +4,11 @@ import { computeStats, statInstanceId, assignIds } from './computation.js';
 import type { ComputedStat } from './types.js';
 import { StatType } from './types.js';
 
-// Minimal rows that produce a variety of stat types: totals, averages, trends,
-// anomalies, year-over-year, and category breakdowns.
+// Minimal rows that feed computeStats() for the assignIds integration tests
+// below. All rows have parentCategory: null, so only totals/averages/trends/
+// anomalies/category breakdowns are produced -- year-over-year, seasonal
+// projection, and cash-flow-derived stats need parentCategory: 'Income' or
+// 'Expenses' and are exercised separately below via hand-built stat objects.
 const rows = [
   { id: 1, orgId: 1, datasetId: 1, sourceType: 'csv' as const, category: 'Sales', parentCategory: null, date: new Date('2025-01-01'), amount: '1000.00', label: null, metadata: null, createdAt: new Date() },
   { id: 2, orgId: 1, datasetId: 1, sourceType: 'csv' as const, category: 'Sales', parentCategory: null, date: new Date('2025-02-01'), amount: '1100.00', label: null, metadata: null, createdAt: new Date() },
@@ -47,6 +50,65 @@ describe('statInstanceId', () => {
       details: { scope: 'category', count: 6 },
     };
     expect(statInstanceId(stat, 1)).not.toBe(statInstanceId(stat, 2));
+  });
+
+  it('discriminates average stats by scope', () => {
+    const avgStat: ComputedStat = {
+      statType: StatType.Average,
+      category: 'Expenses',
+      value: 500,
+      details: { scope: 'category', median: 500 },
+    };
+    expect(statInstanceId(avgStat, 1)).toBe('1:average:Expenses:category');
+  });
+
+  it('discriminates year-over-year stats by currentYear-month', () => {
+    const yoyStat: ComputedStat = {
+      statType: StatType.YearOverYear,
+      category: 'Sales',
+      value: 15,
+      details: {
+        currentYear: 1300,
+        priorYear: 1130,
+        currentYearLabel: '2026',
+        priorYearLabel: '2025',
+        changePercent: 15,
+        month: 'January',
+      },
+    };
+    expect(statInstanceId(yoyStat, 1)).toBe('1:year_over_year:Sales:1300-January');
+  });
+
+  it('discriminates seasonal projection stats by projectedMonth', () => {
+    const seasonalStat: ComputedStat = {
+      statType: StatType.SeasonalProjection,
+      category: 'Sales',
+      value: 1500,
+      details: {
+        projectedMonth: 'April',
+        projectedAmount: 1500,
+        basisMonths: ['January', 'February', 'March'],
+        basisValues: [1000, 1100, 1200],
+        confidence: 'moderate',
+      },
+    };
+    expect(statInstanceId(seasonalStat, 1)).toBe('1:seasonal_projection:Sales:April');
+  });
+
+  it('discriminates cash flow stats by trailing window size', () => {
+    const cashFlowStat: ComputedStat = {
+      statType: StatType.CashFlow,
+      category: null,
+      value: 200,
+      details: {
+        monthlyNet: 200,
+        trailingMonths: 3,
+        direction: 'surplus',
+        monthsBurning: 0,
+        recentMonths: [],
+      },
+    };
+    expect(statInstanceId(cashFlowStat, 1)).toBe('1:cash_flow:_:w3');
   });
 });
 
