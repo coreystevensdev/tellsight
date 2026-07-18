@@ -29,7 +29,7 @@ const SIX_DAYS_MS = 6 * 86_400_000;
  * (no retry, no markSent).
  */
 export async function handlePerSendJob(job: Job): Promise<void> {
-  const { userId, orgId, summaryId, weekStart, userEmail, orgName, correlationId } =
+  const { userId, orgId, summaryId, weekStart, userEmail, orgName, subjectLine, correlationId } =
     job.data as SendJobData;
   const start = Date.now();
   const weekStartIso = weekStart.toISOString();
@@ -121,7 +121,7 @@ export async function handlePerSendJob(job: Job): Promise<void> {
     try {
       const result = await sendEmail({
         to: userEmail,
-        subject: `${orgName} weekly insights`,
+        subject: subjectLine,
         react: DigestWeekly({
           orgName,
           bullets,

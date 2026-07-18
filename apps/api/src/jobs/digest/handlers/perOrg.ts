@@ -20,6 +20,7 @@ import { classifyValence } from '../valence.js';
 import { buildPriorContext } from '../buildPriorContext.js';
 import { detectTransitionMilestones } from '../milestones.js';
 import { composePriorContext } from '../composePriorContext.js';
+import { generateSubjectLine } from '../subjectLine.js';
 import {
   getSendQueue,
   JOB_PREFIX_SEND,
@@ -151,6 +152,7 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
 
   const stateSentence = extractStateSentence(content);
   const valence = classifyValence(currentStats);
+  const subjectLine = generateSubjectLine(valence, milestones, org.name);
 
   const recipients = await digestEligibilityQueries.findOrgRecipients(orgId);
   const queue = getSendQueue();
@@ -166,6 +168,7 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
       weekStart,
       userEmail: r.email,
       orgName: org.name,
+      subjectLine,
       correlationId,
     };
 
@@ -196,7 +199,7 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
       datasetId,
       summaryId,
       weekStart,
-      subjectLine: `${org.name} weekly insights`,
+      subjectLine,
       stateSentence,
       valence,
       keyStats: currentStats,

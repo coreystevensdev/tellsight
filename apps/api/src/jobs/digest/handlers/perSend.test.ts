@@ -92,6 +92,7 @@ const baseJobData = {
   weekStart: new Date('2026-05-03T00:00:00Z'),
   userEmail: 'alice@example.com',
   orgName: 'Acme Coffee',
+  subjectLine: 'Your runway needs attention - Acme Coffee weekly insights',
   correlationId: 'corr-abc',
 };
 
@@ -123,7 +124,7 @@ describe('happy path', () => {
     expect(mockSendEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         to: 'alice@example.com',
-        subject: 'Acme Coffee weekly insights',
+        subject: baseJobData.subjectLine,
         tags: expect.objectContaining({
           template: 'digest-weekly-v1',
           org_id: '42',
@@ -142,6 +143,23 @@ describe('happy path', () => {
         summaryId: 999,
         providerMessageId: 'msg-123',
       }),
+    );
+  });
+
+  it('sends whatever subjectLine the job carries, not a hardcoded template', async () => {
+    mockUpsertDefaults.mockResolvedValueOnce({ userId: 7, cadence: 'weekly', lastSentAt: null });
+    mockGetById.mockResolvedValueOnce(okSummary);
+    mockSendEmail.mockResolvedValueOnce({
+      status: 'sent',
+      providerMessageId: 'msg-subject',
+      durationMs: 10,
+    });
+
+    const distinctJobData = { ...baseJobData, subjectLine: 'Your cash flow just flipped negative - Acme Coffee weekly insights' };
+    await handlePerSendJob({ id: 'send-subject', data: distinctJobData } as never);
+
+    expect(mockSendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ subject: distinctJobData.subjectLine }),
     );
   });
 

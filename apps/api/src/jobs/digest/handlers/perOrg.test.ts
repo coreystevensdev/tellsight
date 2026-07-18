@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import type { ComputedStat } from '../../../services/curation/types.js';
+import type { SendJobData } from '../queue.js';
 
 const mockGetActiveDatasetId = vi.fn();
 const mockFindOrgById = vi.fn();
@@ -315,9 +316,17 @@ describe('digest history', () => {
     });
     mockGenerateInterpretation.mockResolvedValueOnce('- Runway dropped\n- second bullet');
     mockStoreSummary.mockResolvedValueOnce({ id: 4 });
-    mockFindOrgRecipients.mockResolvedValueOnce([]);
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
 
     await handlePerOrgJob({ id: 'org-11', data: baseJobData } as never);
+
+    // Milestone phrase, not the valence-only fallback, proves subjectLine is
+    // actually threaded through rather than coincidentally present.
+    const expectedSubject = 'Your runway needs attention - Acme Coffee weekly insights';
+
+    expect(mockSendQueueAdd).toHaveBeenCalledOnce();
+    const sendPayload = mockSendQueueAdd.mock.calls[0]![1] as SendJobData;
+    expect(sendPayload.subjectLine).toBe(expectedSubject);
 
     expect(mockSaveDigestHistory).toHaveBeenCalledOnce();
     expect(mockSaveDigestHistory).toHaveBeenCalledWith({
@@ -325,7 +334,7 @@ describe('digest history', () => {
       datasetId: 100,
       summaryId: 4,
       weekStart: baseJobData.weekStart,
-      subjectLine: 'Acme Coffee weekly insights',
+      subjectLine: expectedSubject,
       stateSentence: 'Runway dropped',
       valence: 'concerning',
       keyStats: [runwayStat(2.8)],

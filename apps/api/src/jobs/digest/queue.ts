@@ -38,6 +38,7 @@ export interface SendJobData {
   weekStart: Date;
   userEmail: string;
   orgName: string;
+  subjectLine: string;
   correlationId: string;
 }
 
