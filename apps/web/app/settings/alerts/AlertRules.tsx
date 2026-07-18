@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Bell, Pencil, Trash2, Loader2, AlertCircle, X, Plus } from 'lucide-react';
+import { Bell, BellOff, Pencil, Trash2, Loader2, AlertCircle, X, Plus } from 'lucide-react';
 import type { AlertRuleKind, AlertRuleInput } from 'shared/schemas';
 import { apiClient, ApiClientError } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
@@ -67,6 +67,10 @@ function formatDate(iso: string) {
     day: 'numeric',
     year: 'numeric',
   });
+}
+
+function isMuted(rule: AlertRule): boolean {
+  return rule.muteUntil !== null && new Date(rule.muteUntil) > new Date();
 }
 
 interface FormState {
@@ -183,6 +187,22 @@ export default function AlertRules({ initial }: Props) {
       setRules((prev) => prev.map((r) => (r.id === rule.id ? data : r)));
     } catch (err) {
       reportError(err, 'Failed to update alert rule');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function unmuteRule(rule: AlertRule) {
+    setBusyId(rule.id);
+    setError(null);
+    try {
+      const { data } = await apiClient<AlertRule>(`/org/alert-rules/${rule.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ kind: rule.kind, threshold: rule.threshold, muteUntil: null }),
+      });
+      setRules((prev) => prev.map((r) => (r.id === rule.id ? data : r)));
+    } catch (err) {
+      reportError(err, 'Failed to unmute alert rule');
     } finally {
       setBusyId(null);
     }
@@ -347,9 +367,24 @@ export default function AlertRules({ initial }: Props) {
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {describeThreshold(rule)} &middot; created {formatDate(rule.createdAt)}
                   </p>
+                  {isMuted(rule) && (
+                    <p className="mt-1 flex items-center gap-1 text-xs font-medium text-warning">
+                      <BellOff className="h-3 w-3" aria-hidden="true" />
+                      Muted until {formatDate(rule.muteUntil!)}
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex shrink-0 items-center gap-2">
+                  {isMuted(rule) && (
+                    <button
+                      onClick={() => unmuteRule(rule)}
+                      disabled={busyId === rule.id}
+                      className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {busyId === rule.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Unmute now'}
+                    </button>
+                  )}
                   <button
                     onClick={() => toggleEnabled(rule)}
                     disabled={busyId === rule.id}

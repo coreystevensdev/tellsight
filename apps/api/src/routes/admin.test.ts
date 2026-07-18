@@ -6,6 +6,7 @@ const mockGetOrgsWithStats = vi.fn();
 const mockGetUsers = vi.fn();
 const mockGetOrgDetail = vi.fn();
 const mockGetSystemHealth = vi.fn();
+const mockGetAlertComplianceMetrics = vi.fn();
 const mockGetAllAnalyticsEvents = vi.fn();
 const mockGetAnalyticsEventsTotal = vi.fn();
 const mockAuditQuery = vi.fn();
@@ -20,6 +21,7 @@ vi.mock('../services/admin/index.js', () => ({
   getUsers: mockGetUsers,
   getOrgDetail: mockGetOrgDetail,
   getSystemHealth: mockGetSystemHealth,
+  getAlertComplianceMetrics: mockGetAlertComplianceMetrics,
 }));
 
 vi.mock('../db/queries/analyticsEvents.js', () => ({
@@ -409,5 +411,42 @@ describe('GET /admin/audit-logs', () => {
     const json = (await res.json()) as any;
 
     expect(json.meta.pagination).toEqual({ page: 4, pageSize: 25, totalPages: 8 });
+  });
+});
+
+const fakeAlertMetrics = {
+  totalRules: 12,
+  mutedRules: 2,
+  d7: { fired: 5, quotaSuppressed: 1 },
+  d30: { fired: 20, quotaSuppressed: 3 },
+  byRuleKind: [
+    { ruleKind: 'runway_runs_short', totalRules: 4, fired: 8, clicked: 2, candidateDefaultOffRules: 1 },
+  ],
+  computedAt: '2026-07-18T00:00:00.000Z',
+};
+
+describe('GET /admin/alert-compliance', () => {
+  it('returns 200 with alert compliance metrics for admin', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
+    mockGetAlertComplianceMetrics.mockResolvedValueOnce(fakeAlertMetrics);
+
+    const res = await fetch(`${baseUrl}/admin/alert-compliance`, { headers: authHeaders });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const json = (await res.json()) as any;
+
+    expect(res.status).toBe(200);
+    expect(json.data).toEqual(fakeAlertMetrics);
+  });
+
+  it('returns 403 for non-admin user', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(regularPayload());
+
+    const res = await fetch(`${baseUrl}/admin/alert-compliance`, { headers: authHeaders });
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 401 without auth', async () => {
+    const res = await fetch(`${baseUrl}/admin/alert-compliance`);
+    expect(res.status).toBe(401);
   });
 });

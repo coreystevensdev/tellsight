@@ -100,6 +100,9 @@ export const ANALYTICS_EVENTS = {
   ALERT_RULE_DELETED: 'alert_rule.deleted',
   ALERT_FIRED: 'alert.fired',
   ALERT_QUOTA_SUPPRESSED: 'alert.quota_suppressed',
+  ALERT_MUTED: 'alert.muted',
+  ALERT_UNMUTED: 'alert.unmuted',
+  ALERT_CLICKED: 'alert.clicked',
 } as const;
 
 export type AnalyticsEventName =

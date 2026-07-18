@@ -250,6 +250,26 @@ describe('handleSendJob: CAN-SPAM headers and mute link', () => {
   });
 });
 
+describe('handleSendJob: dashboard CTA click tracking', () => {
+  it('signs a verifiable tracking token into the dashboard URL', async () => {
+    await handleSendJob({ id: 'send-13', data: baseJobData } as never);
+
+    const call = mockSendEmail.mock.calls[0]![0] as Record<string, unknown>;
+    const dashboardUrl = new URL((call.react as { dashboardUrl: string }).dashboardUrl);
+    const token = dashboardUrl.searchParams.get('t');
+    expect(token).not.toBeNull();
+
+    const { verifyAlertTrackingToken } = await import('../trackingToken.js');
+    expect(verifyAlertTrackingToken(token!)).toEqual({
+      orgId: 42,
+      userId: 7,
+      ruleId: 1,
+      ruleKind: 'runway_runs_short',
+      fireId: 999,
+    });
+  });
+});
+
 describe('handleSendJob: Sentry + Pino observability', () => {
   it('tags org, rule, rule kind, and template version', async () => {
     await handleSendJob({ id: 'send-8', data: baseJobData } as never);

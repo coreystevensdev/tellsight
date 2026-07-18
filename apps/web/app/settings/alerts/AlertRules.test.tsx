@@ -144,6 +144,52 @@ describe('AlertRules, toggle flow', () => {
   });
 });
 
+describe('AlertRules, mute state', () => {
+  const mutedRule: AlertRule = {
+    ...runwayRule,
+    muteUntil: new Date(Date.now() + 10 * 86_400_000).toISOString(),
+  };
+
+  it('shows a muted badge and unmute button when muteUntil is in the future', () => {
+    render(<AlertRules initial={[mutedRule]} />);
+
+    expect(screen.getByText(/muted until/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /unmute now/i })).toBeInTheDocument();
+  });
+
+  it('hides the muted badge once muteUntil has passed', () => {
+    const lapsedRule: AlertRule = {
+      ...runwayRule,
+      muteUntil: new Date(Date.now() - 86_400_000).toISOString(),
+    };
+    render(<AlertRules initial={[lapsedRule]} />);
+
+    expect(screen.queryByText(/muted until/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /unmute now/i })).not.toBeInTheDocument();
+  });
+
+  it('clears the mute via a PUT with muteUntil: null', async () => {
+    const user = userEvent.setup();
+    mockApiClient.mockResolvedValueOnce({ data: { ...mutedRule, muteUntil: null } });
+
+    render(<AlertRules initial={[mutedRule]} />);
+    await user.click(screen.getByRole('button', { name: /unmute now/i }));
+
+    await waitFor(() => {
+      expect(mockApiClient).toHaveBeenCalledWith(
+        '/org/alert-rules/1',
+        expect.objectContaining({
+          method: 'PUT',
+          body: JSON.stringify({ kind: 'runway_runs_short', threshold: { months: 3 }, muteUntil: null }),
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.queryByText(/muted until/i)).not.toBeInTheDocument();
+    });
+  });
+});
+
 describe('AlertRules, delete flow', () => {
   it('removes the rule from the list after a successful delete', async () => {
     const user = userEvent.setup();

@@ -1,6 +1,13 @@
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
-import { getOrgsWithStats, getUsers, getOrgDetail, getSystemHealth, getEmailComplianceMetrics } from '../services/admin/index.js';
+import {
+  getOrgsWithStats,
+  getUsers,
+  getOrgDetail,
+  getSystemHealth,
+  getEmailComplianceMetrics,
+  getAlertComplianceMetrics,
+} from '../services/admin/index.js';
 import { getAllAnalyticsEvents, getAnalyticsEventsTotal, deleteOlderThan } from '../db/queries/analyticsEvents.js';
 import { deleteExpired as deleteExpiredShares } from '../db/queries/shares.js';
 import { auditLogsQueries } from '../db/queries/index.js';
@@ -50,6 +57,12 @@ adminRouter.get('/health', async (_req, res: Response) => {
 
 adminRouter.get('/email-compliance', async (_req, res: Response) => {
   const metrics = await getEmailComplianceMetrics();
+  res.json({ data: metrics });
+});
+
+adminRouter.get('/alert-compliance', async (req: Request, res: Response) => {
+  const metrics = await getAlertComplianceMetrics();
+  req.log.info({ action: 'alert_compliance_viewed' }, 'Admin alert compliance panel viewed');
   res.json({ data: metrics });
 });
 

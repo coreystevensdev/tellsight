@@ -97,6 +97,40 @@ export async function softDelete(
 
 type AdminClient = typeof dbAdmin | DbTransaction;
 
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+// Token-authorized mute/unmute, called from the public mute route. No orgId
+// scope, the HMAC-signed token itself is the authorization boundary (same
+// posture as getEnabledByOrgIdsForEvaluation below), and no default client,
+// this always runs from an anonymous request with no RLS session.
+//
+// Unconditionally resets to NOW() + 30d rather than extending from the
+// existing mute_until: a re-click means "still bothering me," so the clock
+// restarts from that click, it doesn't stack on top of an earlier one.
+export async function muteViaToken(
+  ruleId: number,
+  client: AdminClient,
+): Promise<AlertRuleRow | null> {
+  const [row] = await client
+    .update(alertRules)
+    .set({ muteUntil: new Date(Date.now() + THIRTY_DAYS_MS), updatedAt: new Date() })
+    .where(and(eq(alertRules.id, ruleId), isNull(alertRules.deletedAt)))
+    .returning();
+  return row ?? null;
+}
+
+export async function unmuteViaToken(
+  ruleId: number,
+  client: AdminClient,
+): Promise<AlertRuleRow | null> {
+  const [row] = await client
+    .update(alertRules)
+    .set({ muteUntil: null, updatedAt: new Date() })
+    .where(and(eq(alertRules.id, ruleId), isNull(alertRules.deletedAt)))
+    .returning();
+  return row ?? null;
+}
+
 // Cross-org read for the Story 10.2 evaluator sweep. No default client, this
 // always runs outside any single tenant's RLS context, one worker pass
 // covers every org at once. Excludes muted rules, an evaluator has no reason

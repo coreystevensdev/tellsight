@@ -14,7 +14,7 @@ vi.mock('drizzle-orm', () => ({
   }),
 }));
 
-const { getEmailComplianceMetrics } = await import('./complianceService.js');
+const { getEmailComplianceMetrics, getAlertComplianceMetrics } = await import('./complianceService.js');
 
 describe('getEmailComplianceMetrics', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -110,5 +110,136 @@ describe('getEmailComplianceMetrics', () => {
     const arg = mockExecute.mock.calls[0]![0] as { text: string };
     expect(arg.text).toContain("INTERVAL '7 days'");
     expect(arg.text).toContain("INTERVAL '30 days'");
+  });
+});
+
+describe('getAlertComplianceMetrics', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const summaryRow = {
+    total_rules: 12,
+    muted_rules: 2,
+    fired_7d: 5,
+    quota_suppressed_7d: 1,
+    fired_30d: 20,
+    quota_suppressed_30d: 3,
+  };
+
+  const byKindRows = [
+    { rule_kind: 'runway_runs_short', total_rules: 4, fired: 8, clicked: 2, candidate_default_off_rules: 1 },
+    { rule_kind: 'margin_drops', total_rules: 3, fired: 0, clicked: 0, candidate_default_off_rules: 0 },
+  ];
+
+  it('maps the summary row and per-kind rows into the typed shape', async () => {
+    mockExecute.mockResolvedValueOnce([summaryRow]).mockResolvedValueOnce(byKindRows);
+
+    const m = await getAlertComplianceMetrics();
+
+    expect(m.totalRules).toBe(12);
+    expect(m.mutedRules).toBe(2);
+    expect(m.d7).toEqual({ fired: 5, quotaSuppressed: 1 });
+    expect(m.d30).toEqual({ fired: 20, quotaSuppressed: 3 });
+    expect(m.byRuleKind).toEqual([
+      { ruleKind: 'runway_runs_short', totalRules: 4, fired: 8, clicked: 2, candidateDefaultOffRules: 1 },
+      { ruleKind: 'margin_drops', totalRules: 3, fired: 0, clicked: 0, candidateDefaultOffRules: 0 },
+    ]);
+    expect(typeof m.computedAt).toBe('string');
+  });
+
+  it('returns zeros and an empty kind table when nothing exists yet', async () => {
+    mockExecute.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+    const m = await getAlertComplianceMetrics();
+
+    expect(m.totalRules).toBe(0);
+    expect(m.mutedRules).toBe(0);
+    expect(m.d7).toEqual({ fired: 0, quotaSuppressed: 0 });
+    expect(m.d30).toEqual({ fired: 0, quotaSuppressed: 0 });
+    expect(m.byRuleKind).toEqual([]);
+  });
+
+  it('coerces string-shaped counts (driver may return text from COUNT)', async () => {
+    mockExecute
+      .mockResolvedValueOnce([{ ...summaryRow, total_rules: '12', fired_7d: '5' }])
+      .mockResolvedValueOnce([{ ...byKindRows[0], total_rules: '4', fired: '8' }]);
+
+    const m = await getAlertComplianceMetrics();
+
+    expect(m.totalRules).toBe(12);
+    expect(m.d7.fired).toBe(5);
+    expect(m.byRuleKind[0]!.totalRules).toBe(4);
+    expect(m.byRuleKind[0]!.fired).toBe(8);
+  });
+
+  it('embeds alert.fired, alert.quota_suppressed, and alert.clicked event names in the SQL bindings', async () => {
+    mockExecute.mockResolvedValueOnce([summaryRow]).mockResolvedValueOnce(byKindRows);
+
+    await getAlertComplianceMetrics();
+
+    const summaryArg = mockExecute.mock.calls[0]![0] as { values: unknown[] };
+    expect(summaryArg.values).toContain('alert.fired');
+    expect(summaryArg.values).toContain('alert.quota_suppressed');
+
+    const byKindArg = mockExecute.mock.calls[1]![0] as { values: unknown[] };
+    expect(byKindArg.values).toContain('alert.clicked');
+  });
+
+  it('joins alert_rule_fires to analytics_events on the fireId metadata match, grouped by rule_kind', async () => {
+    mockExecute.mockResolvedValueOnce([summaryRow]).mockResolvedValueOnce(byKindRows);
+
+    await getAlertComplianceMetrics();
+
+    const byKindArg = mockExecute.mock.calls[1]![0] as { text: string };
+    expect(byKindArg.text).toContain("metadata->>'fireId'");
+    expect(byKindArg.text).toContain('GROUP BY r.id, r.kind');
+    expect(byKindArg.text).toContain('GROUP BY kinds.rule_kind');
+  });
+
+  it('counts DISTINCT fires, not join rows, so a fire with two matching clicks is not double-counted as two fires', async () => {
+    mockExecute.mockResolvedValueOnce([summaryRow]).mockResolvedValueOnce(byKindRows);
+
+    await getAlertComplianceMetrics();
+
+    const byKindArg = mockExecute.mock.calls[1]![0] as { text: string };
+    expect(byKindArg.text).toContain('COUNT(DISTINCT f.id)');
+    expect(byKindArg.text).not.toMatch(/COUNT\(f\.id\)/);
+  });
+
+  it('counts click_count as distinct clicked fires, not raw click rows, so it can never exceed fire_count', async () => {
+    mockExecute.mockResolvedValueOnce([summaryRow]).mockResolvedValueOnce(byKindRows);
+
+    await getAlertComplianceMetrics();
+
+    const byKindArg = mockExecute.mock.calls[1]![0] as { text: string };
+    expect(byKindArg.text).toContain('COUNT(DISTINCT f.id) FILTER (WHERE c.id IS NOT NULL) AS click_count');
+  });
+
+  it('windows the per-kind fire join to 30 days, matching every other metric in this file', async () => {
+    mockExecute.mockResolvedValueOnce([summaryRow]).mockResolvedValueOnce(byKindRows);
+
+    await getAlertComplianceMetrics();
+
+    const byKindArg = mockExecute.mock.calls[1]![0] as { text: string };
+    expect(byKindArg.text).toMatch(/f\.fired_at >= NOW\(\) - INTERVAL '30 days'/);
+  });
+
+  it('flags candidate-default-off using a 7-day-elapsed fire with zero clicks, counted per rule not per fire', async () => {
+    mockExecute.mockResolvedValueOnce([summaryRow]).mockResolvedValueOnce(byKindRows);
+
+    await getAlertComplianceMetrics();
+
+    const byKindArg = mockExecute.mock.calls[1]![0] as { text: string };
+    expect(byKindArg.text).toContain("INTERVAL '7 days'");
+    expect(byKindArg.text).toContain('has_elapsed_fire AND rule_stats.click_count = 0');
+  });
+
+  it('cross-joins every rule_kind enum value so a kind with zero rules still appears', async () => {
+    mockExecute.mockResolvedValueOnce([summaryRow]).mockResolvedValueOnce(byKindRows);
+
+    await getAlertComplianceMetrics();
+
+    const byKindArg = mockExecute.mock.calls[1]![0] as { text: string };
+    expect(byKindArg.text).toContain('enum_range(NULL::alert_rule_kind)');
+    expect(byKindArg.text).toContain('LEFT JOIN rule_stats');
   });
 });

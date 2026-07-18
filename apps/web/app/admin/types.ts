@@ -1,3 +1,5 @@
+import type { AlertRuleKind } from 'shared/schemas';
+
 export interface AdminOrgRow {
   id: number;
   name: string;
@@ -46,6 +48,28 @@ export interface AiUsageStats {
   outputTokens: number;
   requestCount: number;
   estimatedCostUsd: number;
+}
+
+export interface AlertFireWindowCounts {
+  fired: number;
+  quotaSuppressed: number;
+}
+
+export interface AlertRuleKindEffectiveness {
+  ruleKind: AlertRuleKind;
+  totalRules: number;
+  fired: number;
+  clicked: number;
+  candidateDefaultOffRules: number;
+}
+
+export interface AlertComplianceMetrics {
+  totalRules: number;
+  mutedRules: number;
+  d7: AlertFireWindowCounts;
+  d30: AlertFireWindowCounts;
+  byRuleKind: AlertRuleKindEffectiveness[];
+  computedAt: string;
 }
 
 export interface AnalyticsEventRow {

@@ -15,36 +15,31 @@ import { renderChart } from '../../../services/charting/renderChart.js';
 import type { ChartRenderInput } from '../../../services/charting/renderChart.js';
 import { AlertEmail, buildAlertRecipientExplanation } from '../templates/alertEmail.js';
 import { signMuteToken } from '../muteToken.js';
+import { signAlertTrackingToken } from '../trackingToken.js';
+import { RULE_KIND_LABELS, RULE_KIND_NOUN_LABELS } from '../ruleKindLabels.js';
 import type { SendJobData } from '../queue.js';
 
 const TEMPLATE_VERSION = 'alert-v1';
 const ALERT_PROMPT_VERSION = 'v1-alert';
 
-const RULE_KIND_LABELS: Record<AlertRuleKind, string> = {
-  runway_runs_short: 'Your cash runway is running short',
-  margin_drops: 'Your profit margin has dropped',
-  cash_burn_spikes: 'Your cash burn rate has spiked',
-  breakeven_gap_widens: 'Your break-even gap has widened',
-  anomaly_fires: 'An unusual transaction pattern was detected',
-};
-
-// Noun-phrase form for the CAN-SPAM "reason for receipt" line, distinct from
-// the headline sentences above ("alert rule for cash runway", not "alert
-// rule for Your cash runway is running short").
-const RULE_KIND_NOUN_LABELS: Record<AlertRuleKind, string> = {
-  runway_runs_short: 'cash runway',
-  margin_drops: 'profit margin',
-  cash_burn_spikes: 'cash burn rate',
-  breakeven_gap_widens: 'break-even gap',
-  anomaly_fires: 'unusual transactions',
-};
-
-function buildDashboardUrl(datasetId: number, ruleKind: AlertRuleKind): string {
+function buildDashboardUrl(
+  data: Pick<SendJobData, 'datasetId' | 'ruleKind' | 'orgId' | 'userId' | 'ruleId' | 'fireId'>,
+): string {
   const url = new URL('/dashboard', env.APP_URL);
-  url.searchParams.set('datasetId', String(datasetId));
-  for (const [key, value] of Object.entries(buildAlertUtmParams(ruleKind))) {
+  url.searchParams.set('datasetId', String(data.datasetId));
+  for (const [key, value] of Object.entries(buildAlertUtmParams(data.ruleKind))) {
     url.searchParams.set(key, value);
   }
+  url.searchParams.set(
+    't',
+    signAlertTrackingToken({
+      orgId: data.orgId,
+      userId: data.userId,
+      ruleId: data.ruleId,
+      ruleKind: data.ruleKind,
+      fireId: data.fireId,
+    }),
+  );
   return url.toString();
 }
 
@@ -168,7 +163,7 @@ export async function handleSendJob(job: Job): Promise<void> {
     scope.setTag('template_version', TEMPLATE_VERSION);
     if (chartKind) scope.setTag('chart_kind', chartKind);
 
-    const dashboardUrl = buildDashboardUrl(data.datasetId, ruleKind);
+    const dashboardUrl = buildDashboardUrl(data);
     const muteUrl = buildMuteUrl(ruleId);
     const headers = buildListUnsubscribeHeaders(muteUrl);
 

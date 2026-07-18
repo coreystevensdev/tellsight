@@ -97,6 +97,8 @@ const {
   create,
   update,
   softDelete,
+  muteViaToken,
+  unmuteViaToken,
   getEnabledByOrgIdsForEvaluation,
 } = await import('./alertRules.js');
 
@@ -272,6 +274,48 @@ describe('softDelete', () => {
     returningResult = [];
 
     const result = await softDelete(10, 1, db);
+
+    expect(result).toBeNull();
+  });
+});
+
+describe('muteViaToken', () => {
+  it('sets muteUntil roughly 30 days out, unscoped by org', async () => {
+    const before = Date.now();
+    returningResult = [{ ...mockRow, muteUntil: new Date(before + 30 * 86_400_000) }];
+
+    const result = await muteViaToken(1, dbAdmin);
+
+    expect(result?.muteUntil).toBeInstanceOf(Date);
+    const setArg = mockUpdateSet.mock.calls[0]![0] as { muteUntil: Date };
+    const daysOut = (setArg.muteUntil.getTime() - before) / 86_400_000;
+    expect(daysOut).toBeGreaterThan(29.9);
+    expect(daysOut).toBeLessThan(30.1);
+  });
+
+  it('returns null for a soft-deleted or nonexistent rule', async () => {
+    returningResult = [];
+
+    const result = await muteViaToken(999, dbAdmin);
+
+    expect(result).toBeNull();
+  });
+});
+
+describe('unmuteViaToken', () => {
+  it('clears muteUntil, unscoped by org', async () => {
+    returningResult = [{ ...mockRow, muteUntil: null }];
+
+    const result = await unmuteViaToken(1, dbAdmin);
+
+    expect(result?.muteUntil).toBeNull();
+    expect(mockUpdateSet).toHaveBeenCalledWith(expect.objectContaining({ muteUntil: null }));
+  });
+
+  it('returns null for a soft-deleted or nonexistent rule', async () => {
+    returningResult = [];
+
+    const result = await unmuteViaToken(999, dbAdmin);
 
     expect(result).toBeNull();
   });

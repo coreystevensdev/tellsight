@@ -39,6 +39,7 @@ import { QbReturnToast } from './QbReturnToast';
 import { LockedInsightCard } from './LockedInsightCard';
 import { CashBalanceStaleBanner } from './CashBalanceStaleBanner';
 import { DigestClickTracker } from './DigestClickTracker';
+import { AlertClickTracker } from './AlertClickTracker';
 import { LastDigestIndicator } from '@/components/LastDigestIndicator';
 import type { OrgFinancials } from 'shared/types';
 
@@ -348,6 +349,9 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
       </Suspense>
       <Suspense fallback={null}>
         <DigestClickTracker />
+      </Suspense>
+      <Suspense fallback={null}>
+        <AlertClickTracker />
       </Suspense>
       {showOnboarding && <OnboardingModal onComplete={() => setShowOnboarding(false)} />}
       <DemoModeBanner demoState={data.demoState} onUploadClick={handleUploadClick} />

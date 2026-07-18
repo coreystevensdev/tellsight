@@ -15,6 +15,8 @@ import { publicInviteRouter } from './routes/invites.js';
 import { publicShareRouter } from './routes/sharing.js';
 import { publicDigestUnsubscribeRouter } from './routes/digestUnsubscribe.js';
 import { digestTrackingRouter } from './routes/digestTracking.js';
+import { publicAlertMuteRouter } from './routes/alertMute.js';
+import { alertTrackingRouter } from './routes/alertTracking.js';
 import protectedRouter from './routes/protected.js';
 import dashboardRouter from './routes/dashboard.js';
 import { stripeWebhookRouter } from './routes/stripeWebhook.js';
@@ -110,6 +112,10 @@ app.use(rateLimitPublic, publicDigestUnsubscribeRouter);
 // just returns the 42-byte GIF and emits nothing. Click ingest gets the same
 // posture for symmetry (corporate proxies share IPs the same way).
 app.use(digestTrackingRouter);
+app.use(alertTrackingRouter);
+// Same posture as digestTrackingRouter: the mute-rule token is the abuse
+// defense, no rate limiter needed on top of it.
+app.use(publicAlertMuteRouter);
 app.use(rateLimitPublic, dashboardRouter);
 app.use(rateLimitPublic, protectedRouter);
 setupExpressErrorHandler(app);
