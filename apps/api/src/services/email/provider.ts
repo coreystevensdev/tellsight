@@ -20,6 +20,14 @@ export interface SendEmailOpts {
   correlationId?: string;
   /** Custom SMTP/HTTP headers; primarily for List-Unsubscribe compliance. */
   headers?: Record<string, string>;
+  /** CID-referenced inline images (`<img src="cid:{contentId}">`); never base64 data URIs. */
+  attachments?: EmailAttachment[];
+}
+
+export interface EmailAttachment {
+  filename: string;
+  content: Buffer;
+  contentId: string;
 }
 
 export interface SendResult {

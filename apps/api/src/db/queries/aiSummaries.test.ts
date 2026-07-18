@@ -32,7 +32,7 @@ const inertClient = postgres('postgres://test:test@localhost:1/test', {
 });
 const inertDb = drizzle(inertClient, { schema });
 
-const { getCachedSummary, getCachedDigest, getLatestSummary, storeSummary } =
+const { getCachedSummary, getCachedDigest, getCachedAlertSummary, getLatestSummary, storeSummary } =
   await import('./aiSummaries.js');
 
 beforeEach(() => {
@@ -77,6 +77,26 @@ describe('getCachedDigest', () => {
     mockFindFirst.mockResolvedValueOnce(undefined);
 
     const result = await getCachedDigest(7, 9, new Date('2026-05-03T00:00:00Z'));
+
+    expect(result).toBeUndefined();
+  });
+});
+
+describe('getCachedAlertSummary', () => {
+  it('reads with fireId pinned to the requested fire', async () => {
+    const row = { id: 1, orgId: 7, datasetId: 9, audience: 'alert', fireId: 501 };
+    mockFindFirst.mockResolvedValueOnce(row);
+
+    const result = await getCachedAlertSummary(7, 9, 501);
+
+    expect(result).toEqual(row);
+    expect(mockFindFirst).toHaveBeenCalledOnce();
+  });
+
+  it('returns undefined on cache miss', async () => {
+    mockFindFirst.mockResolvedValueOnce(undefined);
+
+    const result = await getCachedAlertSummary(7, 9, 501);
 
     expect(result).toBeUndefined();
   });
@@ -138,6 +158,24 @@ describe('storeSummary (options bag)', () => {
         audience: 'digest-weekly',
         weekStart,
       }),
+    );
+  });
+
+  it('writes an alert row with audience + fireId', async () => {
+    mockReturning.mockResolvedValueOnce([{ id: 5 }]);
+
+    await storeSummary({
+      orgId: 7,
+      datasetId: 9,
+      content: 'Your runway is now 2.5 months.',
+      metadata: { promptVersion: 'v1-alert' },
+      promptVersion: 'v1-alert',
+      audience: 'alert',
+      fireId: 501,
+    });
+
+    expect(mockInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ audience: 'alert', fireId: 501, weekStart: null }),
     );
   });
 
@@ -273,5 +311,22 @@ describe('seed-summary cache regression (AC #14j)', () => {
         : typeof p === 'string' && new Date(p).getTime() === weekStart.getTime(),
     );
     expect(containsWeekStart).toBe(true);
+  });
+
+  it('getCachedAlertSummary scopes to alert + matches fireId by equality', () => {
+    const query = inertDb.query.aiSummaries.findFirst({
+      where: and(
+        eq(aiSummaries.orgId, 1),
+        eq(aiSummaries.datasetId, 1),
+        eq(aiSummaries.audience, 'alert'),
+        eq(aiSummaries.fireId, 501),
+      ),
+    });
+    const { sql, params } = query.toSQL();
+
+    expect(sql).toMatch(/"(?:ai_summaries|aiSummaries)"\."audience"\s*=\s*\$/);
+    expect(sql).toMatch(/"(?:ai_summaries|aiSummaries)"\."fire_id"\s*=\s*\$/);
+    expect(params).toContain('alert');
+    expect(params).toContain(501);
   });
 });

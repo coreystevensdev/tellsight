@@ -308,6 +308,35 @@ describe('resend provider', () => {
     expect('headers' in payload).toBe(false);
   });
 
+  it('forwards attachments to the Resend SDK as CID-tagged inline images', async () => {
+    const { logger } = makeFakeLogger();
+    const { client, send } = fakeResend(async () => ({ data: { id: 'x' }, error: null }));
+    const provider = createResendProvider(env, { resend: client, sentry, logger });
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+
+    await provider.send({
+      to: 'a@b.com',
+      subject: 's',
+      react: template(),
+      attachments: [{ filename: 'chart.png', content: png, contentId: 'chart-1' }],
+    });
+
+    const [payload] = send.mock.calls[0]! as [Record<string, unknown>];
+    expect(payload.attachments).toEqual([
+      { filename: 'chart.png', content: png, contentId: 'chart-1' },
+    ]);
+  });
+
+  it('omits the attachments key from the SDK payload when caller omits it', async () => {
+    const { logger } = makeFakeLogger();
+    const { client, send } = fakeResend(async () => ({ data: { id: 'x' }, error: null }));
+    const provider = createResendProvider(env, { resend: client, sentry, logger });
+
+    await provider.send({ to: 'a@b.com', subject: 's', react: template() });
+    const [payload] = send.mock.calls[0]! as [Record<string, unknown>];
+    expect('attachments' in payload).toBe(false);
+  });
+
   it('throws retryable EmailSendError when SDK returns neither id nor error', async () => {
     const { logger, error } = makeFakeLogger();
     const { client } = fakeResend(async () => ({

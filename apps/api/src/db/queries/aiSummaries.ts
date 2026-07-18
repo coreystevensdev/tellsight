@@ -3,7 +3,7 @@ import { eq, and, isNull, desc } from 'drizzle-orm';
 import { db, type DbTransaction } from '../../lib/db.js';
 import { aiSummaries } from '../schema.js';
 
-export type SummaryAudience = 'dashboard' | 'digest-weekly' | 'share';
+export type SummaryAudience = 'dashboard' | 'digest-weekly' | 'share' | 'alert';
 
 export async function getCachedSummary(
   orgId: number,
@@ -67,6 +67,24 @@ export async function getCachedDigest(
   });
 }
 
+/** Alert-audience cache lookup. Alerts are one-shot per fire event, not
+ *  week-pinned like digest, so cache identity uses fireId instead of weekStart. */
+export async function getCachedAlertSummary(
+  orgId: number,
+  datasetId: number,
+  fireId: number,
+  client: typeof db | DbTransaction = db,
+) {
+  return client.query.aiSummaries.findFirst({
+    where: and(
+      eq(aiSummaries.orgId, orgId),
+      eq(aiSummaries.datasetId, datasetId),
+      eq(aiSummaries.audience, 'alert'),
+      eq(aiSummaries.fireId, fireId),
+    ),
+  });
+}
+
 export interface StoreSummaryOpts {
   orgId: number;
   datasetId: number;
@@ -76,6 +94,7 @@ export interface StoreSummaryOpts {
   isSeed?: boolean;
   audience?: SummaryAudience;
   weekStart?: Date | null;
+  fireId?: number | null;
   client?: typeof db | DbTransaction;
 }
 
@@ -89,6 +108,7 @@ export async function storeSummary(opts: StoreSummaryOpts) {
     isSeed = false,
     audience = 'dashboard',
     weekStart = null,
+    fireId = null,
     client = db,
   } = opts;
 
@@ -103,6 +123,7 @@ export async function storeSummary(opts: StoreSummaryOpts) {
       isSeed,
       audience,
       weekStart,
+      fireId,
     })
     .returning();
   return row!;

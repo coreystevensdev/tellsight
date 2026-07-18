@@ -3,6 +3,7 @@ import type { ConnectionOptions } from 'bullmq';
 import type { AlertRuleKind } from 'shared/schemas';
 
 import { env } from '../../config.js';
+import type { ScoredInsight } from '../../services/curation/index.js';
 
 // Same three-queue shape as jobs/digest/queue.ts, for the same reason:
 // BullMQ OSS has no job-name routing on a shared queue, so one queue per
@@ -34,12 +35,17 @@ export interface EvaluateOrgJobData {
 export interface SendJobData {
   orgId: number;
   orgName: string;
+  userId: number;
   userEmail: string;
   datasetId: number;
   ruleId: number;
   ruleKind: AlertRuleKind;
   fireId: number;
   currentValue: number;
+  // The single insight matching the fired rule's StatType, already computed
+  // by evaluateOrg's runCurationPipeline call. Forwarded here so send.ts
+  // doesn't re-run curation for chart data and the LLM prompt input.
+  firedInsight: ScoredInsight;
   trigger: AlertTrigger;
   correlationId: string;
 }

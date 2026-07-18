@@ -184,10 +184,12 @@ describe('cron: fire decisions', () => {
     expect(mockSendQueueAdd.mock.calls[0]![0]).toBe('alert-send-999');
     expect(mockSendQueueAdd.mock.calls[0]![1]).toMatchObject({
       orgId: 42,
+      userId: 7,
       userEmail: 'owner@acme.test',
       ruleId: 1,
       ruleKind: 'runway_runs_short',
       fireId: 999,
+      firedInsight: runwayInsight(2),
     });
   });
 

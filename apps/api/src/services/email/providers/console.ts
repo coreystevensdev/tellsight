@@ -6,7 +6,7 @@ import { render } from '@react-email/render';
 
 import type { Env } from '../../../config.js';
 import { logger as defaultLogger } from '../../../lib/logger.js';
-import type { EmailProvider, SendEmailOpts, SendResult } from '../provider.js';
+import type { EmailAttachment, EmailProvider, SendEmailOpts, SendResult } from '../provider.js';
 
 type Logger = typeof defaultLogger;
 type FsAdapter = Pick<typeof fsPromises, 'writeFile' | 'mkdir'>;
@@ -48,6 +48,7 @@ export function createConsoleProvider(env: Env, deps: ConsoleDeps = {}): EmailPr
           outcome: 'captured',
           durationMs,
           ...(opts.headers ? { headers: redactHeaders(opts.headers) } : {}),
+          ...(opts.attachments ? { attachments: opts.attachments.map(attachmentMetadata) } : {}),
         },
         'email send captured',
       );
@@ -91,6 +92,12 @@ const UNSUBSCRIBE_TOKEN_PATTERN = /(\/unsubscribe\/digest\/\d+)\.[A-Za-z0-9_-]+/
 
 export function redactUnsubscribeToken(value: string): string {
   return value.replace(UNSUBSCRIBE_TOKEN_PATTERN, '$1.***');
+}
+
+// Never log attachment bytes, only enough to confirm the pipeline attached
+// the right thing (filename, size, and the cid the template references).
+function attachmentMetadata(a: EmailAttachment): { filename: string; bytes: number; contentId: string } {
+  return { filename: a.filename, bytes: a.content.length, contentId: a.contentId };
 }
 
 function redactHeaders(headers: Record<string, string>): Record<string, string> {

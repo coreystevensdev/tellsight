@@ -202,6 +202,10 @@ export const aiSummaries = pgTable(
     isSeed: boolean('is_seed').default(false).notNull(),
     audience: text('audience').notNull().default('dashboard'),
     weekStart: timestamp('week_start', { withTimezone: true }),
+    // Alert summaries are one-shot per fire event, not week-pinned like
+    // digest, so cache identity is (org, dataset, fireId) instead of
+    // (org, dataset, weekStart).
+    fireId: integer('fire_id').references(() => alertRuleFires.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     staleAt: timestamp('stale_at', { withTimezone: true }),
   },
@@ -210,6 +214,9 @@ export const aiSummaries = pgTable(
     uniqueIndex('idx_ai_summaries_digest_unique')
       .on(table.orgId, table.datasetId, table.audience, table.weekStart)
       .where(sql`${table.audience} = 'digest-weekly'`),
+    uniqueIndex('idx_ai_summaries_alert_unique')
+      .on(table.orgId, table.datasetId, table.audience, table.fireId)
+      .where(sql`${table.audience} = 'alert'`),
   ],
 );
 

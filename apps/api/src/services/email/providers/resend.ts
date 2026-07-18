@@ -6,7 +6,7 @@ import { Resend } from 'resend';
 import type { Env } from '../../../config.js';
 import { logger as defaultLogger } from '../../../lib/logger.js';
 import { Sentry } from '../../../lib/sentry.js';
-import type { EmailProvider, SendEmailOpts, SendResult } from '../provider.js';
+import type { EmailAttachment, EmailProvider, SendEmailOpts, SendResult } from '../provider.js';
 import { EmailSendError } from '../provider.js';
 import { redactRecipient } from './console.js';
 
@@ -65,6 +65,7 @@ export function createResendProvider(env: Env, deps: ResendDeps = {}): EmailProv
           replyTo: opts.replyTo ?? env.EMAIL_REPLY_TO,
           tags: tagsToResendFormat(opts.tags),
           ...(opts.headers ? { headers: opts.headers } : {}),
+          ...(opts.attachments ? { attachments: attachmentsToResendFormat(opts.attachments) } : {}),
         });
       } catch (err) {
         // Network / SDK-internal throw. Treat as transient by default.
@@ -196,4 +197,14 @@ function tagsToResendFormat(
 ): { name: string; value: string }[] | undefined {
   if (!tags) return undefined;
   return Object.entries(tags).map(([name, value]) => ({ name, value }));
+}
+
+function attachmentsToResendFormat(attachments: EmailAttachment[]) {
+  // contentId (camelCase) is Resend's SDK field; it's what makes the
+  // attachment inline and referenceable as cid:{contentId} in the HTML.
+  return attachments.map((a) => ({
+    filename: a.filename,
+    content: a.content,
+    contentId: a.contentId,
+  }));
 }

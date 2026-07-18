@@ -197,7 +197,25 @@ export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 export const AI_DISCLAIMER =
   'AI-generated analysis, not financial advice. Verify with your accountant.' as const;
 
-export { DIGEST_UTM_PARAMS } from './utm.js';
+export const ALERT_DISCLAIMER =
+  'Information only. Not financial advice. Consult your accountant for decisions.' as const;
+
+export { DIGEST_UTM_PARAMS, buildAlertUtmParams } from './utm.js';
+
+// Alert email charts render server-side in apps/api, where `apps/web/app/globals.css`'s
+// `--color-chart-*` custom properties don't exist (no browser, no cascade). These are the
+// same colors hex-translated from that file's light theme so the email charts match the
+// dashboard's palette; update both places together if the design tokens change.
+export const EMAIL_CHART_COLORS = {
+  revenue: '#009d7b',
+  revenueDot: '#00906b',
+  expense: '#3284d0',
+  success: '#31aa40',
+  destructive: '#cc272e',
+  grid: '#e4e4e4',
+  background: '#ffffff',
+  mutedForeground: '#717171',
+} as const;
 
 export const DEMO_MODE_STATES = {
   SEED_ONLY: 'seed_only',

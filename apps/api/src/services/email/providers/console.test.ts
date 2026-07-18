@@ -129,6 +129,33 @@ describe('console provider', () => {
     expect('headers' in payload).toBe(false);
   });
 
+  it('logs attachment metadata (filename, size, contentId), never the bytes', async () => {
+    const { logger, info } = makeFakeLogger();
+    const provider = createConsoleProvider(env, { logger });
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x00]);
+
+    await provider.send({
+      to: 'a@b.com',
+      subject: 's',
+      react: template(),
+      attachments: [{ filename: 'chart.png', content: png, contentId: 'chart-1' }],
+    });
+
+    const [payload] = info.mock.calls[0]! as [Record<string, unknown>];
+    expect(payload.attachments).toEqual([{ filename: 'chart.png', bytes: 6, contentId: 'chart-1' }]);
+    expect(JSON.stringify(payload)).not.toContain(png.toString('base64'));
+  });
+
+  it('omits the attachments key from the log payload when caller omits it', async () => {
+    const { logger, info } = makeFakeLogger();
+    const provider = createConsoleProvider(env, { logger });
+
+    await provider.send({ to: 'a@b.com', subject: 's', react: template() });
+
+    const [payload] = info.mock.calls[0]! as [Record<string, unknown>];
+    expect('attachments' in payload).toBe(false);
+  });
+
   it('generates a correlationId when caller omits it', async () => {
     const { logger, info } = makeFakeLogger();
     const provider = createConsoleProvider(env, { logger });

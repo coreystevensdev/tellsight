@@ -1,17 +1,26 @@
-import { createElement } from 'react';
 import type { Job } from 'bullmq';
+import type { AlertRuleKind } from 'shared/schemas';
+import type { BusinessProfile } from 'shared/types';
+import { buildAlertUtmParams } from 'shared/constants';
 
 import { logger } from '../../../lib/logger.js';
 import { env } from '../../../config.js';
 import { Sentry } from '../../../lib/sentry.js';
 import { sendEmail, EmailSendError } from '../../../services/email/index.js';
+import { aiSummariesQueries, orgsQueries } from '../../../db/queries/index.js';
+import { assemblePrompt, StatType, transparencyMetadataSchema } from '../../../services/curation/index.js';
+import { generateInterpretation } from '../../../services/aiInterpretation/claudeClient.js';
+import { getChartKindForRuleKind } from '../../../services/charting/chartKind.js';
+import { renderChart } from '../../../services/charting/renderChart.js';
+import type { ChartRenderInput } from '../../../services/charting/renderChart.js';
+import { AlertEmail, buildAlertRecipientExplanation } from '../templates/alertEmail.js';
+import { signMuteToken } from '../muteToken.js';
 import type { SendJobData } from '../queue.js';
 
-const TEMPLATE_VERSION = 'alert-minimal-v1';
+const TEMPLATE_VERSION = 'alert-v1';
+const ALERT_PROMPT_VERSION = 'v1-alert';
 
-// Story 10.3 replaces this body with the real React Email template (chart,
-// CAN-SPAM footer, mute link); this story only proves the queue delivers.
-const RULE_KIND_LABELS: Record<string, string> = {
+const RULE_KIND_LABELS: Record<AlertRuleKind, string> = {
   runway_runs_short: 'Your cash runway is running short',
   margin_drops: 'Your profit margin has dropped',
   cash_burn_spikes: 'Your cash burn rate has spiked',
@@ -19,61 +28,205 @@ const RULE_KIND_LABELS: Record<string, string> = {
   anomaly_fires: 'An unusual transaction pattern was detected',
 };
 
-function buildDashboardUrl(datasetId: number): string {
+// Noun-phrase form for the CAN-SPAM "reason for receipt" line, distinct from
+// the headline sentences above ("alert rule for cash runway", not "alert
+// rule for Your cash runway is running short").
+const RULE_KIND_NOUN_LABELS: Record<AlertRuleKind, string> = {
+  runway_runs_short: 'cash runway',
+  margin_drops: 'profit margin',
+  cash_burn_spikes: 'cash burn rate',
+  breakeven_gap_widens: 'break-even gap',
+  anomaly_fires: 'unusual transactions',
+};
+
+function buildDashboardUrl(datasetId: number, ruleKind: AlertRuleKind): string {
   const url = new URL('/dashboard', env.APP_URL);
   url.searchParams.set('datasetId', String(datasetId));
+  for (const [key, value] of Object.entries(buildAlertUtmParams(ruleKind))) {
+    url.searchParams.set(key, value);
+  }
   return url.toString();
 }
 
-function alertPlaintextBody(data: SendJobData, dashboardUrl: string) {
-  const headline = RULE_KIND_LABELS[data.ruleKind] ?? 'An alert rule fired';
-  return createElement(
-    'div',
-    null,
-    createElement('p', null, `${headline} for ${data.orgName}.`),
-    createElement('p', null, `Current value: ${data.currentValue.toFixed(2)}`),
-    createElement('p', null, createElement('a', { href: dashboardUrl }, 'View your dashboard')),
-  );
+function buildMuteUrl(ruleId: number): string {
+  const token = signMuteToken(ruleId);
+  return new URL(`/mute/alert-rule/${encodeURIComponent(token)}`, env.APP_URL).toString();
+}
+
+// Same URL-only one-click shape as digest's buildListUnsubscribeHeaders
+// (RFC 8058, no mailto: half): we don't operate a receiving inbox.
+function buildListUnsubscribeHeaders(
+  muteUrl: string,
+): { 'List-Unsubscribe': string; 'List-Unsubscribe-Post': string } {
+  return {
+    'List-Unsubscribe': `<${muteUrl}>`,
+    'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+  };
+}
+
+function fallbackParagraph(ruleKind: AlertRuleKind, currentValue: number): string {
+  return `${RULE_KIND_LABELS[ruleKind]}. Current value: ${currentValue.toFixed(2)}.`;
 }
 
 /**
- * Minimal send handler. Proves the pipeline end to end (fire row -> queue ->
- * email) with a plaintext body; no chart, no CAN-SPAM footer, no mute link,
- * those land in Stories 10.3/10.4 without touching this queue wiring.
+ * Cache-first alert paragraph: a hit returns the stored content, a miss
+ * calls Claude with the fired insight and caches the result. Any failure
+ * along this path (DB, Claude, validation) degrades to the deterministic
+ * RULE_KIND_LABELS sentence rather than failing the send, per the epic's
+ * "interpretation degrades, delivery doesn't" posture.
  */
+async function resolveAlertParagraph(data: SendJobData): Promise<string> {
+  try {
+    const cached = await aiSummariesQueries.getCachedAlertSummary(data.orgId, data.datasetId, data.fireId);
+    if (cached) return cached.content;
+
+    const org = await orgsQueries.findOrgById(data.orgId);
+    const businessProfile = (org?.businessProfile ?? null) as BusinessProfile | null;
+
+    const { system, user, metadata } = assemblePrompt([data.firedInsight], ALERT_PROMPT_VERSION, businessProfile);
+    const validatedMetadata = transparencyMetadataSchema.parse(metadata);
+    const content = await generateInterpretation({ system, user });
+
+    await aiSummariesQueries.storeSummary({
+      orgId: data.orgId,
+      datasetId: data.datasetId,
+      content,
+      metadata: validatedMetadata,
+      promptVersion: ALERT_PROMPT_VERSION,
+      audience: 'alert',
+      fireId: data.fireId,
+    });
+
+    return content;
+  } catch (err) {
+    logger.warn(
+      { correlationId: data.correlationId, orgId: data.orgId, ruleId: data.ruleId, err },
+      'Alert LLM paragraph failed, falling back to deterministic sentence',
+    );
+    return fallbackParagraph(data.ruleKind, data.currentValue);
+  }
+}
+
+// Maps a fired insight onto the chart component's expected input shape.
+// Returns null both when the rule kind has no chart mapping and when the
+// insight's actual statType doesn't match what the chart kind expects (a
+// defensive mismatch that shouldn't happen given evaluateOrg's selection,
+// but a bad chart is worse than no chart).
+function buildChartInput(
+  ruleKind: AlertRuleKind,
+  insight: SendJobData['firedInsight'],
+  logFields: Record<string, unknown>,
+): ChartRenderInput | null {
+  const chartKind = getChartKindForRuleKind(ruleKind);
+  if (!chartKind) return null;
+
+  const mismatch = (): null => {
+    logger.warn(
+      { ...logFields, chartKind, actualStatType: insight.stat.statType },
+      'Fired insight statType does not match the expected chart kind, sending text-only',
+    );
+    return null;
+  };
+
+  switch (chartKind) {
+    case 'runway':
+      if (insight.stat.statType !== StatType.Runway) return mismatch();
+      return {
+        chartKind: 'runway',
+        data: {
+          cashOnHand: insight.stat.details.cashOnHand,
+          monthlyNet: insight.stat.details.monthlyNet,
+          runwayMonths: insight.stat.details.runwayMonths,
+        },
+      };
+    case 'cash-flow':
+      if (insight.stat.statType !== StatType.CashFlow) return mismatch();
+      return { chartKind: 'cash-flow', data: { recentMonths: insight.stat.details.recentMonths } };
+    case 'margin':
+      if (insight.stat.statType !== StatType.MarginTrend) return mismatch();
+      return {
+        chartKind: 'margin',
+        data: {
+          recentMarginPercent: insight.stat.details.recentMarginPercent,
+          priorMarginPercent: insight.stat.details.priorMarginPercent,
+          direction: insight.stat.details.direction,
+        },
+      };
+  }
+}
+
 export async function handleSendJob(job: Job): Promise<void> {
   const data = job.data as SendJobData;
-  const { orgId, userEmail, ruleId, ruleKind, fireId, trigger, correlationId } = data;
+  const { orgId, userId, userEmail, ruleId, ruleKind, fireId, trigger, correlationId } = data;
   const start = Date.now();
+  const chartKind = getChartKindForRuleKind(ruleKind);
 
   await Sentry.withScope(async (scope) => {
     scope.setTag('org_id', String(orgId));
     scope.setTag('rule_id', String(ruleId));
     scope.setTag('rule_kind', ruleKind);
     scope.setTag('template_version', TEMPLATE_VERSION);
+    if (chartKind) scope.setTag('chart_kind', chartKind);
 
-    const dashboardUrl = buildDashboardUrl(data.datasetId);
+    const dashboardUrl = buildDashboardUrl(data.datasetId, ruleKind);
+    const muteUrl = buildMuteUrl(ruleId);
+    const headers = buildListUnsubscribeHeaders(muteUrl);
+
+    const renderStart = Date.now();
+    const chartInput = buildChartInput(ruleKind, data.firedInsight, { correlationId, orgId, ruleId });
+    const chartPng = chartInput
+      ? await renderChart(chartInput, { correlationId, orgId, ruleId })
+      : null;
+    const renderingDurationMs = Date.now() - renderStart;
+
+    const paragraph = await resolveAlertParagraph(data);
+    const headline = RULE_KIND_LABELS[ruleKind];
+    const chartContentId = chartPng ? `chart-${fireId}` : undefined;
+
+    const template = AlertEmail({
+      orgName: data.orgName,
+      headline,
+      paragraph,
+      dashboardUrl,
+      muteUrl,
+      mailingAddress: env.EMAIL_MAILING_ADDRESS,
+      companyName: env.EMAIL_FROM_NAME,
+      ruleKindLabel: RULE_KIND_NOUN_LABELS[ruleKind],
+      chartContentId,
+    });
 
     try {
       const result = await sendEmail({
         to: userEmail,
-        subject: RULE_KIND_LABELS[ruleKind] ?? 'Tellsight alert',
-        react: alertPlaintextBody(data, dashboardUrl),
+        subject: headline,
+        react: template,
         tags: { template: TEMPLATE_VERSION, org_id: String(orgId), rule_id: String(ruleId) },
+        headers,
         correlationId,
+        ...(chartPng && chartContentId
+          ? { attachments: [{ filename: 'chart.png', content: chartPng, contentId: chartContentId }] }
+          : {}),
       });
 
       logger.info(
         {
           correlationId,
           orgId,
+          userId,
           ruleId,
-          ruleKind,
           fireId,
           trigger,
-          outcome: 'fired',
+          templateVersion: TEMPLATE_VERSION,
+          renderingDurationMs,
+          outcome: 'sent',
           providerMessageId: result.providerMessageId,
           durationMs: Date.now() - start,
+          canSpamElements: {
+            mailingAddress: env.EMAIL_MAILING_ADDRESS,
+            muteUrl,
+            recipientExplanation: buildAlertRecipientExplanation(RULE_KIND_NOUN_LABELS[ruleKind], data.orgName),
+            companyName: env.EMAIL_FROM_NAME,
+          },
         },
         'Alert send complete',
       );
@@ -89,10 +242,12 @@ export async function handleSendJob(job: Job): Promise<void> {
           {
             correlationId,
             orgId,
+            userId,
             ruleId,
-            ruleKind,
             fireId,
             trigger,
+            templateVersion: TEMPLATE_VERSION,
+            renderingDurationMs,
             outcome: 'error',
             durationMs: Date.now() - start,
             err: err instanceof Error ? err.message : String(err),
@@ -107,10 +262,12 @@ export async function handleSendJob(job: Job): Promise<void> {
         {
           correlationId,
           orgId,
+          userId,
           ruleId,
-          ruleKind,
           fireId,
           trigger,
+          templateVersion: TEMPLATE_VERSION,
+          renderingDurationMs,
           outcome: 'error',
           err,
           providerStatusCode: err instanceof EmailSendError ? err.providerStatusCode : undefined,

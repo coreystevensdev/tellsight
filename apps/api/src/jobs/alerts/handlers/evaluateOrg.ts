@@ -44,13 +44,14 @@ type Outcome = 'fired' | 'suppressed_dedup' | 'suppressed_quota' | 'suppressed_b
 interface RuleEvaluation {
   currentValue: number;
   band: number | null;
+  insight: ScoredInsight;
 }
 
 function evaluateRunway(insights: ScoredInsight[], threshold: number): RuleEvaluation | null {
   const insight = insights.find((i) => i.stat.statType === StatType.Runway);
   if (!insight || insight.stat.statType !== StatType.Runway) return null;
   const currentValue = insight.stat.details.runwayMonths;
-  return { currentValue, band: runwayBands.getBand(currentValue, threshold) };
+  return { currentValue, band: runwayBands.getBand(currentValue, threshold), insight };
 }
 
 function evaluateMargin(insights: ScoredInsight[], threshold: number): RuleEvaluation | null {
@@ -59,7 +60,7 @@ function evaluateMargin(insights: ScoredInsight[], threshold: number): RuleEvalu
   // Positive when margin has contracted; negative (expanding margin) never
   // clears a positive threshold, so no separate direction check is needed.
   const currentValue = insight.stat.details.priorMarginPercent - insight.stat.details.recentMarginPercent;
-  return { currentValue, band: marginBands.getBand(currentValue, threshold) };
+  return { currentValue, band: marginBands.getBand(currentValue, threshold), insight };
 }
 
 function evaluateCashBurn(insights: ScoredInsight[], threshold: number): RuleEvaluation | null {
@@ -67,7 +68,7 @@ function evaluateCashBurn(insights: ScoredInsight[], threshold: number): RuleEva
   if (!insight || insight.stat.statType !== StatType.CashFlow) return null;
 
   const months = insight.stat.details.recentMonths;
-  if (months.length < 2) return { currentValue: 0, band: null };
+  if (months.length < 2) return { currentValue: 0, band: null, insight };
 
   const latest = months[months.length - 1]!;
   const priorMonths = months.slice(0, -1);
@@ -75,7 +76,7 @@ function evaluateCashBurn(insights: ScoredInsight[], threshold: number): RuleEva
   const currentValue =
     priorAvgExpenses > 0 ? ((latest.expenses - priorAvgExpenses) / priorAvgExpenses) * 100 : 0;
 
-  return { currentValue, band: cashBurnBands.getBand(currentValue, threshold) };
+  return { currentValue, band: cashBurnBands.getBand(currentValue, threshold), insight };
 }
 
 function evaluateBreakeven(insights: ScoredInsight[], threshold: number): RuleEvaluation | null {
@@ -84,7 +85,7 @@ function evaluateBreakeven(insights: ScoredInsight[], threshold: number): RuleEv
 
   const { gap, breakEvenRevenue } = insight.stat.details;
   const currentValue = breakEvenRevenue > 0 ? (gap / breakEvenRevenue) * 100 : 0;
-  return { currentValue, band: breakevenBands.getBand(currentValue, threshold) };
+  return { currentValue, band: breakevenBands.getBand(currentValue, threshold), insight };
 }
 
 function evaluateAnomaly(
@@ -103,7 +104,7 @@ function evaluateAnomaly(
   if (mostSevere.stat.statType !== StatType.Anomaly) return null;
 
   const currentValue = anomalyBands.confidenceOrdinalFromZScore(mostSevere.stat.details.zScore);
-  return { currentValue, band: anomalyBands.getBand(currentValue, threshold) };
+  return { currentValue, band: anomalyBands.getBand(currentValue, threshold), insight: mostSevere };
 }
 
 function evaluateRule(insights: ScoredInsight[], rule: AlertRuleRow): RuleEvaluation | null {
@@ -250,7 +251,7 @@ export async function handleEvaluateOrgJob(job: Job): Promise<void> {
         return;
       }
 
-      const { currentValue, band } = evaluation;
+      const { currentValue, band, insight: firedInsight } = evaluation;
 
       const latestFire = await alertRuleFiresQueries.getLatestByRuleId(rule.id, dbAdmin);
       const withinDedupWindow =
@@ -300,12 +301,14 @@ export async function handleEvaluateOrgJob(job: Job): Promise<void> {
       const data: SendJobData = {
         orgId,
         orgName: org.name,
+        userId: owner.id,
         userEmail: owner.email,
         datasetId,
         ruleId: rule.id,
         ruleKind: rule.kind,
         fireId: fire.id,
         currentValue,
+        firedInsight,
         trigger,
         correlationId,
       };
