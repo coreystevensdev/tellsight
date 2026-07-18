@@ -1,0 +1,29 @@
+import type { PriorContextEntry } from './buildPriorContext.js';
+import type { TransitionMilestone } from './milestones.js';
+
+// Composes the `{{priorContext}}` section for v2-digest.md. Pure: no I/O.
+// Composition ownership: a fired milestone already narrates its crossing, so
+// buildPriorContext's `delta` entry for the same statType is suppressed to
+// avoid saying the same thing twice. `first_tracked` entries are never
+// suppressed, a milestone can't fire on a stat that wasn't present last week.
+// Returns '' when nothing survives, even if lastStateSentence is defined,
+// since that empty string is what perOrg.ts uses to pick v1-digest over v2.
+export function composePriorContext(
+  lastStateSentence: string | undefined,
+  deltaEntries: readonly PriorContextEntry[],
+  milestones: readonly TransitionMilestone[],
+): string {
+  const milestoneStatTypes = new Set(milestones.map((m) => m.statType));
+  const survivingDeltas = deltaEntries.filter(
+    (entry) => entry.kind === 'first_tracked' || !milestoneStatTypes.has(entry.statType),
+  );
+
+  if (survivingDeltas.length === 0 && milestones.length === 0) return '';
+
+  const lines: string[] = [];
+  if (lastStateSentence) lines.push(`Last week: ${lastStateSentence}`);
+  lines.push(...milestones.map((m) => m.label));
+  lines.push(...survivingDeltas.map((entry) => entry.text));
+
+  return lines.join('\n');
+}

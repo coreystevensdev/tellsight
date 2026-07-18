@@ -297,4 +297,58 @@ describe('assemblePrompt', () => {
     const result = assemblePrompt([fixtureInsights[0]!]);
     expect(result.metadata.promptVersion).toBe('v1.6');
   });
+
+  it('interpolates a passed priorContext into {{priorContext}}', async () => {
+    const { readFileSync } = await import('node:fs');
+    vi.mocked(readFileSync).mockImplementation((path: unknown) => {
+      const p = String(path);
+      if (p.includes('-system.md') || p.includes('-user.md')) {
+        const err = new Error('ENOENT (test mock)') as Error & { code: string };
+        err.code = 'ENOENT';
+        throw err;
+      }
+      return 'Context: {{priorContext}}';
+    });
+
+    const { assemblePrompt } = await import('./assembly.js');
+    const result = assemblePrompt(fixtureInsights, 'v2-digest', null, new Date(), 'Last week: cash flow held steady.');
+
+    expect(result.user).toBe('Context: Last week: cash flow held steady.');
+  });
+
+  it('defaults priorContext to "" when the 5th argument is omitted, without breaking template renders', async () => {
+    const { readFileSync } = await import('node:fs');
+    vi.mocked(readFileSync).mockImplementation((path: unknown) => {
+      const p = String(path);
+      if (p.includes('-system.md') || p.includes('-user.md')) {
+        const err = new Error('ENOENT (test mock)') as Error & { code: string };
+        err.code = 'ENOENT';
+        throw err;
+      }
+      return 'Context: [{{priorContext}}]';
+    });
+
+    const { assemblePrompt } = await import('./assembly.js');
+    const result = assemblePrompt(fixtureInsights);
+
+    expect(result.user).toBe('Context: []');
+  });
+
+  it('interpolates priorContext on the empty-insights branch too', async () => {
+    const { readFileSync } = await import('node:fs');
+    vi.mocked(readFileSync).mockImplementation((path: unknown) => {
+      const p = String(path);
+      if (p.includes('-system.md') || p.includes('-user.md')) {
+        const err = new Error('ENOENT (test mock)') as Error & { code: string };
+        err.code = 'ENOENT';
+        throw err;
+      }
+      return 'Context: {{priorContext}}';
+    });
+
+    const { assemblePrompt } = await import('./assembly.js');
+    const result = assemblePrompt([], 'v2-digest', null, new Date(), 'Last week: no data yet.');
+
+    expect(result.user).toBe('Context: Last week: no data yet.');
+  });
 });

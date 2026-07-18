@@ -31,10 +31,14 @@ export interface SaveDigestHistoryInput {
 type Client = typeof dbAdmin | DbTransaction;
 
 export async function getLastDigest(orgId: number, client: Client = dbAdmin) {
-  return client.query.digestHistory.findFirst({
+  const row = await client.query.digestHistory.findFirst({
     where: eq(digestHistory.orgId, orgId),
     orderBy: desc(digestHistory.weekStart),
   });
+  // key_stats is stored as untyped jsonb; cast at the query-helper layer per
+  // schema.ts's comment on the column ("typed at the query-helper layer"),
+  // no runtime validation added here.
+  return row ? { ...row, keyStats: row.keyStats as ComputedStat[] } : row;
 }
 
 export async function getTrailingDigests(

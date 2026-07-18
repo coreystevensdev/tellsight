@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+import type { ComputedStat } from '../../../services/curation/types.js';
+
 const mockGetActiveDatasetId = vi.fn();
 const mockFindOrgById = vi.fn();
 const mockGetCachedDigest = vi.fn();
@@ -10,6 +12,8 @@ const mockRunCurationPipeline = vi.fn();
 const mockAssemblePrompt = vi.fn();
 const mockGenerateInterpretation = vi.fn();
 const mockValidateStatRefs = vi.fn();
+const mockGetLastDigest = vi.fn();
+const mockSaveDigestHistory = vi.fn();
 
 vi.mock('bullmq', () => ({
   Queue: class { constructor(public name: string, public opts: unknown) {} },
@@ -27,6 +31,10 @@ vi.mock('../../../db/queries/index.js', () => ({
   },
   digestEligibilityQueries: {
     findOrgRecipients: mockFindOrgRecipients,
+  },
+  digestHistoryQueries: {
+    getLastDigest: mockGetLastDigest,
+    saveDigestHistory: mockSaveDigestHistory,
   },
   orgsQueries: {
     getActiveDatasetId: mockGetActiveDatasetId,
@@ -54,6 +62,7 @@ vi.mock('../queue.js', async () => {
   };
 });
 
+const { logger } = await import('../../../lib/logger.js');
 const { handlePerOrgJob } = await import('./perOrg.js');
 
 const baseOrg = {
@@ -69,6 +78,21 @@ const baseJobData = {
   correlationId: 'corr-123',
 };
 
+function runwayStat(runwayMonths: number): ComputedStat {
+  return {
+    statType: 'runway',
+    category: null,
+    value: runwayMonths,
+    details: {
+      cashOnHand: 12000,
+      monthlyNet: -2000,
+      runwayMonths,
+      cashAsOfDate: '2026-06-01',
+      confidence: 'high',
+    },
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockValidateStatRefs.mockReturnValue({ invalidRefs: [] });
@@ -77,6 +101,8 @@ beforeEach(() => {
     user: 'user prompt',
     metadata: { promptVersion: 'v1-digest', statTypes: ['Total', 'Trend'] },
   });
+  mockGetLastDigest.mockResolvedValue(undefined);
+  mockSaveDigestHistory.mockResolvedValue(undefined);
 });
 
 describe('cache miss path', () => {
@@ -92,10 +118,13 @@ describe('cache miss path', () => {
     await handlePerOrgJob({ id: 'org-1', data: baseJobData } as never);
 
     expect(mockRunCurationPipeline).toHaveBeenCalledWith(42, 100, undefined, null);
+    // No prior digest, so priorContext is '' and promptVersion stays v1-digest.
     expect(mockAssemblePrompt).toHaveBeenCalledWith(
       [{ stat: { statType: 'Total' } }],
       'v1-digest',
       null,
+      expect.any(Date),
+      '',
     );
     expect(mockStoreSummary).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -142,12 +171,68 @@ describe('cache miss path', () => {
       }),
     );
   });
+
+  it('selects v2-digest and a non-empty priorContext when this week diverges from a prior digest', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockGetCachedDigest.mockResolvedValueOnce(undefined);
+    mockRunCurationPipeline.mockResolvedValueOnce([
+      { stat: runwayStat(4.6), score: 1, breakdown: { novelty: 1, actionability: 1, specificity: 1 } },
+    ]);
+    mockGetLastDigest.mockResolvedValueOnce({
+      keyStats: [runwayStat(4.0)],
+      stateSentence: 'Runway was holding steady.',
+    });
+    mockGenerateInterpretation.mockResolvedValueOnce('- runway improved');
+    mockStoreSummary.mockResolvedValueOnce({ id: 2 });
+    mockFindOrgRecipients.mockResolvedValueOnce([]);
+
+    await handlePerOrgJob({ id: 'org-9', data: baseJobData } as never);
+
+    expect(mockAssemblePrompt).toHaveBeenCalledWith(
+      expect.any(Array),
+      'v2-digest',
+      null,
+      expect.any(Date),
+      expect.stringContaining('Runway moved from 4.0 to 4.6 months.'),
+    );
+    expect(mockStoreSummary).toHaveBeenCalledWith(
+      expect.objectContaining({ promptVersion: 'v2-digest' }),
+    );
+  });
+
+  it('stays on v1-digest when a prior digest exists but the diff produces no deltas or milestones', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockGetCachedDigest.mockResolvedValueOnce(undefined);
+    mockRunCurationPipeline.mockResolvedValueOnce([
+      { stat: runwayStat(4.05), score: 1, breakdown: { novelty: 1, actionability: 1, specificity: 1 } },
+    ]);
+    mockGetLastDigest.mockResolvedValueOnce({
+      keyStats: [runwayStat(4.0)],
+      stateSentence: 'Runway was holding steady.',
+    });
+    mockGenerateInterpretation.mockResolvedValueOnce('- steady week');
+    mockStoreSummary.mockResolvedValueOnce({ id: 3 });
+    mockFindOrgRecipients.mockResolvedValueOnce([]);
+
+    await handlePerOrgJob({ id: 'org-10', data: baseJobData } as never);
+
+    expect(mockAssemblePrompt).toHaveBeenCalledWith(
+      expect.any(Array),
+      'v1-digest',
+      null,
+      expect.any(Date),
+      '',
+    );
+  });
 });
 
 describe('cache hit path', () => {
-  it('skips the pipeline and reuses the cached summary', async () => {
+  it('still runs the curation pipeline for currentStats but skips the LLM call', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
     mockGetCachedDigest.mockResolvedValueOnce({
       id: 555,
       content: 'cached',
@@ -157,7 +242,7 @@ describe('cache hit path', () => {
 
     await handlePerOrgJob({ id: 'org-3', data: baseJobData } as never);
 
-    expect(mockRunCurationPipeline).not.toHaveBeenCalled();
+    expect(mockRunCurationPipeline).toHaveBeenCalledOnce();
     expect(mockGenerateInterpretation).not.toHaveBeenCalled();
     expect(mockStoreSummary).not.toHaveBeenCalled();
   });
@@ -167,6 +252,7 @@ describe('fan-out', () => {
   it('enqueues one digest-send job per recipient with summaryId only', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
     mockGetCachedDigest.mockResolvedValueOnce({
       id: 555,
       content: 'cached',
@@ -197,6 +283,7 @@ describe('fan-out', () => {
   it('continues fan-out when one enqueue throws (AC #4 isolation)', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
     mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
     mockFindOrgRecipients.mockResolvedValueOnce([
       { userId: 1, email: 'a@x.com', name: 'A' },
@@ -211,6 +298,94 @@ describe('fan-out', () => {
     await expect(handlePerOrgJob({ id: 'org-5', data: baseJobData } as never)).resolves.toBeUndefined();
 
     expect(mockSendQueueAdd).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('digest history', () => {
+  it('saves history once after fan-out with this week\'s valence, state sentence, key stats, and milestones', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockGetCachedDigest.mockResolvedValueOnce(undefined);
+    mockRunCurationPipeline.mockResolvedValueOnce([
+      { stat: runwayStat(2.8), score: 1, breakdown: { novelty: 1, actionability: 1, specificity: 1 } },
+    ]);
+    mockGetLastDigest.mockResolvedValueOnce({
+      keyStats: [runwayStat(3.5)],
+      stateSentence: 'Runway was comfortable.',
+    });
+    mockGenerateInterpretation.mockResolvedValueOnce('- Runway dropped\n- second bullet');
+    mockStoreSummary.mockResolvedValueOnce({ id: 4 });
+    mockFindOrgRecipients.mockResolvedValueOnce([]);
+
+    await handlePerOrgJob({ id: 'org-11', data: baseJobData } as never);
+
+    expect(mockSaveDigestHistory).toHaveBeenCalledOnce();
+    expect(mockSaveDigestHistory).toHaveBeenCalledWith({
+      orgId: 42,
+      datasetId: 100,
+      summaryId: 4,
+      weekStart: baseJobData.weekStart,
+      subjectLine: 'Acme Coffee weekly insights',
+      stateSentence: 'Runway dropped',
+      valence: 'concerning',
+      keyStats: [runwayStat(2.8)],
+      milestones: [{ kind: 'runway_dropped_below_3mo', label: 'Your runway dropped below 3 months.' }],
+      sentAt: expect.any(Date),
+    });
+  });
+
+  it('strips the leading bullet marker from a cached digest to build the state sentence', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetCachedDigest.mockResolvedValueOnce({
+      id: 555,
+      content: '\n  - Revenue held flat this week.\n- second bullet',
+      transparencyMetadata: {},
+    });
+    mockFindOrgRecipients.mockResolvedValueOnce([]);
+
+    await handlePerOrgJob({ id: 'org-12', data: baseJobData } as never);
+
+    expect(mockSaveDigestHistory).toHaveBeenCalledWith(
+      expect.objectContaining({ stateSentence: 'Revenue held flat this week.' }),
+    );
+  });
+
+  it('logs and continues when saveDigestHistory throws, without failing the job or blocking sends', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: 'cached', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
+    mockSaveDigestHistory.mockRejectedValueOnce(new Error('unique violation'));
+
+    await expect(handlePerOrgJob({ id: 'org-13', data: baseJobData } as never)).resolves.toBeUndefined();
+
+    expect(mockSendQueueAdd).toHaveBeenCalledOnce();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 42 }),
+      'Failed to save digest history, continuing',
+    );
+  });
+
+  it('still saves history after a partial fan-out failure (isolated from enqueue errors)', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: 'cached', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([
+      { userId: 1, email: 'a@x.com', name: 'A' },
+      { userId: 2, email: 'b@x.com', name: 'B' },
+    ]);
+    mockSendQueueAdd
+      .mockRejectedValueOnce(new Error('Redis blip'))
+      .mockResolvedValueOnce(undefined);
+
+    await handlePerOrgJob({ id: 'org-14', data: baseJobData } as never);
+
+    expect(mockSendQueueAdd).toHaveBeenCalledTimes(2);
+    expect(mockSaveDigestHistory).toHaveBeenCalledOnce();
   });
 });
 
@@ -237,7 +412,6 @@ describe('defensive paths', () => {
   it('lets DB errors during pipeline propagate so BullMQ retries', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
-    mockGetCachedDigest.mockResolvedValueOnce(undefined);
     const err = new Error('connection refused');
     mockRunCurationPipeline.mockRejectedValueOnce(err);
 

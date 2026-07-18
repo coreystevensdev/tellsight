@@ -42,6 +42,8 @@ const mockGetById = vi.fn();
 const mockStoreSummary = vi.fn();
 const mockUpsertDefaults = vi.fn();
 const mockMarkSent = vi.fn().mockResolvedValue(undefined);
+const mockGetLastDigest = vi.fn();
+const mockSaveDigestHistory = vi.fn();
 
 const mockRunCurationPipeline = vi.fn();
 const mockAssemblePrompt = vi.fn();
@@ -115,6 +117,10 @@ vi.mock('../../db/queries/index.js', () => ({
     upsertDefaults: mockUpsertDefaults,
     markSent: mockMarkSent,
   },
+  digestHistoryQueries: {
+    getLastDigest: mockGetLastDigest,
+    saveDigestHistory: mockSaveDigestHistory,
+  },
 }));
 
 vi.mock('../../services/curation/index.js', () => ({
@@ -162,6 +168,8 @@ beforeEach(() => {
     metadata: { promptVersion: 'v1-digest', statTypes: ['Total', 'Trend'] },
   });
   mockValidateStatRefs.mockReturnValue({ invalidRefs: [] });
+  mockGetLastDigest.mockResolvedValue(undefined);
+  mockSaveDigestHistory.mockResolvedValue(undefined);
 });
 
 describe('orchestrator -> per-org -> per-send choreography', () => {
@@ -315,6 +323,7 @@ describe('orchestrator -> per-org -> per-send choreography', () => {
       content: 'cached content',
       transparencyMetadata: { statTypes: ['Total'] },
     });
+    mockRunCurationPipeline.mockResolvedValue([{ stat: { statType: 'Total' } }]);
     mockFindOrgRecipients.mockResolvedValue([{ userId: 11, email: 'alice@a.com', name: 'Alice' }]);
 
     // Orchestrator + per-org first.
@@ -325,8 +334,10 @@ describe('orchestrator -> per-org -> per-send choreography', () => {
       await handlePerOrgJob({ id: j.jobName, data: j.data } as never);
     }
 
-    // No pipeline call, no LLM, no storeSummary. Send jobs still enqueued.
-    expect(mockRunCurationPipeline).not.toHaveBeenCalled();
+    // Curation still runs on a cache hit (this week's stats feed valence and
+    // history), but the LLM call and storeSummary are skipped. Send jobs
+    // still enqueued.
+    expect(mockRunCurationPipeline).toHaveBeenCalledOnce();
     expect(mockGenerateInterpretation).not.toHaveBeenCalled();
     expect(mockStoreSummary).not.toHaveBeenCalled();
 

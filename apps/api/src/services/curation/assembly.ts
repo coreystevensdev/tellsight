@@ -165,6 +165,7 @@ function renderUser(
     allowedStatIds: string;
     categoryCount: string;
     insightCount: string;
+    priorContext: string;
   },
 ): string {
   return template
@@ -175,7 +176,8 @@ function renderUser(
     .replace('{{statTypeList}}', vars.statTypeList)
     .replace('{{allowedStatIds}}', vars.allowedStatIds)
     .replace('{{categoryCount}}', vars.categoryCount)
-    .replace('{{insightCount}}', vars.insightCount);
+    .replace('{{insightCount}}', vars.insightCount)
+    .replace('{{priorContext}}', vars.priorContext);
 }
 
 export function assemblePrompt(
@@ -183,6 +185,7 @@ export function assemblePrompt(
   promptVersion = DEFAULT_VERSION,
   businessProfile?: BusinessProfile | null,
   now: Date = new Date(),
+  priorContext = '',
 ): AssembledContext {
   const template = getTemplate(promptVersion);
   const businessContext = formatBusinessContext(businessProfile);
@@ -200,6 +203,7 @@ export function assemblePrompt(
       allowedStatIds: 'none',
       categoryCount: '0',
       insightCount: '0',
+      priorContext,
     });
 
     return {
@@ -231,6 +235,7 @@ export function assemblePrompt(
     allowedStatIds,
     categoryCount: String(categories.size),
     insightCount: String(insights.length),
+    priorContext,
   });
 
   const metadata: TransparencyMetadata = {
