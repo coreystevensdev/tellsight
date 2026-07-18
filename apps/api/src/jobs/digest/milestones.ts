@@ -10,9 +10,18 @@ export type MilestoneKind =
   | 'margin_turned_expanding'
   | 'forecast_crosses_zero';
 
-export interface TransitionMilestone {
-  kind: MilestoneKind;
+// Shared shape composePriorContext.ts consumes for both milestone classes
+// (this file's week-over-week TransitionMilestone and firstTimeMilestones.ts's
+// FirstTimeMilestone). statType is nullable because a first-time milestone
+// like the three-month streak isn't tied to any single ComputedStat.
+export interface DigestMilestoneEntry {
+  kind: string;
   label: string;
+  statType: ComputedStat['statType'] | null;
+}
+
+export interface TransitionMilestone extends DigestMilestoneEntry {
+  kind: MilestoneKind;
   statType: ComputedStat['statType'];
 }
 

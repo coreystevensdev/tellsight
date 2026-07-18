@@ -1,4 +1,5 @@
 import type { DigestValence } from '../../db/queries/digestHistory.js';
+import type { FirstTimeMilestone, FirstTimeMilestoneKind } from './firstTimeMilestones.js';
 import type { MilestoneKind, TransitionMilestone } from './milestones.js';
 
 type MilestoneRegister = 'positive' | 'concerning';
@@ -24,6 +25,15 @@ const MILESTONE_PHRASES: Record<MilestoneKind, string> = {
   turned_cash_negative: 'Your cash flow just flipped negative',
   runway_dropped_below_3mo: 'Your runway needs attention',
   forecast_crosses_zero: 'Your forecast is trending toward a shortfall',
+};
+
+// Dedicated per-kind phrase for the three all-time-first milestones, same
+// non-numeric constraint as MILESTONE_PHRASES: the fixed thresholds behind
+// these (three months, a dollar figure) belong in the email body's label.
+const FIRST_TIME_MILESTONE_PHRASES: Record<FirstTimeMilestoneKind, string> = {
+  first_profitable_month: "You've hit your first profitable month",
+  first_break_even: 'Revenue covered your fixed costs for the first time',
+  first_three_profitable_streak: "You've strung together your first multi-month profitable streak",
 };
 
 // Deliberately close in tone to MILESTONE_PHRASES.runway_dropped_below_3mo
@@ -53,27 +63,36 @@ function findMilestoneByRegister(
   return milestones.find((m) => MILESTONE_REGISTER[m.kind] === register);
 }
 
-// Priority: (1) concerning valence leads with a concerning-register milestone
-// if one fired, else the generic runway phrase (classifyValence's only
-// concerning trigger is runwayMonths < 3, so the topic is deterministic
-// without inspecting stats). (2) outside a concerning week, any milestone's
-// phrase still outranks a generic fallback, whichever register, because a
-// concerning-register milestone (e.g. turned_cash_negative) can fire while
-// runway alone keeps valence at 'watching'. (3) positive and (4) watching get
-// generic fallback phrases; (5) neutral gets none, since classifyValence's own
-// comment documents neutral as a defensive floor no real stat array reaches.
+// Four-tier priority from project-context.md's "Milestone catalog": first-time
+// milestone, then concerning transition milestone, then positive transition
+// milestone, then valence-only fallback.
+//
+// (0) any first-time milestone wins outright, an all-time first outranks even
+// a concerning valence. (1) concerning valence leads with a concerning-register
+// transition milestone if one fired, else the generic runway phrase
+// (classifyValence's only concerning trigger is runwayMonths < 3, so the topic
+// is deterministic without inspecting stats). (2) outside a concerning week,
+// any transition milestone's phrase still outranks a generic fallback,
+// whichever register, because a concerning-register milestone (e.g.
+// turned_cash_negative) can fire while runway alone keeps valence at
+// 'watching'. (3) positive and (4) watching get generic fallback phrases;
+// (5) neutral gets none, since classifyValence's own comment documents
+// neutral as a defensive floor no real stat array reaches.
 export function generateSubjectLine(
   valence: DigestValence,
-  milestones: readonly TransitionMilestone[],
+  firstTimeMilestones: readonly FirstTimeMilestone[],
+  transitionMilestones: readonly TransitionMilestone[],
   orgName: string,
 ): string {
   let topicPhrase: string | undefined;
 
-  if (valence === 'concerning') {
-    const concerning = findMilestoneByRegister(milestones, 'concerning');
+  if (firstTimeMilestones.length > 0) {
+    topicPhrase = FIRST_TIME_MILESTONE_PHRASES[firstTimeMilestones[0]!.kind];
+  } else if (valence === 'concerning') {
+    const concerning = findMilestoneByRegister(transitionMilestones, 'concerning');
     topicPhrase = concerning ? MILESTONE_PHRASES[concerning.kind] : RUNWAY_ATTENTION_PHRASE;
-  } else if (milestones.length > 0) {
-    topicPhrase = MILESTONE_PHRASES[milestones[0]!.kind];
+  } else if (transitionMilestones.length > 0) {
+    topicPhrase = MILESTONE_PHRASES[transitionMilestones[0]!.kind];
   } else if (valence === 'positive') {
     topicPhrase = POSITIVE_FALLBACK_PHRASE;
   } else if (valence === 'watching') {

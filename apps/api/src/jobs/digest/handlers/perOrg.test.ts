@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import type { ComputedStat } from '../../../services/curation/types.js';
 import type { SendJobData } from '../queue.js';
@@ -15,6 +15,9 @@ const mockGenerateInterpretation = vi.fn();
 const mockValidateStatRefs = vi.fn();
 const mockGetLastDigest = vi.fn();
 const mockSaveDigestHistory = vi.fn();
+const mockGetMonthlyBucketsByDataset = vi.fn();
+const mockGetAwardedKinds = vi.fn();
+const mockAwardMilestone = vi.fn();
 
 vi.mock('bullmq', () => ({
   Queue: class { constructor(public name: string, public opts: unknown) {} },
@@ -24,11 +27,15 @@ vi.mock('../../../config.js', () => ({ env: { REDIS_URL: 'redis://localhost:6379
 vi.mock('../../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
+vi.mock('../../../lib/db.js', () => ({ dbAdmin: {} }));
 
 vi.mock('../../../db/queries/index.js', () => ({
   aiSummariesQueries: {
     getCachedDigest: mockGetCachedDigest,
     storeSummary: mockStoreSummary,
+  },
+  dataRowsQueries: {
+    getMonthlyBucketsByDataset: mockGetMonthlyBucketsByDataset,
   },
   digestEligibilityQueries: {
     findOrgRecipients: mockFindOrgRecipients,
@@ -36,6 +43,10 @@ vi.mock('../../../db/queries/index.js', () => ({
   digestHistoryQueries: {
     getLastDigest: mockGetLastDigest,
     saveDigestHistory: mockSaveDigestHistory,
+  },
+  milestoneAwardsQueries: {
+    getAwardedKinds: mockGetAwardedKinds,
+    awardMilestone: mockAwardMilestone,
   },
   orgsQueries: {
     getActiveDatasetId: mockGetActiveDatasetId,
@@ -79,6 +90,22 @@ const baseJobData = {
   correlationId: 'corr-123',
 };
 
+function breakEvenStat(gap: number): ComputedStat {
+  return {
+    statType: 'break_even',
+    category: null,
+    value: gap,
+    details: {
+      monthlyFixedCosts: 5000,
+      marginPercent: 20,
+      breakEvenRevenue: 5000,
+      currentMonthlyRevenue: 5000 - gap,
+      gap,
+      confidence: 'high',
+    },
+  };
+}
+
 function runwayStat(runwayMonths: number): ComputedStat {
   return {
     statType: 'runway',
@@ -104,6 +131,9 @@ beforeEach(() => {
   });
   mockGetLastDigest.mockResolvedValue(undefined);
   mockSaveDigestHistory.mockResolvedValue(undefined);
+  mockGetMonthlyBucketsByDataset.mockResolvedValue(new Map());
+  mockGetAwardedKinds.mockResolvedValue(new Set());
+  mockAwardMilestone.mockResolvedValue(undefined);
 });
 
 describe('cache miss path', () => {
@@ -395,6 +425,143 @@ describe('digest history', () => {
 
     expect(mockSendQueueAdd).toHaveBeenCalledTimes(2);
     expect(mockSaveDigestHistory).toHaveBeenCalledOnce();
+  });
+});
+
+describe('first-time milestones', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 15, 12, 0, 0));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('fetches monthly buckets and awarded kinds, threads a fired first-time milestone into history, the subject line, and awards it after enqueue', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockGetCachedDigest.mockResolvedValueOnce(undefined);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetMonthlyBucketsByDataset.mockResolvedValueOnce(
+      new Map([
+        ['2026-04', { revenue: 4000, expenses: 5000 }],
+        ['2026-05', { revenue: 6000, expenses: 5000 }],
+      ]),
+    );
+    mockGetAwardedKinds.mockResolvedValueOnce(new Set());
+    mockGenerateInterpretation.mockResolvedValueOnce('- steady week');
+    mockStoreSummary.mockResolvedValueOnce({ id: 5 });
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
+
+    await handlePerOrgJob({ id: 'org-15', data: baseJobData } as never);
+
+    expect(mockGetMonthlyBucketsByDataset).toHaveBeenCalledWith(42, 100, expect.anything());
+    expect(mockGetAwardedKinds).toHaveBeenCalledWith(42);
+
+    const sendPayload = mockSendQueueAdd.mock.calls[0]![1] as SendJobData;
+    expect(sendPayload.subjectLine).toBe("You've hit your first profitable month - Acme Coffee weekly insights");
+
+    expect(mockSaveDigestHistory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        milestones: [{ kind: 'first_profitable_month', label: 'This is your first profitable month.' }],
+      }),
+    );
+
+    expect(mockAwardMilestone).toHaveBeenCalledWith({ orgId: 42, kind: 'first_profitable_month', datasetId: 100 });
+    expect(mockSaveDigestHistory.mock.invocationCallOrder[0]!).toBeLessThan(
+      mockAwardMilestone.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('does not re-fire a kind already present in awardedKinds', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockGetCachedDigest.mockResolvedValueOnce(undefined);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetMonthlyBucketsByDataset.mockResolvedValueOnce(
+      new Map([
+        ['2026-04', { revenue: 4000, expenses: 5000 }],
+        ['2026-05', { revenue: 6000, expenses: 5000 }],
+      ]),
+    );
+    mockGetAwardedKinds.mockResolvedValueOnce(new Set(['first_profitable_month']));
+    mockGenerateInterpretation.mockResolvedValueOnce('- steady week');
+    mockStoreSummary.mockResolvedValueOnce({ id: 6 });
+    mockFindOrgRecipients.mockResolvedValueOnce([]);
+
+    await handlePerOrgJob({ id: 'org-16', data: baseJobData } as never);
+
+    expect(mockSaveDigestHistory).toHaveBeenCalledWith(expect.objectContaining({ milestones: [] }));
+    expect(mockAwardMilestone).not.toHaveBeenCalled();
+  });
+
+  it('dedupes crossed_break_even out of history and subject when first_break_even fires the same week', async () => {
+    const orgWithFixedCosts = {
+      ...baseOrg,
+      businessProfile: {
+        cashOnHand: 20000,
+        cashAsOfDate: '2026-06-01',
+        businessStartedDate: '2024-01-01',
+        monthlyFixedCosts: 5000,
+      },
+    };
+
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(orgWithFixedCosts);
+    mockGetCachedDigest.mockResolvedValueOnce(undefined);
+    mockRunCurationPipeline.mockResolvedValueOnce([
+      { stat: breakEvenStat(-1000), score: 1, breakdown: { novelty: 1, actionability: 1, specificity: 1 } },
+    ]);
+    mockGetLastDigest.mockResolvedValueOnce({
+      keyStats: [breakEvenStat(500)],
+      stateSentence: 'Revenue was below fixed costs.',
+    });
+    mockGetMonthlyBucketsByDataset.mockResolvedValueOnce(
+      new Map([
+        ['2026-04', { revenue: 4000, expenses: 1000 }],
+        ['2026-05', { revenue: 6000, expenses: 1000 }],
+      ]),
+    );
+    mockGetAwardedKinds.mockResolvedValueOnce(new Set());
+    mockGenerateInterpretation.mockResolvedValueOnce('- revenue covered fixed costs');
+    mockStoreSummary.mockResolvedValueOnce({ id: 7 });
+    mockFindOrgRecipients.mockResolvedValueOnce([]);
+
+    await handlePerOrgJob({ id: 'org-17', data: baseJobData } as never);
+
+    expect(mockSaveDigestHistory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        milestones: [
+          { kind: 'first_break_even', label: 'For the first time, revenue covered your fixed costs.' },
+        ],
+      }),
+    );
+  });
+
+  it('logs and continues when the award write fails, without failing the job', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockGetCachedDigest.mockResolvedValueOnce(undefined);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetMonthlyBucketsByDataset.mockResolvedValueOnce(
+      new Map([
+        ['2026-04', { revenue: 4000, expenses: 5000 }],
+        ['2026-05', { revenue: 6000, expenses: 5000 }],
+      ]),
+    );
+    mockGetAwardedKinds.mockResolvedValueOnce(new Set());
+    mockGenerateInterpretation.mockResolvedValueOnce('- steady week');
+    mockStoreSummary.mockResolvedValueOnce({ id: 8 });
+    mockFindOrgRecipients.mockResolvedValueOnce([]);
+    mockAwardMilestone.mockRejectedValueOnce(new Error('unique violation'));
+
+    await expect(handlePerOrgJob({ id: 'org-18', data: baseJobData } as never)).resolves.toBeUndefined();
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 42, kind: 'first_profitable_month' }),
+      'Failed to award milestone, continuing',
+    );
   });
 });
 

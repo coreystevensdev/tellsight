@@ -271,6 +271,39 @@ export const digestHistory = pgTable(
   ],
 );
 
+// Fire-once ledger for all-time-first milestones (first profitable month,
+// first break-even, first three-month streak). The unique (org_id, kind)
+// index is the actual guarantee; detectFirstTimeMilestones only decides what
+// fired, this table enforces it never fires twice. dataset_id is set-null on
+// delete, same lifecycle reasoning as digest_history: the award record
+// outlives the dataset it was detected from.
+export const milestoneAwards = pgTable(
+  'milestone_awards',
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    orgId: integer('org_id')
+      .notNull()
+      .references(() => orgs.id, { onDelete: 'cascade' }),
+    kind: text().notNull(),
+    datasetId: integer('dataset_id').references(() => datasets.id, {
+      onDelete: 'set null',
+    }),
+    awardedAt: timestamp('awarded_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex('idx_milestone_awards_org_kind').on(table.orgId, table.kind)],
+);
+
+export const milestoneAwardsRelations = relations(milestoneAwards, ({ one }) => ({
+  org: one(orgs, {
+    fields: [milestoneAwards.orgId],
+    references: [orgs.id],
+  }),
+  dataset: one(datasets, {
+    fields: [milestoneAwards.datasetId],
+    references: [datasets.id],
+  }),
+}));
+
 export const shares = pgTable(
   'shares',
   {
@@ -470,6 +503,7 @@ export const orgsRelations = relations(orgs, ({ many, one }) => ({
   subscription: one(subscriptions),
   integrationConnections: many(integrationConnections),
   digestHistory: many(digestHistory),
+  milestoneAwards: many(milestoneAwards),
   agentProposals: many(agentProposals),
   activeDataset: one(datasets, {
     fields: [orgs.activeDatasetId],

@@ -2,10 +2,13 @@ import type { Job } from 'bullmq';
 import type { BusinessProfile } from 'shared/types';
 
 import { logger } from '../../../lib/logger.js';
+import { dbAdmin } from '../../../lib/db.js';
 import {
   aiSummariesQueries,
+  dataRowsQueries,
   digestEligibilityQueries,
   digestHistoryQueries,
+  milestoneAwardsQueries,
   orgsQueries,
 } from '../../../db/queries/index.js';
 import {
@@ -18,7 +21,8 @@ import {
 import { generateInterpretation } from '../../../services/aiInterpretation/claudeClient.js';
 import { classifyValence } from '../valence.js';
 import { buildPriorContext } from '../buildPriorContext.js';
-import { detectTransitionMilestones } from '../milestones.js';
+import { detectTransitionMilestones, type TransitionMilestone } from '../milestones.js';
+import { detectFirstTimeMilestones } from '../firstTimeMilestones.js';
 import { composePriorContext } from '../composePriorContext.js';
 import { generateSubjectLine } from '../subjectLine.js';
 import {
@@ -95,7 +99,29 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
   const lastDigest = await digestHistoryQueries.getLastDigest(orgId);
   const priorStats = lastDigest?.keyStats ?? [];
   const deltaEntries = buildPriorContext(currentStats, priorStats);
-  const milestones = detectTransitionMilestones(currentStats, priorStats);
+  const transitionMilestones = detectTransitionMilestones(currentStats, priorStats);
+
+  // Full monthly history (never digest_history, which only covers recent
+  // weeks) and the org's fire-once ledger, explicit dbAdmin since this
+  // worker runs with no per-request RLS session.
+  const monthlyBuckets = await dataRowsQueries.getMonthlyBucketsByDataset(orgId, datasetId, dbAdmin);
+  const awardedKinds = await milestoneAwardsQueries.getAwardedKinds(orgId);
+  const firstTimeMilestones = detectFirstTimeMilestones(
+    monthlyBuckets,
+    financials?.monthlyFixedCosts,
+    new Date(),
+    awardedKinds,
+  );
+
+  // first_break_even is the all-time-first version of crossed_break_even;
+  // when both fire the same week, drop the transition one so the body and
+  // subject never narrate the same crossing twice.
+  const firedFirstBreakEven = firstTimeMilestones.some((m) => m.kind === 'first_break_even');
+  const dedupedTransitionMilestones: TransitionMilestone[] = firedFirstBreakEven
+    ? transitionMilestones.filter((m) => m.kind !== 'crossed_break_even')
+    : transitionMilestones;
+
+  const milestones = [...firstTimeMilestones, ...dedupedTransitionMilestones];
   const priorContext = composePriorContext(lastDigest?.stateSentence, deltaEntries, milestones);
   const promptVersion = priorContext.length > 0 ? 'v2-digest' : 'v1-digest';
 
@@ -152,7 +178,7 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
 
   const stateSentence = extractStateSentence(content);
   const valence = classifyValence(currentStats);
-  const subjectLine = generateSubjectLine(valence, milestones, org.name);
+  const subjectLine = generateSubjectLine(valence, firstTimeMilestones, dedupedTransitionMilestones, org.name);
 
   const recipients = await digestEligibilityQueries.findOrgRecipients(orgId);
   const queue = getSendQueue();
@@ -208,6 +234,22 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
     });
   } catch (err) {
     logger.error({ correlationId, orgId, weekStart, err }, 'Failed to save digest history, continuing');
+  }
+
+  // Same deferred, non-fatal posture as saveDigestHistory above: award writes
+  // happen after sends are enqueued so a crash before this point never blocks
+  // the email. The catch below swallows the error rather than rethrowing, so
+  // this does not trigger a BullMQ job retry; recovery instead comes from next
+  // week's run re-detecting the same condition, which still holds as long as
+  // the org stays in the same calendar month. If every attempt fails through
+  // month-end, the milestone is permanently missed, an accepted risk given the
+  // (org_id, kind) unique index guarantees at-most-once, not at-least-once.
+  for (const m of firstTimeMilestones) {
+    try {
+      await milestoneAwardsQueries.awardMilestone({ orgId, kind: m.kind, datasetId });
+    } catch (err) {
+      logger.error({ correlationId, orgId, kind: m.kind, err }, 'Failed to award milestone, continuing');
+    }
   }
 
   logger.info(

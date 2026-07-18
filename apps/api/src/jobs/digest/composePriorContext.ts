@@ -1,5 +1,6 @@
+import type { ComputedStat } from '../../services/curation/types.js';
 import type { PriorContextEntry } from './buildPriorContext.js';
-import type { TransitionMilestone } from './milestones.js';
+import type { DigestMilestoneEntry } from './milestones.js';
 
 // Composes the `{{priorContext}}` section for v2-digest.md. Pure: no I/O.
 // Composition ownership: a fired milestone already narrates its crossing, so
@@ -11,9 +12,11 @@ import type { TransitionMilestone } from './milestones.js';
 export function composePriorContext(
   lastStateSentence: string | undefined,
   deltaEntries: readonly PriorContextEntry[],
-  milestones: readonly TransitionMilestone[],
+  milestones: readonly DigestMilestoneEntry[],
 ): string {
-  const milestoneStatTypes = new Set(milestones.map((m) => m.statType));
+  const milestoneStatTypes = new Set(
+    milestones.map((m) => m.statType).filter((statType): statType is ComputedStat['statType'] => statType !== null),
+  );
   const survivingDeltas = deltaEntries.filter(
     (entry) => entry.kind === 'first_tracked' || !milestoneStatTypes.has(entry.statType),
   );

@@ -22,3 +22,4 @@ export * as agentProposalsQueries from './agentProposals.js';
 export * as alertRulesQueries from './alertRules.js';
 export * as alertRuleFiresQueries from './alertRuleFires.js';
 export * as alertEligibilityQueries from './alertEligibility.js';
+export * as milestoneAwardsQueries from './milestoneAwards.js';
