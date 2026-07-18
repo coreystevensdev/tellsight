@@ -4,5 +4,4 @@ export type {
   ParsedRow,
   ParseResult,
   PreviewData,
-  DataSourceAdapter,
 } from './interface.js';
