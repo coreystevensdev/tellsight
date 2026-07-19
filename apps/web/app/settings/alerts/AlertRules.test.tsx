@@ -94,6 +94,65 @@ describe('AlertRules, create flow', () => {
 
     expect(await screen.findByText(/only organization owners can manage alert rules/i)).toBeInTheDocument();
   });
+
+  it('blocks submission and shows an inline error when the months field is cleared', async () => {
+    const user = userEvent.setup();
+    render(<AlertRules initial={[]} />);
+
+    await user.click(screen.getByRole('button', { name: /create your first alert rule/i }));
+    await user.clear(screen.getByLabelText(/^months$/i));
+    await user.click(screen.getByRole('button', { name: /create rule/i }));
+
+    const input = screen.getByLabelText(/^months$/i);
+    expect(await screen.findByText('Must be greater than 0.')).toBeInTheDocument();
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    expect(input).toHaveAttribute('aria-describedby', 'rule-value-error');
+    expect(mockApiClient).not.toHaveBeenCalled();
+  });
+
+  it('blocks submission when a percent field is set to 0', async () => {
+    const user = userEvent.setup();
+    render(<AlertRules initial={[]} />);
+
+    await user.click(screen.getByRole('button', { name: /create your first alert rule/i }));
+    await user.selectOptions(screen.getByLabelText(/alert type/i), 'margin_drops');
+    await user.clear(screen.getByLabelText(/^percent$/i));
+    await user.type(screen.getByLabelText(/^percent$/i), '0');
+    expect(screen.getByLabelText(/^percent$/i)).toHaveValue(0);
+
+    await user.click(screen.getByRole('button', { name: /create rule/i }));
+
+    expect(await screen.findByText('Must be greater than 0.')).toBeInTheDocument();
+    expect(mockApiClient).not.toHaveBeenCalled();
+  });
+
+  it('blocks submission when the months field is negative', async () => {
+    const user = userEvent.setup();
+    render(<AlertRules initial={[]} />);
+
+    await user.click(screen.getByRole('button', { name: /create your first alert rule/i }));
+    await user.clear(screen.getByLabelText(/^months$/i));
+    await user.type(screen.getByLabelText(/^months$/i), '-1');
+    expect(screen.getByLabelText(/^months$/i)).toHaveValue(-1);
+
+    await user.click(screen.getByRole('button', { name: /create rule/i }));
+
+    expect(await screen.findByText('Must be greater than 0.')).toBeInTheDocument();
+    expect(mockApiClient).not.toHaveBeenCalled();
+  });
+
+  it('clears the inline error when switching to anomaly_fires', async () => {
+    const user = userEvent.setup();
+    render(<AlertRules initial={[]} />);
+
+    await user.click(screen.getByRole('button', { name: /create your first alert rule/i }));
+    await user.clear(screen.getByLabelText(/^months$/i));
+    expect(await screen.findByText('Must be greater than 0.')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText(/alert type/i), 'anomaly_fires');
+
+    expect(screen.queryByText('Must be greater than 0.')).not.toBeInTheDocument();
+  });
 });
 
 describe('AlertRules, edit flow', () => {
@@ -120,6 +179,18 @@ describe('AlertRules, edit flow', () => {
         }),
       );
     });
+  });
+
+  it('blocks a Save changes submit when the field is cleared to invalid', async () => {
+    const user = userEvent.setup();
+    render(<AlertRules initial={[runwayRule]} />);
+
+    await user.click(screen.getByLabelText(/edit alert rule/i));
+    await user.clear(screen.getByLabelText(/^months$/i));
+    await user.click(screen.getByRole('button', { name: /save changes/i }));
+
+    expect(await screen.findByText('Must be greater than 0.')).toBeInTheDocument();
+    expect(mockApiClient).not.toHaveBeenCalled();
   });
 });
 

@@ -88,11 +88,10 @@ function formToPayload(form: FormState): AlertRuleInput {
     return { kind: 'anomaly_fires', threshold: { confidence: form.confidence } };
   }
   const value = Number(form.numericValue);
-  const bounded = Number.isFinite(value) ? value : 0;
   if (form.kind === 'runway_runs_short') {
-    return { kind: 'runway_runs_short', threshold: { months: bounded } };
+    return { kind: 'runway_runs_short', threshold: { months: value } };
   }
-  return { kind: form.kind, threshold: { percent: bounded } };
+  return { kind: form.kind, threshold: { percent: value } };
 }
 
 function ruleToForm(rule: AlertRule): FormState {
@@ -118,6 +117,10 @@ export default function AlertRules({ initial }: Props) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
+
+  const parsedNumericValue = Number(form.numericValue);
+  const numericInvalid =
+    form.kind !== 'anomaly_fires' && (!Number.isFinite(parsedNumericValue) || parsedNumericValue <= 0);
 
   function reportError(err: unknown, fallback: string) {
     if (err instanceof ApiClientError && err.status === 403) {
@@ -149,6 +152,7 @@ export default function AlertRules({ initial }: Props) {
   async function submitForm(e: React.FormEvent) {
     e.preventDefault();
     if (submitting) return;
+    if (numericInvalid) return;
 
     setSubmitting(true);
     setError(null);
@@ -259,6 +263,7 @@ export default function AlertRules({ initial }: Props) {
         {formOpen && (
           <form
             onSubmit={submitForm}
+            noValidate
             className="mb-6 space-y-4 rounded-lg border border-border bg-card p-5"
           >
             <div>
@@ -307,13 +312,20 @@ export default function AlertRules({ initial }: Props) {
                   id="rule-value"
                   type="number"
                   inputMode="decimal"
-                  min={0}
+                  min={form.kind === 'runway_runs_short' ? 1 : 0.5}
                   step={form.kind === 'runway_runs_short' ? 1 : 0.5}
                   value={form.numericValue}
                   onChange={(e) => setForm({ ...form, numericValue: e.target.value })}
                   disabled={submitting}
+                  aria-invalid={numericInvalid ? 'true' : undefined}
+                  aria-describedby={numericInvalid ? 'rule-value-error' : undefined}
                   className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
                 />
+                {numericInvalid && (
+                  <p id="rule-value-error" role="alert" className="mt-1.5 text-xs text-destructive">
+                    Must be greater than 0.
+                  </p>
+                )}
               </div>
             )}
 
