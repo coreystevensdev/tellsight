@@ -80,6 +80,7 @@ describe('envSchema, email provider coupling', () => {
         EMAIL_PROVIDER: 'resend',
         RESEND_API_KEY: 're_prod',
         RESEND_WEBHOOK_SECRET: 'whsec_prod',
+        EMAIL_FROM_NAME: 'Acme Insights',
       }),
     );
     expect(result.success).toBe(true);
@@ -163,6 +164,53 @@ describe('envSchema, CAN-SPAM + delivery guards (no placeholder defaults)', () =
     expect(issue?.message).toMatch(/placeholder/i);
   });
 
+  it('rejects the "Kiln Insights" placeholder sender name in production', () => {
+    const result = envSchema.safeParse(
+      baseEnv({
+        NODE_ENV: 'production',
+        EMAIL_PROVIDER: 'resend',
+        RESEND_API_KEY: 're_prod',
+        RESEND_WEBHOOK_SECRET: 'whsec_prod',
+        EMAIL_FROM_NAME: 'Kiln Insights',
+      }),
+    );
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    const issue = result.error.issues.find((i) => i.path[0] === 'EMAIL_FROM_NAME');
+    expect(issue?.message).toMatch(/placeholder/i);
+  });
+
+  it('rejects a case/whitespace variant of the placeholder sender name in production', () => {
+    const result = envSchema.safeParse(
+      baseEnv({
+        NODE_ENV: 'production',
+        EMAIL_PROVIDER: 'resend',
+        RESEND_API_KEY: 're_prod',
+        RESEND_WEBHOOK_SECRET: 'whsec_prod',
+        EMAIL_FROM_NAME: ' kiln insights ',
+      }),
+    );
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    const issue = result.error.issues.find((i) => i.path[0] === 'EMAIL_FROM_NAME');
+    expect(issue?.message).toMatch(/placeholder/i);
+  });
+
+  it('accepts a real EMAIL_FROM_NAME in production', () => {
+    const result = envSchema.safeParse(
+      baseEnv({
+        NODE_ENV: 'production',
+        EMAIL_PROVIDER: 'resend',
+        RESEND_API_KEY: 're_prod',
+        RESEND_WEBHOOK_SECRET: 'whsec_prod',
+        EMAIL_FROM_NAME: 'Acme Insights',
+      }),
+    );
+    expect(result.success).toBe(true);
+  });
+
   it('rejects localhost PUBLIC_API_URL in production', () => {
     const result = envSchema.safeParse(
       baseEnv({
@@ -188,6 +236,7 @@ describe('envSchema, CAN-SPAM + delivery guards (no placeholder defaults)', () =
         RESEND_API_KEY: 're_prod',
         RESEND_WEBHOOK_SECRET: 'whsec_prod',
         PUBLIC_API_URL: 'https://api.example.app',
+        EMAIL_FROM_NAME: 'Acme Insights',
       }),
     );
     expect(result.success).toBe(true);

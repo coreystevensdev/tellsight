@@ -101,6 +101,15 @@ export const envSchema = z
       path: ['EMAIL_MAILING_ADDRESS'],
     },
   )
+  // EMAIL_FROM_NAME defaults to the spec placeholder so dev/test boot without
+  // extra config. Shipping that default to production means every alert and
+  // digest email identifies the sender as the wrong product, a CAN-SPAM
+  // sender-identification failure that ships silently.
+  .refine((data) => !(data.NODE_ENV === 'production' && /^\s*kiln\s+insights\s*$/i.test(data.EMAIL_FROM_NAME)), {
+    message:
+      'EMAIL_FROM_NAME is still the placeholder ("Kiln Insights"). Set it to your actual product name before shipping to production.',
+    path: ['EMAIL_FROM_NAME'],
+  })
   // Tracking-pixel URLs (digest open) are baked into outgoing email and
   // dereferenced by recipients across the public internet. A localhost
   // PUBLIC_API_URL in production points pixels at the recipient's machine,
