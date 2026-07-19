@@ -2,9 +2,17 @@ import { and, desc, eq, inArray, isNull, lte, or } from 'drizzle-orm';
 
 import type { CreateAlertRuleInput, UpdateAlertRuleInput } from 'shared/schemas';
 import { db, dbAdmin, type DbTransaction } from '../../lib/db.js';
+import { ConflictError } from '../../lib/appError.js';
 import { alertRules } from '../schema.js';
 
 export type AlertRuleRow = typeof alertRules.$inferSelect;
+
+// postgres.js maps the Postgres unique_violation SQLSTATE onto err.code, and
+// idx_alert_rules_org_kind_active is the only unique constraint this table
+// has, so a 23505 here always means the same-kind guard tripped.
+function isDuplicateKindError(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && 'code' in err && err.code === '23505';
+}
 
 export async function getByOrgId(
   orgId: number,
@@ -36,18 +44,25 @@ export async function create(
   input: CreateAlertRuleInput,
   client: typeof db | DbTransaction = db,
 ): Promise<AlertRuleRow> {
-  const [row] = await client
-    .insert(alertRules)
-    .values({
-      orgId,
-      createdByUserId,
-      kind: input.kind,
-      threshold: input.threshold,
-      enabled: input.enabled ?? true,
-      muteUntil: input.muteUntil ? new Date(input.muteUntil) : null,
-    })
-    .returning();
-  return row!;
+  try {
+    const [row] = await client
+      .insert(alertRules)
+      .values({
+        orgId,
+        createdByUserId,
+        kind: input.kind,
+        threshold: input.threshold,
+        enabled: input.enabled ?? true,
+        muteUntil: input.muteUntil ? new Date(input.muteUntil) : null,
+      })
+      .returning();
+    return row!;
+  } catch (err) {
+    if (isDuplicateKindError(err)) {
+      throw new ConflictError(`An active ${input.kind} alert rule already exists for this org`);
+    }
+    throw err;
+  }
 }
 
 // kind + threshold are always overwritten together, a PUT can't change one
@@ -62,20 +77,27 @@ export async function update(
   input: UpdateAlertRuleInput,
   client: typeof db | DbTransaction = db,
 ): Promise<AlertRuleRow | null> {
-  const [row] = await client
-    .update(alertRules)
-    .set({
-      kind: input.kind,
-      threshold: input.threshold,
-      updatedAt: new Date(),
-      ...(input.enabled !== undefined && { enabled: input.enabled }),
-      ...(input.muteUntil !== undefined && {
-        muteUntil: input.muteUntil ? new Date(input.muteUntil) : null,
-      }),
-    })
-    .where(and(eq(alertRules.id, id), eq(alertRules.orgId, orgId), isNull(alertRules.deletedAt)))
-    .returning();
-  return row ?? null;
+  try {
+    const [row] = await client
+      .update(alertRules)
+      .set({
+        kind: input.kind,
+        threshold: input.threshold,
+        updatedAt: new Date(),
+        ...(input.enabled !== undefined && { enabled: input.enabled }),
+        ...(input.muteUntil !== undefined && {
+          muteUntil: input.muteUntil ? new Date(input.muteUntil) : null,
+        }),
+      })
+      .where(and(eq(alertRules.id, id), eq(alertRules.orgId, orgId), isNull(alertRules.deletedAt)))
+      .returning();
+    return row ?? null;
+  } catch (err) {
+    if (isDuplicateKindError(err)) {
+      throw new ConflictError(`An active ${input.kind} alert rule already exists for this org`);
+    }
+    throw err;
+  }
 }
 
 // Also clears muteUntil: a soft-deleted rule has no live mute window to

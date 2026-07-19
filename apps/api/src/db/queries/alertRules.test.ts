@@ -18,6 +18,14 @@ function thenable(getResult: () => unknown[]) {
   };
 }
 
+let returningError: unknown = null;
+
+function resolveReturning() {
+  mockReturning();
+  if (returningError) return Promise.reject(returningError);
+  return Promise.resolve(returningResult);
+}
+
 vi.mock('../../lib/db.js', () => {
   const buildSelect = () => ({
     from: (...args: unknown[]) => {
@@ -45,7 +53,7 @@ vi.mock('../../lib/db.js', () => {
   const buildInsert = () => ({
     values: (...args: unknown[]) => {
       mockInsertValues(...args);
-      return { returning: () => { mockReturning(); return Promise.resolve(returningResult); } };
+      return { returning: resolveReturning };
     },
   });
 
@@ -55,7 +63,7 @@ vi.mock('../../lib/db.js', () => {
       return {
         where: (...w: unknown[]) => {
           mockWhere(...w);
-          return { returning: () => { mockReturning(); return Promise.resolve(returningResult); } };
+          return { returning: resolveReturning };
         },
       };
     },
@@ -91,6 +99,7 @@ vi.mock('drizzle-orm', () => ({
 }));
 
 const { db, dbAdmin } = await import('../../lib/db.js');
+const { ConflictError } = await import('../../lib/appError.js');
 const {
   getByOrgId,
   getById,
@@ -119,6 +128,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   selectResult = [];
   returningResult = [];
+  returningError = null;
 });
 
 describe('getByOrgId', () => {
@@ -191,6 +201,22 @@ describe('create', () => {
     const inserted = mockInsertValues.mock.calls[0]![0] as { muteUntil: Date };
     expect(inserted.muteUntil).toEqual(new Date(muteUntil));
   });
+
+  it('throws ConflictError when the org already has an active rule of that kind', async () => {
+    returningError = { code: '23505', constraint_name: 'idx_alert_rules_org_kind_active' };
+
+    await expect(
+      create(10, 5, { kind: 'runway_runs_short', threshold: { months: 3 } }, db),
+    ).rejects.toThrow(ConflictError);
+  });
+
+  it('rethrows a non-unique-violation error unchanged', async () => {
+    returningError = new Error('connection reset');
+
+    await expect(
+      create(10, 5, { kind: 'runway_runs_short', threshold: { months: 3 } }, db),
+    ).rejects.toThrow('connection reset');
+  });
 });
 
 describe('update', () => {
@@ -247,6 +273,14 @@ describe('update', () => {
     const result = await update(999, 1, { kind: 'margin_drops', threshold: { percent: 10 } }, db);
 
     expect(result).toBeNull();
+  });
+
+  it('throws ConflictError when the new kind collides with another active rule', async () => {
+    returningError = { code: '23505', constraint_name: 'idx_alert_rules_org_kind_active' };
+
+    await expect(
+      update(10, 1, { kind: 'margin_drops', threshold: { percent: 10 } }, db),
+    ).rejects.toThrow(ConflictError);
   });
 });
 

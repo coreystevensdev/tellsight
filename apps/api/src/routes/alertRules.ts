@@ -6,6 +6,7 @@ import { requireUser } from '../lib/requireUser.js';
 import { withRlsContext } from '../lib/rls.js';
 import { alertRulesQueries } from '../db/queries/index.js';
 import { roleGuard } from '../middleware/roleGuard.js';
+import { rateLimitDashboardCompute } from '../middleware/rateLimiter.js';
 import { ValidationError, NotFoundError } from '../lib/appError.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
 
@@ -27,40 +28,45 @@ alertRulesRouter.get('/alert-rules', async (req, res: Response) => {
   res.json({ data: rules });
 });
 
-alertRulesRouter.post('/alert-rules', roleGuard('owner'), async (req, res: Response) => {
-  const user = requireUser(req);
-  const userId = parseInt(user.sub, 10);
-  const parsed = createAlertRuleSchema.safeParse(req.body);
+alertRulesRouter.post(
+  '/alert-rules',
+  roleGuard('owner'),
+  rateLimitDashboardCompute,
+  async (req, res: Response) => {
+    const user = requireUser(req);
+    const userId = parseInt(user.sub, 10);
+    const parsed = createAlertRuleSchema.safeParse(req.body);
 
-  if (!parsed.success) {
-    res.status(400).json({
-      error: {
-        code: 'VALIDATION_ERROR',
-        message: 'Invalid alert rule',
-        details: parsed.error.flatten(),
-      },
+    if (!parsed.success) {
+      res.status(400).json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid alert rule',
+          details: parsed.error.flatten(),
+        },
+      });
+      return;
+    }
+
+    const rule = await withRlsContext(user.org_id, user.isAdmin, (tx) =>
+      alertRulesQueries.create(user.org_id, userId, parsed.data, tx),
+    );
+
+    trackEvent(user.org_id, userId, ANALYTICS_EVENTS.ALERT_RULE_CREATED, {
+      ruleId: rule.id,
+      ruleKind: rule.kind,
     });
-    return;
-  }
 
-  const rule = await withRlsContext(user.org_id, user.isAdmin, (tx) =>
-    alertRulesQueries.create(user.org_id, userId, parsed.data, tx),
-  );
+    // req.log (not the bare logger) so correlationId rides along automatically,
+    // the intent-contract requires it on every CRUD mutation line.
+    req.log.info(
+      { orgId: user.org_id, userId, ruleId: rule.id, ruleKind: rule.kind, action: 'created' },
+      'Alert rule created',
+    );
 
-  trackEvent(user.org_id, userId, ANALYTICS_EVENTS.ALERT_RULE_CREATED, {
-    ruleId: rule.id,
-    ruleKind: rule.kind,
-  });
-
-  // req.log (not the bare logger) so correlationId rides along automatically,
-  // the intent-contract requires it on every CRUD mutation line.
-  req.log.info(
-    { orgId: user.org_id, userId, ruleId: rule.id, ruleKind: rule.kind, action: 'created' },
-    'Alert rule created',
-  );
-
-  res.status(201).json({ data: rule });
-});
+    res.status(201).json({ data: rule });
+  },
+);
 
 alertRulesRouter.put('/alert-rules/:id', roleGuard('owner'), async (req, res: Response) => {
   const user = requireUser(req);

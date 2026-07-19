@@ -703,6 +703,13 @@ export const alertRules = pgTable(
     index('idx_alert_rules_org_enabled')
       .on(table.orgId, table.enabled)
       .where(sql`${table.deletedAt} is null`),
+    // Partial (not table-wide like milestone_awards' org+kind index) because
+    // deleted_at exists here, a soft-deleted rule shouldn't block recreating
+    // that kind. Scoped to non-deleted, not just enabled, so a disabled
+    // duplicate still can't shadow-accumulate.
+    uniqueIndex('idx_alert_rules_org_kind_active')
+      .on(table.orgId, table.kind)
+      .where(sql`${table.deletedAt} is null`),
   ],
 );
 

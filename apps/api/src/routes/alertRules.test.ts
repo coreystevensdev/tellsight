@@ -29,6 +29,12 @@ vi.mock('../services/analytics/trackEvent.js', () => ({
   trackEvent: mockTrackEvent,
 }));
 
+const mockRateLimitDashboardCompute = vi.fn((_req: unknown, _res: unknown, next: () => void) => next());
+vi.mock('../middleware/rateLimiter.js', () => ({
+  rateLimitDashboardCompute: (req: unknown, res: unknown, next: () => void) =>
+    mockRateLimitDashboardCompute(req, res, next),
+}));
+
 vi.mock('../config.js', () => ({
   env: { NODE_ENV: 'test', APP_URL: 'http://localhost:3000' },
 }));
@@ -45,6 +51,7 @@ vi.mock('../lib/logger.js', () => ({
 const { createTestApp } = await import('../test/helpers/testApp.js');
 const { authMiddleware } = await import('../middleware/authMiddleware.js');
 const { alertRulesRouter } = await import('./alertRules.js');
+const { ConflictError } = await import('../lib/appError.js');
 
 let server: http.Server;
 let baseUrl: string;
@@ -181,6 +188,34 @@ describe('POST /org/alert-rules', () => {
     });
 
     expect(res.status).toBe(400);
+  });
+
+  it('returns 409 when the org already has an active rule of that kind', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload());
+    mockCreate.mockRejectedValueOnce(new ConflictError('An active runway_runs_short alert rule already exists for this org'));
+
+    const res = await fetch(`${baseUrl}/org/alert-rules`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ kind: 'runway_runs_short', threshold: { months: 3 } }),
+    });
+    const json = (await res.json()) as { error: { code: string } };
+
+    expect(res.status).toBe(409);
+    expect(json.error.code).toBe('CONFLICT');
+  });
+
+  it('routes through rateLimitDashboardCompute', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload());
+    mockCreate.mockResolvedValueOnce(mockRule);
+
+    await fetch(`${baseUrl}/org/alert-rules`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ kind: 'runway_runs_short', threshold: { months: 3 } }),
+    });
+
+    expect(mockRateLimitDashboardCompute).toHaveBeenCalled();
   });
 });
 

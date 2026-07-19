@@ -34,6 +34,12 @@ export class NotFoundError extends AppError {
   }
 }
 
+export class ConflictError extends AppError {
+  constructor(message: string, details?: unknown) {
+    super(message, 'CONFLICT', 409, details);
+  }
+}
+
 export class QuotaExceededError extends AppError {
   constructor(message: string, details?: unknown) {
     super(message, 'QUOTA_EXCEEDED', 402, details);
