@@ -235,7 +235,7 @@ async function seed() {
 
         const stats = computeStats(dbRows, { trendMinPoints: 3 });
         const scored = scoreInsights(stats);
-        const { system, user, metadata } = assemblePrompt(scored);
+        const { system, user, metadata } = assemblePrompt(scored, dataset.id);
 
         const model = process.env.CLAUDE_MODEL ?? 'claude-sonnet-4-5-20250929';
         const message = await claude.messages.create({

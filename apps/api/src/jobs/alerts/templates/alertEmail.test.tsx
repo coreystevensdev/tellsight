@@ -120,6 +120,16 @@ describe('AlertEmail CAN-SPAM footer', () => {
   });
 });
 
+describe('AlertEmail cite-tag stripping', () => {
+  it('strips a <cite id="..."/> tag from the paragraph before rendering', async () => {
+    const html = await renderFixture({
+      paragraph: 'Your runway is now 2.0 months <cite id="1:runway:_:_"/>, worth reviewing.',
+    });
+    expect(html).not.toContain('cite id=');
+    expect(html).toContain('Your runway is now 2.0 months');
+  });
+});
+
 describe('AlertEmail snapshot', () => {
   it('matches the committed structural snapshot (text-only)', async () => {
     const html = await renderFixture();

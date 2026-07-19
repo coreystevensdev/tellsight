@@ -17,7 +17,7 @@ const mockUseAiStream = vi.fn();
 
 vi.mock('@/lib/hooks/useAiStream', () => ({
   useAiStream: (...args: unknown[]) => mockUseAiStream(...args),
-  stripStatTags: (raw: string) => raw.replace(/<stat\s+id="\w+"\s*\/>/g, ''),
+  stripDisplayTags: (raw: string) => raw.replace(/<(?:stat|cite)\s+id="[^"]+"\s*\/>/g, ''),
 }));
 
 const mockTrackClientEvent = vi.fn();
@@ -615,6 +615,23 @@ describe('AiSummaryCard chart bindings', () => {
 
     // raw token must never reach the user
     expect(screen.queryByText(/<stat id="runway"\/>/)).toBeNull();
+    // the surrounding prose still renders
+    expect(screen.getByText(/Cached prose/i)).toBeInTheDocument();
+  });
+
+  it('strips raw cite tags from cached content before render', () => {
+    mockUseAiStream.mockReturnValue(defaultHookReturn());
+
+    render(
+      <AiSummaryCard
+        datasetId={1}
+        cachedContent={'Cached prose <cite id="1:total:_:overall"/> done.\n\nNext paragraph.'}
+        tier="pro"
+      />,
+    );
+
+    // raw token must never reach the user
+    expect(screen.queryByText(/<cite id="1:total:_:overall"\/>/)).toBeNull();
     // the surrounding prose still renders
     expect(screen.getByText(/Cached prose/i)).toBeInTheDocument();
   });

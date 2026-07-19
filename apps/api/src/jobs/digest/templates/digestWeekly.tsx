@@ -8,7 +8,7 @@
 // MSO + Gmail webmail strip <style> blocks and ignore flexbox/grid; tables and
 // inline styles are the universally rendered subset. Don't reach for media
 // queries here, fluid 100% outer + 600px inner is the survivable shape.
-import { AI_DISCLAIMER, DIGEST_UTM_PARAMS } from 'shared/constants';
+import { AI_DISCLAIMER, DIGEST_UTM_PARAMS, stripAllDisplayTags } from 'shared/constants';
 
 import { env } from '../../../config.js';
 import { signUnsubscribeToken } from '../unsubscribeToken.js';
@@ -130,7 +130,7 @@ export function DigestWeekly({
                         <h1 style={styles.heading}>{`${orgName} weekly insights`}</h1>
                         {bullets.map((bullet, i) => (
                           <p key={i} style={styles.bullet}>
-                            {bullet}
+                            {stripAllDisplayTags(bullet)}
                           </p>
                         ))}
                         <table role="presentation" align="center" cellPadding={0} cellSpacing={0} border={0}>

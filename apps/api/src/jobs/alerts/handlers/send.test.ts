@@ -173,6 +173,25 @@ describe('handleSendJob: chart-mapped rule kind (I/O matrix row 1)', () => {
   });
 });
 
+describe('handleSendJob: cite-ref hallucination guard', () => {
+  it('strips a hallucinated cite ref before caching the alert paragraph', async () => {
+    mockGenerateInterpretation.mockResolvedValueOnce(
+      'Your runway is now 2.0 months <cite id="ghost"/>. Worth a look at burn rate.',
+    );
+
+    await handleSendJob({ id: 'send-14', data: baseJobData } as never);
+
+    expect(mockStoreSummary).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: 'Your runway is now 2.0 months . Worth a look at burn rate.',
+      }),
+    );
+
+    const call = mockSendEmail.mock.calls[0]![0] as Record<string, unknown>;
+    expect((call.react as { paragraph: string }).paragraph).not.toContain('<cite');
+  });
+});
+
 describe('handleSendJob: chart input statType mismatch', () => {
   it('logs a warning and sends text-only when the fired insight does not match the expected chart kind', async () => {
     const data = { ...baseJobData, firedInsight: breakevenInsight() };

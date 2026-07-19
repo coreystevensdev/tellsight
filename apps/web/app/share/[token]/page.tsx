@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { stripAllStatTags } from 'shared/constants';
+import { stripAllDisplayTags } from 'shared/constants';
 import { webEnv } from '@/lib/config';
 import SharedInsightCard from './SharedInsightCard';
 import ShareError from './ShareError';
@@ -58,7 +58,7 @@ export async function generateMetadata({
   // strip <stat id="..."/> tokens before truncation, otherwise social
   // unfurls (Twitter/Facebook/iMessage) surface raw markup when a tag
   // lands inside the truncation window
-  const cleanContent = stripAllStatTags(aiSummaryContent);
+  const cleanContent = stripAllDisplayTags(aiSummaryContent);
   const ogTitle = truncateAtWord(cleanContent, 60);
   const description = truncateAtWord(cleanContent, 150);
 

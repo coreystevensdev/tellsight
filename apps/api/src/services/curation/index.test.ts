@@ -207,6 +207,28 @@ describe('runFullPipeline', () => {
     const storeCall = vi.mocked(aiSummariesQueries.storeSummary).mock.calls[0]!;
     expect(storeCall[0]).toMatchObject({ content: 'Runway is tight  this quarter.' });
   });
+
+  it('keeps a valid cite ref and strips a hallucinated one before cache write', async () => {
+    vi.mocked(aiSummariesQueries.getCachedSummary).mockResolvedValue(undefined as never);
+    vi.mocked(dataRowsQueries.getRowsByDataset).mockResolvedValue(fixtureRows as never);
+    vi.mocked(aiSummariesQueries.storeSummary).mockResolvedValue({} as never);
+
+    const insights = await runCurationPipeline(1, 1);
+    const { statInstanceId } = await import('./computation.js');
+    const validId = statInstanceId(insights[0]!.stat, 1);
+
+    vi.mocked(generateInterpretation).mockResolvedValue(
+      `Solid quarter <cite id="${validId}"/>. Also a fabricated point <cite id="ghost"/>.`,
+    );
+
+    const result = await runFullPipeline(1, 1);
+
+    expect(result.content).toContain(`<cite id="${validId}"/>`);
+    expect(result.content).not.toContain('<cite id="ghost"/>');
+
+    const storeCall = vi.mocked(aiSummariesQueries.storeSummary).mock.calls[0]!;
+    expect(storeCall[0]).toMatchObject({ content: result.content });
+  });
 });
 
 describe('cash flow end-to-end pipeline', () => {
@@ -233,7 +255,7 @@ describe('cash flow end-to-end pipeline', () => {
 
     const insights = await runCurationPipeline(1, 1);
     const { assemblePrompt } = await import('./assembly.js');
-    const result = assemblePrompt(insights);
+    const result = assemblePrompt(insights, 1);
 
     // metadata: cash_flow present, prompt version bumped
     expect(result.metadata.statTypes).toContain('cash_flow');
@@ -290,7 +312,7 @@ describe('runway end-to-end pipeline', () => {
       now,
     });
     const insights = scoreInsights(stats);
-    const result = assemblePrompt(insights);
+    const result = assemblePrompt(insights, 1);
 
     expect(result.metadata.statTypes).toContain('runway');
     expect(result.metadata.promptVersion).toBe('v1.6');
@@ -328,7 +350,7 @@ describe('runway end-to-end pipeline', () => {
       now,
     });
     const insights = scoreInsights(stats);
-    const result = assemblePrompt(insights);
+    const result = assemblePrompt(insights, 1);
 
     expect(result.user).toContain('confidence: low');
   });
@@ -365,7 +387,7 @@ describe('break-even end-to-end pipeline', () => {
       financials: { monthlyFixedCosts: 15_000 },
     });
     const insights = scoreInsights(stats);
-    const result = assemblePrompt(insights);
+    const result = assemblePrompt(insights, 1);
 
     expect(result.metadata.statTypes).toContain('break_even');
     expect(result.metadata.promptVersion).toBe('v1.6');
@@ -401,7 +423,7 @@ describe('break-even end-to-end pipeline', () => {
       financials: { monthlyFixedCosts: 15_000 },
     });
     const insights = scoreInsights(stats);
-    const result = assemblePrompt(insights);
+    const result = assemblePrompt(insights, 1);
 
     expect(result.metadata.statTypes).toContain('break_even');
     expect(result.user).toMatch(/Break-Even:\s+\$75,000\/mo/);
@@ -439,7 +461,7 @@ describe('chart-tag pipeline integration', () => {
 
     const stats = computeStats(fixtureRows as never);
     const insights = scoreInsights(stats);
-    const result = assemblePrompt(insights, 'v2');
+    const result = assemblePrompt(insights, 1, 'v2');
 
     expect(result.user).toMatch(/Allowlist: [a-z_, ]+/);
     const allowlistMatch = result.user.match(/Allowlist: ([a-z_, ]+)/);
@@ -517,7 +539,7 @@ describe('cash forecast end-to-end pipeline', () => {
       now,
     });
     const insights = scoreInsights(stats);
-    const result = assemblePrompt(insights);
+    const result = assemblePrompt(insights, 1);
 
     // Forecast emits
     expect(result.metadata.statTypes).toContain('cash_forecast');
@@ -566,7 +588,7 @@ describe('cash forecast end-to-end pipeline', () => {
     // No financials at all, forecast can't form without cashOnHand
     const stats = computeStats(burningRows as never);
     const insights = scoreInsights(stats);
-    const result = assemblePrompt(insights);
+    const result = assemblePrompt(insights, 1);
 
     expect(result.metadata.statTypes).not.toContain('cash_forecast');
     expect(result.user).not.toMatch(/Cash Forecast:/);

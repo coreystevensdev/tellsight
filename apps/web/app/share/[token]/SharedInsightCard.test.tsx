@@ -79,6 +79,18 @@ describe('SharedInsightCard', () => {
     const wrapper = screen.getByText('Acme Corp').closest('[class*="motion-reduce"]');
     expect(wrapper).toBeInTheDocument();
   });
+
+  it('strips a <cite id="..."/> tag from the rendered summary', () => {
+    render(
+      <SharedInsightCard
+        {...baseProps}
+        aiSummaryContent={'Revenue grew 12% <cite id="1:total:_:overall"/> quarter-over-quarter.'}
+      />,
+    );
+
+    expect(screen.queryByText(/cite id=/)).toBeNull();
+    expect(screen.getByText(/Revenue grew 12%/)).toBeInTheDocument();
+  });
 });
 
 describe('ShareError', () => {

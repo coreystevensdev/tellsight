@@ -18,12 +18,16 @@ const mockAssemblePrompt = vi.fn();
 const mockValidateSummary = vi.fn();
 const mockValidateStatRefs = vi.fn((..._args: unknown[]) => ({ invalidRefs: [] as string[] }));
 const mockStripInvalidStatRefs = vi.fn((...args: unknown[]) => String(args[0] ?? ''));
+const mockValidateCiteRefs = vi.fn((..._args: unknown[]) => ({ invalidRefs: [] as string[] }));
+const mockStripInvalidCiteRefs = vi.fn((...args: unknown[]) => String(args[0] ?? ''));
 vi.mock('../curation/index.js', () => ({
   runCurationPipeline: (...args: unknown[]) => mockRunCurationPipeline(...args),
   assemblePrompt: (...args: unknown[]) => mockAssemblePrompt(...args),
   validateSummary: (...args: unknown[]) => mockValidateSummary(...args),
   validateStatRefs: (...args: unknown[]) => mockValidateStatRefs(...args),
   stripInvalidStatRefs: (...args: unknown[]) => mockStripInvalidStatRefs(...args),
+  validateCiteRefs: (...args: unknown[]) => mockValidateCiteRefs(...args),
+  stripInvalidCiteRefs: (...args: unknown[]) => mockStripInvalidCiteRefs(...args),
   transparencyMetadataSchema: { parse: (v: unknown) => v },
 }));
 
@@ -286,6 +290,55 @@ describe('streamToSSE', () => {
     );
 
     // the cache write received the stripped text, not the raw LLM output
+    expect(mockStoreSummary).toHaveBeenCalled();
+    const call = mockStoreSummary.mock.calls[0]!;
+    expect(call[0]).toMatchObject({ orgId: 1, datasetId: 42, content: 'runway  ok' });
+  });
+
+  it('strips invalid cite-refs before cache write and emits ai.cite_ref_invalid', async () => {
+    mockStreamInterpretation.mockImplementation(
+      async (_prompt: string, onText: (d: string) => void) => {
+        onText('runway ');
+        onText('<cite id="ghost"/>');
+        onText(' ok');
+        return {
+          fullText: 'runway <cite id="ghost"/> ok',
+          usage: { inputTokens: 100, outputTokens: 20 },
+        };
+      },
+    );
+    mockValidateCiteRefs.mockReturnValueOnce({ invalidRefs: ['ghost'] });
+    mockStripInvalidCiteRefs.mockImplementationOnce((...args: unknown[]) => {
+      const raw = String(args[0] ?? '');
+      const invalid = (args[1] as string[] | undefined) ?? [];
+      return raw.replace(/<cite\s+id="([^"]+)"\s*\/>/g, (full, id) =>
+        invalid.includes(id) ? '' : full,
+      );
+    });
+    mockValidateSummary.mockReturnValueOnce({
+      status: 'clean',
+      numbersChecked: 0,
+      allowedValueCount: 0,
+      unmatchedNumbers: [],
+    });
+
+    const { res } = createMockRes();
+    const req = createMockReq();
+
+    const { streamToSSE } = await import('./streamHandler.js');
+    await streamToSSE(req, res, 1, 42, 99, 'pro');
+
+    expect(mockTrackEvent).toHaveBeenCalledWith(
+      1,
+      99,
+      'ai.cite_ref_invalid',
+      expect.objectContaining({
+        datasetId: 42,
+        tier: 'pro',
+        invalidRefs: ['ghost'],
+      }),
+    );
+
     expect(mockStoreSummary).toHaveBeenCalled();
     const call = mockStoreSummary.mock.calls[0]!;
     expect(call[0]).toMatchObject({ orgId: 1, datasetId: 42, content: 'runway  ok' });

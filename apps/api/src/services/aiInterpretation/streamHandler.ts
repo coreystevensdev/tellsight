@@ -9,7 +9,7 @@ import type { db, DbTransaction } from '../../lib/db.js';
 import { register, deregister } from '../../lib/activeStreams.js';
 import { CircuitOpenError } from '../../lib/circuitBreaker.js';
 import { aiSummariesQueries } from '../../db/queries/index.js';
-import { runCurationPipeline, assemblePrompt, transparencyMetadataSchema, validateSummary, validateStatRefs, stripInvalidStatRefs } from '../curation/index.js';
+import { runCurationPipeline, assemblePrompt, transparencyMetadataSchema, validateSummary, validateStatRefs, stripInvalidStatRefs, validateCiteRefs, stripInvalidCiteRefs } from '../curation/index.js';
 import type { ScoredInsight } from '../curation/index.js';
 import { streamInterpretation } from './claudeClient.js';
 import { trackEvent } from '../analytics/trackEvent.js';
@@ -103,7 +103,7 @@ export async function streamToSSE(
 
   try {
     pipelineInsights = await runCurationPipeline(orgId, datasetId, client);
-    const { system, user, metadata } = assemblePrompt(pipelineInsights, undefined, businessProfile);
+    const { system, user, metadata } = assemblePrompt(pipelineInsights, datasetId, undefined, businessProfile);
     promptInput = { system, user };
     validatedMetadata = transparencyMetadataSchema.parse(metadata);
     promptVersion = metadata.promptVersion;
@@ -192,6 +192,25 @@ export async function streamToSSE(
         promptVersion,
         invalidRefs: refReport.invalidRefs,
         validStatIds: pipelineStats.map((s) => s.statType),
+      });
+    }
+
+    // Tier 2b citation check, same defense-in-depth shape at instance
+    // granularity. Runs against cachedText (Tier 2's output), not the raw
+    // fullText, so this pass and Tier 2 above can never re-introduce what
+    // the other just removed.
+    const citeReport = validateCiteRefs(cachedText, pipelineStats, datasetId);
+    if (citeReport.invalidRefs.length > 0) {
+      cachedText = stripInvalidCiteRefs(cachedText, citeReport.invalidRefs);
+      logger.warn(
+        { orgId, datasetId, invalidRefs: citeReport.invalidRefs, promptVersion },
+        'AI summary referenced unknown stat instance IDs, stripped before cache',
+      );
+      trackEvent(orgId, userId, ANALYTICS_EVENTS.AI_CITE_REF_INVALID, {
+        datasetId,
+        tier,
+        promptVersion,
+        invalidRefs: citeReport.invalidRefs,
       });
     }
 

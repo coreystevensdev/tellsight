@@ -7,6 +7,7 @@ import type { ScoredInsight, AssembledContext, TransparencyMetadata } from './ty
 import { StatType } from './types.js';
 import type { BusinessProfile } from 'shared/types';
 import { getIndustryBenchmarks } from './config/industry-benchmarks.js';
+import { statInstanceId } from './computation.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_VERSION = 'v1.6';
@@ -68,7 +69,7 @@ function getTemplate(version: string): SplitTemplate {
   return tpl;
 }
 
-function formatStat(insight: ScoredInsight): string {
+function formatStatBody(insight: ScoredInsight): string {
   const { stat, score } = insight;
   const category = stat.category ?? 'Overall';
 
@@ -117,6 +118,14 @@ function formatStat(insight: ScoredInsight): string {
       return `- [Overall] Cash Forecast: balance ${chain} over next 3 months${crossing} (method: ${stat.details.method}, confidence: ${stat.details.confidence}, relevance: ${score.toFixed(2)})`;
     }
   }
+}
+
+// Appends the exact id the LLM must copy into a <cite id="..."/> token, see
+// v1.6-system.md rule 12. Every stat line carries one, regardless of which
+// prompt template renders it (digest and alert templates get the suffix too,
+// see validator.ts Tier 2b for the defense-in-depth this implies).
+function formatStat(insight: ScoredInsight, datasetId: number): string {
+  return `${formatStatBody(insight)} [cite: ${statInstanceId(insight.stat, datasetId)}]`;
 }
 
 const TEAM_SIZE_LABELS: Record<string, string> = {
@@ -182,6 +191,7 @@ function renderUser(
 
 export function assemblePrompt(
   insights: ScoredInsight[],
+  datasetId: number,
   promptVersion = DEFAULT_VERSION,
   businessProfile?: BusinessProfile | null,
   now: Date = new Date(),
@@ -220,7 +230,7 @@ export function assemblePrompt(
     };
   }
 
-  const statSummaries = insights.map(formatStat).join('\n');
+  const statSummaries = insights.map((i) => formatStat(i, datasetId)).join('\n');
   const statTypes = [...new Set(insights.map((i) => i.stat.statType))];
   const allowedStatIds = [...statTypes].sort().join(', ');
   const categories = new Set(insights.map((i) => i.stat.category).filter(Boolean));

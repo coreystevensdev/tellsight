@@ -88,7 +88,7 @@ describe('assemblePrompt', () => {
 
   it('populates template placeholders with insight data', async () => {
     const { assemblePrompt } = await import('./assembly.js');
-    const result = assemblePrompt(fixtureInsights);
+    const result = assemblePrompt(fixtureInsights, 1);
 
     expect(result.user).toContain('Template start');
     expect(result.user).toContain('Template end');
@@ -101,7 +101,7 @@ describe('assemblePrompt', () => {
 
   it('returns valid metadata with correct shape', async () => {
     const { assemblePrompt } = await import('./assembly.js');
-    const result = assemblePrompt(fixtureInsights);
+    const result = assemblePrompt(fixtureInsights, 1);
 
     expect(result.metadata.statTypes).toEqual(['anomaly', 'trend', 'total']);
     expect(result.metadata.categoryCount).toBe(2);
@@ -117,7 +117,7 @@ describe('assemblePrompt', () => {
 
   it('handles empty insights gracefully', async () => {
     const { assemblePrompt } = await import('./assembly.js');
-    const result = assemblePrompt([]);
+    const result = assemblePrompt([], 1);
 
     expect(result.user).toContain('No statistical insights available');
     expect(result.metadata.insightCount).toBe(0);
@@ -130,7 +130,7 @@ describe('assemblePrompt', () => {
     vi.mocked(readFileSync).mockReturnValue('custom {{statSummaries}} {{statTypeList}} {{categoryCount}} {{insightCount}}');
 
     const { assemblePrompt } = await import('./assembly.js');
-    const result = assemblePrompt(fixtureInsights, 'v2');
+    const result = assemblePrompt(fixtureInsights, 1, 'v2');
 
     expect(result.metadata.promptVersion).toBe('v2');
     expect(result.user).toContain('custom');
@@ -151,7 +151,7 @@ describe('assemblePrompt', () => {
     });
 
     const { assemblePrompt } = await import('./assembly.js');
-    const result = assemblePrompt(fixtureInsights, 'v2');
+    const result = assemblePrompt(fixtureInsights, 1, 'v2');
 
     // fixture has anomaly, trend, total in relevance order; allowlist sorts alphabetically
     expect(result.user).toBe('Allow: anomaly, total, trend');
@@ -170,14 +170,14 @@ describe('assemblePrompt', () => {
     });
 
     const { assemblePrompt } = await import('./assembly.js');
-    const result = assemblePrompt([], 'v2');
+    const result = assemblePrompt([], 1, 'v2');
 
     expect(result.user).toBe('Allow: none');
   });
 
   it('never includes raw data fields in the prompt', async () => {
     const { assemblePrompt } = await import('./assembly.js');
-    const result = assemblePrompt(fixtureInsights);
+    const result = assemblePrompt(fixtureInsights, 1);
 
     // only check the prompt text, the metadata property is part of AssembledContext, not a data leak
     const prompt = result.user;
@@ -188,7 +188,7 @@ describe('assemblePrompt', () => {
 
   it('formats each stat type correctly in the prompt', async () => {
     const { assemblePrompt } = await import('./assembly.js');
-    const result = assemblePrompt(fixtureInsights);
+    const result = assemblePrompt(fixtureInsights, 1);
 
     // anomaly
     expect(result.user).toContain('z-score: 2.50');
@@ -218,7 +218,7 @@ describe('assemblePrompt', () => {
     ];
 
     const { assemblePrompt } = await import('./assembly.js');
-    const result = assemblePrompt(duplicateInsights);
+    const result = assemblePrompt(duplicateInsights, 1);
 
     expect(result.metadata.statTypes).toEqual(['anomaly']);
   });
@@ -251,7 +251,7 @@ describe('assemblePrompt', () => {
     };
 
     const { assemblePrompt } = await import('./assembly.js');
-    const result = assemblePrompt([forecastInsight]);
+    const result = assemblePrompt([forecastInsight], 1);
 
     expect(result.user).toContain('Cash Forecast: balance $58,000 → $41,000 → $23,000 → $5,000');
     expect(result.user).toContain('method: linear_regression');
@@ -286,7 +286,7 @@ describe('assemblePrompt', () => {
     };
 
     const { assemblePrompt } = await import('./assembly.js');
-    const result = assemblePrompt([forecastInsight]);
+    const result = assemblePrompt([forecastInsight], 1);
 
     expect(result.user).toContain('→ -$5,000');
     expect(result.user).toContain('balance crosses zero around month 3');
@@ -294,7 +294,7 @@ describe('assemblePrompt', () => {
 
   it('defaults to v1.6 prompt version', async () => {
     const { assemblePrompt } = await import('./assembly.js');
-    const result = assemblePrompt([fixtureInsights[0]!]);
+    const result = assemblePrompt([fixtureInsights[0]!], 1);
     expect(result.metadata.promptVersion).toBe('v1.6');
   });
 
@@ -311,7 +311,7 @@ describe('assemblePrompt', () => {
     });
 
     const { assemblePrompt } = await import('./assembly.js');
-    const result = assemblePrompt(fixtureInsights, 'v2-digest', null, new Date(), 'Last week: cash flow held steady.');
+    const result = assemblePrompt(fixtureInsights, 1, 'v2-digest', null, new Date(), 'Last week: cash flow held steady.');
 
     expect(result.user).toBe('Context: Last week: cash flow held steady.');
   });
@@ -329,7 +329,7 @@ describe('assemblePrompt', () => {
     });
 
     const { assemblePrompt } = await import('./assembly.js');
-    const result = assemblePrompt(fixtureInsights);
+    const result = assemblePrompt(fixtureInsights, 1);
 
     expect(result.user).toBe('Context: []');
   });
@@ -347,8 +347,40 @@ describe('assemblePrompt', () => {
     });
 
     const { assemblePrompt } = await import('./assembly.js');
-    const result = assemblePrompt([], 'v2-digest', null, new Date(), 'Last week: no data yet.');
+    const result = assemblePrompt([], 1, 'v2-digest', null, new Date(), 'Last week: no data yet.');
 
     expect(result.user).toBe('Context: Last week: no data yet.');
+  });
+
+  it('appends a [cite: <id>] suffix to each stat line matching statInstanceId', async () => {
+    const { assemblePrompt } = await import('./assembly.js');
+    const { statInstanceId } = await import('./computation.js');
+    const result = assemblePrompt(fixtureInsights, 1);
+
+    for (const insight of fixtureInsights) {
+      expect(result.user).toContain(`[cite: ${statInstanceId(insight.stat, 1)}]`);
+    }
+  });
+
+  it('gives two same-type stats in different categories distinct cite ids', async () => {
+    const twoTotals: ScoredInsight[] = [
+      {
+        stat: { statType: StatType.Total, category: 'Food', value: 400_000, details: { scope: 'category', count: 10 } },
+        score: 0.5,
+        breakdown: { novelty: 0.5, actionability: 0.5, specificity: 0.5 },
+      },
+      {
+        stat: { statType: StatType.Total, category: 'Drinks', value: 229_000, details: { scope: 'category', count: 8 } },
+        score: 0.4,
+        breakdown: { novelty: 0.4, actionability: 0.4, specificity: 0.4 },
+      },
+    ];
+
+    const { assemblePrompt } = await import('./assembly.js');
+    const result = assemblePrompt(twoTotals, 1);
+
+    const ids = [...result.user.matchAll(/\[cite: ([^\]]+)\]/g)].map((m) => m[1]);
+    expect(ids).toHaveLength(2);
+    expect(ids[0]).not.toBe(ids[1]);
   });
 });

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useAiStream, stripStatTags } from '@/lib/hooks/useAiStream';
+import { useAiStream, stripDisplayTags } from '@/lib/hooks/useAiStream';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { trackClientEvent } from '@/lib/analytics';
 import { UpgradeCta } from '@/components/common/UpgradeCta';
@@ -342,10 +342,10 @@ export function AiSummaryCard({
     return parseStatBindings(sourceText);
   }, [sourceText, status, hasCached]);
 
-  const displayText = hasCached ? stripStatTags(cachedContent ?? '') : text;
+  const displayText = hasCached ? stripDisplayTags(cachedContent ?? '') : text;
 
   const handleOpenStat = (statId: string, paragraphIndex: number) => {
-    const paragraphs = stripStatTags(sourceText).split('\n\n').filter(Boolean);
+    const paragraphs = stripDisplayTags(sourceText).split('\n\n').filter(Boolean);
     setOpenStatId(statId);
     setOpenParagraphText(paragraphs[paragraphIndex] ?? '');
     trackClientEvent(ANALYTICS_EVENTS.INSIGHT_CHART_OPENED, {
@@ -403,7 +403,7 @@ export function AiSummaryCard({
         )}
         <h3 className="mb-4 text-base font-semibold text-card-foreground">Analysis</h3>
         {wasTruncated ? (
-          <FreePreviewOverlay previewText={stripStatTags(preview)} onUpgrade={handleUpgrade} />
+          <FreePreviewOverlay previewText={stripDisplayTags(preview)} onUpgrade={handleUpgrade} />
         ) : (
           <>
             <SummaryText

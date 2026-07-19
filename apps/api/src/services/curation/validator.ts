@@ -1,4 +1,5 @@
-import { statTagCapture, statTagGlobal } from 'shared/constants';
+import { statTagCapture, statTagGlobal, citeTagCapture, citeTagGlobal } from 'shared/constants';
+import { statInstanceId } from './computation.js';
 import type { ComputedStat } from './types.js';
 import { StatType } from './types.js';
 
@@ -268,6 +269,32 @@ export function stripInvalidStatRefs(summary: string, invalidRefs: string[]): st
   const ids = new Set(invalidRefs);
   return summary.replace(statTagGlobal(), (full) => {
     const idMatch = full.match(/id="(\w+)"/);
+    return idMatch && ids.has(idMatch[1]!) ? '' : full;
+  });
+}
+
+// Tier 2b: citation validation, the instance-granularity sibling of Tier 2
+// above. The LLM emits <cite id="<statInstanceId>"/> tokens naming the exact
+// stat that backs a number, we cross-check each against the instance ids the
+// pipeline actually computed for this generation (dataset-scoped, so a stale
+// id from a different dataset's cache never validates by accident).
+export function validateCiteRefs(summary: string, stats: ComputedStat[], datasetId: number): StatRefReport {
+  const allowed = new Set(stats.map((s) => statInstanceId(s, datasetId)));
+  const invalid = new Set<string>();
+  for (const match of summary.matchAll(citeTagCapture())) {
+    const id = match[1]!;
+    if (!allowed.has(id)) invalid.add(id);
+  }
+  return { invalidRefs: [...invalid] };
+}
+
+// strips only the <cite> tags whose IDs appear in invalidRefs, mirrors
+// stripInvalidStatRefs but with the `[^"]+` id capture cite tags use.
+export function stripInvalidCiteRefs(summary: string, invalidRefs: string[]): string {
+  if (invalidRefs.length === 0) return summary;
+  const ids = new Set(invalidRefs);
+  return summary.replace(citeTagGlobal(), (full) => {
+    const idMatch = full.match(/id="([^"]+)"/);
     return idMatch && ids.has(idMatch[1]!) ? '' : full;
   });
 }

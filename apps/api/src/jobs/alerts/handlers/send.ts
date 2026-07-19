@@ -8,7 +8,13 @@ import { env } from '../../../config.js';
 import { Sentry } from '../../../lib/sentry.js';
 import { sendEmail, EmailSendError } from '../../../services/email/index.js';
 import { aiSummariesQueries, orgsQueries } from '../../../db/queries/index.js';
-import { assemblePrompt, StatType, transparencyMetadataSchema } from '../../../services/curation/index.js';
+import {
+  assemblePrompt,
+  StatType,
+  transparencyMetadataSchema,
+  validateCiteRefs,
+  stripInvalidCiteRefs,
+} from '../../../services/curation/index.js';
 import { generateInterpretation } from '../../../services/aiInterpretation/claudeClient.js';
 import { getChartKindForRuleKind } from '../../../services/charting/chartKind.js';
 import { renderChart } from '../../../services/charting/renderChart.js';
@@ -78,21 +84,34 @@ async function resolveAlertParagraph(data: SendJobData): Promise<string> {
     const org = await orgsQueries.findOrgById(data.orgId);
     const businessProfile = (org?.businessProfile ?? null) as BusinessProfile | null;
 
-    const { system, user, metadata } = assemblePrompt([data.firedInsight], ALERT_PROMPT_VERSION, businessProfile);
+    const { system, user, metadata } = assemblePrompt(
+      [data.firedInsight],
+      data.datasetId,
+      ALERT_PROMPT_VERSION,
+      businessProfile,
+    );
     const validatedMetadata = transparencyMetadataSchema.parse(metadata);
     const content = await generateInterpretation({ system, user });
+
+    // Tier 2b, same defense-in-depth as the digest path: v1-alert never asks
+    // for a <cite> tag, but formatStat appends the [cite: <id>] suffix
+    // regardless, so a hallucinated citation is still possible here.
+    const citeReport = validateCiteRefs(content, [data.firedInsight.stat], data.datasetId);
+    const cleaned = citeReport.invalidRefs.length > 0
+      ? stripInvalidCiteRefs(content, citeReport.invalidRefs)
+      : content;
 
     await aiSummariesQueries.storeSummary({
       orgId: data.orgId,
       datasetId: data.datasetId,
-      content,
+      content: cleaned,
       metadata: validatedMetadata,
       promptVersion: ALERT_PROMPT_VERSION,
       audience: 'alert',
       fireId: data.fireId,
     });
 
-    return content;
+    return cleaned;
   } catch (err) {
     logger.warn(
       { correlationId: data.correlationId, orgId: data.orgId, ruleId: data.ruleId, err },

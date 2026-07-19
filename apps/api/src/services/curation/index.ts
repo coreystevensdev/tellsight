@@ -6,7 +6,7 @@ import type { db, DbTransaction } from '../../lib/db.js';
 import { computeStats } from './computation.js';
 import { scoreInsights, scoringConfig } from './scoring.js';
 import { assemblePrompt } from './assembly.js';
-import { validateSummary, validateStatRefs, stripInvalidStatRefs } from './validator.js';
+import { validateSummary, validateStatRefs, stripInvalidStatRefs, validateCiteRefs, stripInvalidCiteRefs } from './validator.js';
 import { generateInterpretation } from '../aiInterpretation/claudeClient.js';
 import { transparencyMetadataSchema } from './types.js';
 import type { ScoredInsight } from './types.js';
@@ -69,7 +69,7 @@ export async function runFullPipeline(
     : null;
 
   const insights = await runCurationPipeline(orgId, datasetId, undefined, financials);
-  const { system, user, metadata } = assemblePrompt(insights, undefined, businessProfile);
+  const { system, user, metadata } = assemblePrompt(insights, datasetId, undefined, businessProfile);
 
   const validatedMetadata = transparencyMetadataSchema.parse(metadata);
 
@@ -85,23 +85,37 @@ export async function runFullPipeline(
   // Strip hallucinated stat refs before cache write so non-streaming
   // callers (seed generation, batch runs) don't pollute the cache.
   //
-  // We return `cachedContent` (stripped) rather than raw `content` so the
-  // first-call response matches what the next cache hit will return. The
-  // alternative, returning raw on first call, stripped on later calls
-  // would set a trap where users see different text depending on cache state.
-  //
   // No AI_CHART_REF_INVALID analytics emit here because runFullPipeline has
   // no userId/tier in scope (it's called from seed generation and batch
   // contexts, not a user request). The log.warn above is the observable
   // signal; streamHandler.ts is the only path that fires the analytics event.
   const refReport = validateStatRefs(content, pipelineStats);
-  const cachedContent = refReport.invalidRefs.length > 0
+  const chartRefsStripped = refReport.invalidRefs.length > 0
     ? stripInvalidStatRefs(content, refReport.invalidRefs)
     : content;
   if (refReport.invalidRefs.length > 0) {
     logger.warn(
       { orgId, datasetId, invalidRefs: refReport.invalidRefs, promptVersion: metadata.promptVersion },
       'AI summary referenced unknown stat IDs, stripped before cache',
+    );
+  }
+
+  // Tier 2b citation check, same shape but at instance granularity. Runs
+  // against chartRefsStripped (not raw content) so this pass and Tier 2
+  // above can never re-introduce what the other just removed.
+  //
+  // We return `cachedContent` (stripped) rather than raw `content` so the
+  // first-call response matches what the next cache hit will return. The
+  // alternative, returning raw on first call, stripped on later calls
+  // would set a trap where users see different text depending on cache state.
+  const citeReport = validateCiteRefs(chartRefsStripped, pipelineStats, datasetId);
+  const cachedContent = citeReport.invalidRefs.length > 0
+    ? stripInvalidCiteRefs(chartRefsStripped, citeReport.invalidRefs)
+    : chartRefsStripped;
+  if (citeReport.invalidRefs.length > 0) {
+    logger.warn(
+      { orgId, datasetId, invalidRefs: citeReport.invalidRefs, promptVersion: metadata.promptVersion },
+      'AI summary referenced unknown stat instance IDs, stripped before cache',
     );
   }
 
@@ -140,5 +154,5 @@ export async function runFullPipeline(
 export type { ComputedStat, ScoredInsight, ScoringConfig, AssembledContext, TransparencyMetadata } from './types.js';
 export { StatType, transparencyMetadataSchema } from './types.js';
 export { assemblePrompt } from './assembly.js';
-export { validateSummary, validateStatRefs, stripInvalidStatRefs } from './validator.js';
+export { validateSummary, validateStatRefs, stripInvalidStatRefs, validateCiteRefs, stripInvalidCiteRefs } from './validator.js';
 export type { ValidationReport, UnmatchedNumber, ValidateOptions, StatRefReport } from './validator.js';

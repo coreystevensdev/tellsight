@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { streamReducer, stripStatTags, type StreamState } from './useAiStream';
+import { streamReducer, stripStatTags, stripCiteTags, stripDisplayTags, type StreamState } from './useAiStream';
 
 const idle: StreamState = {
   status: 'idle',
@@ -265,6 +265,48 @@ describe('stripStatTags', () => {
   it('does not mis-strip words that start with <stat', () => {
     // <statue of liberty is not a tag fragment (no whitespace after stat)
     expect(stripStatTags('a <statue of freedom')).toBe('a <statue of freedom');
+  });
+});
+
+describe('stripCiteTags', () => {
+  it('strips a complete cite tag in one chunk', () => {
+    expect(stripCiteTags('grew 12% <cite id="1:total:_:overall"/> this quarter'))
+      .toBe('grew 12%  this quarter');
+  });
+
+  it('hides an incomplete trailing cite tag fragment', () => {
+    expect(stripCiteTags('prose <cite')).toBe('prose ');
+    expect(stripCiteTags('prose <cite id="1:tot')).toBe('prose ');
+  });
+
+  it('leaves stat tags untouched', () => {
+    const raw = 'runway <stat id="runway"/> tight';
+    expect(stripCiteTags(raw)).toBe(raw);
+  });
+});
+
+describe('stripDisplayTags', () => {
+  it('strips both stat and cite tags from the same text', () => {
+    const raw = 'runway <stat id="runway"/> is 3 months <cite id="1:runway:_:_"/> tight';
+    expect(stripDisplayTags(raw)).toBe('runway  is 3 months  tight');
+  });
+
+  it('handles a cite tag split across two TEXT deltas', () => {
+    let state: StreamState = {
+      status: 'connecting',
+      text: '',
+      rawText: '',
+      metadata: null,
+      error: null,
+      code: null,
+      retryable: false,
+      retryCount: 0,
+    };
+    state = streamReducer(state, { type: 'TEXT', delta: 'revenue up 12% <cite id="1:tot' });
+    expect(state.text).toBe('revenue up 12% ');
+
+    state = streamReducer(state, { type: 'TEXT', delta: 'al:_:overall"/> this quarter' });
+    expect(state.text).toBe('revenue up 12%  this quarter');
   });
 });
 

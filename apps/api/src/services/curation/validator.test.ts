@@ -2,7 +2,13 @@ import { describe, it, expect } from 'vitest';
 
 import type { ComputedStat } from './types.js';
 import { StatType } from './types.js';
-import { validateSummary, validateStatRefs, stripInvalidStatRefs } from './validator.js';
+import {
+  validateSummary,
+  validateStatRefs,
+  stripInvalidStatRefs,
+  validateCiteRefs,
+  stripInvalidCiteRefs,
+} from './validator.js';
 
 function totalStat(value: number, count = 12): ComputedStat {
   return {
@@ -471,5 +477,60 @@ describe('stripInvalidStatRefs', () => {
   it('handles multiple invalid IDs in one pass', () => {
     const summary = 'a <stat id="x"/> b <stat id="y"/> c <stat id="runway"/> d';
     expect(stripInvalidStatRefs(summary, ['x', 'y'])).toBe('a  b  c <stat id="runway"/> d');
+  });
+});
+
+describe('validateCiteRefs', () => {
+  it('returns no invalid refs when the tagged instance id matches a computed stat', () => {
+    const stats = [runwayStat(15000, -5000, 3)];
+    const id = `1:runway:_:_`;
+    const summary = `Runway is 3 months <cite id="${id}"/> at this burn.`;
+
+    expect(validateCiteRefs(summary, stats, 1)).toEqual({ invalidRefs: [] });
+  });
+
+  it('flags an instance id not present in the computed stats', () => {
+    const stats = [runwayStat(15000, -5000, 3)];
+    const summary = 'Runway is 3 months <cite id="1:runway:_:wrong"/> at this burn.';
+
+    expect(validateCiteRefs(summary, stats, 1)).toEqual({ invalidRefs: ['1:runway:_:wrong'] });
+  });
+
+  it('separates valid and invalid refs in mixed input', () => {
+    const stats = [runwayStat(15000, -5000, 3), totalStat(629000)];
+    const validId = '1:runway:_:_';
+    const summary = `<cite id="${validId}"/> ok and <cite id="ghost"/> nope.`;
+
+    expect(validateCiteRefs(summary, stats, 1)).toEqual({ invalidRefs: ['ghost'] });
+  });
+
+  it('returns empty array when summary has no tags', () => {
+    const stats = [totalStat(100)];
+    expect(validateCiteRefs('plain prose', stats, 1)).toEqual({ invalidRefs: [] });
+  });
+
+  it('is dataset-scoped: the same stat validates under one datasetId but not another', () => {
+    const stats = [runwayStat(15000, -5000, 3)];
+    const summary = 'Runway <cite id="1:runway:_:_"/> tight.';
+
+    expect(validateCiteRefs(summary, stats, 1)).toEqual({ invalidRefs: [] });
+    expect(validateCiteRefs(summary, stats, 2)).toEqual({ invalidRefs: ['1:runway:_:_'] });
+  });
+});
+
+describe('stripInvalidCiteRefs', () => {
+  it('strips only the tags whose IDs are in invalidRefs', () => {
+    const summary = '<cite id="1:runway:_:_"/> good <cite id="ghost"/> bad';
+    expect(stripInvalidCiteRefs(summary, ['ghost'])).toBe('<cite id="1:runway:_:_"/> good  bad');
+  });
+
+  it('returns the input unchanged when invalidRefs is empty', () => {
+    const summary = '<cite id="1:runway:_:_"/> all good';
+    expect(stripInvalidCiteRefs(summary, [])).toBe(summary);
+  });
+
+  it('handles multiple invalid IDs in one pass', () => {
+    const summary = 'a <cite id="x"/> b <cite id="y"/> c <cite id="1:runway:_:_"/> d';
+    expect(stripInvalidCiteRefs(summary, ['x', 'y'])).toBe('a  b  c <cite id="1:runway:_:_"/> d');
   });
 });

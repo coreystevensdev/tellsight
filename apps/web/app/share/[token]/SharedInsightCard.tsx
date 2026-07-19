@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { AI_DISCLAIMER, stripAllStatTags } from 'shared/constants';
+import { AI_DISCLAIMER, stripAllDisplayTags } from 'shared/constants';
 
 interface SharedInsightCardProps {
   orgName: string;
@@ -12,7 +12,7 @@ interface SharedInsightCardProps {
 // raw markup never leaks into the shared view, even for cached summaries
 // generated under prompt v1.4+.
 function SummaryText({ text }: { text: string }) {
-  const stripped = stripAllStatTags(text);
+  const stripped = stripAllDisplayTags(text);
   const paragraphs = stripped.split('\n\n').filter(Boolean);
 
   return (

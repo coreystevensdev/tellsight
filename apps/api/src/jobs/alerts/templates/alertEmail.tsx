@@ -1,7 +1,7 @@
 // Email-safe alert template, same table/inline-style convention as
 // digestWeekly.tsx: raw <table role="presentation">, no <style> blocks, no
 // @react-email/components, 600px single-column, no media queries.
-import { ALERT_DISCLAIMER } from 'shared/constants';
+import { ALERT_DISCLAIMER, stripAllDisplayTags } from 'shared/constants';
 
 export interface AlertEmailProps {
   orgName: string;
@@ -123,7 +123,7 @@ export function AlertEmail({
                     <tr>
                       <td style={styles.cardCell}>
                         <h1 style={styles.heading}>{headline}</h1>
-                        <p style={styles.paragraph}>{paragraph}</p>
+                        <p style={styles.paragraph}>{stripAllDisplayTags(paragraph)}</p>
                         {chartContentId && (
                           <table role="presentation" width="100%" cellPadding={0} cellSpacing={0} border={0}>
                             <tbody>

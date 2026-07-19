@@ -158,6 +158,16 @@ describe('DigestWeekly CAN-SPAM footer (AC #4)', () => {
   });
 });
 
+describe('DigestWeekly cite-tag stripping', () => {
+  it('strips a <cite id="..."/> tag from a bullet before rendering', async () => {
+    const html = await renderFixture({
+      bullets: ['Revenue up 12% <cite id="1:total:_:overall"/>', 'Payroll spiked'],
+    });
+    expect(html).not.toContain('cite id=');
+    expect(html).toContain('Revenue up 12%');
+  });
+});
+
 describe('DigestWeekly snapshot (AC #9)', () => {
   it('matches the committed structural snapshot', async () => {
     const html = await renderFixture();

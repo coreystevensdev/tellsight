@@ -16,6 +16,8 @@ import {
   assemblePrompt,
   validateStatRefs,
   stripInvalidStatRefs,
+  validateCiteRefs,
+  stripInvalidCiteRefs,
   transparencyMetadataSchema,
 } from '../../../services/curation/index.js';
 import { generateInterpretation } from '../../../services/aiInterpretation/claudeClient.js';
@@ -147,6 +149,7 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
 
     const { system, user, metadata } = assemblePrompt(
       insights,
+      datasetId,
       promptVersion,
       businessProfile,
       new Date(),
@@ -156,10 +159,20 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
 
     const generated = await generateInterpretation({ system, user });
     const refReport = validateStatRefs(generated, insights.map((i) => i.stat));
-    const cleaned =
+    const chartRefsStripped =
       refReport.invalidRefs.length > 0
         ? stripInvalidStatRefs(generated, refReport.invalidRefs)
         : generated;
+
+    // Tier 2b, same defense-in-depth as index.ts/streamHandler.ts: v1-digest
+    // and v2-digest never ask the LLM for a <cite> tag, but formatStat
+    // appends the [cite: <id>] suffix to every stat line regardless of which
+    // template renders it, so a hallucinated citation is still possible here.
+    const citeReport = validateCiteRefs(chartRefsStripped, insights.map((i) => i.stat), datasetId);
+    const cleaned =
+      citeReport.invalidRefs.length > 0
+        ? stripInvalidCiteRefs(chartRefsStripped, citeReport.invalidRefs)
+        : chartRefsStripped;
 
     const stored = await aiSummariesQueries.storeSummary({
       orgId,

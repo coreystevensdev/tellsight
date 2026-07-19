@@ -13,6 +13,7 @@ const mockRunCurationPipeline = vi.fn();
 const mockAssemblePrompt = vi.fn();
 const mockGenerateInterpretation = vi.fn();
 const mockValidateStatRefs = vi.fn();
+const mockValidateCiteRefs = vi.fn();
 const mockGetLastDigest = vi.fn();
 const mockSaveDigestHistory = vi.fn();
 const mockGetMonthlyBucketsByDataset = vi.fn();
@@ -59,6 +60,8 @@ vi.mock('../../../services/curation/index.js', () => ({
   assemblePrompt: mockAssemblePrompt,
   validateStatRefs: mockValidateStatRefs,
   stripInvalidStatRefs: (text: string) => text,
+  validateCiteRefs: mockValidateCiteRefs,
+  stripInvalidCiteRefs: (text: string) => text,
   transparencyMetadataSchema: { parse: (m: unknown) => m },
 }));
 
@@ -124,6 +127,7 @@ function runwayStat(runwayMonths: number): ComputedStat {
 beforeEach(() => {
   vi.clearAllMocks();
   mockValidateStatRefs.mockReturnValue({ invalidRefs: [] });
+  mockValidateCiteRefs.mockReturnValue({ invalidRefs: [] });
   mockAssemblePrompt.mockReturnValue({
     system: 'sys',
     user: 'user prompt',
@@ -152,6 +156,7 @@ describe('cache miss path', () => {
     // No prior digest, so priorContext is '' and promptVersion stays v1-digest.
     expect(mockAssemblePrompt).toHaveBeenCalledWith(
       [{ stat: { statType: 'Total' } }],
+      100,
       'v1-digest',
       null,
       expect.any(Date),
@@ -222,6 +227,7 @@ describe('cache miss path', () => {
 
     expect(mockAssemblePrompt).toHaveBeenCalledWith(
       expect.any(Array),
+      100,
       'v2-digest',
       null,
       expect.any(Date),
@@ -251,6 +257,7 @@ describe('cache miss path', () => {
 
     expect(mockAssemblePrompt).toHaveBeenCalledWith(
       expect.any(Array),
+      100,
       'v1-digest',
       null,
       expect.any(Date),

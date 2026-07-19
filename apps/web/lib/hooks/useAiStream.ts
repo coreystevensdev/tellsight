@@ -24,12 +24,23 @@ export interface StreamState {
   retryCount: number;
 }
 
-import { statTagGlobal, statTagOpenFragment } from 'shared/constants';
+import { statTagGlobal, statTagOpenFragment, citeTagGlobal, citeTagOpenFragment } from 'shared/constants';
 
 // strips complete <stat id="..."/> tokens and hides an incomplete trailing
 // tag fragment while the next chunk is still arriving. public for tests.
 export function stripStatTags(raw: string): string {
   return raw.replace(statTagGlobal(), '').replace(statTagOpenFragment(), '');
+}
+
+// same treatment for <cite id="..."/> tokens, a distinct tag from <stat>
+// above (see shared/constants), public for tests.
+export function stripCiteTags(raw: string): string {
+  return raw.replace(citeTagGlobal(), '').replace(citeTagOpenFragment(), '');
+}
+
+// every display path strips both tag families together.
+export function stripDisplayTags(raw: string): string {
+  return stripCiteTags(stripStatTags(raw));
 }
 
 export type StreamAction =
@@ -63,7 +74,7 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
       };
     case 'TEXT': {
       const rawText = state.rawText + action.delta;
-      return { ...state, status: 'streaming', rawText, text: stripStatTags(rawText) };
+      return { ...state, status: 'streaming', rawText, text: stripDisplayTags(rawText) };
     }
     case 'DONE':
       // after PARTIAL/UPGRADE_REQUIRED, the trailing done is a no-op
@@ -84,7 +95,7 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
         ...state,
         status: 'timeout',
         rawText: action.text,
-        text: stripStatTags(action.text),
+        text: stripDisplayTags(action.text),
         metadata: action.metadata ?? null,
       };
     case 'CACHE_HIT':
@@ -92,7 +103,7 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
         ...initialState,
         status: 'done',
         rawText: action.content,
-        text: stripStatTags(action.content),
+        text: stripDisplayTags(action.content),
         metadata: action.metadata ?? null,
       };
     case 'RESET':

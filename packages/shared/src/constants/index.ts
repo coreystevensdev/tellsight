@@ -65,6 +65,7 @@ export const ANALYTICS_EVENTS = {
   AI_SUMMARY_COMPLETED: 'ai.summary_completed',
   AI_SUMMARY_VALIDATION_FLAGGED: 'ai.summary_validation_flagged',
   AI_CHART_REF_INVALID: 'ai.chart_ref_invalid',
+  AI_CITE_REF_INVALID: 'ai.cite_ref_invalid',
   INSIGHT_CHART_OPENED: 'insight.chart_opened',
   SHARE_LINK_CREATED: 'share_link.created',
   INSIGHT_EXPORTED: 'insight.exported',
@@ -132,6 +133,28 @@ export function statTagOpenFragment(): RegExp {
 // where the full text is already in hand.
 export function stripAllStatTags(text: string): string {
   return text.replace(statTagGlobal(), '');
+}
+
+// Per-stat-instance citation token (Story 12.2), a different mechanism from
+// <stat id="statType"/> above: many per paragraph, keyed by statInstanceId
+// (colon-delimited, so the id capture allows anything but a closing quote).
+export function citeTagGlobal(): RegExp {
+  return /<cite\s+id="[^"]+"\s*\/>/g;
+}
+export function citeTagCapture(): RegExp {
+  return /<cite\s+id="([^"]+)"\s*\/>/g;
+}
+export function citeTagOpenFragment(): RegExp {
+  return /<cite(?:\s[^>]*)?$/;
+}
+export function stripAllCiteTags(text: string): string {
+  return text.replace(citeTagGlobal(), '');
+}
+
+// Every rendered surface strips both tag families together, this is the one
+// call site those surfaces should use instead of composing the two themselves.
+export function stripAllDisplayTags(text: string): string {
+  return stripAllCiteTags(stripAllStatTags(text));
 }
 
 export const AUTH = {

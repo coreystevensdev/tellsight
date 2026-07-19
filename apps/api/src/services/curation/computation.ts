@@ -880,7 +880,13 @@ export function computeStats(
 // Per-instance id for the audit drawer and NL Q&A citation system.
 // Different from allowedStatIds (assembly.ts), which refers to stat *types*, not instances.
 export function statInstanceId(stat: ComputedStat, datasetId: number): string {
-  return `${datasetId}:${stat.statType}:${stat.category ?? '_'}:${statDiscriminator(stat)}`;
+  // Swap for the smart quote rather than stripping, so a literal ASCII quote
+  // can never break the <cite id="..."> attribute delimiter downstream
+  // (assembly.ts) without collapsing two categories that differ only by an
+  // embedded quote onto the same id, or a quote-only category onto an empty
+  // segment.
+  const category = stat.category ? stat.category.replace(/"/g, '”') : '_';
+  return `${datasetId}:${stat.statType}:${category}:${statDiscriminator(stat)}`;
 }
 
 function statDiscriminator(stat: ComputedStat): string {

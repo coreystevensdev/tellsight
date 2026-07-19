@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { computeStats, statInstanceId, assignIds } from './computation.js';
+import { citeTagCapture } from 'shared/constants';
 import type { ComputedStat } from './types.js';
 import { StatType } from './types.js';
 
@@ -109,6 +110,50 @@ describe('statInstanceId', () => {
       },
     };
     expect(statInstanceId(cashFlowStat, 1)).toBe('1:cash_flow:_:w3');
+  });
+
+  it('swaps a literal quote in the category for a smart quote so the resulting id round-trips through citeTagCapture', () => {
+    const totalStat: ComputedStat = {
+      statType: StatType.Total,
+      category: 'Bob\'s "Best" Coffee',
+      value: 7000,
+      details: { scope: 'category', count: 6 },
+    };
+    const id = statInstanceId(totalStat, 1);
+
+    expect(id).not.toContain('"');
+    expect(id).toBe(`1:total:Bob's ”Best” Coffee:category`);
+
+    const tag = `<cite id="${id}"/>`;
+    const matches = [...tag.matchAll(citeTagCapture())];
+    expect(matches).toHaveLength(1);
+    expect(matches[0]![1]).toBe(id);
+  });
+
+  it('does not collapse a quote-only category to the empty string', () => {
+    const totalStat: ComputedStat = {
+      statType: StatType.Total,
+      category: '"',
+      value: 500,
+      details: { scope: 'category', count: 1 },
+    };
+    expect(statInstanceId(totalStat, 1)).toBe('1:total:”:category');
+  });
+
+  it('gives two categories differing only by an embedded quote distinct ids', () => {
+    const withQuote: ComputedStat = {
+      statType: StatType.Total,
+      category: 'Bob"s Cafe',
+      value: 100,
+      details: { scope: 'category', count: 1 },
+    };
+    const withoutQuote: ComputedStat = {
+      statType: StatType.Total,
+      category: 'Bobs Cafe',
+      value: 200,
+      details: { scope: 'category', count: 1 },
+    };
+    expect(statInstanceId(withQuote, 1)).not.toBe(statInstanceId(withoutQuote, 1));
   });
 });
 
