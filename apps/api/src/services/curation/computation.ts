@@ -50,6 +50,10 @@ function parseAmount(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+export function monthKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
 function groupByCategory(rows: DataRow[]): Map<string, CategoryGroup> {
   const groups = new Map<string, CategoryGroup>();
 
@@ -238,7 +242,7 @@ function computeCategoryBreakdowns(
   return stats;
 }
 
-const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+export const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 
 function computeYearOverYear(rows: DataRow[]): ComputedStat[] {
   const revenueByYearMonth = new Map<number, Map<number, number>>();
@@ -291,6 +295,27 @@ function computeYearOverYear(rows: DataRow[]): ComputedStat[] {
   return stats;
 }
 
+// Recent/prior month split for margin trend analysis: the trailing half of
+// months with Income or Expenses activity vs. the leading half. Extracted
+// from computeMarginTrend so resolveSourceRows (sourceRows.ts) can recompute
+// the same window without duplicating the split logic.
+export function marginTrendMonths(rows: DataRow[]): { recentMonths: string[]; priorMonths: string[] } | null {
+  const months = new Set<string>();
+  for (const row of rows) {
+    const amt = parseAmount(row.amount);
+    if (amt === null) continue;
+    if (row.parentCategory === 'Income' || row.parentCategory === 'Expenses') {
+      months.add(monthKey(row.date));
+    }
+  }
+
+  const sorted = [...months].sort();
+  if (sorted.length < 4) return null;
+
+  const half = Math.floor(sorted.length / 2);
+  return { recentMonths: sorted.slice(half), priorMonths: sorted.slice(0, half) };
+}
+
 function computeMarginTrend(rows: DataRow[]): MarginTrendStat[] {
   const revenueByMonth = new Map<string, number>();
   const expenseByMonth = new Map<string, number>();
@@ -299,7 +324,7 @@ function computeMarginTrend(rows: DataRow[]): MarginTrendStat[] {
     const amt = parseAmount(row.amount);
     if (amt === null) continue;
 
-    const key = `${row.date.getFullYear()}-${String(row.date.getMonth() + 1).padStart(2, '0')}`;
+    const key = monthKey(row.date);
     if (row.parentCategory === 'Income') {
       revenueByMonth.set(key, (revenueByMonth.get(key) ?? 0) + amt);
     } else if (row.parentCategory === 'Expenses') {
@@ -307,12 +332,9 @@ function computeMarginTrend(rows: DataRow[]): MarginTrendStat[] {
     }
   }
 
-  const months = [...new Set([...revenueByMonth.keys(), ...expenseByMonth.keys()])].sort();
-  if (months.length < 4) return [];
-
-  const half = Math.floor(months.length / 2);
-  const recentMonths = months.slice(half);
-  const priorMonths = months.slice(0, half);
+  const monthSplit = marginTrendMonths(rows);
+  if (!monthSplit) return [];
+  const { recentMonths, priorMonths } = monthSplit;
 
   const recentRevenue = recentMonths.reduce((s, m) => s + (revenueByMonth.get(m) ?? 0), 0);
   const recentExpense = recentMonths.reduce((s, m) => s + (expenseByMonth.get(m) ?? 0), 0);
@@ -434,7 +456,7 @@ export function bucketRowsByMonth(rows: DataRow[]): MonthlyBucketMap {
     const amt = parseAmount(row.amount);
     if (amt === null) continue;
 
-    const key = `${row.date.getFullYear()}-${String(row.date.getMonth() + 1).padStart(2, '0')}`;
+    const key = monthKey(row.date);
     const bucket = buckets.get(key) ?? { revenue: 0, expenses: 0 };
     if (row.parentCategory === 'Income') {
       bucket.revenue += amt;
@@ -580,7 +602,7 @@ function latestMonthlyRevenue(rows: DataRow[]): number {
     const amt = parseAmount(row.amount);
     if (amt === null) continue;
 
-    const key = `${row.date.getFullYear()}-${String(row.date.getMonth() + 1).padStart(2, '0')}`;
+    const key = monthKey(row.date);
     revenueByMonth.set(key, (revenueByMonth.get(key) ?? 0) + amt);
   }
 

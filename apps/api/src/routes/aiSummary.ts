@@ -1,8 +1,10 @@
 import { Router } from 'express';
 import type { Response } from 'express';
 
+import { z } from 'zod';
+
 import { ANALYTICS_EVENTS, AI_MONTHLY_QUOTA } from 'shared/constants';
-import type { SubscriptionTier } from 'shared/types';
+import type { SubscriptionTier, SourceRow } from 'shared/types';
 import { requireUser } from '../lib/requireUser.js';
 import { subscriptionGate } from '../middleware/subscriptionGate.js';
 import { rateLimitAi, rateLimitDashboardCompute } from '../middleware/rateLimiter.js';
@@ -16,9 +18,58 @@ import { logger } from '../lib/logger.js';
 import { aiSummaryTotal, aiTokensUsed } from '../lib/metrics.js';
 import { resolveStatById } from '../services/curation/computation.js';
 import { buildStatDetail } from '../services/curation/statDetail.js';
+import { resolveSourceRows } from '../services/curation/sourceRows.js';
 import { scoringConfig } from '../services/curation/scoring.js';
+import type { IdentifiedStat } from '../services/curation/types.js';
+
+const sourceRowsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  offset: z.coerce.number().int().min(0).default(0),
+});
 
 const aiSummaryRouter = Router();
+
+type FetchedRows = Awaited<ReturnType<typeof dataRowsQueries.getRowsByDataset>>;
+
+// Shared by /stats/:statId and /stats/:statId/rows: both recompute the same
+// pipeline and resolve the same IdentifiedStat before diverging on what they
+// render. Sends the 404 itself on a miss so both call sites collapse to
+// `if (!resolution) return`.
+async function resolveCitedStatOrNotFound(
+  res: Response,
+  orgId: number,
+  isAdmin: boolean,
+  rawId: number,
+  statId: string,
+): Promise<{ rows: FetchedRows; stat: IdentifiedStat } | null> {
+  const [rows, profile] = await Promise.all([
+    withRlsContext(orgId, isAdmin, (tx) => dataRowsQueries.getRowsByDataset(orgId, rawId, tx)),
+    orgsQueries.getBusinessProfile(orgId),
+  ]);
+
+  const financials = profile
+    ? {
+        cashOnHand: profile.cashOnHand,
+        cashAsOfDate: profile.cashAsOfDate,
+        monthlyFixedCosts: profile.monthlyFixedCosts,
+      }
+    : null;
+
+  const stat = resolveStatById(rows, rawId, statId, {
+    trendMinPoints: scoringConfig.thresholds.trendMinDataPoints,
+    financials,
+  });
+
+  if (!stat) {
+    logger.warn({ orgId, datasetId: rawId, statId }, 'stat citation not found on recompute');
+    res.status(404).json({
+      error: { code: 'NOT_FOUND', message: 'This citation is no longer available' },
+    });
+    return null;
+  }
+
+  return { rows, stat };
+}
 
 aiSummaryRouter.get('/:datasetId/latest', async (req, res: Response) => {
   const user = requireUser(req);
@@ -67,31 +118,9 @@ aiSummaryRouter.get('/:datasetId/stats/:statId', rateLimitDashboardCompute, asyn
     throw new ValidationError('Invalid statId');
   }
 
-  const [rows, profile] = await Promise.all([
-    withRlsContext(orgId, user.isAdmin, (tx) => dataRowsQueries.getRowsByDataset(orgId, rawId, tx)),
-    orgsQueries.getBusinessProfile(orgId),
-  ]);
-
-  const financials = profile
-    ? {
-        cashOnHand: profile.cashOnHand,
-        cashAsOfDate: profile.cashAsOfDate,
-        monthlyFixedCosts: profile.monthlyFixedCosts,
-      }
-    : null;
-
-  const stat = resolveStatById(rows, rawId, statId, {
-    trendMinPoints: scoringConfig.thresholds.trendMinDataPoints,
-    financials,
-  });
-
-  if (!stat) {
-    logger.warn({ orgId, datasetId: rawId, statId }, 'stat citation not found on recompute');
-    res.status(404).json({
-      error: { code: 'NOT_FOUND', message: 'This citation is no longer available' },
-    });
-    return;
-  }
+  const resolution = await resolveCitedStatOrNotFound(res, orgId, user.isAdmin, rawId, statId);
+  if (!resolution) return;
+  const { stat } = resolution;
 
   logger.info({ orgId, datasetId: rawId, statType: stat.statType }, 'stat citation resolved');
   res.json({
@@ -100,6 +129,55 @@ aiSummaryRouter.get('/:datasetId/stats/:statId', rateLimitDashboardCompute, asyn
       value: stat.value,
       detail: buildStatDetail(stat),
     },
+  });
+});
+
+// Row-level evidence behind a resolved stat, paginated in memory: the row
+// set is already fetched in full by resolveCitedStatOrNotFound, so a second
+// DB round trip just to paginate would be wasted work. The filtered result
+// is bounded per category/window for most stat types; an overall-scope
+// total/average is the one case that legitimately spans every row, still
+// capped per response by `limit`/`offset` like any other citation.
+aiSummaryRouter.get('/:datasetId/stats/:statId/rows', rateLimitDashboardCompute, async (req, res: Response) => {
+  const user = requireUser(req);
+  const orgId = user.org_id;
+  const rawId = Number(req.params.datasetId);
+  const statId = req.params.statId;
+
+  if (!Number.isInteger(rawId) || rawId <= 0) {
+    throw new ValidationError('Invalid datasetId');
+  }
+  if (typeof statId !== 'string' || statId.length === 0) {
+    throw new ValidationError('Invalid statId');
+  }
+
+  const parsedQuery = sourceRowsQuerySchema.safeParse(req.query);
+  if (!parsedQuery.success) {
+    throw new ValidationError('Invalid query parameters', parsedQuery.error.issues);
+  }
+  const { limit, offset } = parsedQuery.data;
+
+  const resolution = await resolveCitedStatOrNotFound(res, orgId, user.isAdmin, rawId, statId);
+  if (!resolution) return;
+  const { rows, stat } = resolution;
+
+  const matched = resolveSourceRows(rows, stat);
+  const total = matched.length;
+  const page = Math.floor(offset / limit) + 1;
+  const totalPages = Math.ceil(total / limit) || 1;
+  const data: SourceRow[] = matched.slice(offset, offset + limit).map((r) => ({
+    id: r.id,
+    date: r.date,
+    category: r.category,
+    parentCategory: r.parentCategory,
+    amount: r.amount,
+    label: r.label,
+  }));
+
+  logger.info({ orgId, datasetId: rawId, statType: stat.statType, total }, 'stat source rows resolved');
+  res.json({
+    data,
+    meta: { total, pagination: { page, pageSize: limit, totalPages } },
   });
 });
 

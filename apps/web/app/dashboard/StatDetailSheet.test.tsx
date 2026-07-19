@@ -11,6 +11,13 @@ vi.mock('@/lib/hooks/useStatDetail', () => ({
   useStatDetail: (...args: unknown[]) => mockUseStatDetail(...args),
 }));
 
+const mockSourceRowsPanel = vi.fn((props: { datasetId: number; statId: string }) => (
+  <div data-testid="source-rows-panel" data-dataset-id={props.datasetId} data-stat-id={props.statId} />
+));
+vi.mock('./SourceRowsPanel', () => ({
+  SourceRowsPanel: (props: { datasetId: number; statId: string }) => mockSourceRowsPanel(props),
+}));
+
 afterEach(cleanup);
 
 describe('StatDetailSheet', () => {
@@ -113,5 +120,43 @@ describe('StatDetailSheet', () => {
 
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('footer toggle expands SourceRowsPanel with the correct datasetId/statId', () => {
+    mockUseStatDetail.mockReturnValue({
+      status: 'done',
+      data: { statType: 'total', value: 100, detail: { kind: 'formula', expression: '$100', terms: [] } },
+      error: null,
+    });
+
+    render(
+      <StatDetailSheet open={true} onOpenChange={() => {}} datasetId={7} statId="7:total:Sales:category" />,
+    );
+
+    expect(screen.queryByTestId('source-rows-panel')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'View source rows' }));
+
+    expect(screen.getByTestId('source-rows-panel')).toBeInTheDocument();
+    expect(mockSourceRowsPanel).toHaveBeenCalledWith(
+      expect.objectContaining({ datasetId: 7, statId: '7:total:Sales:category' }),
+    );
+  });
+
+  it('source rows toggle is a keyboard-reachable button that reports its expanded state', () => {
+    mockUseStatDetail.mockReturnValue({ status: 'loading', data: null, error: null });
+
+    render(
+      <StatDetailSheet open={true} onOpenChange={() => {}} datasetId={1} statId="1:total:Sales:category" />,
+    );
+
+    const toggle = screen.getByRole('button', { name: 'View source rows' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    toggle.focus();
+    expect(toggle).toHaveFocus();
+    fireEvent.click(toggle);
+
+    expect(screen.getByRole('button', { name: 'Hide source rows' })).toHaveAttribute('aria-expanded', 'true');
   });
 });

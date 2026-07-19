@@ -13,6 +13,8 @@ import {
   netsFromBuckets,
   resolveStatById,
   assignIds,
+  monthKey,
+  marginTrendMonths,
   type MonthlyBucketMap,
 } from './computation.js';
 import type {
@@ -1448,5 +1450,59 @@ describe('resolveStatById', () => {
     )!.id;
 
     expect(resolveStatById(fixture.multiCategory, 1, idForOtherDataset)).toBeNull();
+  });
+});
+
+describe('monthKey', () => {
+  it('formats a date as YYYY-MM with a zero-padded month', () => {
+    expect(monthKey(new Date(2026, 0, 15))).toBe('2026-01');
+    expect(monthKey(new Date(2026, 10, 3))).toBe('2026-11');
+  });
+});
+
+describe('marginTrendMonths', () => {
+  function monthRow(parentCategory: 'Income' | 'Expenses', year: number, month: number, amount: string) {
+    return {
+      id: 1,
+      orgId: 1,
+      datasetId: 1,
+      sourceType: 'csv' as const,
+      category: parentCategory,
+      parentCategory,
+      date: new Date(year, month, 15),
+      amount,
+      label: null,
+      metadata: null,
+      createdAt: new Date(),
+    };
+  }
+
+  it('splits six Income/Expenses months into a 3/3 recent/prior window', () => {
+    const rows = [0, 1, 2, 3, 4, 5].flatMap((m) => [
+      monthRow('Income', 2026, m, '1000.00'),
+      monthRow('Expenses', 2026, m, '600.00'),
+    ]);
+
+    expect(marginTrendMonths(rows)).toEqual({
+      recentMonths: ['2026-04', '2026-05', '2026-06'],
+      priorMonths: ['2026-01', '2026-02', '2026-03'],
+    });
+  });
+
+  it('returns null with fewer than 4 distinct Income/Expenses months', () => {
+    const rows = [0, 1, 2].map((m) => monthRow('Income', 2026, m, '1000.00'));
+    expect(marginTrendMonths(rows)).toBeNull();
+  });
+
+  it('ignores rows outside Income/Expenses when counting distinct months', () => {
+    const rows = [
+      ...[0, 1, 2].map((m) => monthRow('Income', 2026, m, '1000.00')),
+      { id: 1, orgId: 1, datasetId: 1, sourceType: 'csv' as const, category: 'OfficeSupplies', parentCategory: null, date: new Date(2026, 3, 15), amount: '50.00', label: null, metadata: null, createdAt: new Date() },
+    ];
+    expect(marginTrendMonths(rows)).toBeNull();
+  });
+
+  it('returns null for empty rows', () => {
+    expect(marginTrendMonths([])).toBeNull();
   });
 });

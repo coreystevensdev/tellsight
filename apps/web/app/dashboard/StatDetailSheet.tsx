@@ -1,8 +1,12 @@
 'use client';
 
-import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { useEffect, useState } from 'react';
+
+import { Sheet, SheetContent, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { useStatDetail } from '@/lib/hooks/useStatDetail';
+import { SourceRowsPanel } from './SourceRowsPanel';
 
 export interface StatDetailSheetProps {
   open: boolean;
@@ -37,6 +41,11 @@ function LoadingSpinner() {
 export function StatDetailSheet({ open, onOpenChange, datasetId, statId }: StatDetailSheetProps) {
   const isMobile = useIsMobile();
   const { status, data, error } = useStatDetail(open ? datasetId : null, open ? statId : null);
+  const [showSourceRows, setShowSourceRows] = useState(false);
+
+  useEffect(() => {
+    setShowSourceRows(false);
+  }, [datasetId, statId, open]);
 
   if (!statId) return null;
 
@@ -82,7 +91,25 @@ export function StatDetailSheet({ open, onOpenChange, datasetId, statId }: StatD
               </dl>
             </>
           )}
+
+          {showSourceRows && datasetId !== null && (
+            <SourceRowsPanel datasetId={datasetId} statId={statId} />
+          )}
         </div>
+
+        {datasetId !== null && (
+          <SheetFooter>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowSourceRows((v) => !v)}
+              aria-expanded={showSourceRows}
+            >
+              {showSourceRows ? 'Hide source rows' : 'View source rows'}
+            </Button>
+          </SheetFooter>
+        )}
       </SheetContent>
     </Sheet>
   );

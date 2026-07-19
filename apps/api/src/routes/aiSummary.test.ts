@@ -320,3 +320,82 @@ describe('GET /ai-summaries/:datasetId/stats/:statId', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('GET /ai-summaries/:datasetId/stats/:statId/rows', () => {
+  beforeEach(() => {
+    mockGetRowsByDataset.mockResolvedValue(detailFixtureRows);
+    mockGetBusinessProfile.mockResolvedValue(null);
+  });
+
+  it('returns a paginated page of source rows for a category-scoped stat', async () => {
+    const statId = detailFixtureId(StatType.Total, (s) => s.category === 'Sales' && s.details.scope === 'category');
+
+    const res = await fetch(`${baseUrl}/ai-summaries/42/stats/${encodeURIComponent(statId)}/rows?limit=2&offset=0`);
+    const body = await res.json() as {
+      data: unknown[];
+      meta: { total: number; pagination: { page: number; pageSize: number; totalPages: number } };
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.data.length).toBe(2);
+    expect(body.meta.total).toBe(6);
+    expect(body.meta.pagination).toEqual({ page: 1, pageSize: 2, totalPages: 3 });
+  });
+
+  it('returns only the row(s) matching an anomaly citation', async () => {
+    const statId = detailFixtureId(StatType.Anomaly, () => true);
+
+    const res = await fetch(`${baseUrl}/ai-summaries/42/stats/${encodeURIComponent(statId)}/rows`);
+    const body = await res.json() as { data: { category: string }[] };
+
+    expect(res.status).toBe(200);
+    expect(body.data.length).toBeGreaterThan(0);
+    expect(body.data.every((r) => r.category === 'Sales')).toBe(true);
+  });
+
+  it('returns 404 for an id that was never computed', async () => {
+    const res = await fetch(`${baseUrl}/ai-summaries/42/stats/${encodeURIComponent('42:total:Nonexistent:category')}/rows`);
+    const body = await res.json() as { error: { code: string } };
+
+    expect(res.status).toBe(404);
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('returns 404 for a cross-org dataset, RLS-scoped fetch returns zero rows so no id ever matches', async () => {
+    mockGetRowsByDataset.mockResolvedValueOnce([]);
+    const statId = detailFixtureId(StatType.Total, (s) => s.category === 'Sales' && s.details.scope === 'category');
+
+    const res = await fetch(`${baseUrl}/ai-summaries/42/stats/${encodeURIComponent(statId)}/rows`);
+    expect(res.status).toBe(404);
+  });
+
+  it('rejects a zero limit', async () => {
+    const statId = detailFixtureId(StatType.Total, (s) => s.category === 'Sales' && s.details.scope === 'category');
+    const res = await fetch(`${baseUrl}/ai-summaries/42/stats/${encodeURIComponent(statId)}/rows?limit=0`);
+    const body = await res.json() as { error: { code: string } };
+
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('rejects a non-numeric offset', async () => {
+    const statId = detailFixtureId(StatType.Total, (s) => s.category === 'Sales' && s.details.scope === 'category');
+    const res = await fetch(`${baseUrl}/ai-summaries/42/stats/${encodeURIComponent(statId)}/rows?offset=abc`);
+    expect(res.status).toBe(400);
+  });
+
+  it('returns an empty page with the real total when offset is past the end', async () => {
+    const statId = detailFixtureId(StatType.Total, (s) => s.category === 'Sales' && s.details.scope === 'category');
+
+    const res = await fetch(`${baseUrl}/ai-summaries/42/stats/${encodeURIComponent(statId)}/rows?limit=10&offset=100`);
+    const body = await res.json() as {
+      data: unknown[];
+      meta: { total: number; pagination: { totalPages: number } };
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.data).toEqual([]);
+    expect(body.meta.total).toBe(6);
+    expect(body.meta.pagination.totalPages).toBe(1);
+  });
+});
