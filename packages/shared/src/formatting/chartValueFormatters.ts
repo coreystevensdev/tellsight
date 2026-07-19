@@ -1,6 +1,3 @@
-// Mirrors apps/web/app/dashboard/charts/formatters.ts's abbreviation rules.
-// Not imported directly: apps/api can't import from apps/web, and these
-// charts render server-side with no shared runtime with the browser bundle.
 const currencyFull = new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',

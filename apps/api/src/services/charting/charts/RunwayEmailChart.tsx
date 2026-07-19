@@ -1,7 +1,6 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { EMAIL_CHART_COLORS } from 'shared/constants';
-
-import { formatAbbreviated } from '../formatters.js';
+import { formatAbbreviated } from 'shared/formatting';
 
 export interface RunwayChartPoint {
   label: string;

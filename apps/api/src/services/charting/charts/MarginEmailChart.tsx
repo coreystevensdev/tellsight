@@ -1,7 +1,6 @@
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { EMAIL_CHART_COLORS } from 'shared/constants';
-
-import { formatPercent } from '../formatters.js';
+import { formatPercent } from 'shared/formatting';
 
 export interface MarginChartPoint {
   label: string;
