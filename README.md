@@ -178,6 +178,7 @@ A few honest gaps:
 - **Curation pipeline scoring is heuristic.** The "rank by relevance" step uses hand-tuned weights, not a learned model. Fine for the demo dataset; real datasets may need re-weighting per industry.
 - **Free-tier AI preview is capped at ~150 words.** Enough to evaluate quality, but a hard ceiling that Pro tier removes.
 - **Two data sources today: QuickBooks OAuth and CSV upload.** There are no connectors for Shopify, Stripe, bank feeds, or other accounting platforms yet. If your data isn't already in QuickBooks, a CSV export is the only way in.
+- **Chart rendering serializes to concurrency 1 per process.** `renderChart.ts` queues every render through one module-level queue: `react-dom/client` reads `window`, `document`, and `navigator` off `globalThis`, so the module installs a jsdom shim there per render and two renders can't safely overlap. That's well below the `alerts-send` worker's declared concurrency of 10, and each render also builds a fresh, uncached `Resvg` instance with `loadSystemFonts: true`, adding real per-render font-loading cost on top.
 
 ## Related project
 
