@@ -30,6 +30,14 @@ export interface StatDetailResponse {
   detail: StatDetailView;
 }
 
+// Citation surface for same-process callers that resolve a stat by id
+// outside an HTTP request. No row-shaped field on this type by construction,
+// so a caller can't return DataRow/SourceRow data through it by mistake.
+export interface CitationResponse extends StatDetailResponse {
+  statId: string;
+  datasetId: number;
+}
+
 // Row-level evidence behind a stat instance (Story 12.4). Excludes
 // orgId/datasetId/sourceType/metadata/createdAt, the audit drawer only
 // needs enough to show the owner which transactions produced the number.

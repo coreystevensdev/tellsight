@@ -16,11 +16,9 @@ import { withRlsContext } from '../lib/rls.js';
 import { ValidationError, QuotaExceededError } from '../lib/appError.js';
 import { logger } from '../lib/logger.js';
 import { aiSummaryTotal, aiTokensUsed } from '../lib/metrics.js';
-import { resolveStatById } from '../services/curation/computation.js';
 import { buildStatDetail } from '../services/curation/statDetail.js';
 import { resolveSourceRows } from '../services/curation/sourceRows.js';
-import { scoringConfig } from '../services/curation/scoring.js';
-import type { IdentifiedStat } from '../services/curation/types.js';
+import { fetchAndResolveStat } from '../services/curation/citation.js';
 
 const sourceRowsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
@@ -29,11 +27,8 @@ const sourceRowsQuerySchema = z.object({
 
 const aiSummaryRouter = Router();
 
-type FetchedRows = Awaited<ReturnType<typeof dataRowsQueries.getRowsByDataset>>;
-
-// Shared by /stats/:statId and /stats/:statId/rows: both recompute the same
-// pipeline and resolve the same IdentifiedStat before diverging on what they
-// render. Sends the 404 itself on a miss so both call sites collapse to
+// Wraps fetchAndResolveStat (citation.ts) with the 404-on-miss response;
+// both call sites below share the fetch-and-resolve logic and just need
 // `if (!resolution) return`.
 async function resolveCitedStatOrNotFound(
   res: Response,
@@ -41,34 +36,16 @@ async function resolveCitedStatOrNotFound(
   isAdmin: boolean,
   rawId: number,
   statId: string,
-): Promise<{ rows: FetchedRows; stat: IdentifiedStat } | null> {
-  const [rows, profile] = await Promise.all([
-    withRlsContext(orgId, isAdmin, (tx) => dataRowsQueries.getRowsByDataset(orgId, rawId, tx)),
-    orgsQueries.getBusinessProfile(orgId),
-  ]);
-
-  const financials = profile
-    ? {
-        cashOnHand: profile.cashOnHand,
-        cashAsOfDate: profile.cashAsOfDate,
-        monthlyFixedCosts: profile.monthlyFixedCosts,
-      }
-    : null;
-
-  const stat = resolveStatById(rows, rawId, statId, {
-    trendMinPoints: scoringConfig.thresholds.trendMinDataPoints,
-    financials,
-  });
-
-  if (!stat) {
-    logger.warn({ orgId, datasetId: rawId, statId }, 'stat citation not found on recompute');
+) {
+  const resolution = await fetchAndResolveStat(orgId, isAdmin, rawId, statId);
+  if (!resolution) {
     res.status(404).json({
       error: { code: 'NOT_FOUND', message: 'This citation is no longer available' },
     });
     return null;
   }
 
-  return { rows, stat };
+  return resolution;
 }
 
 aiSummaryRouter.get('/:datasetId/latest', async (req, res: Response) => {
