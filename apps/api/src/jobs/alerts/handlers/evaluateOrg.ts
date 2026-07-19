@@ -360,7 +360,9 @@ export async function handleEvaluateOrgJob(job: Job): Promise<void> {
       // capture to Sentry instead so it's visible, and keep evaluating the
       // rest of this org's rules.
       try {
-        await getSendQueue().add(sendJobName(fire.id), data, {
+        const jobId = sendJobName(fire.id);
+        await getSendQueue().add(jobId, data, {
+          jobId,
           attempts: SEND_JOB_ATTEMPTS,
           backoff: { type: 'exponential', delay: SEND_JOB_BACKOFF_MS },
           removeOnComplete: { count: 100 },

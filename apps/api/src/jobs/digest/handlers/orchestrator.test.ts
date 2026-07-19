@@ -80,6 +80,10 @@ describe('handleOrchestratorJob', () => {
       attempts: 3,
       backoff: { type: 'exponential', delay: 30_000 },
     });
+    // jobId, not name, is what BullMQ actually dedupes on; a retried
+    // orchestrator attempt must reuse the same jobId per org per week.
+    expect(firstCall[2].jobId).toBe(firstCall[0]);
+    expect(firstCall[2].jobId).toMatch(/^digest-org-10-\d+$/);
   });
 
   it('shares a single correlationId across all per-org jobs in one tick', async () => {

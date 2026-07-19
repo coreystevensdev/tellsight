@@ -25,7 +25,11 @@ async function enqueueEvaluateOrg(
   correlationId: string,
 ): Promise<void> {
   const data: EvaluateOrgJobData = { orgId, datasetId, trigger, correlationId };
-  await getEvaluateOrgQueue().add(evaluateOrgJobName(orgId, datasetId), data, {
+  // BullMQ dedupes on jobId, not name; pass the same deterministic string as
+  // both so a retried enqueue for the same org/dataset is genuinely deduped.
+  const jobId = evaluateOrgJobName(orgId, datasetId);
+  await getEvaluateOrgQueue().add(jobId, data, {
+    jobId,
     attempts: EVALUATE_ORG_ATTEMPTS,
     backoff: { type: 'exponential', delay: EVALUATE_ORG_BACKOFF_MS },
     removeOnComplete: { count: 50 },

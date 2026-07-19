@@ -304,7 +304,8 @@ describe('fan-out', () => {
     await handlePerOrgJob({ id: 'org-4', data: baseJobData } as never);
 
     expect(mockSendQueueAdd).toHaveBeenCalledTimes(2);
-    const firstPayload = mockSendQueueAdd.mock.calls[0]![1] as Record<string, unknown>;
+    const firstCall = mockSendQueueAdd.mock.calls[0]!;
+    const firstPayload = firstCall[1] as Record<string, unknown>;
     expect(firstPayload).toMatchObject({
       userId: 1,
       orgId: 42,
@@ -316,6 +317,12 @@ describe('fan-out', () => {
 
     // Privacy boundary: payload must NOT contain the summary content.
     expect(JSON.stringify(firstPayload)).not.toContain('cached');
+
+    // jobId, not name, is what BullMQ actually dedupes on; a retried
+    // per-org attempt must reuse the same jobId per user per week.
+    const opts = firstCall[2] as { jobId: string };
+    expect(opts.jobId).toBe(firstCall[0]);
+    expect(opts.jobId).toMatch(/^digest-send-1-\d+$/);
   });
 
   it('continues fan-out when one enqueue throws (AC #4 isolation)', async () => {

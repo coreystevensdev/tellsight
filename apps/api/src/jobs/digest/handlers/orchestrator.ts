@@ -66,7 +66,12 @@ export async function handleOrchestratorJob(job: Job): Promise<void> {
       };
 
       try {
-        await queue.add(orgJobName(org.id, weekStart), data, {
+        // BullMQ dedupes on jobId, not the `name` argument, name alone looked
+        // like a dedup key but wasn't; a retried orchestrator attempt would
+        // have re-enqueued every org again.
+        const jobId = orgJobName(org.id, weekStart);
+        await queue.add(jobId, data, {
+          jobId,
           attempts: ORG_JOB_ATTEMPTS,
           backoff: { type: 'exponential', delay: ORG_JOB_BACKOFF_MS },
           removeOnComplete: { count: 50 },

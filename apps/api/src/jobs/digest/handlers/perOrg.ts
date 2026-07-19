@@ -227,7 +227,12 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
     };
 
     try {
-      await queue.add(sendJobName(r.userId, weekStart), data, {
+      // BullMQ dedupes on jobId, not the `name` argument, name alone looked
+      // like a dedup key but wasn't; a retried per-org attempt would have
+      // re-enqueued every send job again.
+      const jobId = sendJobName(r.userId, weekStart);
+      await queue.add(jobId, data, {
+        jobId,
         attempts: SEND_JOB_ATTEMPTS,
         backoff: { type: 'exponential', delay: SEND_JOB_BACKOFF_MS },
         removeOnComplete: { count: 100 },
