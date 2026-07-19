@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { PgDialect } from 'drizzle-orm/pg-core';
 
 const mockSelectFrom = vi.fn();
 const mockWhere = vi.fn();
@@ -73,30 +74,10 @@ vi.mock('../../lib/db.js', () => {
   return { db: client, dbAdmin: client };
 });
 
-vi.mock('../schema.js', () => ({
-  alertRules: {
-    id: 'id',
-    orgId: 'org_id',
-    createdByUserId: 'created_by_user_id',
-    kind: 'kind',
-    threshold: 'threshold',
-    enabled: 'enabled',
-    muteUntil: 'mute_until',
-    deletedAt: 'deleted_at',
-    createdAt: 'created_at',
-    updatedAt: 'updated_at',
-  },
-}));
-
-vi.mock('drizzle-orm', () => ({
-  and: (...args: unknown[]) => ({ and: args }),
-  or: (...args: unknown[]) => ({ or: args }),
-  eq: (a: unknown, b: unknown) => ({ eq: [a, b] }),
-  isNull: (a: unknown) => ({ isNull: a }),
-  inArray: (a: unknown, b: unknown) => ({ inArray: [a, b] }),
-  lte: (a: unknown, b: unknown) => ({ lte: [a, b] }),
-  desc: (a: unknown) => ({ desc: a }),
-}));
+// getByOrgId/getById render their captured .where() condition through the
+// real drizzle-orm + schema (no mock for either), same technique as
+// alertRuleMuteExclusion.test.ts, so PgDialect can turn it back into SQL text.
+const dialect = new PgDialect();
 
 const { db, dbAdmin } = await import('../../lib/db.js');
 const { ConflictError } = await import('../../lib/appError.js');
@@ -139,6 +120,11 @@ describe('getByOrgId', () => {
 
     expect(result).toEqual([mockRow]);
     expect(mockOrderBy).toHaveBeenCalled();
+
+    const condition = mockWhere.mock.calls[0]![0];
+    const { sql, params } = dialect.sqlToQuery(condition as never);
+    expect(sql).toContain('"alert_rules"."org_id" = $1 and "alert_rules"."deleted_at" is null');
+    expect(params).toEqual([10]);
   });
 
   it('returns empty array when the org has no rules', async () => {
@@ -158,6 +144,16 @@ describe('getById', () => {
 
     expect(result).toEqual(mockRow);
     expect(mockLimit).toHaveBeenCalledWith(1);
+
+    const condition = mockWhere.mock.calls[0]![0];
+    const { sql, params } = dialect.sqlToQuery(condition as never);
+    expect(sql).toContain(
+      '"alert_rules"."id" = $1 and "alert_rules"."org_id" = $2 and "alert_rules"."deleted_at" is null',
+    );
+    // Positional, not arrayContaining: a bug that swaps which column gets which
+    // value (e.g. id filtered against orgId) renders identical SQL text and
+    // would slip past a set-membership check.
+    expect(params).toEqual([1, 10]);
   });
 
   it('returns null when scoped to a different org (RLS + explicit filter)', async () => {
