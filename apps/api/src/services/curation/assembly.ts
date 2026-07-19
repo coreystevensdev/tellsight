@@ -11,16 +11,16 @@ import { statInstanceId } from './computation.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_VERSION = 'v1.6';
-const usd = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+export const usd = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
 
 // Signed currency with explicit `+` for positives, used for CashFlow and
 // Runway net figures where the reader expects to see direction at a glance.
-const usdSigned = (n: number) => `${n >= 0 ? '+' : '-'}$${usd.format(Math.abs(n))}`;
+export const usdSigned = (n: number) => `${n >= 0 ? '+' : '-'}$${usd.format(Math.abs(n))}`;
 
 // Signed currency that omits the `+` for positives, used for break-even gap
 // and forecast balances where a bare `$X` reads naturally and `-$X` flags
 // the negative case. Matches the editorial posture of the owner framing.
-const usdMinus = (n: number) => (n >= 0 ? `$${usd.format(n)}` : `-$${usd.format(Math.abs(n))}`);
+export const usdMinus = (n: number) => (n >= 0 ? `$${usd.format(n)}` : `-$${usd.format(Math.abs(n))}`);
 
 interface SplitTemplate {
   system: string;

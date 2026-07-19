@@ -913,6 +913,22 @@ function statDiscriminator(stat: ComputedStat): string {
   }
 }
 
+// Recomputes stats for a dataset and looks up one instance by id. DB-free
+// (takes rows, not a datasetId to fetch), so the route and the test suite
+// share this one implementation instead of duplicating the compute+assign+find
+// sequence. `datasetId` here only feeds statInstanceId's id prefix, it plays
+// no role in which rows get computed, an id minted for a different dataset
+// simply never matches anything in this dataset's recomputed set.
+export function resolveStatById(
+  rows: DataRow[],
+  datasetId: number,
+  statId: string,
+  opts?: Parameters<typeof computeStats>[1],
+): IdentifiedStat | null {
+  const identified = assignIds(computeStats(rows, opts), datasetId);
+  return identified.find((s) => s.id === statId) ?? null;
+}
+
 // Maps stats to IdentifiedStat[], deduping byte-identical entries (keeps first).
 // Relies on each producer function emitting at most one stat per (category, statType),
 // except Anomaly, whose only possible collision is two same-value anomalies in one

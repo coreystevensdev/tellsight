@@ -11,6 +11,8 @@ import {
   bucketRowsByMonth,
   cashFlowFromBuckets,
   netsFromBuckets,
+  resolveStatById,
+  assignIds,
   type MonthlyBucketMap,
 } from './computation.js';
 import type {
@@ -1418,5 +1420,33 @@ describe('computeStats wiring for cash forecast', () => {
     });
 
     expect(stats.filter((s) => s.statType === StatType.CashForecast)).toEqual([]);
+  });
+});
+
+describe('resolveStatById', () => {
+  it('finds a stat by its instance id', () => {
+    const stats = computeStats(fixture.multiCategory);
+    const target = assignIds(stats, 1).find(
+      (s) => s.statType === StatType.Total && s.category === 'Sales' && s.details.scope === 'category',
+    )!;
+
+    const resolved = resolveStatById(fixture.multiCategory, 1, target.id);
+
+    expect(resolved).not.toBeNull();
+    expect(resolved!.id).toBe(target.id);
+    expect(resolved!.value).toBe(7000);
+  });
+
+  it('returns null for an id that was never computed', () => {
+    expect(resolveStatById(fixture.multiCategory, 1, '1:total:Nonexistent:category')).toBeNull();
+  });
+
+  it('an id minted for a different datasetId never matches, only the recomputed set decides', () => {
+    const stats = computeStats(fixture.multiCategory);
+    const idForOtherDataset = assignIds(stats, 2).find(
+      (s) => s.statType === StatType.Total && s.category === 'Sales' && s.details.scope === 'category',
+    )!.id;
+
+    expect(resolveStatById(fixture.multiCategory, 1, idForOtherDataset)).toBeNull();
   });
 });

@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import http from 'node:http';
 
+import { computeStats, assignIds } from '../services/curation/computation.js';
+import { StatType } from '../services/curation/types.js';
+import type { IdentifiedStat } from '../services/curation/types.js';
+
 vi.mock('../config.js', () => ({
   env: {
     CLAUDE_API_KEY: 'test-key',
@@ -29,6 +33,8 @@ vi.mock('../lib/db.js', () => ({
 const mockGetCachedSummary = vi.fn();
 const mockGetLatestSummary = vi.fn();
 const mockGetMonthlyAiUsageCount = vi.fn().mockResolvedValue(0);
+const mockGetRowsByDataset = vi.fn().mockResolvedValue([]);
+const mockGetBusinessProfile = vi.fn().mockResolvedValue(null);
 vi.mock('../db/queries/index.js', () => ({
   aiSummariesQueries: {
     getCachedSummary: (...args: unknown[]) => mockGetCachedSummary(...args),
@@ -39,9 +45,10 @@ vi.mock('../db/queries/index.js', () => ({
   },
   dataRowsQueries: {
     getRowCount: vi.fn().mockResolvedValue(100),
+    getRowsByDataset: (...args: unknown[]) => mockGetRowsByDataset(...args),
   },
   orgsQueries: {
-    getBusinessProfile: vi.fn().mockResolvedValue(null),
+    getBusinessProfile: (...args: unknown[]) => mockGetBusinessProfile(...args),
   },
   subscriptionsQueries: {
     getActiveTier: vi.fn().mockResolvedValue('free'),
@@ -235,5 +242,81 @@ describe('GET /ai-summaries/:datasetId/latest', () => {
     await fetch(`${baseUrl}/ai-summaries/42/latest`);
 
     expect(mockGetLatestSummary).toHaveBeenCalledWith(1, 42, expect.anything());
+  });
+});
+
+// Real pipeline, same fixture shape as statId.test.ts: 6 Sales rows (one
+// outlier) + 3 Expenses rows, enough to produce a Total (formula-kind) and
+// an Anomaly (inputs-kind) stat for the route tests below.
+const detailFixtureRows = [
+  { id: 1, orgId: 1, datasetId: 42, sourceType: 'csv' as const, category: 'Sales', parentCategory: null, date: new Date('2025-01-01'), amount: '1000.00', label: null, metadata: null, createdAt: new Date() },
+  { id: 2, orgId: 1, datasetId: 42, sourceType: 'csv' as const, category: 'Sales', parentCategory: null, date: new Date('2025-02-01'), amount: '1100.00', label: null, metadata: null, createdAt: new Date() },
+  { id: 3, orgId: 1, datasetId: 42, sourceType: 'csv' as const, category: 'Sales', parentCategory: null, date: new Date('2025-03-01'), amount: '1200.00', label: null, metadata: null, createdAt: new Date() },
+  { id: 4, orgId: 1, datasetId: 42, sourceType: 'csv' as const, category: 'Sales', parentCategory: null, date: new Date('2026-01-01'), amount: '1300.00', label: null, metadata: null, createdAt: new Date() },
+  { id: 5, orgId: 1, datasetId: 42, sourceType: 'csv' as const, category: 'Sales', parentCategory: null, date: new Date('2026-02-01'), amount: '1400.00', label: null, metadata: null, createdAt: new Date() },
+  { id: 6, orgId: 1, datasetId: 42, sourceType: 'csv' as const, category: 'Sales', parentCategory: null, date: new Date('2026-03-01'), amount: '9000.00', label: null, metadata: null, createdAt: new Date() },
+  { id: 7, orgId: 1, datasetId: 42, sourceType: 'csv' as const, category: 'Expenses', parentCategory: null, date: new Date('2026-01-01'), amount: '500.00', label: null, metadata: null, createdAt: new Date() },
+  { id: 8, orgId: 1, datasetId: 42, sourceType: 'csv' as const, category: 'Expenses', parentCategory: null, date: new Date('2026-02-01'), amount: '520.00', label: null, metadata: null, createdAt: new Date() },
+  { id: 9, orgId: 1, datasetId: 42, sourceType: 'csv' as const, category: 'Expenses', parentCategory: null, date: new Date('2026-03-01'), amount: '510.00', label: null, metadata: null, createdAt: new Date() },
+];
+
+function detailFixtureId<T extends StatType>(
+  statType: T,
+  predicate: (s: Extract<IdentifiedStat, { statType: T }>) => boolean,
+): string {
+  const found = assignIds(computeStats(detailFixtureRows), 42).find(
+    (s): s is Extract<IdentifiedStat, { statType: T }> =>
+      s.statType === statType && predicate(s as Extract<IdentifiedStat, { statType: T }>),
+  );
+  if (!found) throw new Error(`detailFixtureRows did not produce a matching ${statType} stat`);
+  return found.id;
+}
+
+describe('GET /ai-summaries/:datasetId/stats/:statId', () => {
+  beforeEach(() => {
+    mockGetRowsByDataset.mockResolvedValue(detailFixtureRows);
+    mockGetBusinessProfile.mockResolvedValue(null);
+  });
+
+  it('returns 200 with a formula-kind detail for an arithmetic stat', async () => {
+    const statId = detailFixtureId(StatType.Total, (s) => s.category === 'Sales' && s.details.scope === 'category');
+
+    const res = await fetch(`${baseUrl}/ai-summaries/42/stats/${encodeURIComponent(statId)}`);
+    const body = await res.json() as { data: { statType: string; value: number; detail: { kind: string } } };
+
+    expect(res.status).toBe(200);
+    expect(body.data.statType).toBe('total');
+    expect(body.data.detail.kind).toBe('formula');
+  });
+
+  it('returns 200 with an inputs-kind detail for a statistical stat', async () => {
+    const statId = detailFixtureId(StatType.Anomaly, () => true);
+
+    const res = await fetch(`${baseUrl}/ai-summaries/42/stats/${encodeURIComponent(statId)}`);
+    const body = await res.json() as { data: { detail: { kind: string } } };
+
+    expect(res.status).toBe(200);
+    expect(body.data.detail.kind).toBe('inputs');
+  });
+
+  it('returns 404 for an id that was never computed', async () => {
+    const res = await fetch(`${baseUrl}/ai-summaries/42/stats/${encodeURIComponent('42:total:Nonexistent:category')}`);
+    const body = await res.json() as { error: { code: string } };
+
+    expect(res.status).toBe(404);
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('returns 404 for a cross-org dataset, RLS-scoped fetch returns zero rows so no id ever matches', async () => {
+    mockGetRowsByDataset.mockResolvedValueOnce([]);
+    const statId = detailFixtureId(StatType.Total, (s) => s.category === 'Sales' && s.details.scope === 'category');
+
+    const res = await fetch(`${baseUrl}/ai-summaries/42/stats/${encodeURIComponent(statId)}`);
+    expect(res.status).toBe(404);
+  });
+
+  it('rejects invalid datasetId', async () => {
+    const res = await fetch(`${baseUrl}/ai-summaries/abc/stats/${encodeURIComponent('1:total:Sales:category')}`);
+    expect(res.status).toBe(400);
   });
 });

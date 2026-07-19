@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAiStream, stripDisplayTags } from '@/lib/hooks/useAiStream';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
@@ -11,9 +11,12 @@ import { UpgradeCta } from '@/components/common/UpgradeCta';
 import { AiSummarySkeleton } from './AiSummarySkeleton';
 import { ShareMenu, type ShareStatus, type LinkStatus } from './ShareMenu';
 import { parseStatBindings, type StatBinding } from './parseStatBindings';
+import { parseCiteBindings, type CiteBinding } from './parseCiteBindings';
+import { NUMBER_PATTERN } from './numberPattern';
 import { InsightChartThumbnail } from './InsightChartThumbnail';
 import { InsightChartChip } from './InsightChartChip';
 import { InsightChartSheet } from './InsightChartSheet';
+import { StatDetailSheet } from './StatDetailSheet';
 import { type CashBalancePoint } from './charts/RunwayTrendChart';
 import { FREE_PREVIEW_WORD_LIMIT, ANALYTICS_EVENTS, AI_DISCLAIMER } from 'shared/constants';
 
@@ -91,36 +94,76 @@ function StreamingCursor() {
   );
 }
 
-function highlightNumbers(text: string): React.ReactNode[] {
-  const parts = text.split(/(\$[\d,]+(?:\.\d+)?[KMBkmb]?|\d+(?:\.\d+)?%)/g);
-  return parts.map((part, i) =>
-    /^\$[\d,]|^\d+.*%$/.test(part)
-      ? <span key={i} className="font-semibold text-accent-warm" style={{ fontFeatureSettings: '"tnum"' }}>{part}</span>
-      : <span key={i}>{part}</span>
-  );
+function highlightNumbers(
+  text: string,
+  citesByNumber?: Map<number, string>,
+  onOpenCite?: (statId: string) => void,
+): React.ReactNode[] {
+  // NUMBER_PATTERN has one capture group, split() alternates plain text at
+  // even indices with matched numbers at odd indices, more reliable than
+  // re-testing each part's content (and avoids re-running a shared /g regex
+  // via .test(), which would carry lastIndex state across calls).
+  const parts = text.split(NUMBER_PATTERN);
+  let numberIndex = -1;
+
+  return parts.map((part, i) => {
+    if (i % 2 === 0) return <span key={i}>{part}</span>;
+
+    numberIndex++;
+    const statId = citesByNumber?.get(numberIndex);
+
+    return (
+      <span key={i} className="font-semibold text-accent-warm" style={{ fontFeatureSettings: '"tnum"' }}>
+        {part}
+        {statId && onOpenCite && (
+          <button
+            type="button"
+            onClick={() => onOpenCite(statId)}
+            className="ml-0.5 inline-flex h-3.5 w-3.5 align-super text-accent-warm/60 hover:text-accent-warm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-warm"
+            aria-label={`Show how ${part} was calculated`}
+          >
+            <Info className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+          </button>
+        )}
+      </span>
+    );
+  });
 }
 
 interface SummaryTextProps {
   text: string;
   bindings?: StatBinding[];
+  citations?: CiteBinding[];
   onOpenStat?: (statId: string, paragraphIndex: number) => void;
+  onOpenCite?: (statId: string) => void;
   cashHistory?: CashBalancePoint[];
   cashForecast?: CashBalancePoint[];
   isMobile?: boolean;
 }
 
-function SummaryText({ text, bindings, onOpenStat, cashHistory, cashForecast, isMobile }: SummaryTextProps) {
+function SummaryText({ text, bindings, citations, onOpenStat, onOpenCite, cashHistory, cashForecast, isMobile }: SummaryTextProps) {
   const paragraphs = text.split('\n\n').filter(Boolean);
   const bindingByIndex = new Map<number, string>();
   for (const b of bindings ?? []) bindingByIndex.set(b.paragraphIndex, b.statId);
+
+  const citesByParagraph = new Map<number, Map<number, string>>();
+  for (const c of citations ?? []) {
+    let byNumber = citesByParagraph.get(c.paragraphIndex);
+    if (!byNumber) {
+      byNumber = new Map();
+      citesByParagraph.set(c.paragraphIndex, byNumber);
+    }
+    byNumber.set(c.numberIndex, c.statId);
+  }
 
   return (
     <div className="text-[15px] leading-[1.7] text-card-foreground/85 md:text-base md:leading-[1.75] [&>p+p]:mt-[1.1em]">
       {paragraphs.map((p, i) => {
         const statId = bindingByIndex.get(i);
+        const paragraphCites = citesByParagraph.get(i);
         return (
           <p key={i} className={i === 0 ? 'text-card-foreground font-medium' : undefined}>
-            {highlightNumbers(p)}
+            {highlightNumbers(p, paragraphCites, onOpenCite)}
             {statId && onOpenStat && (
               <span className="ml-2 inline-flex align-middle">
                 {isMobile ? (
@@ -331,6 +374,7 @@ export function AiSummaryCard({
   const isMobile = useIsMobile();
   const [openStatId, setOpenStatId] = useState<string | null>(null);
   const [openParagraphText, setOpenParagraphText] = useState<string>('');
+  const [openCiteId, setOpenCiteId] = useState<string | null>(null);
 
   // bindings come from the raw buffer (tags intact). Streaming path uses
   // useAiStream.rawText; cached path parses cachedContent directly. Both
@@ -340,6 +384,13 @@ export function AiSummaryCard({
   const bindings = useMemo<StatBinding[]>(() => {
     if (status !== 'done' && !hasCached) return [];
     return parseStatBindings(sourceText);
+  }, [sourceText, status, hasCached]);
+
+  // same buffer as bindings, a different mechanism: many per-number <cite>
+  // markers instead of one per-paragraph <stat> chip.
+  const citations = useMemo<CiteBinding[]>(() => {
+    if (status !== 'done' && !hasCached) return [];
+    return parseCiteBindings(sourceText);
   }, [sourceText, status, hasCached]);
 
   const displayText = hasCached ? stripDisplayTags(cachedContent ?? '') : text;
@@ -353,6 +404,10 @@ export function AiSummaryCard({
       paragraphIndex,
       viewport: isMobile ? 'mobile' : 'desktop',
     });
+  };
+
+  const handleOpenCite = (statId: string) => {
+    setOpenCiteId(statId);
   };
 
   const handleRefreshInsights = () => {
@@ -409,7 +464,9 @@ export function AiSummaryCard({
             <SummaryText
               text={displayText}
               bindings={bindings}
+              citations={citations}
               onOpenStat={handleOpenStat}
+              onOpenCite={handleOpenCite}
               cashHistory={cashHistory}
               cashForecast={cashForecast}
               isMobile={isMobile}
@@ -424,6 +481,12 @@ export function AiSummaryCard({
           paragraphText={openParagraphText}
           cashHistory={cashHistory}
           cashForecast={cashForecast}
+        />
+        <StatDetailSheet
+          open={openCiteId !== null}
+          onOpenChange={(open) => !open && setOpenCiteId(null)}
+          datasetId={datasetId}
+          statId={openCiteId}
         />
       </div>
     );
@@ -472,7 +535,9 @@ export function AiSummaryCard({
           <SummaryText
             text={text}
             bindings={bindings}
+            citations={citations}
             onOpenStat={handleOpenStat}
+            onOpenCite={handleOpenCite}
             cashHistory={cashHistory}
             cashForecast={cashForecast}
             isMobile={isMobile}
@@ -490,6 +555,12 @@ export function AiSummaryCard({
           paragraphText={openParagraphText}
           cashHistory={cashHistory}
           cashForecast={cashForecast}
+        />
+        <StatDetailSheet
+          open={openCiteId !== null}
+          onOpenChange={(open) => !open && setOpenCiteId(null)}
+          datasetId={datasetId}
+          statId={openCiteId}
         />
       </div>
     );
@@ -554,7 +625,9 @@ export function AiSummaryCard({
         <SummaryText
           text={text}
           bindings={isDone ? bindings : undefined}
+          citations={isDone ? citations : undefined}
           onOpenStat={isDone ? handleOpenStat : undefined}
+          onOpenCite={isDone ? handleOpenCite : undefined}
           cashHistory={cashHistory}
           cashForecast={cashForecast}
           isMobile={isMobile}
@@ -569,6 +642,12 @@ export function AiSummaryCard({
         paragraphText={openParagraphText}
         cashHistory={cashHistory}
         cashForecast={cashForecast}
+      />
+      <StatDetailSheet
+        open={openCiteId !== null}
+        onOpenChange={(open) => !open && setOpenCiteId(null)}
+        datasetId={datasetId}
+        statId={openCiteId}
       />
     </div>
   );

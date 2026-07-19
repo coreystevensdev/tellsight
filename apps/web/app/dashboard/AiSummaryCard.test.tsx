@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent, act } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, act, waitFor } from '@testing-library/react';
 import { AiSummaryCard, truncateAtWordBoundary } from './AiSummaryCard';
 import { AiSummaryErrorBoundary } from './AiSummaryErrorBoundary';
 
@@ -634,5 +634,66 @@ describe('AiSummaryCard chart bindings', () => {
     expect(screen.queryByText(/<cite id="1:total:_:overall"\/>/)).toBeNull();
     // the surrounding prose still renders
     expect(screen.getByText(/Cached prose/i)).toBeInTheDocument();
+  });
+});
+
+describe('AiSummaryCard citation markers', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('renders a keyboard-focusable inline marker that opens StatDetailSheet with the correctly encoded fetch URL', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          data: { statType: 'total', value: 5000, detail: { kind: 'formula', expression: '$5,000', terms: [] } },
+        }),
+    } as Response);
+
+    mockUseAiStream.mockReturnValue(
+      defaultHookReturn({
+        status: 'done',
+        text: 'Revenue hit $5,000 this month.',
+        rawText: 'Revenue hit $5,000<cite id="1:total:Sales:category"/> this month.',
+      }),
+    );
+
+    render(<AiSummaryCard datasetId={1} />);
+
+    const marker = screen.getByRole('button', { name: /show how \$5,000 was calculated/i });
+    expect(marker).toBeInTheDocument();
+    expect(marker.tabIndex).not.toBe(-1);
+
+    fireEvent.click(marker);
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    await waitFor(() =>
+      expect(fetchSpy).toHaveBeenCalledWith(
+        '/api/ai-summaries/1/stats/1%3Atotal%3ASales%3Acategory',
+        expect.objectContaining({ credentials: 'same-origin' }),
+      ),
+    );
+  });
+
+  it('renders two independently clickable markers for two citations in the same paragraph', () => {
+    mockUseAiStream.mockReturnValue(
+      defaultHookReturn({
+        status: 'done',
+        text: 'Revenue was $5,000 and margin held at 12% this quarter.',
+        rawText:
+          'Revenue was $5,000<cite id="1:total:Sales:category"/> and margin held at 12%<cite id="1:margin_trend:_:_"/> this quarter.',
+      }),
+    );
+
+    render(<AiSummaryCard datasetId={1} />);
+
+    const dollarMarker = screen.getByRole('button', { name: /show how \$5,000 was calculated/i });
+    const percentMarker = screen.getByRole('button', { name: /show how 12% was calculated/i });
+
+    expect(dollarMarker).toBeInTheDocument();
+    expect(percentMarker).toBeInTheDocument();
+    expect(dollarMarker).not.toBe(percentMarker);
   });
 });

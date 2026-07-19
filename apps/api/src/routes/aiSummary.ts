@@ -5,7 +5,7 @@ import { ANALYTICS_EVENTS, AI_MONTHLY_QUOTA } from 'shared/constants';
 import type { SubscriptionTier } from 'shared/types';
 import { requireUser } from '../lib/requireUser.js';
 import { subscriptionGate } from '../middleware/subscriptionGate.js';
-import { rateLimitAi } from '../middleware/rateLimiter.js';
+import { rateLimitAi, rateLimitDashboardCompute } from '../middleware/rateLimiter.js';
 import { aiSummariesQueries, analyticsEventsQueries, dataRowsQueries, orgsQueries } from '../db/queries/index.js';
 import { dbAdmin } from '../lib/db.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
@@ -14,6 +14,9 @@ import { withRlsContext } from '../lib/rls.js';
 import { ValidationError, QuotaExceededError } from '../lib/appError.js';
 import { logger } from '../lib/logger.js';
 import { aiSummaryTotal, aiTokensUsed } from '../lib/metrics.js';
+import { resolveStatById } from '../services/curation/computation.js';
+import { buildStatDetail } from '../services/curation/statDetail.js';
+import { scoringConfig } from '../services/curation/scoring.js';
 
 const aiSummaryRouter = Router();
 
@@ -42,6 +45,60 @@ aiSummaryRouter.get('/:datasetId/latest', async (req, res: Response) => {
       content: latest.content,
       metadata: latest.transparencyMetadata ?? null,
       staleAt: latest.staleAt ? latest.staleAt.toISOString() : null,
+    },
+  });
+});
+
+// Reconciliation endpoint behind a <cite> tag, recomputes the dataset's
+// stats (same pipeline as summary generation) and resolves one instance by
+// id. A stale id (valid when the summary was cached, expired since, e.g.
+// cashAsOfDate aged past 180 days) 404s the same as an id that never
+// existed, the route has no way to tell the two apart without extra state.
+aiSummaryRouter.get('/:datasetId/stats/:statId', rateLimitDashboardCompute, async (req, res: Response) => {
+  const user = requireUser(req);
+  const orgId = user.org_id;
+  const rawId = Number(req.params.datasetId);
+  const statId = req.params.statId;
+
+  if (!Number.isInteger(rawId) || rawId <= 0) {
+    throw new ValidationError('Invalid datasetId');
+  }
+  if (typeof statId !== 'string' || statId.length === 0) {
+    throw new ValidationError('Invalid statId');
+  }
+
+  const [rows, profile] = await Promise.all([
+    withRlsContext(orgId, user.isAdmin, (tx) => dataRowsQueries.getRowsByDataset(orgId, rawId, tx)),
+    orgsQueries.getBusinessProfile(orgId),
+  ]);
+
+  const financials = profile
+    ? {
+        cashOnHand: profile.cashOnHand,
+        cashAsOfDate: profile.cashAsOfDate,
+        monthlyFixedCosts: profile.monthlyFixedCosts,
+      }
+    : null;
+
+  const stat = resolveStatById(rows, rawId, statId, {
+    trendMinPoints: scoringConfig.thresholds.trendMinDataPoints,
+    financials,
+  });
+
+  if (!stat) {
+    logger.warn({ orgId, datasetId: rawId, statId }, 'stat citation not found on recompute');
+    res.status(404).json({
+      error: { code: 'NOT_FOUND', message: 'This citation is no longer available' },
+    });
+    return;
+  }
+
+  logger.info({ orgId, datasetId: rawId, statType: stat.statType }, 'stat citation resolved');
+  res.json({
+    data: {
+      statType: stat.statType,
+      value: stat.value,
+      detail: buildStatDetail(stat),
     },
   });
 });
