@@ -24,6 +24,8 @@ const muteUntilSchema = z
 // z.discriminatedUnion member has to be its own ZodObject, not a merged type.
 const runwayRunsShortRuleSchema = z.object({
   kind: z.literal('runway_runs_short'),
+  // 24 months (2 years) is a practical UX ceiling, not a mathematical bound --
+  // runway concerns beyond two years aren't an actionable "short runway" alert.
   threshold: z.object({ months: z.number().positive().max(24) }),
   enabled: z.boolean().optional(),
   muteUntil: muteUntilSchema,
@@ -31,6 +33,9 @@ const runwayRunsShortRuleSchema = z.object({
 
 const marginDropsRuleSchema = z.object({
   kind: z.literal('margin_drops'),
+  // percent is a point-drop between two margin readings; margin can go negative
+  // in a loss window (computeMarginTrend has no floor) -- .max(100) is a policy
+  // choice, matching breakeven_gap_widens, not a mathematical bound.
   threshold: z.object({ percent: z.number().positive().max(100) }),
   enabled: z.boolean().optional(),
   muteUntil: muteUntilSchema,
@@ -38,6 +43,9 @@ const marginDropsRuleSchema = z.object({
 
 const cashBurnSpikesRuleSchema = z.object({
   kind: z.literal('cash_burn_spikes'),
+  // percent is a relative increase in monthly expenses with no natural upper
+  // bound (a bulk purchase can push burn several multiples over the prior
+  // average) -- this ceiling is set loose rather than mathematically derived.
   threshold: z.object({ percent: z.number().positive().max(1000) }),
   enabled: z.boolean().optional(),
   muteUntil: muteUntilSchema,
@@ -45,6 +53,9 @@ const cashBurnSpikesRuleSchema = z.object({
 
 const breakevenGapWidensRuleSchema = z.object({
   kind: z.literal('breakeven_gap_widens'),
+  // percent is the revenue shortfall as a percent of break-even revenue, which
+  // can mathematically exceed 100 -- the cap is a policy choice treating a
+  // 100%+ shortfall as already the extreme end of the alert range.
   threshold: z.object({ percent: z.number().positive().max(100) }),
   enabled: z.boolean().optional(),
   muteUntil: muteUntilSchema,
