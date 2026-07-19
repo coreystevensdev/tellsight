@@ -18,7 +18,7 @@ vi.mock('../../lib/db.js', () => ({
   },
 }));
 
-const { insertBatch, getByDateRange, getByCategory, getRowsByDataset, getDateRange } =
+const { insertBatch, getByDateRange, getByCategory, getRowsByDataset, getDateRange, countDistinctDates } =
   await import('./dataRows.js');
 
 describe('dataRows queries', () => {
@@ -126,6 +126,24 @@ describe('dataRows queries', () => {
       const result = await getDateRange(10, 1);
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe('countDistinctDates', () => {
+    it('returns the count of distinct calendar dates with data', async () => {
+      mockSelectWhere.mockResolvedValueOnce([{ value: 22 }]);
+
+      const result = await countDistinctDates(10, 1);
+
+      expect(result).toBe(22);
+    });
+
+    it('returns 0 when the dataset has no rows', async () => {
+      mockSelectWhere.mockResolvedValueOnce([]);
+
+      const result = await countDistinctDates(10, 1);
+
+      expect(result).toBe(0);
     });
   });
 });

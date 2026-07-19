@@ -33,6 +33,7 @@ import {
 
 const ON_UPLOAD_KINDS = new Set(['runway_runs_short', 'cash_burn_spikes']);
 const MIN_ON_UPLOAD_HISTORY_DAYS = 30;
+const MIN_ON_UPLOAD_HISTORY_DISTINCT_DAYS = 20;
 const DEDUP_WINDOW_MS = 7 * 86_400_000;
 const ORG_QUOTA_MAX = 3;
 
@@ -73,8 +74,16 @@ function evaluateCashBurn(insights: ScoredInsight[], threshold: number): RuleEva
   const latest = months[months.length - 1]!;
   const priorMonths = months.slice(0, -1);
   const priorAvgExpenses = priorMonths.reduce((sum, m) => sum + m.expenses, 0) / priorMonths.length;
+  // A zero prior average is a divide-by-zero guard, not "no change": going from
+  // $0 to any real spend is the worst possible spike. threshold * 3 clears the
+  // top band (>= threshold * 2) without an Infinity/NaN sentinel, which would
+  // silently become null crossing BullMQ's JSON-serialized job boundary.
   const currentValue =
-    priorAvgExpenses > 0 ? ((latest.expenses - priorAvgExpenses) / priorAvgExpenses) * 100 : 0;
+    priorAvgExpenses > 0
+      ? ((latest.expenses - priorAvgExpenses) / priorAvgExpenses) * 100
+      : latest.expenses > 0
+        ? threshold * 3
+        : 0;
 
   return { currentValue, band: cashBurnBands.getBand(currentValue, threshold), insight };
 }
@@ -84,7 +93,10 @@ function evaluateBreakeven(insights: ScoredInsight[], threshold: number): RuleEv
   if (!insight || insight.stat.statType !== StatType.BreakEven) return null;
 
   const { gap, breakEvenRevenue } = insight.stat.details;
-  const currentValue = breakEvenRevenue > 0 ? (gap / breakEvenRevenue) * 100 : 0;
+  // Same zero-denominator guard as evaluateCashBurn: a $0 break-even revenue
+  // with a real positive gap is the worst case, not a no-op.
+  const currentValue =
+    breakEvenRevenue > 0 ? (gap / breakEvenRevenue) * 100 : gap > 0 ? threshold * 3 : 0;
   return { currentValue, band: breakevenBands.getBand(currentValue, threshold), insight };
 }
 
@@ -165,7 +177,7 @@ function logOutcome(
  * processing.
  */
 export async function handleEvaluateOrgJob(job: Job): Promise<void> {
-  const { orgId, datasetId: jobDatasetId, trigger, correlationId } = job.data as EvaluateOrgJobData;
+  const { orgId, trigger, correlationId } = job.data as EvaluateOrgJobData;
   const start = Date.now();
 
   const tier = await subscriptionsQueries.getActiveTier(orgId, dbAdmin);
@@ -177,7 +189,10 @@ export async function handleEvaluateOrgJob(job: Job): Promise<void> {
     return;
   }
 
-  const datasetId = jobDatasetId ?? (await orgsQueries.getActiveDatasetId(orgId));
+  // Always re-fetched, never trusted from job.data: an org can swap its
+  // active dataset between the job being enqueued and this worker picking it
+  // up, same re-verification reasoning as the Pro-tier check above.
+  const datasetId = await orgsQueries.getActiveDatasetId(orgId, dbAdmin);
   if (datasetId === null || datasetId === undefined) {
     logger.info(
       { correlationId, orgId, trigger, outcome: 'skipped', durationMs: Date.now() - start },
@@ -201,9 +216,13 @@ export async function handleEvaluateOrgJob(job: Job): Promise<void> {
 
     const range = await dataRowsQueries.getDateRange(orgId, datasetId, dbAdmin);
     const spanDays = range ? (range.latest.getTime() - range.earliest.getTime()) / 86_400_000 : 0;
-    if (spanDays < MIN_ON_UPLOAD_HISTORY_DAYS) {
+    // Span alone passes a two-row dataset 31 days apart. distinctDays catches
+    // that: data_rows is one row per (date, category), so it's the density
+    // signal span can't provide on its own.
+    const distinctDays = range ? await dataRowsQueries.countDistinctDates(orgId, datasetId, dbAdmin) : 0;
+    if (spanDays < MIN_ON_UPLOAD_HISTORY_DAYS || distinctDays < MIN_ON_UPLOAD_HISTORY_DISTINCT_DAYS) {
       for (const rule of rules) {
-        logOutcome(correlationId, orgId, rule, trigger, 'suppressed_below_threshold', { spanDays });
+        logOutcome(correlationId, orgId, rule, trigger, 'suppressed_below_threshold', { spanDays, distinctDays });
       }
       return;
     }
@@ -262,19 +281,10 @@ export async function handleEvaluateOrgJob(job: Job): Promise<void> {
         return;
       }
 
-      const recentFireCount = await alertRuleFiresQueries.countRecentByOrgId(orgId, dbAdmin);
-      if (recentFireCount >= ORG_QUOTA_MAX) {
-        logOutcome(correlationId, orgId, rule, trigger, 'suppressed_quota', { band, currentValue });
-        recordAlertEvent(orgId, ANALYTICS_EVENTS.ALERT_QUOTA_SUPPRESSED, {
-          ruleId: rule.id,
-          ruleKind: rule.kind,
-          band,
-        });
-        suppressedCount++;
-        return;
-      }
-
-      const fire = await alertRuleFiresQueries.create(
+      // Count-and-insert happens atomically inside createIfUnderQuota (advisory
+      // lock + re-check), a plain count-then-insert here would let two
+      // concurrent jobs for the same org both pass the check and blow the quota.
+      const fire = await alertRuleFiresQueries.createIfUnderQuota(
         {
           orgId,
           ruleId: rule.id,
@@ -284,8 +294,19 @@ export async function handleEvaluateOrgJob(job: Job): Promise<void> {
           currentValue,
           band,
         },
+        ORG_QUOTA_MAX,
         dbAdmin,
       );
+      if (!fire) {
+        logOutcome(correlationId, orgId, rule, trigger, 'suppressed_quota', { band, currentValue });
+        recordAlertEvent(orgId, ANALYTICS_EVENTS.ALERT_QUOTA_SUPPRESSED, {
+          ruleId: rule.id,
+          ruleKind: rule.kind,
+          band,
+        });
+        suppressedCount++;
+        return;
+      }
 
       logOutcome(correlationId, orgId, rule, trigger, 'fired', { band, currentValue, fireId: fire.id });
       recordAlertEvent(orgId, ANALYTICS_EVENTS.ALERT_FIRED, { ruleId: rule.id, ruleKind: rule.kind, band });

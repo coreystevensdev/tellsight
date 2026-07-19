@@ -102,6 +102,24 @@ export async function getDateRange(
   return { earliest: new Date(row.earliest), latest: new Date(row.latest) };
 }
 
+/**
+ * Distinct calendar days with data for a dataset. data_rows stores one row
+ * per (date, category), so raw row count overstates density on categorized
+ * uploads, this is the density signal the alerts on-upload history gate
+ * needs alongside `getDateRange`'s span check.
+ */
+export async function countDistinctDates(
+  orgId: number,
+  datasetId: number,
+  client: typeof db | DbTransaction = db,
+): Promise<number> {
+  const [row] = await client
+    .select({ value: sql<number>`count(distinct ${dataRows.date})::int` })
+    .from(dataRows)
+    .where(and(eq(dataRows.orgId, orgId), eq(dataRows.datasetId, datasetId)));
+  return row?.value ?? 0;
+}
+
 export async function getRowsByDataset(
   orgId: number,
   datasetId: number,

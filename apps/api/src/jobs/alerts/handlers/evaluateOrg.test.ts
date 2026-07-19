@@ -5,9 +5,9 @@ const mockGetActiveDatasetId = vi.fn();
 const mockFindOrgById = vi.fn();
 const mockGetEnabledRules = vi.fn();
 const mockGetLatestFire = vi.fn();
-const mockCountRecentByOrgId = vi.fn();
-const mockCreateFire = vi.fn();
+const mockCreateIfUnderQuota = vi.fn();
 const mockGetDateRange = vi.fn();
+const mockCountDistinctDates = vi.fn();
 const mockGetOrgOwnerId = vi.fn();
 const mockFindUserById = vi.fn();
 const mockRecordEvent = vi.fn().mockResolvedValue({ id: 1 });
@@ -35,10 +35,9 @@ vi.mock('../../../db/queries/index.js', () => ({
   alertRulesQueries: { getEnabledByOrgIdsForEvaluation: mockGetEnabledRules },
   alertRuleFiresQueries: {
     getLatestByRuleId: mockGetLatestFire,
-    countRecentByOrgId: mockCountRecentByOrgId,
-    create: mockCreateFire,
+    createIfUnderQuota: mockCreateIfUnderQuota,
   },
-  dataRowsQueries: { getDateRange: mockGetDateRange },
+  dataRowsQueries: { getDateRange: mockGetDateRange, countDistinctDates: mockCountDistinctDates },
   userOrgsQueries: { getOrgOwnerId: mockGetOrgOwnerId },
   usersQueries: { findUserById: mockFindUserById },
   analyticsEventsQueries: { recordEvent: mockRecordEvent },
@@ -104,6 +103,36 @@ function marginRule(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
+function cashBurnRule(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: 3,
+    orgId: 42,
+    kind: 'cash_burn_spikes' as const,
+    threshold: { percent: 50 },
+    enabled: true,
+    muteUntil: null,
+    deletedAt: null,
+    createdAt: new Date('2026-07-01'),
+    updatedAt: new Date('2026-07-01'),
+    ...overrides,
+  };
+}
+
+function breakevenRule(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: 4,
+    orgId: 42,
+    kind: 'breakeven_gap_widens' as const,
+    threshold: { percent: 50 },
+    enabled: true,
+    muteUntil: null,
+    deletedAt: null,
+    createdAt: new Date('2026-07-01'),
+    updatedAt: new Date('2026-07-01'),
+    ...overrides,
+  };
+}
+
 function runwayInsight(runwayMonths: number) {
   return {
     stat: {
@@ -123,17 +152,56 @@ function runwayInsight(runwayMonths: number) {
   };
 }
 
+function cashFlowInsight(recentMonths: { month: string; revenue: number; expenses: number; net: number }[]) {
+  return {
+    stat: {
+      statType: 'cash_flow',
+      category: null,
+      value: 0,
+      details: {
+        monthlyNet: 0,
+        trailingMonths: recentMonths.length,
+        direction: 'burning' as const,
+        monthsBurning: recentMonths.length,
+        recentMonths,
+      },
+    },
+    score: 0.9,
+    breakdown: { novelty: 0.8, actionability: 0.9, specificity: 0.9 },
+  };
+}
+
+function breakEvenInsight(details: { breakEvenRevenue: number; gap: number }) {
+  return {
+    stat: {
+      statType: 'break_even',
+      category: null,
+      value: 0,
+      details: {
+        monthlyFixedCosts: 10_000,
+        marginPercent: 20,
+        currentMonthlyRevenue: 5_000,
+        confidence: 'high' as const,
+        ...details,
+      },
+    },
+    score: 0.9,
+    breakdown: { novelty: 0.8, actionability: 0.9, specificity: 0.9 },
+  };
+}
+
 const baseJobData = { orgId: 42, datasetId: 100, trigger: 'cron' as const, correlationId: 'corr-123' };
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockGetActiveTier.mockResolvedValue('pro');
+  mockGetActiveDatasetId.mockResolvedValue(100);
   mockFindOrgById.mockResolvedValue(baseOrg);
   mockGetOrgOwnerId.mockResolvedValue(7);
   mockFindUserById.mockResolvedValue({ id: 7, email: 'owner@acme.test' });
-  mockCountRecentByOrgId.mockResolvedValue(0);
   mockGetLatestFire.mockResolvedValue(null);
-  mockCreateFire.mockResolvedValue({ id: 999 });
+  mockCreateIfUnderQuota.mockResolvedValue({ id: 999 });
+  mockCountDistinctDates.mockResolvedValue(25);
 });
 
 describe('tier and dataset gates', () => {
@@ -146,7 +214,7 @@ describe('tier and dataset gates', () => {
     expect(mockRunCurationPipeline).not.toHaveBeenCalled();
   });
 
-  it('falls back to getActiveDatasetId when the job carries no datasetId', async () => {
+  it('skips cleanly when the org has no active dataset', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(null);
 
     await handleEvaluateOrgJob({
@@ -154,8 +222,22 @@ describe('tier and dataset gates', () => {
       data: { orgId: 42, trigger: 'cron', correlationId: 'c' },
     } as never);
 
-    expect(mockGetActiveDatasetId).toHaveBeenCalledWith(42);
+    expect(mockGetActiveDatasetId).toHaveBeenCalledWith(42, { __tag: 'dbAdmin' });
     expect(mockRunCurationPipeline).not.toHaveBeenCalled();
+  });
+
+  it('evaluates against the freshly-fetched dataset id, ignoring a stale job payload datasetId (I/O matrix row 8)', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(555);
+    mockGetEnabledRules.mockResolvedValueOnce([runwayRule()]);
+    mockRunCurationPipeline.mockResolvedValueOnce([runwayInsight(2)]);
+
+    await handleEvaluateOrgJob({
+      id: 'j-stale-dataset',
+      data: { orgId: 42, datasetId: 999, trigger: 'cron', correlationId: 'c' },
+    } as never);
+
+    expect(mockGetActiveDatasetId).toHaveBeenCalledWith(42, { __tag: 'dbAdmin' });
+    expect(mockRunCurationPipeline).toHaveBeenCalledWith(42, 555, { __tag: 'dbAdmin' }, null);
   });
 
   it('exits cleanly when the org has no enabled rules', async () => {
@@ -175,9 +257,10 @@ describe('cron: fire decisions', () => {
     await handleEvaluateOrgJob({ id: 'j4', data: baseJobData } as never);
 
     expect(mockRunCurationPipeline).toHaveBeenCalledWith(42, 100, { __tag: 'dbAdmin' }, null);
-    expect(mockCreateFire).toHaveBeenCalledWith(
+    expect(mockCreateIfUnderQuota).toHaveBeenCalledWith(
       // threshold 6mo, runwayMonths 2 => <= 6/2 (3) but > 6/4 (1.5): band 2
       expect.objectContaining({ orgId: 42, ruleId: 1, ruleKind: 'runway_runs_short', band: 2 }),
+      3,
       { __tag: 'dbAdmin' },
     );
     expect(mockSendQueueAdd).toHaveBeenCalledTimes(1);
@@ -204,7 +287,7 @@ describe('cron: fire decisions', () => {
 
     await handleEvaluateOrgJob({ id: 'j5', data: baseJobData } as never);
 
-    expect(mockCreateFire).not.toHaveBeenCalled();
+    expect(mockCreateIfUnderQuota).not.toHaveBeenCalled();
     expect(mockSendQueueAdd).not.toHaveBeenCalled();
   });
 
@@ -219,7 +302,11 @@ describe('cron: fire decisions', () => {
 
     await handleEvaluateOrgJob({ id: 'j6', data: baseJobData } as never);
 
-    expect(mockCreateFire).toHaveBeenCalledWith(expect.objectContaining({ band: 3 }), { __tag: 'dbAdmin' });
+    expect(mockCreateIfUnderQuota).toHaveBeenCalledWith(
+      expect.objectContaining({ band: 3 }),
+      3,
+      { __tag: 'dbAdmin' },
+    );
   });
 
   it('ignores a fire older than the 7-day dedup window even with the same band', async () => {
@@ -233,17 +320,16 @@ describe('cron: fire decisions', () => {
 
     await handleEvaluateOrgJob({ id: 'j7', data: baseJobData } as never);
 
-    expect(mockCreateFire).toHaveBeenCalled();
+    expect(mockCreateIfUnderQuota).toHaveBeenCalled();
   });
 
   it('suppresses a 4th candidate fire once the org quota is exhausted (I/O matrix row 4)', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([runwayRule()]);
     mockRunCurationPipeline.mockResolvedValueOnce([runwayInsight(2)]);
-    mockCountRecentByOrgId.mockResolvedValueOnce(3);
+    mockCreateIfUnderQuota.mockResolvedValueOnce(null);
 
     await handleEvaluateOrgJob({ id: 'j8', data: baseJobData } as never);
 
-    expect(mockCreateFire).not.toHaveBeenCalled();
     expect(mockSendQueueAdd).not.toHaveBeenCalled();
     expect(mockRecordEvent).toHaveBeenCalledWith(
       42,
@@ -261,7 +347,7 @@ describe('cron: fire decisions', () => {
     await handleEvaluateOrgJob({ id: 'j9', data: baseJobData } as never);
 
     expect(mockGetLatestFire).not.toHaveBeenCalled();
-    expect(mockCreateFire).not.toHaveBeenCalled();
+    expect(mockCreateIfUnderQuota).not.toHaveBeenCalled();
   });
 
   it('logs a fire but skips the send enqueue when the org has no owner', async () => {
@@ -271,7 +357,7 @@ describe('cron: fire decisions', () => {
 
     await handleEvaluateOrgJob({ id: 'j10', data: baseJobData } as never);
 
-    expect(mockCreateFire).toHaveBeenCalled();
+    expect(mockCreateIfUnderQuota).toHaveBeenCalled();
     expect(mockSendQueueAdd).not.toHaveBeenCalled();
   });
 
@@ -281,6 +367,62 @@ describe('cron: fire decisions', () => {
     mockRunCurationPipeline.mockRejectedValueOnce(err);
 
     await expect(handleEvaluateOrgJob({ id: 'j11', data: baseJobData } as never)).rejects.toBe(err);
+  });
+
+  it('reports a maximal-change band when zero prior expenses hide a real cash burn spike', async () => {
+    mockGetEnabledRules.mockResolvedValueOnce([cashBurnRule()]);
+    mockRunCurationPipeline.mockResolvedValueOnce([
+      cashFlowInsight([
+        { month: '2026-05', revenue: 1_000, expenses: 0, net: 1_000 },
+        { month: '2026-06', revenue: 1_000, expenses: 500, net: 500 },
+      ]),
+    ]);
+
+    await handleEvaluateOrgJob({ id: 'j-cb-spike', data: baseJobData } as never);
+
+    // threshold 50%, priorAvgExpenses 0, latest.expenses 500 > 0 => currentValue = 50 * 3 = 150, band 3
+    expect(mockCreateIfUnderQuota).toHaveBeenCalledWith(
+      expect.objectContaining({ ruleKind: 'cash_burn_spikes', band: 3, currentValue: 150 }),
+      3,
+      { __tag: 'dbAdmin' },
+    );
+  });
+
+  it('reports no genuine change when prior and latest cash burn expenses are both zero', async () => {
+    mockGetEnabledRules.mockResolvedValueOnce([cashBurnRule()]);
+    mockRunCurationPipeline.mockResolvedValueOnce([
+      cashFlowInsight([
+        { month: '2026-05', revenue: 1_000, expenses: 0, net: 1_000 },
+        { month: '2026-06', revenue: 1_000, expenses: 0, net: 1_000 },
+      ]),
+    ]);
+
+    await handleEvaluateOrgJob({ id: 'j-cb-flat', data: baseJobData } as never);
+
+    expect(mockCreateIfUnderQuota).not.toHaveBeenCalled();
+  });
+
+  it('reports a maximal-change band when break-even revenue is zero but a real gap exists', async () => {
+    mockGetEnabledRules.mockResolvedValueOnce([breakevenRule()]);
+    mockRunCurationPipeline.mockResolvedValueOnce([breakEvenInsight({ breakEvenRevenue: 0, gap: 2_000 })]);
+
+    await handleEvaluateOrgJob({ id: 'j-be-spike', data: baseJobData } as never);
+
+    // threshold 50%, breakEvenRevenue 0, gap 2000 > 0 => currentValue = 50 * 3 = 150, band 3
+    expect(mockCreateIfUnderQuota).toHaveBeenCalledWith(
+      expect.objectContaining({ ruleKind: 'breakeven_gap_widens', band: 3, currentValue: 150 }),
+      3,
+      { __tag: 'dbAdmin' },
+    );
+  });
+
+  it('reports no genuine change when break-even revenue is zero and the gap is non-positive', async () => {
+    mockGetEnabledRules.mockResolvedValueOnce([breakevenRule()]);
+    mockRunCurationPipeline.mockResolvedValueOnce([breakEvenInsight({ breakEvenRevenue: 0, gap: -500 })]);
+
+    await handleEvaluateOrgJob({ id: 'j-be-flat', data: baseJobData } as never);
+
+    expect(mockCreateIfUnderQuota).not.toHaveBeenCalled();
   });
 });
 
@@ -297,9 +439,10 @@ describe('on-upload trigger', () => {
 
     await handleEvaluateOrgJob({ id: 'j12', data: uploadJobData } as never);
 
-    expect(mockCreateFire).toHaveBeenCalledTimes(1);
-    expect(mockCreateFire).toHaveBeenCalledWith(
+    expect(mockCreateIfUnderQuota).toHaveBeenCalledTimes(1);
+    expect(mockCreateIfUnderQuota).toHaveBeenCalledWith(
       expect.objectContaining({ ruleKind: 'runway_runs_short' }),
+      3,
       { __tag: 'dbAdmin' },
     );
   });
@@ -314,7 +457,48 @@ describe('on-upload trigger', () => {
     await handleEvaluateOrgJob({ id: 'j13', data: uploadJobData } as never);
 
     expect(mockRunCurationPipeline).not.toHaveBeenCalled();
-    expect(mockCreateFire).not.toHaveBeenCalled();
+    expect(mockCreateIfUnderQuota).not.toHaveBeenCalled();
+  });
+
+  it('skips every rule when the span is wide enough but the dataset touches too few distinct dates (I/O matrix row: sparse-but-wide)', async () => {
+    mockGetEnabledRules.mockResolvedValueOnce([runwayRule()]);
+    mockGetDateRange.mockResolvedValueOnce({
+      earliest: new Date('2026-01-01'),
+      latest: new Date('2026-01-31'),
+    });
+    mockCountDistinctDates.mockResolvedValueOnce(2);
+
+    await handleEvaluateOrgJob({ id: 'j-sparse', data: uploadJobData } as never);
+
+    expect(mockRunCurationPipeline).not.toHaveBeenCalled();
+    expect(mockCreateIfUnderQuota).not.toHaveBeenCalled();
+  });
+
+  it('passes the density gate at exactly the distinct-day floor (boundary: 20 of a 30-day span)', async () => {
+    mockGetEnabledRules.mockResolvedValueOnce([runwayRule()]);
+    mockGetDateRange.mockResolvedValueOnce({
+      earliest: new Date('2026-01-01'),
+      latest: new Date('2026-01-31'),
+    });
+    mockCountDistinctDates.mockResolvedValueOnce(20);
+    mockRunCurationPipeline.mockResolvedValueOnce([runwayInsight(2)]);
+
+    await handleEvaluateOrgJob({ id: 'j-density-boundary-pass', data: uploadJobData } as never);
+
+    expect(mockRunCurationPipeline).toHaveBeenCalled();
+  });
+
+  it('fails the density gate one day under the distinct-day floor (boundary: 19 of a 30-day span)', async () => {
+    mockGetEnabledRules.mockResolvedValueOnce([runwayRule()]);
+    mockGetDateRange.mockResolvedValueOnce({
+      earliest: new Date('2026-01-01'),
+      latest: new Date('2026-01-31'),
+    });
+    mockCountDistinctDates.mockResolvedValueOnce(19);
+
+    await handleEvaluateOrgJob({ id: 'j-density-boundary-fail', data: uploadJobData } as never);
+
+    expect(mockRunCurationPipeline).not.toHaveBeenCalled();
   });
 
   it('exits cleanly when the org has no on-upload-eligible rules', async () => {
