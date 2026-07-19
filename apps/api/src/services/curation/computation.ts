@@ -469,19 +469,10 @@ export function bucketRowsByMonth(rows: DataRow[]): MonthlyBucketMap {
   return buckets;
 }
 
-/**
- * Cash-flow analysis on pre-aggregated monthly buckets. Takes the last
- * `trailingMonths` buckets (chronologically), applies three suppression
- * guards (zero-revenue month, non-positive avg revenue, break-even band),
- * and emits a CashFlowStat or [].
- *
- * This is the shared analytical core, both computeCashFlow(rows) (for the
- * curation pipeline) and the /cash-forecast endpoint (for SQL-aggregated data)
- * call this. Suppression semantics are identical across both paths.
- */
-export function cashFlowFromBuckets(
+function buildCashFlowStat(
   buckets: MonthlyBucketMap,
-  trailingMonths = 3,
+  trailingMonths: number,
+  suppressNearZero: boolean,
 ): CashFlowStat[] {
   const months = [...buckets.keys()].sort();
   if (months.length < trailingMonths) return [];
@@ -501,7 +492,7 @@ export function cashFlowFromBuckets(
   if (avgMonthlyRevenue <= 0) return [];
 
   const monthlyNet = median(recentMonths.map((m) => m.net));
-  if (Math.abs(monthlyNet) < 0.05 * avgMonthlyRevenue) return [];
+  if (suppressNearZero && Math.abs(monthlyNet) < 0.05 * avgMonthlyRevenue) return [];
 
   const direction = monthlyNet < 0 ? 'burning' as const : 'surplus' as const;
   const monthsBurning = recentMonths.filter((m) => m.net < 0).length;
@@ -512,6 +503,42 @@ export function cashFlowFromBuckets(
     value: monthlyNet,
     details: { monthlyNet, trailingMonths, direction, monthsBurning, recentMonths },
   }];
+}
+
+/**
+ * Cash-flow analysis on pre-aggregated monthly buckets. Takes the last
+ * `trailingMonths` buckets (chronologically) and calls the shared
+ * buildCashFlowStat core with the break-even band guard enabled, on top of
+ * the zero-revenue-month and non-positive-avg-revenue guards it always runs.
+ *
+ * This is the dashboard/digest/AI-summary path, both computeCashFlow(rows)
+ * (for the curation pipeline) and the /cash-forecast endpoint (for
+ * SQL-aggregated data) call this. Suppression semantics are identical
+ * across both paths. See cashFlowForAlerting for the alert-only variant
+ * that skips the band guard.
+ */
+export function cashFlowFromBuckets(
+  buckets: MonthlyBucketMap,
+  trailingMonths = 3,
+): CashFlowStat[] {
+  return buildCashFlowStat(buckets, trailingMonths, true);
+}
+
+/**
+ * Same analysis as cashFlowFromBuckets but with the break-even band guard
+ * off. evaluateCashBurn needs a real signal even for orgs sitting near
+ * break-even, that population is the most likely to have a genuine spike
+ * worth alerting on, and the dashboard's near-zero suppression exists to
+ * avoid misleading AI commentary on the dashboard, not to hide alert-worthy
+ * spikes (DW-7). No dashboard/digest consumer calls this directly, but a
+ * fired result does still reach the alert email's AI paragraph and chart
+ * (evaluateOrg.ts -> send.ts), it isn't fully isolated from AI commentary.
+ */
+export function cashFlowForAlerting(
+  buckets: MonthlyBucketMap,
+  trailingMonths = 3,
+): CashFlowStat[] {
+  return buildCashFlowStat(buckets, trailingMonths, false);
 }
 
 /**

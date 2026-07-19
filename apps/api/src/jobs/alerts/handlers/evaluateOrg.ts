@@ -18,6 +18,8 @@ import {
 } from '../../../db/queries/index.js';
 import { runCurationPipeline, StatType } from '../../../services/curation/index.js';
 import type { ScoredInsight } from '../../../services/curation/index.js';
+import { cashFlowForAlerting } from '../../../services/curation/computation.js';
+import { scoreInsights } from '../../../services/curation/scoring.js';
 import type { AlertRuleRow } from '../../../db/queries/alertRules.js';
 import * as runwayBands from '../bands/runwayBands.js';
 import * as marginBands from '../bands/marginBands.js';
@@ -64,12 +66,14 @@ function evaluateMargin(insights: ScoredInsight[], threshold: number): RuleEvalu
   return { currentValue, band: marginBands.getBand(currentValue, threshold), insight };
 }
 
-function evaluateCashBurn(insights: ScoredInsight[], threshold: number): RuleEvaluation | null {
-  const insight = insights.find((i) => i.stat.statType === StatType.CashFlow);
-  if (!insight || insight.stat.statType !== StatType.CashFlow) return null;
+function evaluateCashBurn(
+  cashFlowInsight: ScoredInsight | null,
+  threshold: number,
+): RuleEvaluation | null {
+  if (!cashFlowInsight || cashFlowInsight.stat.statType !== StatType.CashFlow) return null;
 
-  const months = insight.stat.details.recentMonths;
-  if (months.length < 2) return { currentValue: 0, band: null, insight };
+  const months = cashFlowInsight.stat.details.recentMonths;
+  if (months.length < 2) return { currentValue: 0, band: null, insight: cashFlowInsight };
 
   const latest = months[months.length - 1]!;
   const priorMonths = months.slice(0, -1);
@@ -85,7 +89,7 @@ function evaluateCashBurn(insights: ScoredInsight[], threshold: number): RuleEva
         ? threshold * 3
         : 0;
 
-  return { currentValue, band: cashBurnBands.getBand(currentValue, threshold), insight };
+  return { currentValue, band: cashBurnBands.getBand(currentValue, threshold), insight: cashFlowInsight };
 }
 
 function evaluateBreakeven(insights: ScoredInsight[], threshold: number): RuleEvaluation | null {
@@ -119,14 +123,18 @@ function evaluateAnomaly(
   return { currentValue, band: anomalyBands.getBand(currentValue, threshold), insight: mostSevere };
 }
 
-function evaluateRule(insights: ScoredInsight[], rule: AlertRuleRow): RuleEvaluation | null {
+function evaluateRule(
+  insights: ScoredInsight[],
+  cashFlowForAlertingInsight: ScoredInsight | null,
+  rule: AlertRuleRow,
+): RuleEvaluation | null {
   switch (rule.kind) {
     case 'runway_runs_short':
       return evaluateRunway(insights, (rule.threshold as { months: number }).months);
     case 'margin_drops':
       return evaluateMargin(insights, (rule.threshold as { percent: number }).percent);
     case 'cash_burn_spikes':
-      return evaluateCashBurn(insights, (rule.threshold as { percent: number }).percent);
+      return evaluateCashBurn(cashFlowForAlertingInsight, (rule.threshold as { percent: number }).percent);
     case 'breakeven_gap_widens':
       return evaluateBreakeven(insights, (rule.threshold as { percent: number }).percent);
     case 'anomaly_fires':
@@ -252,6 +260,18 @@ export async function handleEvaluateOrgJob(job: Job): Promise<void> {
   // this handler.
   const insights = await runCurationPipeline(orgId, datasetId, dbAdmin, financials);
 
+  // cash_burn_spikes reads a separate cash-flow signal from the one in
+  // `insights`: the shared curation pipeline suppresses CashFlow for orgs
+  // near break-even (the dashboard's near-zero band), but that's exactly the
+  // population most likely to have a real spike worth alerting on. Gated
+  // behind the rule check so orgs without cash_burn_spikes never pay for the
+  // extra query.
+  const cashFlowForAlertingInsight = rules.some((r) => r.kind === 'cash_burn_spikes')
+    ? (scoreInsights(
+        cashFlowForAlerting(await dataRowsQueries.getMonthlyBucketsByDataset(orgId, datasetId, dbAdmin)),
+      )[0] ?? null)
+    : null;
+
   let firedCount = 0;
   let suppressedCount = 0;
 
@@ -261,7 +281,7 @@ export async function handleEvaluateOrgJob(job: Job): Promise<void> {
       scope.setTag('rule_id', String(rule.id));
       scope.setTag('rule_kind', rule.kind);
 
-      const evaluation = evaluateRule(insights, rule);
+      const evaluation = evaluateRule(insights, cashFlowForAlertingInsight, rule);
       if (!evaluation || evaluation.band === null) {
         logOutcome(correlationId, orgId, rule, trigger, 'suppressed_below_threshold', {
           currentValue: evaluation?.currentValue ?? null,

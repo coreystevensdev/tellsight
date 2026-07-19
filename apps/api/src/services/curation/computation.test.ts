@@ -10,6 +10,7 @@ import {
   monthlyNetsWindow,
   bucketRowsByMonth,
   cashFlowFromBuckets,
+  cashFlowForAlerting,
   netsFromBuckets,
   resolveStatById,
   assignIds,
@@ -1309,6 +1310,51 @@ describe('cashFlowFromBuckets', () => {
     );
     expect(fromRows[0]!.details.monthlyNet).toBe(fromBuckets[0]!.details.monthlyNet);
     expect(fromRows[0]!.details.monthsBurning).toBe(fromBuckets[0]!.details.monthsBurning);
+  });
+});
+
+describe('cashFlowForAlerting', () => {
+  it('returns a real stat inside the 5% break-even band where cashFlowFromBuckets suppresses (DW-7)', () => {
+    // Same fixture as the cashFlowFromBuckets band-suppression test above:
+    // avg revenue 10k, 5% band = 500, net of 200 is inside it.
+    const map = buckets([
+      ['2026-01', { revenue: 10_000, expenses: 9_800 }], // net +200
+      ['2026-02', { revenue: 10_000, expenses: 9_800 }],
+      ['2026-03', { revenue: 10_000, expenses: 9_800 }],
+    ]);
+
+    expect(cashFlowFromBuckets(map, 3)).toEqual([]);
+
+    const result = cashFlowForAlerting(map, 3);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.details.monthlyNet).toBe(200);
+    expect(result[0]!.details.direction).toBe('surplus');
+  });
+
+  it('still suppresses when a recent month has zero revenue (gap)', () => {
+    const map = buckets([
+      ['2026-01', { revenue: 10_000, expenses: 15_000 }],
+      ['2026-02', { revenue: 0, expenses: 14_000 }], // gap
+      ['2026-03', { revenue: 10_000, expenses: 16_000 }],
+    ]);
+    expect(cashFlowForAlerting(map, 3)).toEqual([]);
+  });
+
+  it('still suppresses when average revenue is non-positive', () => {
+    const map = buckets([
+      ['2026-01', { revenue: -1_000, expenses: 5_000 }],
+      ['2026-02', { revenue: -500, expenses: 4_000 }],
+      ['2026-03', { revenue: -800, expenses: 6_000 }],
+    ]);
+    expect(cashFlowForAlerting(map, 3)).toEqual([]);
+  });
+
+  it('still suppresses when fewer than trailingMonths buckets exist', () => {
+    const map = buckets([
+      ['2026-01', { revenue: 10_000, expenses: 9_800 }],
+      ['2026-02', { revenue: 10_000, expenses: 9_800 }],
+    ]);
+    expect(cashFlowForAlerting(map, 3)).toEqual([]);
   });
 });
 

@@ -8,6 +8,7 @@ const mockGetLatestFire = vi.fn();
 const mockCreateIfUnderQuota = vi.fn();
 const mockGetDateRange = vi.fn();
 const mockCountDistinctDates = vi.fn();
+const mockGetMonthlyBuckets = vi.fn();
 const mockGetOrgOwnerId = vi.fn();
 const mockFindUserById = vi.fn();
 const mockRecordEvent = vi.fn().mockResolvedValue({ id: 1 });
@@ -37,7 +38,11 @@ vi.mock('../../../db/queries/index.js', () => ({
     getLatestByRuleId: mockGetLatestFire,
     createIfUnderQuota: mockCreateIfUnderQuota,
   },
-  dataRowsQueries: { getDateRange: mockGetDateRange, countDistinctDates: mockCountDistinctDates },
+  dataRowsQueries: {
+    getDateRange: mockGetDateRange,
+    countDistinctDates: mockCountDistinctDates,
+    getMonthlyBucketsByDataset: mockGetMonthlyBuckets,
+  },
   userOrgsQueries: { getOrgOwnerId: mockGetOrgOwnerId },
   usersQueries: { findUserById: mockFindUserById },
   analyticsEventsQueries: { recordEvent: mockRecordEvent },
@@ -152,23 +157,14 @@ function runwayInsight(runwayMonths: number) {
   };
 }
 
-function cashFlowInsight(recentMonths: { month: string; revenue: number; expenses: number; net: number }[]) {
-  return {
-    stat: {
-      statType: 'cash_flow',
-      category: null,
-      value: 0,
-      details: {
-        monthlyNet: 0,
-        trailingMonths: recentMonths.length,
-        direction: 'burning' as const,
-        monthsBurning: recentMonths.length,
-        recentMonths,
-      },
-    },
-    score: 0.9,
-    breakdown: { novelty: 0.8, actionability: 0.9, specificity: 0.9 },
-  };
+// cash_burn_spikes reads from cashFlowForAlerting/scoreInsights running for
+// real against this map (see the vi.mock block: curation/computation.js and
+// curation/scoring.js are deliberately not mocked), not from an injected
+// ScoredInsight like the other rule kinds get via mockRunCurationPipeline.
+function monthlyBuckets(
+  entries: [string, { revenue: number; expenses: number }][],
+): Map<string, { revenue: number; expenses: number }> {
+  return new Map(entries);
 }
 
 function breakEvenInsight(details: { breakEvenRevenue: number; gap: number }) {
@@ -371,12 +367,14 @@ describe('cron: fire decisions', () => {
 
   it('reports a maximal-change band when zero prior expenses hide a real cash burn spike', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([cashBurnRule()]);
-    mockRunCurationPipeline.mockResolvedValueOnce([
-      cashFlowInsight([
-        { month: '2026-05', revenue: 1_000, expenses: 0, net: 1_000 },
-        { month: '2026-06', revenue: 1_000, expenses: 500, net: 500 },
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetMonthlyBuckets.mockResolvedValueOnce(
+      monthlyBuckets([
+        ['2026-04', { revenue: 1_000, expenses: 0 }],
+        ['2026-05', { revenue: 1_000, expenses: 0 }],
+        ['2026-06', { revenue: 1_000, expenses: 500 }],
       ]),
-    ]);
+    );
 
     await handleEvaluateOrgJob({ id: 'j-cb-spike', data: baseJobData } as never);
 
@@ -390,16 +388,51 @@ describe('cron: fire decisions', () => {
 
   it('reports no genuine change when prior and latest cash burn expenses are both zero', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([cashBurnRule()]);
-    mockRunCurationPipeline.mockResolvedValueOnce([
-      cashFlowInsight([
-        { month: '2026-05', revenue: 1_000, expenses: 0, net: 1_000 },
-        { month: '2026-06', revenue: 1_000, expenses: 0, net: 1_000 },
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetMonthlyBuckets.mockResolvedValueOnce(
+      monthlyBuckets([
+        ['2026-04', { revenue: 1_000, expenses: 0 }],
+        ['2026-05', { revenue: 1_000, expenses: 0 }],
+        ['2026-06', { revenue: 1_000, expenses: 0 }],
       ]),
-    ]);
+    );
 
     await handleEvaluateOrgJob({ id: 'j-cb-flat', data: baseJobData } as never);
 
     expect(mockCreateIfUnderQuota).not.toHaveBeenCalled();
+  });
+
+  it('fires cash_burn_spikes for a near-break-even org the dashboard would suppress (DW-7)', async () => {
+    mockGetEnabledRules.mockResolvedValueOnce([cashBurnRule()]);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    // avg revenue 10,500, 5% band = 525; median net here is 500, inside the
+    // band, so cashFlowFromBuckets (the dashboard path) would return [] for
+    // this exact data. cashFlowForAlerting skips that guard.
+    mockGetMonthlyBuckets.mockResolvedValueOnce(
+      monthlyBuckets([
+        ['2026-04', { revenue: 10_500, expenses: 10_000 }],
+        ['2026-05', { revenue: 10_500, expenses: 10_000 }],
+        ['2026-06', { revenue: 10_500, expenses: 15_000 }],
+      ]),
+    );
+
+    await handleEvaluateOrgJob({ id: 'j-cb-near-break-even', data: baseJobData } as never);
+
+    // threshold 50%, priorAvgExpenses 10,000, latest.expenses 15,000 => currentValue = 50, band 1
+    expect(mockCreateIfUnderQuota).toHaveBeenCalledWith(
+      expect.objectContaining({ ruleKind: 'cash_burn_spikes', band: 1, currentValue: 50 }),
+      3,
+      { __tag: 'dbAdmin' },
+    );
+  });
+
+  it('does not fetch monthly buckets when no cash_burn_spikes rule is enabled', async () => {
+    mockGetEnabledRules.mockResolvedValueOnce([runwayRule()]);
+    mockRunCurationPipeline.mockResolvedValueOnce([runwayInsight(2)]);
+
+    await handleEvaluateOrgJob({ id: 'j-cb-not-enabled', data: baseJobData } as never);
+
+    expect(mockGetMonthlyBuckets).not.toHaveBeenCalled();
   });
 
   it('reports a maximal-change band when break-even revenue is zero but a real gap exists', async () => {
@@ -508,5 +541,30 @@ describe('on-upload trigger', () => {
 
     expect(mockGetDateRange).not.toHaveBeenCalled();
     expect(mockRunCurationPipeline).not.toHaveBeenCalled();
+  });
+
+  it('evaluates cash_burn_spikes via the alert-only path once the on-upload history gate passes', async () => {
+    mockGetEnabledRules.mockResolvedValueOnce([cashBurnRule()]);
+    mockGetDateRange.mockResolvedValueOnce({
+      earliest: new Date('2026-01-01'),
+      latest: new Date('2026-06-01'),
+    });
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetMonthlyBuckets.mockResolvedValueOnce(
+      monthlyBuckets([
+        ['2026-04', { revenue: 1_000, expenses: 0 }],
+        ['2026-05', { revenue: 1_000, expenses: 0 }],
+        ['2026-06', { revenue: 1_000, expenses: 500 }],
+      ]),
+    );
+
+    await handleEvaluateOrgJob({ id: 'j-cb-on-upload', data: uploadJobData } as never);
+
+    expect(mockGetMonthlyBuckets).toHaveBeenCalledWith(42, 100, { __tag: 'dbAdmin' });
+    expect(mockCreateIfUnderQuota).toHaveBeenCalledWith(
+      expect.objectContaining({ ruleKind: 'cash_burn_spikes', band: 3, currentValue: 150 }),
+      3,
+      { __tag: 'dbAdmin' },
+    );
   });
 });
