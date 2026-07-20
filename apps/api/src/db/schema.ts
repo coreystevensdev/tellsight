@@ -261,6 +261,8 @@ export const digestHistory = pgTable(
     // ComputedStat[] snapshot, top-N scored stats only. Privacy boundary:
     // computed statistics, never DataRow[]. Typed at the query-helper layer.
     keyStats: jsonb('key_stats').notNull(),
+    // Each entry's catalog field is constrained by digest_history_milestones_catalog_check,
+    // constraint lives in the migration, not here.
     milestones: jsonb('milestones').notNull().default('[]'),
     sentAt: timestamp('sent_at', { withTimezone: true }).notNull(),
   },
@@ -270,6 +272,12 @@ export const digestHistory = pgTable(
     uniqueIndex('idx_digest_history_org_week').on(table.orgId, table.weekStart),
   ],
 );
+
+export const milestoneAwardKindEnum = pgEnum('milestone_award_kind', [
+  'first_profitable_month',
+  'first_break_even',
+  'first_three_profitable_streak',
+]);
 
 // Fire-once ledger for all-time-first milestones (first profitable month,
 // first break-even, first three-month streak). The unique (org_id, kind)
@@ -284,7 +292,7 @@ export const milestoneAwards = pgTable(
     orgId: integer('org_id')
       .notNull()
       .references(() => orgs.id, { onDelete: 'cascade' }),
-    kind: text().notNull(),
+    kind: milestoneAwardKindEnum().notNull(),
     datasetId: integer('dataset_id').references(() => datasets.id, {
       onDelete: 'set null',
     }),
@@ -292,6 +300,8 @@ export const milestoneAwards = pgTable(
   },
   (table) => [uniqueIndex('idx_milestone_awards_org_kind').on(table.orgId, table.kind)],
 );
+
+export type MilestoneAwardKind = (typeof milestoneAwardKindEnum.enumValues)[number];
 
 export const milestoneAwardsRelations = relations(milestoneAwards, ({ one }) => ({
   org: one(orgs, {

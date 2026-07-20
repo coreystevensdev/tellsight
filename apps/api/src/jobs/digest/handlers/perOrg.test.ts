@@ -375,7 +375,13 @@ describe('digest history', () => {
       stateSentence: 'Runway dropped',
       valence: 'concerning',
       keyStats: [runwayStat(2.8)],
-      milestones: [{ kind: 'runway_dropped_below_3mo', label: 'Your runway dropped below 3 months.' }],
+      milestones: [
+        {
+          kind: 'runway_dropped_below_3mo',
+          label: 'Your runway dropped below 3 months.',
+          catalog: 'transition',
+        },
+      ],
       sentAt: expect.any(Date),
     });
   });
@@ -528,7 +534,13 @@ describe('first-time milestones', () => {
 
     expect(mockSaveDigestHistory).toHaveBeenCalledWith(
       expect.objectContaining({
-        milestones: [{ kind: 'first_profitable_month', label: 'This is your first profitable month.' }],
+        milestones: [
+          {
+            kind: 'first_profitable_month',
+            label: 'This is your first profitable month.',
+            catalog: 'first_time',
+          },
+        ],
       }),
     );
 
@@ -597,7 +609,11 @@ describe('first-time milestones', () => {
     expect(mockSaveDigestHistory).toHaveBeenCalledWith(
       expect.objectContaining({
         milestones: [
-          { kind: 'first_break_even', label: 'For the first time, revenue covered your fixed costs.' },
+          {
+            kind: 'first_break_even',
+            label: 'For the first time, revenue covered your fixed costs.',
+            catalog: 'first_time',
+          },
         ],
       }),
     );

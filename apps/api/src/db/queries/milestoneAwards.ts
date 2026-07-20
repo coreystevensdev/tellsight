@@ -1,13 +1,13 @@
 import { eq } from 'drizzle-orm';
 
 import { dbAdmin, type DbTransaction } from '../../lib/db.js';
-import { milestoneAwards } from '../schema.js';
+import { milestoneAwards, type MilestoneAwardKind } from '../schema.js';
 
 type Client = typeof dbAdmin | DbTransaction;
 
 export interface AwardMilestoneInput {
   orgId: number;
-  kind: string;
+  kind: MilestoneAwardKind;
   datasetId: number | null;
 }
 

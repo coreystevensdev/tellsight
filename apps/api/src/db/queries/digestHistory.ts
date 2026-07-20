@@ -6,11 +6,18 @@ import type { ComputedStat } from '../../services/curation/types.js';
 
 export type DigestValence = 'positive' | 'concerning' | 'watching' | 'neutral';
 
+// 'first_time' = all-time-first (FirstTimeMilestoneKind, DB-enforced via
+// milestone_awards). 'transition' = week-over-week crossing (MilestoneKind,
+// jsonb-only). digest_history_milestones_catalog_check enforces these two
+// values at the row level.
+export type MilestoneCatalog = 'first_time' | 'transition';
+
 // Forward-looking shape for the milestone detector that lands with digest v2.
 // Stored as JSONB so the detector can extend it without a migration.
 export interface DigestMilestone {
   kind: string;
   label: string;
+  catalog: MilestoneCatalog;
 }
 
 export interface SaveDigestHistoryInput {

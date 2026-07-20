@@ -218,6 +218,20 @@
       "when": 1782432000000,
       "tag": "0030_add-alert-rules-org-kind-unique",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1782518400000,
+      "tag": "0031_add-milestone-award-kind-enum",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1782604800000,
+      "tag": "0032_add-digest-history-milestones-catalog-check",
+      "breakpoints": true
     }
   ]
 }

@@ -257,7 +257,18 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
       stateSentence,
       valence,
       keyStats: currentStats,
-      milestones: milestones.map((m) => ({ kind: m.kind, label: m.label })),
+      milestones: [
+        ...firstTimeMilestones.map((m) => ({
+          kind: m.kind,
+          label: m.label,
+          catalog: 'first_time' as const,
+        })),
+        ...dedupedTransitionMilestones.map((m) => ({
+          kind: m.kind,
+          label: m.label,
+          catalog: 'transition' as const,
+        })),
+      ],
       sentAt: new Date(),
     });
   } catch (err) {
