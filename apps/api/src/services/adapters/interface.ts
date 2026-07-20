@@ -22,13 +22,3 @@ export interface ParseResult {
   rowCount: number;
   warnings: string[];
 }
-
-/**
- * Pluggable data source contract. CSV adapter now, financial API adapters
- * (QuickBooks, Stripe) in Growth tier. Each adapter normalizes its source
- * into the same ParseResult shape so the route handler stays generic.
- */
-export interface DataSourceAdapter {
-  parse(buffer: Buffer): ParseResult;
-  validate(headers: string[]): ValidationResult;
-}

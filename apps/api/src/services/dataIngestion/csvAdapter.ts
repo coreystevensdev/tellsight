@@ -5,7 +5,6 @@ import {
   CSV_MAX_ROWS,
 } from 'shared/constants';
 import type {
-  DataSourceAdapter,
   ParseResult,
   ValidationResult,
   ColumnValidationError,
@@ -123,7 +122,7 @@ function buildHeaderMap(rawHeaders: string[]): Map<string, string> {
   return map;
 }
 
-export const csvAdapter: DataSourceAdapter = {
+export const csvAdapter = {
   parse(buffer: Buffer): ParseResult {
     const content = stripBom(buffer.toString('utf-8'));
 
