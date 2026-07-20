@@ -1,5 +1,6 @@
 import { Queue } from 'bullmq';
 import type { ConnectionOptions } from 'bullmq';
+import { z } from 'zod';
 
 import { env } from '../../config.js';
 
@@ -24,23 +25,39 @@ export interface OrchestratorJobData {
   correlationId: string;
 }
 
-export interface OrgJobData {
-  orgId: number;
-  weekStart: Date;
-  weekEnd: Date;
-  correlationId: string;
-}
+// weekStart/weekEnd skip validation (z.custom always passes) but keep the
+// Date type. BullMQ JSON-serializes them to ISO strings with no
+// re-hydration, so a real worker reads a string here, not a Date -- z.date()
+// would reject that string and turn today's loud, retry-eligible TypeError
+// (from perOrg/perSend calling .getTime()/.toISOString() on a string) into a
+// silently completed job instead.
+const unvalidatedDate = z.custom<Date>(() => true);
 
-export interface SendJobData {
-  userId: number;
-  orgId: number;
-  summaryId: number;
-  weekStart: Date;
-  userEmail: string;
-  orgName: string;
-  subjectLine: string;
-  correlationId: string;
-}
+export const orgJobDataSchema = z.object({
+  orgId: z.number().int().finite(),
+  weekStart: unvalidatedDate,
+  weekEnd: unvalidatedDate,
+  correlationId: z.string().min(1),
+});
+export type OrgJobData = z.infer<typeof orgJobDataSchema>;
+
+const FALLBACK_SUBJECT_LINE = 'Your weekly digest';
+
+// Exported so perSend.ts can check "would this subjectLine have fallen back"
+// against the same rule sendJobDataSchema uses, instead of re-deriving it.
+export const subjectLineSchema = z.string().trim().min(1);
+
+export const sendJobDataSchema = z.object({
+  userId: z.number().int().finite(),
+  orgId: z.number().int().finite(),
+  summaryId: z.number().int().finite(),
+  weekStart: unvalidatedDate,
+  userEmail: z.string(),
+  orgName: z.string(),
+  subjectLine: subjectLineSchema.catch(FALLBACK_SUBJECT_LINE),
+  correlationId: z.string().min(1),
+});
+export type SendJobData = z.infer<typeof sendJobDataSchema>;
 
 let orchestratorQueue: Queue | null = null;
 let orgQueue: Queue | null = null;

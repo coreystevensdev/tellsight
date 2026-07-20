@@ -23,7 +23,7 @@ import { AlertEmail, buildAlertRecipientExplanation } from '../templates/alertEm
 import { signMuteToken } from '../muteToken.js';
 import { signAlertTrackingToken } from '../trackingToken.js';
 import { RULE_KIND_LABELS, RULE_KIND_NOUN_LABELS } from '../ruleKindLabels.js';
-import type { SendJobData } from '../queue.js';
+import { sendJobDataSchema, type SendJobData } from '../queue.js';
 
 const TEMPLATE_VERSION = 'alert-v1';
 const ALERT_PROMPT_VERSION = 'v1-alert';
@@ -170,7 +170,20 @@ function buildChartInput(
 }
 
 export async function handleSendJob(job: Job): Promise<void> {
-  const data = job.data as SendJobData;
+  const parsed = sendJobDataSchema.safeParse(job.data);
+  if (!parsed.success) {
+    logger.warn(
+      {
+        correlationId: typeof job.data?.correlationId === 'string' ? job.data.correlationId : undefined,
+        jobId: job.id,
+        issues: parsed.error.issues,
+      },
+      'invalid job payload, skipping',
+    );
+    return;
+  }
+
+  const data = parsed.data;
   const { orgId, userId, userEmail, ruleId, ruleKind, fireId, trigger, correlationId } = data;
   const start = Date.now();
   const chartKind = getChartKindForRuleKind(ruleKind);

@@ -123,3 +123,33 @@ describe('handleOrchestratorJob: on-upload trigger', () => {
     );
   });
 });
+
+describe('handleOrchestratorJob: invalid job payload', () => {
+  it('skips and logs a warning when correlationId is missing', async () => {
+    const { logger } = await import('../../../lib/logger.js');
+
+    await handleOrchestratorJob({ id: 'orch-bad-1', data: { orgId: 10, datasetId: 100 } } as never);
+
+    expect(mockFindEligibleOrgs).not.toHaveBeenCalled();
+    expect(mockEvaluateOrgQueueAdd).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: 'orch-bad-1' }),
+      'invalid job payload, skipping',
+    );
+  });
+
+  it('skips and logs a warning when orgId is the wrong type', async () => {
+    const { logger } = await import('../../../lib/logger.js');
+
+    await handleOrchestratorJob({
+      id: 'orch-bad-2',
+      data: { orgId: '42', datasetId: 7, correlationId: 'req-xyz' },
+    } as never);
+
+    expect(mockEvaluateOrgQueueAdd).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ correlationId: 'req-xyz', jobId: 'orch-bad-2' }),
+      'invalid job payload, skipping',
+    );
+  });
+});

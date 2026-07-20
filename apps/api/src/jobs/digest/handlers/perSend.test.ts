@@ -324,6 +324,69 @@ describe('summary missing', () => {
   });
 });
 
+describe('invalid job payload', () => {
+  it('skips and logs a warning when userEmail is missing', async () => {
+    const { logger } = await import('../../../lib/logger.js');
+    const dataWithoutEmail = { ...baseJobData } as Record<string, unknown>;
+    delete dataWithoutEmail.userEmail;
+
+    await handlePerSendJob({ id: 'send-bad-1', data: dataWithoutEmail } as never);
+
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ correlationId: 'corr-abc', jobId: 'send-bad-1' }),
+      'invalid job payload, skipping',
+    );
+  });
+
+  it('skips and logs a warning when orgId is the wrong type', async () => {
+    const { logger } = await import('../../../lib/logger.js');
+    const data = { ...baseJobData, orgId: '42' };
+
+    await handlePerSendJob({ id: 'send-bad-2', data } as never);
+
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: 'send-bad-2' }),
+      'invalid job payload, skipping',
+    );
+  });
+});
+
+describe('subjectLine fallback', () => {
+  it('falls back to the default subject and still sends when subjectLine is missing', async () => {
+    mockUpsertDefaults.mockResolvedValueOnce({ userId: 7, cadence: 'weekly', lastSentAt: null });
+    mockGetById.mockResolvedValueOnce(okSummary);
+    mockSendEmail.mockResolvedValueOnce({ status: 'sent', providerMessageId: 'msg-fb-1', durationMs: 10 });
+    const { logger } = await import('../../../lib/logger.js');
+    const dataWithoutSubject = { ...baseJobData } as Record<string, unknown>;
+    delete dataWithoutSubject.subjectLine;
+
+    await handlePerSendJob({ id: 'send-fallback-1', data: dataWithoutSubject } as never);
+
+    expect(mockSendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ subject: 'Your weekly digest' }),
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({ correlationId: 'corr-abc', userId: 7, orgId: 42, jobId: 'send-fallback-1' }),
+      'Digest subjectLine missing or blank, falling back to default subject',
+    );
+  });
+
+  it('falls back to the default subject when subjectLine is whitespace-only', async () => {
+    mockUpsertDefaults.mockResolvedValueOnce({ userId: 7, cadence: 'weekly', lastSentAt: null });
+    mockGetById.mockResolvedValueOnce(okSummary);
+    mockSendEmail.mockResolvedValueOnce({ status: 'sent', providerMessageId: 'msg-fb-2', durationMs: 10 });
+    const data = { ...baseJobData, subjectLine: '   ' };
+
+    await handlePerSendJob({ id: 'send-fallback-2', data } as never);
+
+    expect(mockSendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ subject: 'Your weekly digest' }),
+    );
+  });
+});
+
 describe('failure semantics', () => {
   it('re-throws retryable failures so BullMQ retries (no markSent, no analytics)', async () => {
     mockUpsertDefaults.mockResolvedValueOnce({ userId: 7, cadence: 'weekly', lastSentAt: null });

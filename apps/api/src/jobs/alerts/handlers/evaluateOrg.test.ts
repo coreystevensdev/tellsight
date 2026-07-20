@@ -568,3 +568,50 @@ describe('on-upload trigger', () => {
     );
   });
 });
+
+describe('invalid job payload', () => {
+  it('skips and logs a warning when orgId is missing', async () => {
+    const { logger } = await import('../../../lib/logger.js');
+
+    await handleEvaluateOrgJob({
+      id: 'j-bad-1',
+      data: { trigger: 'cron', correlationId: 'corr-bad-1' },
+    } as never);
+
+    expect(mockGetActiveTier).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ correlationId: 'corr-bad-1', jobId: 'j-bad-1' }),
+      'invalid job payload, skipping',
+    );
+  });
+
+  it('skips and logs a warning when orgId is the wrong type', async () => {
+    const { logger } = await import('../../../lib/logger.js');
+
+    await handleEvaluateOrgJob({
+      id: 'j-bad-2',
+      data: { orgId: '42', trigger: 'cron', correlationId: 'corr-bad-2' },
+    } as never);
+
+    expect(mockGetActiveTier).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ correlationId: 'corr-bad-2', jobId: 'j-bad-2' }),
+      'invalid job payload, skipping',
+    );
+  });
+
+  it('skips and logs a warning when trigger is not a recognized value', async () => {
+    const { logger } = await import('../../../lib/logger.js');
+
+    await handleEvaluateOrgJob({
+      id: 'j-bad-3',
+      data: { orgId: 42, trigger: 'nightly', correlationId: 'corr-bad-3' },
+    } as never);
+
+    expect(mockGetActiveTier).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ correlationId: 'corr-bad-3', jobId: 'j-bad-3' }),
+      'invalid job payload, skipping',
+    );
+  });
+});

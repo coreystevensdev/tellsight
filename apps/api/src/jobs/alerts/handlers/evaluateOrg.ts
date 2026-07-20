@@ -29,7 +29,7 @@ import * as anomalyBands from '../bands/anomalyBands.js';
 import {
   getSendQueue,
   JOB_PREFIX_SEND,
-  type EvaluateOrgJobData,
+  evaluateOrgJobDataSchema,
   type SendJobData,
 } from '../queue.js';
 
@@ -185,7 +185,20 @@ function logOutcome(
  * processing.
  */
 export async function handleEvaluateOrgJob(job: Job): Promise<void> {
-  const { orgId, trigger, correlationId } = job.data as EvaluateOrgJobData;
+  const parsed = evaluateOrgJobDataSchema.safeParse(job.data);
+  if (!parsed.success) {
+    logger.warn(
+      {
+        correlationId: typeof job.data?.correlationId === 'string' ? job.data.correlationId : undefined,
+        jobId: job.id,
+        issues: parsed.error.issues,
+      },
+      'invalid job payload, skipping',
+    );
+    return;
+  }
+
+  const { orgId, trigger, correlationId } = parsed.data;
   const start = Date.now();
 
   const tier = await subscriptionsQueries.getActiveTier(orgId, dbAdmin);

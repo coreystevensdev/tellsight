@@ -6,7 +6,7 @@ import { alertEligibilityQueries } from '../../../db/queries/index.js';
 import {
   getEvaluateOrgQueue,
   JOB_PREFIX_EVALUATE_ORG,
-  type OrchestratorJobData,
+  orchestratorJobDataSchema,
   type EvaluateOrgJobData,
 } from '../queue.js';
 
@@ -44,7 +44,20 @@ async function enqueueEvaluateOrg(
  * this handler only decides who gets a job.
  */
 export async function handleOrchestratorJob(job: Job): Promise<void> {
-  const { orgId, datasetId, correlationId: incomingCorrelationId } = job.data as OrchestratorJobData;
+  const parsed = orchestratorJobDataSchema.safeParse(job.data);
+  if (!parsed.success) {
+    logger.warn(
+      {
+        correlationId: typeof job.data?.correlationId === 'string' ? job.data.correlationId : undefined,
+        jobId: job.id,
+        issues: parsed.error.issues,
+      },
+      'invalid job payload, skipping',
+    );
+    return;
+  }
+
+  const { orgId, datasetId, correlationId: incomingCorrelationId } = parsed.data;
   const correlationId = incomingCorrelationId === 'cron-bootstrap' ? randomUUID() : incomingCorrelationId;
   const start = Date.now();
 

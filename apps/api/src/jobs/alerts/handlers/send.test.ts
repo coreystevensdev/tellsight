@@ -319,6 +319,74 @@ describe('handleSendJob: Sentry + Pino observability', () => {
   });
 });
 
+describe('handleSendJob: invalid job payload', () => {
+  it('skips and logs a warning when firedInsight is missing', async () => {
+    const { logger } = await import('../../../lib/logger.js');
+    const dataWithoutInsight = { ...baseJobData } as Record<string, unknown>;
+    delete dataWithoutInsight.firedInsight;
+
+    await handleSendJob({ id: 'send-bad-1', data: dataWithoutInsight } as never);
+
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ correlationId: 'corr-123', jobId: 'send-bad-1' }),
+      'invalid job payload, skipping',
+    );
+  });
+
+  it('skips and logs a warning when firedInsight is a shapeless empty object', async () => {
+    const { logger } = await import('../../../lib/logger.js');
+    const data = { ...baseJobData, firedInsight: {} };
+
+    await handleSendJob({ id: 'send-bad-2', data } as never);
+
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ correlationId: 'corr-123', jobId: 'send-bad-2' }),
+      'invalid job payload, skipping',
+    );
+  });
+
+  it('skips and logs a warning when orgId is the wrong type', async () => {
+    const { logger } = await import('../../../lib/logger.js');
+    const data = { ...baseJobData, orgId: '42' };
+
+    await handleSendJob({ id: 'send-bad-3', data } as never);
+
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: 'send-bad-3' }),
+      'invalid job payload, skipping',
+    );
+  });
+
+  it('skips and logs a warning when ruleKind is not a recognized value', async () => {
+    const { logger } = await import('../../../lib/logger.js');
+    const data = { ...baseJobData, ruleKind: 'not_a_real_rule_kind' };
+
+    await handleSendJob({ id: 'send-bad-4', data } as never);
+
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: 'send-bad-4' }),
+      'invalid job payload, skipping',
+    );
+  });
+
+  it('skips and logs a warning when trigger is not a recognized value', async () => {
+    const { logger } = await import('../../../lib/logger.js');
+    const data = { ...baseJobData, trigger: 'nightly' };
+
+    await handleSendJob({ id: 'send-bad-5', data } as never);
+
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: 'send-bad-5' }),
+      'invalid job payload, skipping',
+    );
+  });
+});
+
 describe('handleSendJob: provider failure handling', () => {
   it('re-throws a retryable EmailSendError so BullMQ retries', async () => {
     const err = new FakeEmailSendError('rate limited', { retryable: true, providerStatusCode: 429 });

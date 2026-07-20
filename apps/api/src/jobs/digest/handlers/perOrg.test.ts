@@ -681,3 +681,29 @@ describe('defensive paths', () => {
     await expect(handlePerOrgJob({ id: 'org-8', data: baseJobData } as never)).rejects.toBe(err);
   });
 });
+
+describe('invalid job payload', () => {
+  it('skips and logs a warning when orgId is missing', async () => {
+    const { weekStart, weekEnd, correlationId } = baseJobData;
+
+    await handlePerOrgJob({ id: 'org-bad-1', data: { weekStart, weekEnd, correlationId } } as never);
+
+    expect(mockGetActiveDatasetId).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ correlationId: 'corr-123', jobId: 'org-bad-1' }),
+      'invalid job payload, skipping',
+    );
+  });
+
+  it('skips and logs a warning when orgId is the wrong type', async () => {
+    const data = { ...baseJobData, orgId: '42' };
+
+    await handlePerOrgJob({ id: 'org-bad-2', data } as never);
+
+    expect(mockGetActiveDatasetId).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ correlationId: 'corr-123', jobId: 'org-bad-2' }),
+      'invalid job payload, skipping',
+    );
+  });
+});

@@ -16,7 +16,7 @@ import {
   buildUnsubscribeUrl,
 } from '../templates/digestWeekly.js';
 import { signDigestTrackingToken } from '../trackingToken.js';
-import type { SendJobData } from '../queue.js';
+import { sendJobDataSchema, subjectLineSchema } from '../queue.js';
 
 const TEMPLATE_VERSION = 'digest-weekly-v1';
 const SIX_DAYS_MS = 6 * 86_400_000;
@@ -29,10 +29,23 @@ const SIX_DAYS_MS = 6 * 86_400_000;
  * (no retry, no markSent).
  */
 export async function handlePerSendJob(job: Job): Promise<void> {
-  const { userId, orgId, summaryId, weekStart, userEmail, orgName, subjectLine, correlationId } =
-    job.data as SendJobData;
+  const parsed = sendJobDataSchema.safeParse(job.data);
+  if (!parsed.success) {
+    logger.warn(
+      {
+        correlationId: typeof job.data?.correlationId === 'string' ? job.data.correlationId : undefined,
+        jobId: job.id,
+        issues: parsed.error.issues,
+      },
+      'invalid job payload, skipping',
+    );
+    return;
+  }
+
+  const { userId, orgId, summaryId, weekStart, userEmail, orgName, subjectLine, correlationId } = parsed.data;
   const start = Date.now();
   const weekStartIso = weekStart.toISOString();
+  const subjectLineFellBack = !subjectLineSchema.safeParse(job.data?.subjectLine).success;
 
   // BullMQ workers run without HTTP context, so the JWT-side sentryUserContext
   // middleware never fires here. withScope attaches worker-context tags so any
@@ -117,6 +130,13 @@ export async function handlePerSendJob(job: Job): Promise<void> {
     const dashboardUrl = buildDashboardUrl(row.datasetId, trackingToken);
     const unsubscribeUrl = buildUnsubscribeUrl(userId);
     const headers = buildListUnsubscribeHeaders(unsubscribeUrl);
+
+    if (subjectLineFellBack) {
+      logger.info(
+        { correlationId, userId, orgId, jobId: job.id },
+        'Digest subjectLine missing or blank, falling back to default subject',
+      );
+    }
 
     try {
       const result = await sendEmail({

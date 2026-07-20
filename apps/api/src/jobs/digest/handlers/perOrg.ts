@@ -31,7 +31,7 @@ import { generateSubjectLine } from '../subjectLine.js';
 import {
   getSendQueue,
   JOB_PREFIX_SEND,
-  type OrgJobData,
+  orgJobDataSchema,
   type SendJobData,
 } from '../queue.js';
 
@@ -60,7 +60,20 @@ function extractStateSentence(content: string): string {
  * for eligible org members, then persist the week's history record.
  */
 export async function handlePerOrgJob(job: Job): Promise<void> {
-  const { orgId, weekStart, weekEnd, correlationId } = job.data as OrgJobData;
+  const parsed = orgJobDataSchema.safeParse(job.data);
+  if (!parsed.success) {
+    logger.warn(
+      {
+        correlationId: typeof job.data?.correlationId === 'string' ? job.data.correlationId : undefined,
+        jobId: job.id,
+        issues: parsed.error.issues,
+      },
+      'invalid job payload, skipping',
+    );
+    return;
+  }
+
+  const { orgId, weekStart, weekEnd, correlationId } = parsed.data;
   const start = Date.now();
 
   const datasetId = await orgsQueries.getActiveDatasetId(orgId);
