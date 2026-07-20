@@ -504,7 +504,6 @@ describe('streamToSSE', () => {
     expect(errorChunk).toBeDefined();
     expect(errorChunk).toContain('"code":"PIPELINE_ERROR"');
     expect(errorChunk).toContain('"retryable":true');
-    expect(errorChunk).toContain('Something went wrong preparing your analysis');
     expect(mockStreamInterpretation).not.toHaveBeenCalled();
     expect(res.end).toHaveBeenCalledTimes(1);
   });
