@@ -23,15 +23,26 @@ export function AlertClickTracker() {
     if (!token) return;
 
     const ssKey = SS_PREFIX + token;
-    if (window.sessionStorage.getItem(ssKey)) {
-      firedRef.current = true;
-      return;
+    // Some private-browsing modes and sandboxed-iframe storage policies throw
+    // synchronously on sessionStorage access instead of returning null; treat
+    // a throw here as "not yet tracked".
+    try {
+      if (window.sessionStorage.getItem(ssKey)) {
+        firedRef.current = true;
+        return;
+      }
+    } catch {
+      // fall through, POST still fires
     }
 
     firedRef.current = true;
     let unmounted = false;
 
-    window.sessionStorage.setItem(ssKey, '1');
+    try {
+      window.sessionStorage.setItem(ssKey, '1');
+    } catch {
+      // dedupe flag won't persist this session; POST still fires below
+    }
 
     fetch('/api/track/alert/click', {
       method: 'POST',

@@ -137,4 +137,58 @@ describe('DigestClickTracker (AC #2)', () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it('still fires the POST and strips the URL when sessionStorage.getItem throws (Safari private mode)', async () => {
+    const getItemSpy = vi.spyOn(window.sessionStorage, 'getItem').mockImplementation(() => {
+      throw new Error('storage disabled');
+    });
+
+    setSearch({ utm_source: 'digest', t: 'token-getitem-throws' });
+    fetchMock.mockResolvedValueOnce({ ok: true });
+
+    try {
+      render(<DigestClickTracker />);
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+      });
+      const [url, init] = fetchMock.mock.calls[0]!;
+      expect(url).toBe('/api/track/digest/click');
+      expect(JSON.parse(init.body)).toEqual({ token: 'token-getitem-throws' });
+
+      await waitFor(() => {
+        expect(mockReplace).toHaveBeenCalledTimes(1);
+      });
+      expect(mockReplace.mock.calls[0]![0]).not.toContain('t=token-getitem-throws');
+    } finally {
+      getItemSpy.mockRestore();
+    }
+  });
+
+  it('still fires the POST and strips the URL when sessionStorage.setItem throws (Safari private mode)', async () => {
+    const setItemSpy = vi.spyOn(window.sessionStorage, 'setItem').mockImplementation(() => {
+      throw new Error('storage disabled');
+    });
+
+    setSearch({ utm_source: 'digest', t: 'token-setitem-throws' });
+    fetchMock.mockResolvedValueOnce({ ok: true });
+
+    try {
+      render(<DigestClickTracker />);
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+      });
+      const [url, init] = fetchMock.mock.calls[0]!;
+      expect(url).toBe('/api/track/digest/click');
+      expect(JSON.parse(init.body)).toEqual({ token: 'token-setitem-throws' });
+
+      await waitFor(() => {
+        expect(mockReplace).toHaveBeenCalledTimes(1);
+      });
+      expect(mockReplace.mock.calls[0]![0]).not.toContain('t=token-setitem-throws');
+    } finally {
+      setItemSpy.mockRestore();
+    }
+  });
 });

@@ -27,9 +27,16 @@ export function DigestClickTracker() {
     if (!token) return;
 
     const ssKey = SS_PREFIX + token;
-    if (window.sessionStorage.getItem(ssKey)) {
-      firedRef.current = true;
-      return;
+    // Some private-browsing modes and sandboxed-iframe storage policies throw
+    // synchronously on sessionStorage access instead of returning null; treat
+    // a throw here as "not yet tracked".
+    try {
+      if (window.sessionStorage.getItem(ssKey)) {
+        firedRef.current = true;
+        return;
+      }
+    } catch {
+      // fall through, POST still fires
     }
 
     firedRef.current = true;
@@ -40,8 +47,14 @@ export function DigestClickTracker() {
     // skips. Trade-off: a network failure won't retry within the same session,
     // which is the right call here, this metric is lossy by nature (Apple MPP,
     // ad blockers, JS-disabled clients) and a duplicate write is more harmful
-    // to the per-user-per-week dedupe SQL than a missed retry.
-    window.sessionStorage.setItem(ssKey, '1');
+    // to the per-user-per-week dedupe SQL than a missed retry. Exception: if
+    // storage itself is unavailable, the flag never persists, so a remount in
+    // that session posts again -- an accepted trade-off for the same reason.
+    try {
+      window.sessionStorage.setItem(ssKey, '1');
+    } catch {
+      // dedupe flag won't persist this session; POST still fires below
+    }
 
     fetch('/api/track/digest/click', {
       method: 'POST',
