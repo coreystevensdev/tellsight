@@ -261,52 +261,53 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
     }
   }
 
-  // Sends are already enqueued by this point, so a history-write failure never
-  // fails the job. Cost: a missed save blanks longitudinal context until the
-  // next successful save (buildPriorContext and detectTransitionMilestones
-  // both read the most recent digest_history row), not just for next week.
+  // Sends are already enqueued by this point, so a write failure here never
+  // fails the job. History and awards commit together, an award recorded
+  // without its digest_history row (or vice versa) would leave the audit
+  // trail out of sync with the fire-once ledger. This week's digest_history
+  // row is never recovered on rollback (each week only gets written by that
+  // week's own run); a rolled-back award, in contrast, can still fire next
+  // week as long as the org stays in the same calendar month, past month-end
+  // it's permanently missed, accepted given the (org_id, kind) unique index
+  // only guarantees at-most-once, not at-least-once.
   try {
-    await digestHistoryQueries.saveDigestHistory({
-      orgId,
-      datasetId,
-      summaryId,
-      weekStart,
-      subjectLine,
-      stateSentence,
-      valence,
-      keyStats: currentStats,
-      milestones: [
-        ...firstTimeMilestones.map((m) => ({
-          kind: m.kind,
-          label: m.label,
-          catalog: 'first_time' as const,
-        })),
-        ...dedupedTransitionMilestones.map((m) => ({
-          kind: m.kind,
-          label: m.label,
-          catalog: 'transition' as const,
-        })),
-      ],
-      sentAt: new Date(),
+    await dbAdmin.transaction(async (tx) => {
+      await digestHistoryQueries.saveDigestHistory(
+        {
+          orgId,
+          datasetId,
+          summaryId,
+          weekStart,
+          subjectLine,
+          stateSentence,
+          valence,
+          keyStats: currentStats,
+          milestones: [
+            ...firstTimeMilestones.map((m) => ({
+              kind: m.kind,
+              label: m.label,
+              catalog: 'first_time' as const,
+            })),
+            ...dedupedTransitionMilestones.map((m) => ({
+              kind: m.kind,
+              label: m.label,
+              catalog: 'transition' as const,
+            })),
+          ],
+          sentAt: new Date(),
+        },
+        tx,
+      );
+
+      for (const m of firstTimeMilestones) {
+        await milestoneAwardsQueries.awardMilestone({ orgId, kind: m.kind, datasetId }, tx);
+      }
     });
   } catch (err) {
-    logger.error({ correlationId, orgId, weekStart, err }, 'Failed to save digest history, continuing');
-  }
-
-  // Same deferred, non-fatal posture as saveDigestHistory above: award writes
-  // happen after sends are enqueued so a crash before this point never blocks
-  // the email. The catch below swallows the error rather than rethrowing, so
-  // this does not trigger a BullMQ job retry; recovery instead comes from next
-  // week's run re-detecting the same condition, which still holds as long as
-  // the org stays in the same calendar month. If every attempt fails through
-  // month-end, the milestone is permanently missed, an accepted risk given the
-  // (org_id, kind) unique index guarantees at-most-once, not at-least-once.
-  for (const m of firstTimeMilestones) {
-    try {
-      await milestoneAwardsQueries.awardMilestone({ orgId, kind: m.kind, datasetId });
-    } catch (err) {
-      logger.error({ correlationId, orgId, kind: m.kind, err }, 'Failed to award milestone, continuing');
-    }
+    logger.error(
+      { correlationId, orgId, weekStart, milestoneKinds: firstTimeMilestones.map((m) => m.kind), err },
+      'Failed to save digest history and award milestones, continuing',
+    );
   }
 
   logger.info(

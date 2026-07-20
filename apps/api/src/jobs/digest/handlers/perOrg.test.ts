@@ -28,7 +28,20 @@ vi.mock('../../../config.js', () => ({ env: { REDIS_URL: 'redis://localhost:6379
 vi.mock('../../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
-vi.mock('../../../lib/db.js', () => ({ dbAdmin: {} }));
+const mockTransaction = vi.fn();
+// Distinct object identity (not `expect.anything()`) so tests can confirm
+// saveDigestHistory and awardMilestone both received this exact tx rather
+// than one of them silently falling back to the module-level dbAdmin.
+const TX_MARKER = { __brand: 'tx' };
+
+vi.mock('../../../lib/db.js', () => ({
+  dbAdmin: {
+    transaction: (cb: (tx: unknown) => unknown) => {
+      mockTransaction(cb);
+      return cb(TX_MARKER);
+    },
+  },
+}));
 
 vi.mock('../../../db/queries/index.js', () => ({
   aiSummariesQueries: {
@@ -373,24 +386,27 @@ describe('digest history', () => {
     expect(sendPayload.subjectLine).toBe(expectedSubject);
 
     expect(mockSaveDigestHistory).toHaveBeenCalledOnce();
-    expect(mockSaveDigestHistory).toHaveBeenCalledWith({
-      orgId: 42,
-      datasetId: 100,
-      summaryId: 4,
-      weekStart: baseJobData.weekStart,
-      subjectLine: expectedSubject,
-      stateSentence: 'Runway dropped',
-      valence: 'concerning',
-      keyStats: [runwayStat(2.8)],
-      milestones: [
-        {
-          kind: 'runway_dropped_below_3mo',
-          label: 'Your runway dropped below 3 months.',
-          catalog: 'transition',
-        },
-      ],
-      sentAt: expect.any(Date),
-    });
+    expect(mockSaveDigestHistory).toHaveBeenCalledWith(
+      {
+        orgId: 42,
+        datasetId: 100,
+        summaryId: 4,
+        weekStart: baseJobData.weekStart,
+        subjectLine: expectedSubject,
+        stateSentence: 'Runway dropped',
+        valence: 'concerning',
+        keyStats: [runwayStat(2.8)],
+        milestones: [
+          {
+            kind: 'runway_dropped_below_3mo',
+            label: 'Your runway dropped below 3 months.',
+            catalog: 'transition',
+          },
+        ],
+        sentAt: expect.any(Date),
+      },
+      expect.anything(), // tx
+    );
   });
 
   it('strips the leading bullet marker from a cached digest to build the state sentence', async () => {
@@ -408,6 +424,7 @@ describe('digest history', () => {
 
     expect(mockSaveDigestHistory).toHaveBeenCalledWith(
       expect.objectContaining({ stateSentence: 'Revenue held flat this week.' }),
+      expect.anything(),
     );
   });
 
@@ -422,9 +439,10 @@ describe('digest history', () => {
     await expect(handlePerOrgJob({ id: 'org-13', data: baseJobData } as never)).resolves.toBeUndefined();
 
     expect(mockSendQueueAdd).toHaveBeenCalledOnce();
+    expect(mockTransaction).toHaveBeenCalledOnce();
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({ orgId: 42 }),
-      'Failed to save digest history, continuing',
+      'Failed to save digest history and award milestones, continuing',
     );
   });
 
@@ -486,6 +504,7 @@ describe('prior-digest lookup', () => {
     expect(mockSaveDigestHistory).toHaveBeenCalledOnce();
     expect(mockSaveDigestHistory).toHaveBeenCalledWith(
       expect.objectContaining({ keyStats: [runwayStat(4.6)] }),
+      expect.anything(),
     );
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({ orgId: 42, weekStart: baseJobData.weekStart }),
@@ -549,9 +568,16 @@ describe('first-time milestones', () => {
           },
         ],
       }),
+      TX_MARKER,
     );
 
-    expect(mockAwardMilestone).toHaveBeenCalledWith({ orgId: 42, kind: 'first_profitable_month', datasetId: 100 });
+    // Exact tx identity, not expect.anything(): catches a copy-paste slip
+    // where one call falls back to dbAdmin instead of the shared tx.
+    expect(mockAwardMilestone).toHaveBeenCalledWith(
+      { orgId: 42, kind: 'first_profitable_month', datasetId: 100 },
+      TX_MARKER,
+    );
+    expect(mockTransaction).toHaveBeenCalledOnce();
     expect(mockSaveDigestHistory.mock.invocationCallOrder[0]!).toBeLessThan(
       mockAwardMilestone.mock.invocationCallOrder[0]!,
     );
@@ -575,7 +601,10 @@ describe('first-time milestones', () => {
 
     await handlePerOrgJob({ id: 'org-16', data: baseJobData } as never);
 
-    expect(mockSaveDigestHistory).toHaveBeenCalledWith(expect.objectContaining({ milestones: [] }));
+    expect(mockSaveDigestHistory).toHaveBeenCalledWith(
+      expect.objectContaining({ milestones: [] }),
+      expect.anything(),
+    );
     expect(mockAwardMilestone).not.toHaveBeenCalled();
   });
 
@@ -623,6 +652,7 @@ describe('first-time milestones', () => {
           },
         ],
       }),
+      expect.anything(),
     );
   });
 
@@ -646,8 +676,87 @@ describe('first-time milestones', () => {
     await expect(handlePerOrgJob({ id: 'org-18', data: baseJobData } as never)).resolves.toBeUndefined();
 
     expect(logger.error).toHaveBeenCalledWith(
-      expect.objectContaining({ orgId: 42, kind: 'first_profitable_month' }),
-      'Failed to award milestone, continuing',
+      expect.objectContaining({ orgId: 42 }),
+      'Failed to save digest history and award milestones, continuing',
+    );
+  });
+
+  it('rolls back and resolves without throwing when saveDigestHistory succeeds but awardMilestone rejects', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockGetCachedDigest.mockResolvedValueOnce(undefined);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetMonthlyBucketsByDataset.mockResolvedValueOnce(
+      new Map([
+        ['2026-04', { revenue: 4000, expenses: 5000 }],
+        ['2026-05', { revenue: 6000, expenses: 5000 }],
+      ]),
+    );
+    mockGetAwardedKinds.mockResolvedValueOnce(new Set());
+    mockGenerateInterpretation.mockResolvedValueOnce('- steady week');
+    mockStoreSummary.mockResolvedValueOnce({ id: 9 });
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
+    mockAwardMilestone.mockRejectedValueOnce(new Error('connection reset'));
+
+    await expect(handlePerOrgJob({ id: 'org-21', data: baseJobData } as never)).resolves.toBeUndefined();
+
+    // Send jobs are enqueued before the transaction, so they aren't affected
+    // by the award write rolling the history write back with it.
+    expect(mockSendQueueAdd).toHaveBeenCalledOnce();
+    expect(mockSaveDigestHistory).toHaveBeenCalledOnce();
+    expect(mockTransaction).toHaveBeenCalledOnce();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 42 }),
+      'Failed to save digest history and award milestones, continuing',
+    );
+  });
+
+  it('rolls back an already-succeeded award in the same batch when a later milestone in the loop fails', async () => {
+    // A single completed month that is both this org's first-ever profitable
+    // month and the first month revenue covered fixed costs fires two
+    // first-time milestones at once, exercising the loop's multi-iteration path.
+    const orgWithFixedCosts = {
+      ...baseOrg,
+      businessProfile: {
+        cashOnHand: 20000,
+        cashAsOfDate: '2026-06-01',
+        businessStartedDate: '2024-01-01',
+        monthlyFixedCosts: 5000,
+      },
+    };
+
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(orgWithFixedCosts);
+    mockGetCachedDigest.mockResolvedValueOnce(undefined);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetMonthlyBucketsByDataset.mockResolvedValueOnce(
+      new Map([['2026-05', { revenue: 6000, expenses: 1000 }]]),
+    );
+    mockGetAwardedKinds.mockResolvedValueOnce(new Set());
+    mockGenerateInterpretation.mockResolvedValueOnce('- steady week');
+    mockStoreSummary.mockResolvedValueOnce({ id: 10 });
+    mockFindOrgRecipients.mockResolvedValueOnce([]);
+    mockAwardMilestone.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('connection reset'));
+
+    await expect(handlePerOrgJob({ id: 'org-22', data: baseJobData } as never)).resolves.toBeUndefined();
+
+    expect(mockAwardMilestone).toHaveBeenCalledTimes(2);
+    expect(mockAwardMilestone).toHaveBeenNthCalledWith(
+      1,
+      { orgId: 42, kind: 'first_profitable_month', datasetId: 100 },
+      TX_MARKER,
+    );
+    expect(mockAwardMilestone).toHaveBeenNthCalledWith(
+      2,
+      { orgId: 42, kind: 'first_break_even', datasetId: 100 },
+      TX_MARKER,
+    );
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgId: 42,
+        milestoneKinds: ['first_profitable_month', 'first_break_even'],
+      }),
+      'Failed to save digest history and award milestones, continuing',
     );
   });
 });
