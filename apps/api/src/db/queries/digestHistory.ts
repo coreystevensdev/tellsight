@@ -1,4 +1,4 @@
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and, lt } from 'drizzle-orm';
 
 import { dbAdmin, type DbTransaction } from '../../lib/db.js';
 import { digestHistory } from '../schema.js';
@@ -30,9 +30,18 @@ export interface SaveDigestHistoryInput {
 // dbAdmin (RLS admin-bypass policy). A test or transaction can pass its own client.
 type Client = typeof dbAdmin | DbTransaction;
 
-export async function getLastDigest(orgId: number, client: Client = dbAdmin) {
+export async function getLastDigest(
+  orgId: number,
+  excludeWeekStart?: Date,
+  client: Client = dbAdmin,
+) {
+  // excludeWeekStart keeps a retried run from reading back its own just-saved
+  // row as "last digest" (job retries after saveDigestHistory already committed).
+  const conditions = [eq(digestHistory.orgId, orgId)];
+  if (excludeWeekStart) conditions.push(lt(digestHistory.weekStart, excludeWeekStart));
+
   const row = await client.query.digestHistory.findFirst({
-    where: eq(digestHistory.orgId, orgId),
+    where: and(...conditions),
     orderBy: desc(digestHistory.weekStart),
   });
   // key_stats is stored as untyped jsonb; cast at the query-helper layer per

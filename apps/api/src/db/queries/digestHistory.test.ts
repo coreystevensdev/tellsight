@@ -1,4 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
+import { eq, and, lt } from 'drizzle-orm';
+
+import * as schema from '../schema.js';
+import { digestHistory } from '../schema.js';
 
 const mockFindFirst = vi.fn();
 const mockFindMany = vi.fn();
@@ -12,6 +18,17 @@ vi.mock('../../lib/db.js', () => ({
     insert: mockInsert,
   },
 }));
+
+// Real Drizzle instance over an inert (unreachable) postgres connection, used
+// only to call .toSQL() and confirm the excludeWeekStart filter actually
+// reaches the emitted SQL, not just the mock call args. Same rig as
+// aiSummaries.test.ts's getCachedDigest weekStart-scoping assertion.
+const inertClient = postgres('postgres://test:test@localhost:1/test', {
+  max: 0,
+  fetch_types: false,
+  prepare: false,
+});
+const inertDb = drizzle(inertClient, { schema });
 
 const { getLastDigest, getTrailingDigests, saveDigestHistory } = await import('./digestHistory.js');
 
@@ -51,6 +68,55 @@ describe('getLastDigest', () => {
     mockFindFirst.mockResolvedValueOnce(undefined);
 
     expect(await getLastDigest(99)).toBeUndefined();
+  });
+
+  it('still resolves the most recent row when excludeWeekStart is provided', async () => {
+    const row = { id: 6, orgId: 3, weekStart: new Date('2026-05-18T00:00:00Z') };
+    mockFindFirst.mockResolvedValueOnce(row);
+
+    const result = await getLastDigest(3, new Date('2026-05-25T00:00:00Z'));
+
+    expect(result).toEqual(row);
+    expect(mockFindFirst).toHaveBeenCalledOnce();
+  });
+
+  it('forwards excludeWeekStart into a different where clause than the no-filter call', async () => {
+    // Proves the real function forwards the argument, not just that the
+    // hand-built SQL below matches (the .toSQL() tests below verify shape).
+    mockFindFirst.mockResolvedValueOnce(undefined);
+    await getLastDigest(3);
+    const withoutExclude = mockFindFirst.mock.calls[0]![0] as { where: unknown };
+
+    mockFindFirst.mockReset().mockResolvedValueOnce(undefined);
+    await getLastDigest(3, new Date('2026-05-25T00:00:00Z'));
+    const withExclude = mockFindFirst.mock.calls[0]![0] as { where: unknown };
+
+    expect(withExclude.where).not.toEqual(withoutExclude.where);
+  });
+
+  it('emits a week_start < $ filter in the SQL when excludeWeekStart is supplied', () => {
+    const excludeWeekStart = new Date('2026-05-25T00:00:00Z');
+    const query = inertDb.query.digestHistory.findFirst({
+      where: and(eq(digestHistory.orgId, 3), lt(digestHistory.weekStart, excludeWeekStart)),
+    });
+    const { sql, params } = query.toSQL();
+
+    expect(sql).toMatch(/"(?:digest_history|digestHistory)"\."week_start"\s*<\s*\$/);
+    const containsExcludeWeekStart = params.some((p) =>
+      p instanceof Date
+        ? p.getTime() === excludeWeekStart.getTime()
+        : typeof p === 'string' && new Date(p).getTime() === excludeWeekStart.getTime(),
+    );
+    expect(containsExcludeWeekStart).toBe(true);
+  });
+
+  it('does not emit a week_start filter when excludeWeekStart is omitted', () => {
+    const query = inertDb.query.digestHistory.findFirst({
+      where: and(eq(digestHistory.orgId, 3)),
+    });
+    const { sql } = query.toSQL();
+
+    expect(sql).not.toMatch(/"(?:digest_history|digestHistory)"\."week_start"\s*</);
   });
 });
 

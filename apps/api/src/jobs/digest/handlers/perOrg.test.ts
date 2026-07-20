@@ -435,6 +435,63 @@ describe('digest history', () => {
   });
 });
 
+describe('prior-digest lookup', () => {
+  it('excludes the current run\'s own week by passing weekStart to getLastDigest', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockGetCachedDigest.mockResolvedValueOnce(undefined);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGenerateInterpretation.mockResolvedValueOnce('- steady week');
+    mockStoreSummary.mockResolvedValueOnce({ id: 20 });
+    mockFindOrgRecipients.mockResolvedValueOnce([]);
+
+    await handlePerOrgJob({ id: 'org-19', data: baseJobData } as never);
+
+    expect(mockGetLastDigest).toHaveBeenCalledWith(42, baseJobData.weekStart);
+  });
+
+  it('falls back to empty prior context when the prior row has a malformed stat, but still sends and saves history', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockGetCachedDigest.mockResolvedValueOnce(undefined);
+    mockRunCurationPipeline.mockResolvedValueOnce([
+      { stat: runwayStat(4.6), score: 1, breakdown: { novelty: 1, actionability: 1, specificity: 1 } },
+    ]);
+    // `runway` statType matches, but `details` is missing -- buildPriorContext
+    // dereferences `.details.runwayMonths` on it and throws.
+    mockGetLastDigest.mockResolvedValueOnce({
+      keyStats: [{ statType: 'runway', category: null, value: 4.0 }],
+      stateSentence: 'Runway was holding steady.',
+    });
+    mockGenerateInterpretation.mockResolvedValueOnce('- runway update');
+    mockStoreSummary.mockResolvedValueOnce({ id: 21 });
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
+
+    await expect(handlePerOrgJob({ id: 'org-20', data: baseJobData } as never)).resolves.toBeUndefined();
+
+    expect(mockSendQueueAdd).toHaveBeenCalledOnce();
+    expect(mockSaveDigestHistory).toHaveBeenCalledOnce();
+    expect(mockSaveDigestHistory).toHaveBeenCalledWith(
+      expect.objectContaining({ keyStats: [runwayStat(4.6)] }),
+    );
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 42, weekStart: baseJobData.weekStart }),
+      'Failed to derive prior-digest context, continuing with no prior context',
+    );
+
+    // v1-digest, not v2, since the guard's empty-array fallback produces no
+    // priorContext, same as the "no prior digest" path.
+    expect(mockAssemblePrompt).toHaveBeenCalledWith(
+      expect.any(Array),
+      100,
+      'v1-digest',
+      null,
+      expect.any(Date),
+      '',
+    );
+  });
+});
+
 describe('first-time milestones', () => {
   beforeEach(() => {
     vi.useFakeTimers();

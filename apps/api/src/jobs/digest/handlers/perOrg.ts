@@ -21,8 +21,9 @@ import {
   transparencyMetadataSchema,
 } from '../../../services/curation/index.js';
 import { generateInterpretation } from '../../../services/aiInterpretation/claudeClient.js';
+import type { ComputedStat } from '../../../services/curation/types.js';
 import { classifyValence } from '../valence.js';
-import { buildPriorContext } from '../buildPriorContext.js';
+import { buildPriorContext, type PriorContextEntry } from '../buildPriorContext.js';
 import { detectTransitionMilestones, type TransitionMilestone } from '../milestones.js';
 import { detectFirstTimeMilestones } from '../firstTimeMilestones.js';
 import { composePriorContext } from '../composePriorContext.js';
@@ -98,10 +99,24 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
   const insights = await runCurationPipeline(orgId, datasetId, undefined, financials);
   const currentStats = insights.map((i) => i.stat);
 
-  const lastDigest = await digestHistoryQueries.getLastDigest(orgId);
-  const priorStats = lastDigest?.keyStats ?? [];
-  const deltaEntries = buildPriorContext(currentStats, priorStats);
-  const transitionMilestones = detectTransitionMilestones(currentStats, priorStats);
+  const lastDigest = await digestHistoryQueries.getLastDigest(orgId, weekStart);
+
+  // keyStats is cast, not validated, at the query-helper layer, so a
+  // shape-mismatched row throws inside these two calls; caught here so it
+  // degrades to "no prior digest" instead of failing before sends go out.
+  let priorStats: ComputedStat[] = [];
+  let deltaEntries: PriorContextEntry[] = [];
+  let transitionMilestones: TransitionMilestone[] = [];
+  try {
+    priorStats = lastDigest?.keyStats ?? [];
+    deltaEntries = buildPriorContext(currentStats, priorStats);
+    transitionMilestones = detectTransitionMilestones(currentStats, priorStats);
+  } catch (err) {
+    logger.error(
+      { correlationId, orgId, weekStart, err },
+      'Failed to derive prior-digest context, continuing with no prior context',
+    );
+  }
 
   // Full monthly history (never digest_history, which only covers recent
   // weeks) and the org's fire-once ledger, explicit dbAdmin since this
