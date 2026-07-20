@@ -91,7 +91,7 @@ describe('detectFirstTimeMilestones', () => {
         '2026-04': { revenue: 5000, expenses: 4000 },
       }),
       null,
-      new Date('2026-05-01T00:00:00'),
+      new Date('2026-05-01T00:00:00Z'),
       NO_AWARDS,
     );
     expect(result).toContainEqual({
@@ -109,7 +109,7 @@ describe('detectFirstTimeMilestones', () => {
         '2026-04': { revenue: 9200, expenses: 3000 },
       }),
       9000,
-      new Date('2026-05-01T00:00:00'),
+      new Date('2026-05-01T00:00:00Z'),
       NO_AWARDS,
     );
     expect(result).toEqual([
@@ -133,7 +133,7 @@ describe('detectFirstTimeMilestones', () => {
         '2026-05': { revenue: 6000, expenses: 5000 },
       }),
       4500,
-      new Date('2026-06-01T00:00:00'),
+      new Date('2026-06-01T00:00:00Z'),
       NO_AWARDS,
     );
     expect(result).toEqual([
@@ -167,5 +167,23 @@ describe('detectFirstTimeMilestones', () => {
 
   it('returns [] for a fully empty bucket map', () => {
     expect(detectFirstTimeMilestones(buckets({}), 5000, NOW, NO_AWARDS)).toEqual([]);
+  });
+
+  it('anchors the current-month boundary to UTC regardless of process local timezone', () => {
+    // 02:00 UTC on the 1st is still 2026-06-30 in any UTC-3 or further-behind zone;
+    // monthKey must read 2026-07 off getUTCMonth(), not the local calendar day.
+    const now = new Date('2026-07-01T02:00:00Z');
+    const result = detectFirstTimeMilestones(
+      buckets({
+        '2026-05': { revenue: 4000, expenses: 5000 },
+        '2026-06': { revenue: 6000, expenses: 5500 },
+      }),
+      null,
+      now,
+      NO_AWARDS,
+    );
+    expect(result).toEqual([
+      { kind: 'first_profitable_month', label: 'This is your first profitable month.', statType: null },
+    ]);
   });
 });

@@ -10,8 +10,11 @@ export interface FirstTimeMilestone extends DigestMilestoneEntry {
   kind: FirstTimeMilestoneKind;
 }
 
+// UTC, not local time: `now` is passed here as the job's wall-clock timestamp,
+// and the process's local timezone shouldn't decide which calendar month a
+// run near a month boundary lands in.
 function monthKey(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
 // Reads the org's full monthly history (never digest_history, which only
