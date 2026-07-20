@@ -25,23 +25,5 @@
     "key": "1",
     "label": "Escape ':' in the category segment",
     "resolution": ""
-  },
-  "DW-6": {
-    "answered_at": "2026-07-19",
-    "bundle_name": "",
-    "effect": "build",
-    "intent": "Add a short comment above each threshold's .max() call in the Zod schema stating the reasoning (e.g. why 1000% for cash burn but 100% for margin/breakeven).",
-    "key": "1",
-    "label": "Add a rationale comment",
-    "resolution": ""
-  },
-  "DW-7": {
-    "answered_at": "2026-07-19",
-    "bundle_name": "",
-    "effect": "build",
-    "intent": "Add a computation path used only by evaluateCashBurn that bypasses the near-zero suppression guard, so the dashboard display heuristic and the alert-firing logic are decoupled.",
-    "key": "1",
-    "label": "Alert-only unsuppressed computation",
-    "resolution": ""
   }
 }
