@@ -12,13 +12,13 @@ export async function GET(
   const { datasetId, statId } = await params;
   const cookie = request.headers.get('cookie') || '';
 
-  // Next decodes the path segment into `statId` (so a category containing
-  // `/` comes through with a literal slash), re-encode before forwarding or
-  // the upstream request line would split into extra segments.
+  // Next decodes both path segments (so a category containing `/` comes
+  // through with a literal slash), re-encode before forwarding or the
+  // upstream request line would split into extra segments.
   let upstream: globalThis.Response;
   try {
     upstream = await fetch(
-      `${webEnv.API_INTERNAL_URL}/ai-summaries/${datasetId}/stats/${encodeURIComponent(statId)}`,
+      `${webEnv.API_INTERNAL_URL}/ai-summaries/${encodeURIComponent(datasetId)}/stats/${encodeURIComponent(statId)}`,
       { headers: { cookie } },
     );
   } catch {

@@ -15,7 +15,7 @@ import { streamToSSE } from '../services/aiInterpretation/streamHandler.js';
 import { withRlsContext } from '../lib/rls.js';
 import { ValidationError, QuotaExceededError } from '../lib/appError.js';
 import { logger } from '../lib/logger.js';
-import { aiSummaryTotal, aiTokensUsed } from '../lib/metrics.js';
+import { aiSummaryTotal, aiTokensUsed, statCitationTotal } from '../lib/metrics.js';
 import { buildStatDetail } from '../services/curation/statDetail.js';
 import { resolveSourceRows } from '../services/curation/sourceRows.js';
 import { fetchAndResolveStat } from '../services/curation/citation.js';
@@ -96,15 +96,20 @@ aiSummaryRouter.get('/:datasetId/stats/:statId', rateLimitDashboardCompute, asyn
   }
 
   const resolution = await resolveCitedStatOrNotFound(res, orgId, user.isAdmin, rawId, statId);
-  if (!resolution) return;
+  if (!resolution) {
+    statCitationTotal.inc({ outcome: 'not_found' });
+    return;
+  }
   const { stat } = resolution;
+  const detail = buildStatDetail(stat);
+  statCitationTotal.inc({ outcome: 'ok' });
 
   logger.info({ orgId, datasetId: rawId, statType: stat.statType }, 'stat citation resolved');
   res.json({
     data: {
       statType: stat.statType,
       value: stat.value,
-      detail: buildStatDetail(stat),
+      detail,
     },
   });
 });

@@ -4,6 +4,7 @@ import http from 'node:http';
 import { computeStats, assignIds } from '../services/curation/computation.js';
 import { StatType } from '../services/curation/types.js';
 import type { IdentifiedStat } from '../services/curation/types.js';
+import { statCitationTotal } from '../lib/metrics.js';
 
 vi.mock('../config.js', () => ({
   env: {
@@ -58,6 +59,7 @@ vi.mock('../db/queries/index.js', () => ({
 vi.mock('../lib/metrics.js', () => ({
   aiSummaryTotal: { inc: vi.fn() },
   aiTokensUsed: { inc: vi.fn() },
+  statCitationTotal: { inc: vi.fn() },
 }));
 
 const mockTrackEvent = vi.fn();
@@ -287,6 +289,7 @@ describe('GET /ai-summaries/:datasetId/stats/:statId', () => {
     expect(res.status).toBe(200);
     expect(body.data.statType).toBe('total');
     expect(body.data.detail.kind).toBe('formula');
+    expect(statCitationTotal.inc).toHaveBeenCalledWith({ outcome: 'ok' });
   });
 
   it('returns 200 with an inputs-kind detail for a statistical stat', async () => {
@@ -305,6 +308,7 @@ describe('GET /ai-summaries/:datasetId/stats/:statId', () => {
 
     expect(res.status).toBe(404);
     expect(body.error.code).toBe('NOT_FOUND');
+    expect(statCitationTotal.inc).toHaveBeenCalledWith({ outcome: 'not_found' });
   });
 
   it('returns 404 for a cross-org dataset, RLS-scoped fetch returns zero rows so no id ever matches', async () => {
@@ -313,6 +317,7 @@ describe('GET /ai-summaries/:datasetId/stats/:statId', () => {
 
     const res = await fetch(`${baseUrl}/ai-summaries/42/stats/${encodeURIComponent(statId)}`);
     expect(res.status).toBe(404);
+    expect(statCitationTotal.inc).toHaveBeenCalledWith({ outcome: 'not_found' });
   });
 
   it('rejects invalid datasetId', async () => {

@@ -27,6 +27,13 @@ export const aiTokensUsed = new Counter({
   registers: [registry],
 });
 
+export const statCitationTotal = new Counter({
+  name: 'stat_citation_total',
+  help: 'Total stat citation resolution requests',
+  labelNames: ['outcome'] as const,
+  registers: [registry],
+});
+
 export const rateLimitHits = new Counter({
   name: 'rate_limit_hits_total',
   help: 'Rate limit rejections',
