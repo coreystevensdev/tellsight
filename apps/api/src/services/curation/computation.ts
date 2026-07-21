@@ -986,11 +986,14 @@ export function resolveStatById(
 // Relies on each producer function emitting at most one stat per (category, statType),
 // except Anomaly, whose only possible collision is two same-value anomalies in one
 // category -- byte-identical (same zScore/deviation) and not citable apart anyway.
+// Each stat is deep-cloned before the id is attached, so an IdentifiedStat never
+// shares object identity (including nested arrays like CashFlowDetails.recentMonths)
+// with the computeStats() output that produced it.
 export function assignIds(stats: ComputedStat[], datasetId: number): IdentifiedStat[] {
   const byId = new Map<string, IdentifiedStat>();
   for (const s of stats) {
     const id = statInstanceId(s, datasetId);
-    if (!byId.has(id)) byId.set(id, { ...s, id });
+    if (!byId.has(id)) byId.set(id, { ...structuredClone(s), id });
   }
   return [...byId.values()];
 }

@@ -263,4 +263,102 @@ describe('assignIds', () => {
     assignIds(stats, 1);
     expect(stats).toEqual(original);
   });
+
+  it('deep-copies details so mutating an IdentifiedStat cannot corrupt the underlying ComputedStat', () => {
+    const cashFlow: ComputedStat = {
+      statType: StatType.CashFlow,
+      category: null,
+      value: 200,
+      details: {
+        monthlyNet: 200,
+        trailingMonths: 3,
+        direction: 'surplus',
+        monthsBurning: 0,
+        recentMonths: [{ month: '2026-01', revenue: 1000, expenses: 800, net: 200 }],
+      },
+    };
+    const [identified] = assignIds([cashFlow], 1);
+    if (identified?.statType !== StatType.CashFlow || cashFlow.statType !== StatType.CashFlow) {
+      throw new Error('expected cash_flow stat');
+    }
+
+    expect(identified.value).toBe(cashFlow.value);
+    expect(identified.category).toBe(cashFlow.category);
+    expect(identified.details).not.toBe(cashFlow.details);
+    expect(identified.details.recentMonths).not.toBe(cashFlow.details.recentMonths);
+    expect(identified.details).toEqual(cashFlow.details);
+
+    identified.details.recentMonths[0]!.net = 999;
+    expect(cashFlow.details.recentMonths[0]!.net).toBe(200);
+  });
+
+  // Beyond CashFlow, cover every other statType whose details holds a nested
+  // array or object, since only those shapes can actually expose a shared-identity
+  // bug -- the flat-primitive detail shapes (total, average, trend, etc.) have
+  // nothing nested for a shallow copy to leak.
+  it('deep-copies nested arrays in cash_forecast and seasonal_projection details', () => {
+    const cashForecast: ComputedStat = {
+      statType: StatType.CashForecast,
+      category: null,
+      value: -500,
+      details: {
+        startingBalance: 10000,
+        asOfDate: '2026-07-01',
+        method: 'linear_regression',
+        slope: -100,
+        intercept: 10000,
+        basisMonths: ['2026-04', '2026-05', '2026-06'],
+        basisValues: [200, 100, -100],
+        projectedMonths: [{ month: '2026-08', projectedNet: -500, projectedBalance: 9500 }],
+        crossesZeroAtMonth: null,
+        confidence: 'moderate',
+      },
+    };
+    const seasonal: ComputedStat = {
+      statType: StatType.SeasonalProjection,
+      category: 'Sales',
+      value: 1500,
+      details: {
+        projectedMonth: 'April',
+        projectedAmount: 1500,
+        basisMonths: ['January', 'February', 'March'],
+        basisValues: [1000, 1100, 1200],
+        confidence: 'moderate',
+      },
+    };
+    const [identifiedForecast, identifiedSeasonal] = assignIds([cashForecast, seasonal], 1);
+    if (identifiedForecast?.statType !== StatType.CashForecast || cashForecast.statType !== StatType.CashForecast) {
+      throw new Error('expected cash_forecast stat');
+    }
+    if (identifiedSeasonal?.statType !== StatType.SeasonalProjection || seasonal.statType !== StatType.SeasonalProjection) {
+      throw new Error('expected seasonal_projection stat');
+    }
+
+    expect(identifiedForecast.details.basisMonths).not.toBe(cashForecast.details.basisMonths);
+    expect(identifiedForecast.details.projectedMonths).not.toBe(cashForecast.details.projectedMonths);
+    identifiedForecast.details.projectedMonths[0]!.projectedNet = 0;
+    expect(cashForecast.details.projectedMonths[0]!.projectedNet).toBe(-500);
+
+    expect(identifiedSeasonal.details.basisMonths).not.toBe(seasonal.details.basisMonths);
+    expect(identifiedSeasonal.details.basisValues).not.toBe(seasonal.details.basisValues);
+    identifiedSeasonal.details.basisValues[0] = 0;
+    expect(seasonal.details.basisValues[0]).toBe(1000);
+  });
+
+  it('deep-copies the nested iqrBounds object in anomaly details', () => {
+    const anomaly: ComputedStat = {
+      statType: StatType.Anomaly,
+      category: 'Sales',
+      value: 500,
+      details: { direction: 'above', zScore: 3.1, iqrBounds: { lower: 100, upper: 400 }, deviation: 100 },
+    };
+    const [identified] = assignIds([anomaly], 1);
+    if (identified?.statType !== StatType.Anomaly || anomaly.statType !== StatType.Anomaly) {
+      throw new Error('expected anomaly stat');
+    }
+
+    expect(identified.details.iqrBounds).not.toBe(anomaly.details.iqrBounds);
+    identified.details.iqrBounds.upper = 999;
+    expect(anomaly.details.iqrBounds.upper).toBe(400);
+  });
 });

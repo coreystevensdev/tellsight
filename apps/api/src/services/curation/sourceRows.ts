@@ -27,10 +27,11 @@ function isFinancialRow(row: DataRow): boolean {
 }
 
 // Maps a resolved stat instance back to the rows that mathematically
-// produced its value. Read-only against `stat`: assignIds shallow-copies
-// each ComputedStat, so `IdentifiedStat.details` shares object identity
-// with the underlying computeStats() output, mutating it here would corrupt
-// state other consumers (buildStatDetail, the AI prompt assembly) still read.
+// produced its value. Stays read-only against `stat` as a matter of
+// convention: assignIds deep-clones each ComputedStat, so mutating
+// `stat.details` here no longer risks corrupting computeStats()'s
+// underlying output, but nothing guarantees this is the only reference
+// to this particular IdentifiedStat instance.
 export function resolveSourceRows(rows: DataRow[], stat: IdentifiedStat): DataRow[] {
   switch (stat.statType) {
     case StatType.Total:
