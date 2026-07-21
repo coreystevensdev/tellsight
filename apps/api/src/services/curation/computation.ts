@@ -930,12 +930,15 @@ export function computeStats(
 // Per-instance id for the audit drawer and NL Q&A citation system.
 // Different from allowedStatIds (assembly.ts), which refers to stat *types*, not instances.
 export function statInstanceId(stat: ComputedStat, datasetId: number): string {
-  // Swap for the smart quote rather than stripping, so a literal ASCII quote
-  // can never break the <cite id="..."> attribute delimiter downstream
-  // (assembly.ts) without collapsing two categories that differ only by an
-  // embedded quote onto the same id, or a quote-only category onto an empty
-  // segment.
-  const category = stat.category ? stat.category.replace(/"/g, '”') : '_';
+  // Swap for lookalike characters rather than stripping. The quote swap
+  // keeps a literal ASCII quote from breaking the <cite id="..."> attribute
+  // delimiter downstream (assembly.ts). The colon swap is forward-hardening
+  // (DW-32): no current consumer splits the id on ':', but keeping a literal
+  // colon out of category means the id can't later be misread by a parser
+  // that assumes datasetId:statType:category:discriminator. Both avoid
+  // collapsing two categories that differ only by an escaped character onto
+  // the same id, or an escaped-only category onto an empty segment.
+  const category = stat.category ? stat.category.replace(/"/g, '”').replace(/:/g, '：') : '_';
   return `${datasetId}:${stat.statType}:${category}:${statDiscriminator(stat)}`;
 }
 

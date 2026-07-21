@@ -155,6 +155,61 @@ describe('statInstanceId', () => {
     };
     expect(statInstanceId(withQuote, 1)).not.toBe(statInstanceId(withoutQuote, 1));
   });
+
+  it('swaps a literal colon in the category for a fullwidth colon so the field boundaries stay stable', () => {
+    const totalStat: ComputedStat = {
+      statType: StatType.Total,
+      category: 'Coffee: Retail',
+      value: 7000,
+      details: { scope: 'category', count: 6 },
+    };
+    expect(statInstanceId(totalStat, 1)).toBe('1:total:Coffee： Retail:category');
+  });
+
+  it('does not collapse a colon-only category to the empty string', () => {
+    const totalStat: ComputedStat = {
+      statType: StatType.Total,
+      category: ':',
+      value: 500,
+      details: { scope: 'category', count: 1 },
+    };
+    expect(statInstanceId(totalStat, 1)).toBe('1:total:：:category');
+  });
+
+  it('gives two categories differing only by an embedded colon distinct ids', () => {
+    const withColon: ComputedStat = {
+      statType: StatType.Total,
+      category: 'Bob:s Cafe',
+      value: 100,
+      details: { scope: 'category', count: 1 },
+    };
+    const withoutColon: ComputedStat = {
+      statType: StatType.Total,
+      category: 'Bobs Cafe',
+      value: 200,
+      details: { scope: 'category', count: 1 },
+    };
+    expect(statInstanceId(withColon, 1)).not.toBe(statInstanceId(withoutColon, 1));
+  });
+
+  it('known limitation: a category already containing the fullwidth colon lookalike collides with an escaped ASCII colon (DW-32 follow-up, not fixed here)', () => {
+    const alreadyFullwidth: ComputedStat = {
+      statType: StatType.Total,
+      category: 'Coffee： Retail',
+      value: 100,
+      details: { scope: 'category', count: 1 },
+    };
+    const escapedAscii: ComputedStat = {
+      statType: StatType.Total,
+      category: 'Coffee: Retail',
+      value: 200,
+      details: { scope: 'category', count: 1 },
+    };
+    // documents the current behavior rather than asserting it's correct --
+    // character substitution isn't injective when the substitute character
+    // can also occur in raw input, same pre-existing gap as the quote swap.
+    expect(statInstanceId(alreadyFullwidth, 1)).toBe(statInstanceId(escapedAscii, 1));
+  });
 });
 
 describe('assignIds', () => {
