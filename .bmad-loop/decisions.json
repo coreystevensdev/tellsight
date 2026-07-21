@@ -16,14 +16,5 @@
     "key": "3",
     "label": "Keep open, revisit if a second YoY window is added",
     "resolution": ""
-  },
-  "DW-32": {
-    "answered_at": "2026-07-19",
-    "bundle_name": "",
-    "effect": "build",
-    "intent": "Extend the existing quote-escaping pattern in statInstanceId to also escape ':' in the category segment, applied consistently on both the write side and statDiscriminator parsing.",
-    "key": "1",
-    "label": "Escape ':' in the category segment",
-    "resolution": ""
   }
 }
