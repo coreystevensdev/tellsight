@@ -138,17 +138,31 @@ export function stripAllStatTags(text: string): string {
 // Per-stat-instance citation token (Story 12.2), a different mechanism from
 // <stat id="statType"/> above: many per paragraph, keyed by statInstanceId
 // (colon-delimited, so the id capture allows anything but a closing quote).
+// The id value may be empty and the trailing slash is optional, an LLM that
+// emits `<cite id=""/>` or drops the self-closing slash still gets captured
+// here instead of leaking as literal text; validateCiteRefs is what actually
+// rejects a bad id.
 export function citeTagGlobal(): RegExp {
-  return /<cite\s+id="[^"]+"\s*\/>/g;
+  return /<cite\s+id="[^"]*"\s*\/?>/g;
 }
 export function citeTagCapture(): RegExp {
-  return /<cite\s+id="([^"]+)"\s*\/>/g;
+  return /<cite\s+id="([^"]*)"\s*\/?>/g;
 }
 export function citeTagOpenFragment(): RegExp {
   return /<cite(?:\s[^>]*)?$/;
 }
+// Covers the orphaned </cite> an off-script open/close pair leaves behind
+// once the (now-optional-slash) opening regex above eats the opening half.
+export function citeClosingTagGlobal(): RegExp {
+  return /<\/cite\s*>/g;
+}
+// Mirrors citeTagOpenFragment for the closing half, a chunk boundary can
+// split "</cite>" mid-token during streaming just as easily as the opener.
+export function citeClosingTagOpenFragment(): RegExp {
+  return /<\/(?:c|ci|cit|cite)?$/;
+}
 export function stripAllCiteTags(text: string): string {
-  return text.replace(citeTagGlobal(), '');
+  return text.replace(citeTagGlobal(), '').replace(citeClosingTagGlobal(), '');
 }
 
 // Every rendered surface strips both tag families together, this is the one

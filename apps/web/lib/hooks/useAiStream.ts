@@ -24,7 +24,14 @@ export interface StreamState {
   retryCount: number;
 }
 
-import { statTagGlobal, statTagOpenFragment, citeTagGlobal, citeTagOpenFragment } from 'shared/constants';
+import {
+  statTagGlobal,
+  statTagOpenFragment,
+  citeTagGlobal,
+  citeTagOpenFragment,
+  citeClosingTagGlobal,
+  citeClosingTagOpenFragment,
+} from 'shared/constants';
 
 // strips complete <stat id="..."/> tokens and hides an incomplete trailing
 // tag fragment while the next chunk is still arriving. public for tests.
@@ -33,9 +40,15 @@ export function stripStatTags(raw: string): string {
 }
 
 // same treatment for <cite id="..."/> tokens, a distinct tag from <stat>
-// above (see shared/constants), public for tests.
+// above (see shared/constants). Also strips a stray </cite> an off-script
+// open/close pair can leave mid-stream once the opening half is stripped.
+// public for tests.
 export function stripCiteTags(raw: string): string {
-  return raw.replace(citeTagGlobal(), '').replace(citeTagOpenFragment(), '');
+  return raw
+    .replace(citeTagGlobal(), '')
+    .replace(citeClosingTagGlobal(), '')
+    .replace(citeTagOpenFragment(), '')
+    .replace(citeClosingTagOpenFragment(), '');
 }
 
 // every display path strips both tag families together.

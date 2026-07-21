@@ -283,6 +283,15 @@ describe('stripCiteTags', () => {
     const raw = 'runway <stat id="runway"/> tight';
     expect(stripCiteTags(raw)).toBe(raw);
   });
+
+  it('strips both halves of an off-script open/close cite pair', () => {
+    expect(stripCiteTags('grew <cite id="1:total:_:overall">12%</cite> this quarter'))
+      .toBe('grew 12% this quarter');
+  });
+
+  it('hides a closing tag fragment split across a chunk boundary', () => {
+    expect(stripCiteTags('grew 12%</cit')).toBe('grew 12%');
+  });
 });
 
 describe('stripDisplayTags', () => {

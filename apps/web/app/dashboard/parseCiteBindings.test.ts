@@ -62,4 +62,43 @@ describe('parseCiteBindings', () => {
       { paragraphIndex: 1, numberIndex: 0, statId: '1:total:Sales:category' },
     ]);
   });
+
+  it('binds two consecutive cite tags to the same number', () => {
+    const raw = 'Revenue hit $5,000<cite id="A"/><cite id="B"/> this month.';
+    expect(parseCiteBindings(raw)).toEqual([
+      { paragraphIndex: 0, numberIndex: 0, statId: 'A' },
+      { paragraphIndex: 0, numberIndex: 0, statId: 'B' },
+    ]);
+  });
+
+  it('binds three consecutive cite tags to the same number', () => {
+    const raw = 'Revenue hit $5,000<cite id="A"/><cite id="B"/><cite id="C"/> this month.';
+    expect(parseCiteBindings(raw)).toEqual([
+      { paragraphIndex: 0, numberIndex: 0, statId: 'A' },
+      { paragraphIndex: 0, numberIndex: 0, statId: 'B' },
+      { paragraphIndex: 0, numberIndex: 0, statId: 'C' },
+    ]);
+  });
+
+  it('binds a cite tag missing its trailing slash the same as a well-formed one', () => {
+    const raw = 'Revenue hit $5,000<cite id="1:total:Sales:category"> this month.';
+    expect(parseCiteBindings(raw)).toEqual([
+      { paragraphIndex: 0, numberIndex: 0, statId: '1:total:Sales:category' },
+    ]);
+  });
+
+  it('drops a whole chain of cite tags when the first one does not sit right after a number', () => {
+    const raw = 'Revenue was $5,000 up nicely<cite id="A"/><cite id="B"/> this quarter.';
+    expect(parseCiteBindings(raw)).toEqual([]);
+  });
+
+  it('binds a tag right after a number even when the previous tag in the chain was rejected for a gap', () => {
+    const raw = 'Revenue hit $5,000<cite id="A"/> extra <cite id="B"/><cite id="C"/> this month.';
+    expect(parseCiteBindings(raw)).toEqual([{ paragraphIndex: 0, numberIndex: 0, statId: 'A' }]);
+  });
+
+  it('does not bind an empty-id cite tag, even immediately after a number', () => {
+    const raw = 'Revenue hit $5,000<cite id=""/> this month.';
+    expect(parseCiteBindings(raw)).toEqual([]);
+  });
 });

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
+import { citeTagCapture } from 'shared/constants';
 import type { ComputedStat } from './types.js';
 import { StatType } from './types.js';
 import {
@@ -517,6 +518,20 @@ describe('validateCiteRefs', () => {
     expect(validateCiteRefs(summary, stats, 1)).toEqual({ invalidRefs: [] });
     expect(validateCiteRefs(summary, stats, 2)).toEqual({ invalidRefs: ['1:runway:_:_'] });
   });
+
+  it('flags an empty id as invalid', () => {
+    const stats = [runwayStat(15000, -5000, 3)];
+    const summary = 'Runway is 3 months <cite id=""/> at this burn.';
+
+    expect(validateCiteRefs(summary, stats, 1)).toEqual({ invalidRefs: [''] });
+  });
+
+  it('treats a tag missing its trailing slash the same as a well-formed one', () => {
+    const stats = [runwayStat(15000, -5000, 3)];
+    const summary = 'Runway is 3 months <cite id="1:runway:_:_"> at this burn.';
+
+    expect(validateCiteRefs(summary, stats, 1)).toEqual({ invalidRefs: [] });
+  });
 });
 
 describe('stripInvalidCiteRefs', () => {
@@ -533,5 +548,39 @@ describe('stripInvalidCiteRefs', () => {
   it('handles multiple invalid IDs in one pass', () => {
     const summary = 'a <cite id="x"/> b <cite id="y"/> c <cite id="1:runway:_:_"/> d';
     expect(stripInvalidCiteRefs(summary, ['x', 'y'])).toBe('a  b  c <cite id="1:runway:_:_"/> d');
+  });
+
+  it('strips a tag missing its trailing slash when its id is invalid', () => {
+    const summary = '<cite id="ghost"> bad';
+    expect(stripInvalidCiteRefs(summary, ['ghost'])).toBe(' bad');
+  });
+
+  it('strips an empty-id tag', () => {
+    const summary = '<cite id=""/> bad text';
+    expect(stripInvalidCiteRefs(summary, [''])).toBe(' bad text');
+  });
+
+  it('strips an orphaned closing tag from an off-script open/close pair while leaving a valid opening tag in place', () => {
+    const summary = '<cite id="1:runway:_:_"/> good </cite>orphan';
+    expect(stripInvalidCiteRefs(summary, [])).toBe('<cite id="1:runway:_:_"/> good orphan');
+  });
+
+  it('normalizes a surviving valid tag to the self-closing form so it is not left permanently unpaired once its closing tag is stripped', () => {
+    const summary = '<cite id="1:runway:_:_">3 months</cite> tight';
+    expect(stripInvalidCiteRefs(summary, [])).toBe('<cite id="1:runway:_:_"/>3 months tight');
+  });
+});
+
+describe('citeTagCapture malformed tag shapes', () => {
+  it('captures a cite tag with an empty id', () => {
+    const matches = [...'<cite id=""/>'.matchAll(citeTagCapture())];
+    expect(matches).toHaveLength(1);
+    expect(matches[0]![1]).toBe('');
+  });
+
+  it('captures a cite tag missing its trailing slash', () => {
+    const matches = [...'<cite id="1:total:Sales:category">'.matchAll(citeTagCapture())];
+    expect(matches).toHaveLength(1);
+    expect(matches[0]![1]).toBe('1:total:Sales:category');
   });
 });

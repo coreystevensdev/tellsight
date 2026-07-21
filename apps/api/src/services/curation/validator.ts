@@ -1,4 +1,10 @@
-import { statTagCapture, statTagGlobal, citeTagCapture, citeTagGlobal } from 'shared/constants';
+import {
+  statTagCapture,
+  statTagGlobal,
+  citeTagCapture,
+  citeTagGlobal,
+  citeClosingTagGlobal,
+} from 'shared/constants';
 import { statInstanceId } from './computation.js';
 import type { ComputedStat } from './types.js';
 import { StatType } from './types.js';
@@ -288,13 +294,15 @@ export function validateCiteRefs(summary: string, stats: ComputedStat[], dataset
   return { invalidRefs: [...invalid] };
 }
 
-// strips only the <cite> tags whose IDs appear in invalidRefs, mirrors
-// stripInvalidStatRefs but with the `[^"]+` id capture cite tags use.
+// strips <cite> tags whose IDs appear in invalidRefs, plus any orphaned
+// </cite> left by an off-script open/close pair (that half never carries an
+// id, so it's stripped unconditionally). A surviving valid tag is normalized
+// to the self-closing form so a missing-slash tag doesn't persist permanently
+// unpaired once its matching </cite> is gone.
 export function stripInvalidCiteRefs(summary: string, invalidRefs: string[]): string {
-  if (invalidRefs.length === 0) return summary;
   const ids = new Set(invalidRefs);
-  return summary.replace(citeTagGlobal(), (full) => {
-    const idMatch = full.match(/id="([^"]+)"/);
-    return idMatch && ids.has(idMatch[1]!) ? '' : full;
+  return summary.replace(citeClosingTagGlobal(), '').replace(citeTagGlobal(), (full) => {
+    const id = full.match(/id="([^"]*)"/)![1]!;
+    return ids.has(id) ? '' : `<cite id="${id}"/>`;
   });
 }

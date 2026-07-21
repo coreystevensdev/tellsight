@@ -696,4 +696,52 @@ describe('AiSummaryCard citation markers', () => {
     expect(percentMarker).toBeInTheDocument();
     expect(dollarMarker).not.toBe(percentMarker);
   });
+
+  it('renders two separately clickable citation buttons when two cite tags bind to the same number', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
+      const isOther = String(url).includes('Sales%3Aother');
+      return Promise.resolve({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            data: {
+              statType: 'total',
+              value: 5000,
+              detail: { kind: 'formula', expression: isOther ? 'category + other' : '$5,000', terms: [] },
+            },
+          }),
+      } as Response);
+    });
+
+    mockUseAiStream.mockReturnValue(
+      defaultHookReturn({
+        status: 'done',
+        text: 'Revenue was $5,000 this quarter.',
+        rawText:
+          'Revenue was $5,000<cite id="1:total:Sales:category"/><cite id="1:total:Sales:other"/> this quarter.',
+      }),
+    );
+
+    render(<AiSummaryCard datasetId={1} />);
+
+    const markers = screen.getAllByRole('button', { name: /show how \$5,000 was calculated/i });
+    expect(markers).toHaveLength(2);
+    expect(markers[0]!.getAttribute('aria-label')).not.toBe(markers[1]!.getAttribute('aria-label'));
+
+    fireEvent.click(markers[0]!);
+    await waitFor(() =>
+      expect(fetchSpy).toHaveBeenCalledWith(
+        '/api/ai-summaries/1/stats/1%3Atotal%3ASales%3Acategory',
+        expect.objectContaining({ credentials: 'same-origin' }),
+      ),
+    );
+
+    fireEvent.click(markers[1]!);
+    await waitFor(() =>
+      expect(fetchSpy).toHaveBeenCalledWith(
+        '/api/ai-summaries/1/stats/1%3Atotal%3ASales%3Aother',
+        expect.objectContaining({ credentials: 'same-origin' }),
+      ),
+    );
+  });
 });

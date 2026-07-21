@@ -28,20 +28,24 @@ export function parseCiteBindings(rawText: string): CiteBinding[] {
     if (!paragraph) continue;
 
     let numberIndex = -1;
-    let lastNumberEnd = -1;
+    let lastConsumedEnd = -1;
 
     for (const match of paragraph.matchAll(NUMBER_OR_CITE)) {
       const [full, numberGroup, citeId] = match;
       if (numberGroup !== undefined) {
         numberIndex++;
-        lastNumberEnd = match.index! + full.length;
+        lastConsumedEnd = match.index! + full.length;
         continue;
       }
-      if (citeId === undefined || numberIndex < 0) continue;
+      if (!citeId || numberIndex < 0) continue;
 
-      const between = paragraph.slice(lastNumberEnd, match.index!);
+      const between = paragraph.slice(lastConsumedEnd, match.index!);
       if (/^\s*$/.test(between)) {
         bindings.push({ paragraphIndex: p, numberIndex, statId: citeId });
+        // advance past this tag too, so a second <cite> right after the first
+        // still counts as "immediately follows" instead of measuring distance
+        // back to the number and getting rejected.
+        lastConsumedEnd = match.index! + full.length;
       }
     }
   }

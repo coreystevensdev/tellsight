@@ -96,7 +96,7 @@ function StreamingCursor() {
 
 function highlightNumbers(
   text: string,
-  citesByNumber?: Map<number, string>,
+  citesByNumber?: Map<number, string[]>,
   onOpenCite?: (statId: string) => void,
 ): React.ReactNode[] {
   // NUMBER_PATTERN has one capture group, split() alternates plain text at
@@ -110,21 +110,26 @@ function highlightNumbers(
     if (i % 2 === 0) return <span key={i}>{part}</span>;
 
     numberIndex++;
-    const statId = citesByNumber?.get(numberIndex);
+    const statIds = citesByNumber?.get(numberIndex) ?? [];
 
     return (
       <span key={i} className="font-semibold text-accent-warm" style={{ fontFeatureSettings: '"tnum"' }}>
         {part}
-        {statId && onOpenCite && (
+        {onOpenCite && statIds.map((statId, citeIndex) => (
           <button
+            key={`${statId}-${citeIndex}`}
             type="button"
             onClick={() => onOpenCite(statId)}
             className="ml-0.5 inline-flex h-3.5 w-3.5 align-super text-accent-warm/60 hover:text-accent-warm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-warm"
-            aria-label={`Show how ${part} was calculated`}
+            aria-label={
+              statIds.length > 1
+                ? `Show how ${part} was calculated (source ${citeIndex + 1} of ${statIds.length})`
+                : `Show how ${part} was calculated`
+            }
           >
             <Info className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
           </button>
-        )}
+        ))}
       </span>
     );
   });
@@ -146,14 +151,18 @@ function SummaryText({ text, bindings, citations, onOpenStat, onOpenCite, cashHi
   const bindingByIndex = new Map<number, string>();
   for (const b of bindings ?? []) bindingByIndex.set(b.paragraphIndex, b.statId);
 
-  const citesByParagraph = new Map<number, Map<number, string>>();
+  // a number can carry more than one citation (e.g. two consecutive <cite>
+  // tags after one number), so each numberIndex maps to a list, not a single id.
+  const citesByParagraph = new Map<number, Map<number, string[]>>();
   for (const c of citations ?? []) {
     let byNumber = citesByParagraph.get(c.paragraphIndex);
     if (!byNumber) {
       byNumber = new Map();
       citesByParagraph.set(c.paragraphIndex, byNumber);
     }
-    byNumber.set(c.numberIndex, c.statId);
+    const ids = byNumber.get(c.numberIndex);
+    if (ids) ids.push(c.statId);
+    else byNumber.set(c.numberIndex, [c.statId]);
   }
 
   return (
