@@ -149,6 +149,8 @@ describe('handleSendJob: chart-mapped rule kind (I/O matrix row 1)', () => {
   });
 
   it('calls the LLM with the fired insight and caches the result', async () => {
+    const { logger } = await import('../../../lib/logger.js');
+
     await handleSendJob({ id: 'send-2', data: baseJobData } as never);
 
     expect(mockGenerateInterpretation).toHaveBeenCalledTimes(1);
@@ -159,6 +161,10 @@ describe('handleSendJob: chart-mapped rule kind (I/O matrix row 1)', () => {
     const call = mockSendEmail.mock.calls[0]![0] as Record<string, unknown>;
     expect((call.react as { paragraph: string }).paragraph).toBe(
       'Your runway is now 2.0 months. Worth a look at burn rate.',
+    );
+    expect(logger.warn).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'AI summary referenced unknown stat instance IDs, stripped before cache',
     );
   });
 
@@ -190,6 +196,20 @@ describe('handleSendJob: cite-ref hallucination guard', () => {
 
     const call = mockSendEmail.mock.calls[0]![0] as Record<string, unknown>;
     expect((call.react as { paragraph: string }).paragraph).not.toContain('<cite');
+  });
+
+  it('logs a warning when the Tier 2b cite strip removes hallucinated citations', async () => {
+    mockGenerateInterpretation.mockResolvedValueOnce(
+      'Your runway is now 2.0 months <cite id="ghost"/><cite id="phantom"/>. Worth a look at burn rate.',
+    );
+    const { logger } = await import('../../../lib/logger.js');
+
+    await handleSendJob({ id: 'send-15', data: baseJobData } as never);
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      { orgId: 42, datasetId: 100, invalidRefs: ['ghost', 'phantom'], promptVersion: 'v1-alert' },
+      'AI summary referenced unknown stat instance IDs, stripped before cache',
+    );
   });
 });
 

@@ -201,6 +201,12 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
       citeReport.invalidRefs.length > 0
         ? stripInvalidCiteRefs(chartRefsStripped, citeReport.invalidRefs)
         : chartRefsStripped;
+    if (citeReport.invalidRefs.length > 0) {
+      logger.warn(
+        { orgId, datasetId, invalidRefs: citeReport.invalidRefs, promptVersion },
+        'AI summary referenced unknown stat instance IDs, stripped before cache',
+      );
+    }
 
     const stored = await aiSummariesQueries.storeSummary({
       orgId,

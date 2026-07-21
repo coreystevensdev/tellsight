@@ -186,6 +186,10 @@ describe('cache miss path', () => {
         weekStart: baseJobData.weekStart,
       }),
     );
+    expect(logger.warn).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'AI summary referenced unknown stat instance IDs, stripped before cache',
+    );
   });
 
   it('passes the financials subset from businessProfile to the pipeline', async () => {
@@ -276,6 +280,24 @@ describe('cache miss path', () => {
       null,
       expect.any(Date),
       '',
+    );
+  });
+
+  it('logs a warning when the Tier 2b cite strip removes hallucinated citations', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockGetCachedDigest.mockResolvedValueOnce(undefined);
+    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockGenerateInterpretation.mockResolvedValueOnce('- bullet <cite id="ghost"/> <cite id="phantom"/>');
+    mockValidateCiteRefs.mockReturnValueOnce({ invalidRefs: ['ghost', 'phantom'] });
+    mockStoreSummary.mockResolvedValueOnce({ id: 4 });
+    mockFindOrgRecipients.mockResolvedValueOnce([]);
+
+    await handlePerOrgJob({ id: 'org-11', data: baseJobData } as never);
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      { orgId: 42, datasetId: 100, invalidRefs: ['ghost', 'phantom'], promptVersion: 'v1-digest' },
+      'AI summary referenced unknown stat instance IDs, stripped before cache',
     );
   });
 });

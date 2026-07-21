@@ -100,6 +100,12 @@ async function resolveAlertParagraph(data: SendJobData): Promise<string> {
     const cleaned = citeReport.invalidRefs.length > 0
       ? stripInvalidCiteRefs(content, citeReport.invalidRefs)
       : content;
+    if (citeReport.invalidRefs.length > 0) {
+      logger.warn(
+        { orgId: data.orgId, datasetId: data.datasetId, invalidRefs: citeReport.invalidRefs, promptVersion: ALERT_PROMPT_VERSION },
+        'AI summary referenced unknown stat instance IDs, stripped before cache',
+      );
+    }
 
     await aiSummariesQueries.storeSummary({
       orgId: data.orgId,
