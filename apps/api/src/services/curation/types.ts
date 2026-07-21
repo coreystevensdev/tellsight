@@ -100,6 +100,7 @@ export interface RunwayDetails {
   runwayMonths: number;
   cashAsOfDate: string; // ISO
   confidence: 'high' | 'moderate' | 'low';
+  trailingMonths: number; // window the underlying CashFlowStat was built on
 }
 
 // Monthly revenue needed to cover fixed costs at the current margin. Emitted only

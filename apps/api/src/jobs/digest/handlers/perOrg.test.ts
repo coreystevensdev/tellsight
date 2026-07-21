@@ -133,6 +133,7 @@ function runwayStat(runwayMonths: number): ComputedStat {
       runwayMonths,
       cashAsOfDate: '2026-06-01',
       confidence: 'high',
+      trailingMonths: 3,
     },
   };
 }

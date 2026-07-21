@@ -64,8 +64,9 @@ const identified = assignIds(stats, 1);
 function findStat<T extends StatType>(
   statType: T,
   predicate?: (s: Extract<IdentifiedStat, { statType: T }>) => boolean,
+  source: IdentifiedStat[] = identified,
 ): Extract<IdentifiedStat, { statType: T }> {
-  const found = identified.find((s): s is Extract<IdentifiedStat, { statType: T }> => {
+  const found = source.find((s): s is Extract<IdentifiedStat, { statType: T }> => {
     if (s.statType !== statType) return false;
     return !predicate || predicate(s as Extract<IdentifiedStat, { statType: T }>);
   });
@@ -155,6 +156,39 @@ describe('resolveSourceRows', () => {
       expect(windowMonths.has(monthKey(r.date))).toBe(true);
       expect(['Income', 'Expenses']).toContain(r.parentCategory);
     }
+  });
+
+  it('runway: derives its window from the resolved stat, not a hardcoded 3, when cashFlowWindow is non-default', () => {
+    const customStats = computeStats(fixtureRows, {
+      financials: { cashOnHand: 20_000, cashAsOfDate: '2027-01-05T00:00:00Z', monthlyFixedCosts: 5_000 },
+      now: NOW,
+      cashFlowWindow: 2,
+    });
+    const customIdentified = assignIds(customStats, 1);
+    const stat = findStat(StatType.Runway, undefined, customIdentified);
+    expect(stat.details.trailingMonths).toBe(2);
+
+    const rows = resolveSourceRows(fixtureRows, stat);
+    const windowMonths = new Set(computeCashFlow(fixtureRows, 2)[0]!.details.recentMonths.map((m) => m.month));
+    const staleWindowMonths = new Set(computeCashFlow(fixtureRows, 3)[0]!.details.recentMonths.map((m) => m.month));
+
+    expect(windowMonths.size).toBe(2);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) {
+      expect(windowMonths.has(monthKey(r.date))).toBe(true);
+    }
+    // The 2-month window is a trailing subset of the 3-month one (not just
+    // "different"), and a hardcoded computeCashFlow(rows, 3) would have
+    // pulled in the older month the resolved stat's own window never claims.
+    expect([...windowMonths].every((m) => staleWindowMonths.has(m))).toBe(true);
+    expect([...staleWindowMonths].some((m) => !windowMonths.has(m))).toBe(true);
+  });
+
+  it('runway: returns no rows when the resolved stat\'s window exceeds the available months', () => {
+    const stat = findStat(StatType.Runway);
+    const inflatedStat = { ...stat, details: { ...stat.details, trailingMonths: 1000 } };
+
+    expect(resolveSourceRows(fixtureRows, inflatedStat)).toEqual([]);
   });
 
   it('break_even: returns only Income/Expenses rows in the combined recent+prior margin-trend window', () => {

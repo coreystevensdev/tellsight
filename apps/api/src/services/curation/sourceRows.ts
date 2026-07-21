@@ -73,7 +73,7 @@ export function resolveSourceRows(rows: DataRow[], stat: IdentifiedStat): DataRo
     }
 
     case StatType.Runway: {
-      const cashFlow = computeCashFlow(rows, 3);
+      const cashFlow = computeCashFlow(rows, stat.details.trailingMonths);
       if (cashFlow.length === 0) return [];
       const months = new Set(cashFlow[0]!.details.recentMonths.map((m) => m.month));
       return rows.filter((r) => isFinancialRow(r) && months.has(monthKey(r.date)));

@@ -250,6 +250,7 @@ describe('scoreInsights, Runway scoring', () => {
       runwayMonths,
       cashAsOfDate: '2026-04-20T00:00:00.000Z',
       confidence: 'high',
+      trailingMonths: 3,
     },
   });
 
@@ -414,6 +415,7 @@ describe('scoreInsights, BreakEven scoring', () => {
         runwayMonths: 3,
         cashAsOfDate: '2026-04-20T00:00:00.000Z',
         confidence: 'high',
+        trailingMonths: 3,
       },
     };
     const cashFlowBurning: ComputedStat = {
@@ -522,6 +524,7 @@ describe('scoreInsights, CashForecast scoring', () => {
         runwayMonths: 3,
         cashAsOfDate: '2026-04-20T00:00:00.000Z',
         confidence: 'high',
+        trailingMonths: 3,
       },
     };
     const cashFlowBurning: ComputedStat = {

@@ -201,6 +201,7 @@ function runwayStat(cashOnHand: number, monthlyNet: number, runwayMonths: number
       runwayMonths,
       cashAsOfDate: '2026-04-15T00:00:00.000Z',
       confidence: 'high',
+      trailingMonths: 3,
     },
   };
 }

@@ -75,6 +75,7 @@ function runwayInsight(runwayMonths = 2) {
         runwayMonths,
         cashAsOfDate: '2026-07-01',
         confidence: 'high' as const,
+        trailingMonths: 3,
       },
     },
     score: 0.9,

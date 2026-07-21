@@ -607,6 +607,7 @@ export function computeRunway(
       runwayMonths,
       cashAsOfDate: financials.cashAsOfDate,
       confidence,
+      trailingMonths: cashFlowStat.details.trailingMonths,
     },
   }];
 }
