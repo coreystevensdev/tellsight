@@ -88,3 +88,13 @@ export type {
   CreateAlertRuleInput,
   UpdateAlertRuleInput,
 } from './alert-rules.js';
+
+export {
+  createStatCorrectionSchema,
+  resolveStatCorrectionSchema,
+} from './stat-corrections.js';
+
+export type {
+  CreateStatCorrectionInput,
+  ResolveStatCorrectionInput,
+} from './stat-corrections.js';

@@ -47,6 +47,8 @@ export type { StatDetailTerm, StatDetailView, StatDetailResponse, CitationRespon
 
 export type { ServiceStatus, SystemHealth } from './admin.js';
 
+export type { StatCorrectionStatus, StatCorrection } from './statCorrection.js';
+
 export type { BusinessProfile, OrgFinancials } from '../schemas/businessProfile.js';
 
 export interface ApiResponse<T> {

@@ -18,6 +18,13 @@ vi.mock('./SourceRowsPanel', () => ({
   SourceRowsPanel: (props: { datasetId: number; statId: string }) => mockSourceRowsPanel(props),
 }));
 
+const mockStatCorrectionForm = vi.fn((props: { datasetId: number; statId: string }) => (
+  <div data-testid="stat-correction-form" data-dataset-id={props.datasetId} data-stat-id={props.statId} />
+));
+vi.mock('./StatCorrectionForm', () => ({
+  StatCorrectionForm: (props: { datasetId: number; statId: string }) => mockStatCorrectionForm(props),
+}));
+
 afterEach(cleanup);
 
 describe('StatDetailSheet', () => {
@@ -141,6 +148,33 @@ describe('StatDetailSheet', () => {
     expect(mockSourceRowsPanel).toHaveBeenCalledWith(
       expect.objectContaining({ datasetId: 7, statId: '7:total:Sales:category' }),
     );
+  });
+
+  it('renders the correction form once the citation has resolved', () => {
+    mockUseStatDetail.mockReturnValue({
+      status: 'done',
+      data: { statType: 'total', value: 100, detail: { kind: 'formula', expression: '$100', terms: [] } },
+      error: null,
+    });
+
+    render(
+      <StatDetailSheet open={true} onOpenChange={() => {}} datasetId={7} statId="7:total:Sales:category" />,
+    );
+
+    expect(screen.getByTestId('stat-correction-form')).toBeInTheDocument();
+    expect(mockStatCorrectionForm).toHaveBeenCalledWith(
+      expect.objectContaining({ datasetId: 7, statId: '7:total:Sales:category' }),
+    );
+  });
+
+  it('does not render the correction form while the citation is loading', () => {
+    mockUseStatDetail.mockReturnValue({ status: 'loading', data: null, error: null });
+
+    render(
+      <StatDetailSheet open={true} onOpenChange={() => {}} datasetId={1} statId="1:total:Sales:category" />,
+    );
+
+    expect(screen.queryByTestId('stat-correction-form')).not.toBeInTheDocument();
   });
 
   it('source rows toggle is a keyboard-reachable button that reports its expanded state', () => {

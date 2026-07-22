@@ -8,6 +8,9 @@ vi.mock('../../db/queries/index.js', () => ({
     getCachedSummary: vi.fn(),
     storeSummary: vi.fn(),
   },
+  statCorrectionsQueries: {
+    getActiveCorrectionStatIds: vi.fn().mockResolvedValue([]),
+  },
 }));
 
 vi.mock('../../lib/logger.js', () => ({
@@ -46,7 +49,7 @@ vi.mock('../aiInterpretation/claudeClient.js', () => ({
   generateInterpretation: vi.fn(),
 }));
 
-import { dataRowsQueries, aiSummariesQueries } from '../../db/queries/index.js';
+import { dataRowsQueries, aiSummariesQueries, statCorrectionsQueries } from '../../db/queries/index.js';
 import { generateInterpretation } from '../aiInterpretation/claudeClient.js';
 import { runCurationPipeline, runFullPipeline } from './index.js';
 
@@ -112,6 +115,56 @@ describe('runCurationPipeline', () => {
       expect(statKeys).not.toContain('label');
       expect(statKeys).not.toContain('metadata');
     }
+  });
+
+  it('fetches active stat corrections for the org and excludes the matching instance from scoring', async () => {
+    vi.mocked(dataRowsQueries.getRowsByDataset).mockResolvedValue(fixtureRows as never);
+
+    const baseline = await runCurationPipeline(1, 1);
+    const target = baseline.find((i) => i.stat.statType === 'trend' && i.stat.category === 'Sales');
+    expect(target).toBeDefined();
+
+    const { statInstanceId } = await import('./computation.js');
+    const targetId = statInstanceId(target!.stat, 1);
+
+    vi.mocked(statCorrectionsQueries.getActiveCorrectionStatIds).mockResolvedValueOnce([targetId]);
+
+    const excluded = await runCurationPipeline(1, 1);
+
+    expect(excluded.some((i) => i.stat.statType === 'trend' && i.stat.category === 'Sales')).toBe(false);
+    // Marketing's trend instance has a different id, an unrelated correction never touches it.
+    expect(excluded.some((i) => i.stat.statType === 'trend' && i.stat.category === 'Marketing')).toBe(true);
+    expect(statCorrectionsQueries.getActiveCorrectionStatIds).toHaveBeenCalledWith(1, undefined);
+  });
+
+  it('no corrections in play leaves scoring untouched', async () => {
+    vi.mocked(dataRowsQueries.getRowsByDataset).mockResolvedValue(fixtureRows as never);
+    vi.mocked(statCorrectionsQueries.getActiveCorrectionStatIds).mockResolvedValueOnce([]);
+
+    const insights = await runCurationPipeline(1, 1);
+
+    expect(insights.length).toBeGreaterThan(0);
+  });
+
+  // evaluateOrg.ts fetches the org's active corrections itself and passes them
+  // through this param so it doesn't also pay for the query below internally,
+  // exactly once per job run instead of twice.
+  it('skips its own getActiveCorrectionStatIds query when the caller already fetched the ids', async () => {
+    vi.mocked(dataRowsQueries.getRowsByDataset).mockResolvedValue(fixtureRows as never);
+
+    const baseline = await runCurationPipeline(1, 1);
+    const target = baseline.find((i) => i.stat.statType === 'trend' && i.stat.category === 'Sales');
+    expect(target).toBeDefined();
+
+    const { statInstanceId } = await import('./computation.js');
+    const targetId = statInstanceId(target!.stat, 1);
+
+    vi.mocked(statCorrectionsQueries.getActiveCorrectionStatIds).mockClear();
+
+    const excluded = await runCurationPipeline(1, 1, undefined, null, [targetId]);
+
+    expect(statCorrectionsQueries.getActiveCorrectionStatIds).not.toHaveBeenCalled();
+    expect(excluded.some((i) => i.stat.statType === 'trend' && i.stat.category === 'Sales')).toBe(false);
   });
 });
 
@@ -228,6 +281,68 @@ describe('runFullPipeline', () => {
 
     const storeCall = vi.mocked(aiSummariesQueries.storeSummary).mock.calls[0]!;
     expect(storeCall[0]).toMatchObject({ content: result.content });
+  });
+
+  // AC: "given an approved correction, when runFullPipeline runs for that org,
+  // then the matching stat is excluded from the real generation output" --
+  // not a direct unit-level scoreInsights call, the actual dashboard/digest path.
+  it('excludes an approved Tier 2 correction from the real runFullPipeline generation output', async () => {
+    vi.mocked(aiSummariesQueries.getCachedSummary).mockResolvedValue(undefined as never);
+    vi.mocked(dataRowsQueries.getRowsByDataset).mockResolvedValue(fixtureRows as never);
+    vi.mocked(generateInterpretation).mockResolvedValue('Fresh AI analysis.');
+    vi.mocked(aiSummariesQueries.storeSummary).mockResolvedValue({} as never);
+
+    const baselineInsights = await runCurationPipeline(1, 1);
+    const target = baselineInsights.find((i) => i.stat.statType === 'trend' && i.stat.category === 'Sales');
+    expect(target).toBeDefined();
+
+    const { statInstanceId } = await import('./computation.js');
+    const targetId = statInstanceId(target!.stat, 1);
+
+    vi.mocked(statCorrectionsQueries.getActiveCorrectionStatIds).mockResolvedValueOnce([targetId]);
+
+    await runFullPipeline(1, 1);
+
+    const promptArg = vi.mocked(generateInterpretation).mock.calls[0]![0] as { user: string };
+    // Sales trend renders as "$1000 -> $2000" in the assembled prompt, Marketing's
+    // never overlaps with that string, so its absence proves the specific
+    // instance was dropped before the prompt reached the model, not the
+    // whole Sales category or all Trend stats.
+    expect(promptArg.user).not.toContain('$1000 -> $2000');
+    expect(promptArg.user).toContain('Marketing');
+  });
+
+  // AC: "given the expiry scenario, when the sweep flips the row, the
+  // suppressed stat reappears on the next request" -- exercised here at the
+  // runFullPipeline level, not just against getActiveCorrectionStatIds
+  // directly, since that's the path a real user's next dashboard load hits.
+  it('a stat suppressed by a Tier 2 correction reappears once the correction has expired', async () => {
+    vi.mocked(aiSummariesQueries.getCachedSummary).mockResolvedValue(undefined as never);
+    vi.mocked(dataRowsQueries.getRowsByDataset).mockResolvedValue(fixtureRows as never);
+    vi.mocked(generateInterpretation).mockResolvedValue('Fresh AI analysis.');
+    vi.mocked(aiSummariesQueries.storeSummary).mockResolvedValue({} as never);
+
+    const baselineInsights = await runCurationPipeline(1, 1);
+    const target = baselineInsights.find((i) => i.stat.statType === 'trend' && i.stat.category === 'Sales');
+    expect(target).toBeDefined();
+
+    const { statInstanceId } = await import('./computation.js');
+    const targetId = statInstanceId(target!.stat, 1);
+
+    // While approved and unexpired, the stat is excluded.
+    vi.mocked(statCorrectionsQueries.getActiveCorrectionStatIds).mockResolvedValueOnce([targetId]);
+    await runFullPipeline(1, 1);
+    const suppressedPrompt = vi.mocked(generateInterpretation).mock.calls[0]![0] as { user: string };
+    expect(suppressedPrompt.user).not.toContain('$1000 -> $2000');
+
+    // Once the expiry sweep has flipped the correction to 'expired', it no
+    // longer shows up as an active correction, so a fresh (cache-invalidated)
+    // request stops excluding it.
+    vi.mocked(statCorrectionsQueries.getActiveCorrectionStatIds).mockResolvedValueOnce([]);
+    vi.mocked(aiSummariesQueries.getCachedSummary).mockResolvedValueOnce(undefined as never);
+    await runFullPipeline(1, 1);
+    const reappearedPrompt = vi.mocked(generateInterpretation).mock.calls[1]![0] as { user: string };
+    expect(reappearedPrompt.user).toContain('$1000 -> $2000');
   });
 });
 

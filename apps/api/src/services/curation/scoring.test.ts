@@ -8,7 +8,14 @@ vi.mock('node:fs', () => ({
   readFileSync: vi.fn(),
 }));
 
+// Avoids pulling in the real env-validated app config through logger.js,
+// matching citation.test.ts's pattern in this same directory.
+vi.mock('../../lib/logger.js', () => ({
+  logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
+}));
+
 import { readFileSync } from 'node:fs';
+import { logger } from '../../lib/logger.js';
 
 const validConfig: ScoringConfig = {
   version: '1.0',
@@ -565,5 +572,87 @@ describe('scoreInsights, CashForecast scoring', () => {
     expect(rw.score).toBeGreaterThan(cf.score);
     expect(cf.score).toBeGreaterThan(cfl.score);
     expect(cfl.score).toBeGreaterThan(be.score);
+  });
+});
+
+describe('scoreInsights with excludedStatIds', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('is byte-for-byte unchanged when excludedStatIds is omitted (Tier 1 has no scoring effect)', async () => {
+    mockConfig(validConfig);
+    const { scoreInsights } = await import('./scoring.js');
+
+    expect(scoreInsights(fixtureStats)).toEqual(scoreInsights(fixtureStats, undefined, 1));
+  });
+
+  it('excludes an approved stat instance id from the selection', async () => {
+    mockConfig({ ...validConfig, topN: 10 });
+    const { scoreInsights } = await import('./scoring.js');
+    const { statInstanceId } = await import('./computation.js');
+
+    const anomaly = fixtureStats.find((s) => s.statType === StatType.Anomaly)!;
+    const excludedId = statInstanceId(anomaly, 1);
+
+    const insights = scoreInsights(fixtureStats, new Set([excludedId]), 1);
+
+    expect(insights.some((i) => i.stat.statType === StatType.Anomaly)).toBe(false);
+  });
+
+  it('does not filter anything when the excluded id belongs to a different dataset', async () => {
+    mockConfig({ ...validConfig, topN: 10 });
+    const { scoreInsights } = await import('./scoring.js');
+    const { statInstanceId } = await import('./computation.js');
+
+    const anomaly = fixtureStats.find((s) => s.statType === StatType.Anomaly)!;
+    const idForOtherDataset = statInstanceId(anomaly, 999);
+
+    const insights = scoreInsights(fixtureStats, new Set([idForOtherDataset]), 1);
+
+    expect(insights.some((i) => i.stat.statType === StatType.Anomaly)).toBe(true);
+  });
+
+  it('returns an empty array when every stat is excluded', async () => {
+    mockConfig(validConfig);
+    const { scoreInsights } = await import('./scoring.js');
+    const { statInstanceId } = await import('./computation.js');
+
+    const allIds = new Set(fixtureStats.map((s) => statInstanceId(s, 1)));
+
+    expect(scoreInsights(fixtureStats, allIds, 1)).toEqual([]);
+  });
+
+  it('does not warn when excludedStatIds is an empty set but datasetId is present (no active corrections)', async () => {
+    mockConfig(validConfig);
+    const { scoreInsights } = await import('./scoring.js');
+
+    scoreInsights(fixtureStats, new Set(), 1);
+
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('warns when excludedStatIds is passed without datasetId', async () => {
+    mockConfig(validConfig);
+    const { scoreInsights } = await import('./scoring.js');
+
+    scoreInsights(fixtureStats, new Set(['1:runway:_:_']), undefined);
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ hasExcludedStatIds: true, hasDatasetId: false }),
+      expect.stringContaining('only one of excludedStatIds/datasetId'),
+    );
+  });
+
+  it('warns when datasetId is passed without excludedStatIds', async () => {
+    mockConfig(validConfig);
+    const { scoreInsights } = await import('./scoring.js');
+
+    scoreInsights(fixtureStats, undefined, 1);
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ hasExcludedStatIds: false, hasDatasetId: true }),
+      expect.stringContaining('only one of excludedStatIds/datasetId'),
+    );
   });
 });

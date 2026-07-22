@@ -15,6 +15,7 @@ import {
   userOrgsQueries,
   usersQueries,
   analyticsEventsQueries,
+  statCorrectionsQueries,
 } from '../../../db/queries/index.js';
 import { runCurationPipeline, StatType } from '../../../services/curation/index.js';
 import type { ScoredInsight } from '../../../services/curation/index.js';
@@ -268,20 +269,29 @@ export async function handleEvaluateOrgJob(job: Job): Promise<void> {
       }
     : null;
 
+  // Fetched once and reused below for both runCurationPipeline and the
+  // cashFlowForAlerting side channel; cashFlowForAlerting computes its own
+  // CashFlow stat outside runCurationPipeline, so it needs the same
+  // correction exclusion applied by hand rather than picking it up for free.
+  const activeCorrectionIds = await statCorrectionsQueries.getActiveCorrectionStatIds(orgId, dbAdmin);
+  const excludedStatIds = new Set(activeCorrectionIds);
+
   // dbAdmin, not the default client: this runs from a cross-org worker with
   // no per-request RLS session, same reasoning as every other query call in
   // this handler.
-  const insights = await runCurationPipeline(orgId, datasetId, dbAdmin, financials);
+  const insights = await runCurationPipeline(orgId, datasetId, dbAdmin, financials, activeCorrectionIds);
 
   // cash_burn_spikes reads a separate cash-flow signal from the one in
   // `insights`: the shared curation pipeline suppresses CashFlow for orgs
   // near break-even (the dashboard's near-zero band), but that's exactly the
   // population most likely to have a real spike worth alerting on. Gated
   // behind the rule check so orgs without cash_burn_spikes never pay for the
-  // extra query.
+  // extra getMonthlyBucketsByDataset query.
   const cashFlowForAlertingInsight = rules.some((r) => r.kind === 'cash_burn_spikes')
     ? (scoreInsights(
         cashFlowForAlerting(await dataRowsQueries.getMonthlyBucketsByDataset(orgId, datasetId, dbAdmin)),
+        excludedStatIds,
+        datasetId,
       )[0] ?? null)
     : null;
 

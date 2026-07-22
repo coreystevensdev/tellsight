@@ -42,6 +42,13 @@ import {
   shutdownAlertsWorkers,
   closeAlertsQueues,
 } from './jobs/alerts/index.js';
+import {
+  initStatCorrectionsCronJob,
+  initStatCorrectionsExpireWorker,
+  shutdownStatCorrectionsCron,
+  shutdownStatCorrectionsWorker,
+  closeStatCorrectionsQueue,
+} from './jobs/statCorrections/index.js';
 import { initEmailProvider } from './services/email/index.js';
 import { redis } from './lib/redis.js';
 import { queryClient, adminClient } from './lib/db.js';
@@ -153,6 +160,12 @@ async function start() {
   initAlertsSendWorker();
   await initAlertsCronJob();
 
+  // Stat corrections: daily sweep flips approved Tier 2 corrections to
+  // 'expired' once expiresAt passes, without this an approved correction
+  // would suppress its stat forever.
+  initStatCorrectionsExpireWorker();
+  await initStatCorrectionsCronJob();
+
   const server = app.listen(env.PORT, () => {
     logger.info({ port: env.PORT, env: env.NODE_ENV }, 'API server started');
   });
@@ -179,6 +192,9 @@ async function start() {
         await shutdownAlertsCron();
         await shutdownAlertsWorkers();
         await closeAlertsQueues();
+        await shutdownStatCorrectionsCron();
+        await shutdownStatCorrectionsWorker();
+        await closeStatCorrectionsQueue();
         await shutdownWorker();
         await redis.quit();
         await queryClient.end({ timeout: 5 });

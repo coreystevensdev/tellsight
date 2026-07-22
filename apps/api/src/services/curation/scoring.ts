@@ -3,8 +3,10 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { AppError } from '../../lib/appError.js';
+import { logger } from '../../lib/logger.js';
 import type { ComputedStat, ScoredInsight, ScoringConfig } from './types.js';
 import { StatType, scoringConfigSchema } from './types.js';
+import { statInstanceId } from './computation.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -144,10 +146,39 @@ function specificityScore(stat: ComputedStat): number {
   }
 }
 
-export function scoreInsights(stats: ComputedStat[]): ScoredInsight[] {
+// excludedStatIds is the only allowed effect of an approved Tier 2 stat
+// correction (see stat-corrections intent-contract): a suppression set
+// applied before topN truncation, never text injected into the prompt.
+// datasetId is required to compute an id worth excluding by, callers with
+// no corrections in play can omit both and nothing changes.
+export function scoreInsights(
+  stats: ComputedStat[],
+  excludedStatIds?: Set<string>,
+  datasetId?: number,
+): ScoredInsight[] {
   if (stats.length === 0) return [];
 
-  const scored: ScoredInsight[] = stats.map((stat) => {
+  if ((excludedStatIds !== undefined) !== (datasetId !== undefined)) {
+    // Exactly one of the pair supplied (regardless of whether the set is
+    // empty) is always a caller bug -- both must be passed together, or
+    // both omitted when there's nothing to exclude. An empty set with a
+    // defined datasetId is the normal "no active corrections" case and
+    // must not warn. Warn rather than throw: still safe to score
+    // everything unfiltered, just not the caller's intended behavior.
+    logger.warn(
+      { hasExcludedStatIds: excludedStatIds !== undefined, hasDatasetId: datasetId !== undefined },
+      'scoreInsights called with only one of excludedStatIds/datasetId; exclusion silently skipped',
+    );
+  }
+
+  const candidates =
+    excludedStatIds && excludedStatIds.size > 0 && datasetId !== undefined
+      ? stats.filter((stat) => !excludedStatIds.has(statInstanceId(stat, datasetId)))
+      : stats;
+
+  if (candidates.length === 0) return [];
+
+  const scored: ScoredInsight[] = candidates.map((stat) => {
     const nov = noveltyScore(stat);
     const act = actionabilityScore(stat);
     const spec = specificityScore(stat);

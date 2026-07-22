@@ -10,8 +10,11 @@ import {
 } from '../services/admin/index.js';
 import { getAllAnalyticsEvents, getAnalyticsEventsTotal, deleteOlderThan } from '../db/queries/analyticsEvents.js';
 import { deleteExpired as deleteExpiredShares } from '../db/queries/shares.js';
-import { auditLogsQueries } from '../db/queries/index.js';
-import { ValidationError } from '../lib/appError.js';
+import { auditLogsQueries, statCorrectionsQueries, aiSummariesQueries } from '../db/queries/index.js';
+import { dbAdmin } from '../lib/db.js';
+import { resolveStatCorrectionSchema } from 'shared/schemas';
+import { requireUser } from '../lib/requireUser.js';
+import { ValidationError, NotFoundError } from '../lib/appError.js';
 import { env } from '../config.js';
 import { logger } from '../lib/logger.js';
 
@@ -125,4 +128,64 @@ adminRouter.get('/audit-logs', async (req: Request, res: Response) => {
     data: logs,
     meta: { total: count, pagination: { page, pageSize: limit, totalPages } },
   });
+});
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function parseCorrectionParams(raw: { orgId: string; id: string }): { orgId: number; correctionId: number } {
+  const orgId = Number(raw.orgId);
+  const correctionId = Number(raw.id);
+  if (!Number.isInteger(orgId) || orgId <= 0) throw new ValidationError('Invalid org id');
+  if (!Number.isInteger(correctionId) || correctionId <= 0) throw new ValidationError('Invalid correction id');
+  return { orgId, correctionId };
+}
+
+// Tier 2 review gate (intent-contract): approval is platform-admin only, never
+// self-approved by the correcting org, hence orgId in the path rather than
+// taken from req.user like the org-scoped /proposals PATCH route.
+adminRouter.patch('/stat-corrections/:orgId/:id', async (req: Request, res: Response) => {
+  const user = requireUser(req);
+  const resolverId = parseInt(user.sub, 10);
+  const { orgId, correctionId } = parseCorrectionParams(req.params as { orgId: string; id: string });
+
+  const parsed = resolveStatCorrectionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Invalid resolution', details: parsed.error.flatten() },
+    });
+    return;
+  }
+
+  const resolution =
+    parsed.data.status === 'approved'
+      ? { status: 'approved' as const, expiresAt: new Date(Date.now() + parsed.data.expiresInDays * DAY_MS) }
+      : { status: 'rejected' as const };
+
+  const row = await statCorrectionsQueries.resolveCorrection(correctionId, orgId, resolverId, resolution);
+  if (!row) throw new NotFoundError('Stat correction not found or already resolved');
+
+  // Approval changes what the next runFullPipeline call excludes, but
+  // ai_summaries is cache-first and only goes stale on upload otherwise.
+  // Without this the exclusion wouldn't be visible until the org's next
+  // CSV upload, even though the DB-level suppression is already live.
+  // resolveCorrection's WHERE status='pending' guard means a retry after a
+  // markStale failure here would 404 (the row is already 'approved'), so
+  // this can't be recovered by simply retrying the request -- swallow and
+  // log instead of 500ing on an approval that already succeeded in the DB.
+  if (parsed.data.status === 'approved') {
+    try {
+      await aiSummariesQueries.markStale(orgId, dbAdmin, row.datasetId);
+    } catch (err) {
+      logger.error(
+        { err, orgId, correctionId, datasetId: row.datasetId },
+        'Stat correction approved but failed to invalidate ai_summaries cache; cached summary keeps showing the un-suppressed stat until next CSV upload',
+      );
+    }
+  }
+
+  logger.info(
+    { orgId, correctionId, resolverId, status: parsed.data.status },
+    'Stat correction resolved',
+  );
+  res.json({ data: row });
 });

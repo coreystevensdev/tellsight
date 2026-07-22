@@ -13,6 +13,7 @@ const mockGetOrgOwnerId = vi.fn();
 const mockFindUserById = vi.fn();
 const mockRecordEvent = vi.fn().mockResolvedValue({ id: 1 });
 const mockRunCurationPipeline = vi.fn();
+const mockGetActiveCorrections = vi.fn();
 const mockSendQueueAdd = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('bullmq', () => ({
@@ -46,6 +47,7 @@ vi.mock('../../../db/queries/index.js', () => ({
   userOrgsQueries: { getOrgOwnerId: mockGetOrgOwnerId },
   usersQueries: { findUserById: mockFindUserById },
   analyticsEventsQueries: { recordEvent: mockRecordEvent },
+  statCorrectionsQueries: { getActiveCorrectionStatIds: mockGetActiveCorrections },
 }));
 
 vi.mock('../../../services/curation/index.js', () => ({
@@ -199,6 +201,7 @@ beforeEach(() => {
   mockGetLatestFire.mockResolvedValue(null);
   mockCreateIfUnderQuota.mockResolvedValue({ id: 999 });
   mockCountDistinctDates.mockResolvedValue(25);
+  mockGetActiveCorrections.mockResolvedValue([]);
 });
 
 describe('tier and dataset gates', () => {
@@ -234,7 +237,7 @@ describe('tier and dataset gates', () => {
     } as never);
 
     expect(mockGetActiveDatasetId).toHaveBeenCalledWith(42, { __tag: 'dbAdmin' });
-    expect(mockRunCurationPipeline).toHaveBeenCalledWith(42, 555, { __tag: 'dbAdmin' }, null);
+    expect(mockRunCurationPipeline).toHaveBeenCalledWith(42, 555, { __tag: 'dbAdmin' }, null, []);
   });
 
   it('exits cleanly when the org has no enabled rules', async () => {
@@ -253,7 +256,7 @@ describe('cron: fire decisions', () => {
 
     await handleEvaluateOrgJob({ id: 'j4', data: baseJobData } as never);
 
-    expect(mockRunCurationPipeline).toHaveBeenCalledWith(42, 100, { __tag: 'dbAdmin' }, null);
+    expect(mockRunCurationPipeline).toHaveBeenCalledWith(42, 100, { __tag: 'dbAdmin' }, null, []);
     expect(mockCreateIfUnderQuota).toHaveBeenCalledWith(
       // threshold 6mo, runwayMonths 2 => <= 6/2 (3) but > 6/4 (1.5): band 2
       expect.objectContaining({ orgId: 42, ruleId: 1, ruleKind: 'runway_runs_short', band: 2 }),
@@ -380,6 +383,86 @@ describe('cron: fire decisions', () => {
     await handleEvaluateOrgJob({ id: 'j-cb-spike', data: baseJobData } as never);
 
     // threshold 50%, priorAvgExpenses 0, latest.expenses 500 > 0 => currentValue = 50 * 3 = 150, band 3
+    expect(mockCreateIfUnderQuota).toHaveBeenCalledWith(
+      expect.objectContaining({ ruleKind: 'cash_burn_spikes', band: 3, currentValue: 150 }),
+      3,
+      { __tag: 'dbAdmin' },
+    );
+  });
+
+  it('fetches active stat corrections for the org and excludes a matching cash-flow-for-alerting instance (AC: evaluateOrg wiring)', async () => {
+    mockGetEnabledRules.mockResolvedValueOnce([cashBurnRule()]);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    const buckets = monthlyBuckets([
+      ['2026-04', { revenue: 1_000, expenses: 0 }],
+      ['2026-05', { revenue: 1_000, expenses: 0 }],
+      ['2026-06', { revenue: 1_000, expenses: 500 }],
+    ]);
+    mockGetMonthlyBuckets.mockResolvedValueOnce(buckets);
+
+    const { cashFlowForAlerting } = await import('../../../services/curation/computation.js');
+    const { statInstanceId } = await import('../../../services/curation/computation.js');
+    const [cashFlowStat] = cashFlowForAlerting(buckets);
+    const correctionId = statInstanceId(cashFlowStat!, 100);
+
+    mockGetActiveCorrections.mockResolvedValueOnce([correctionId]);
+
+    await handleEvaluateOrgJob({ id: 'j-cb-corrected', data: baseJobData } as never);
+
+    expect(mockGetActiveCorrections).toHaveBeenCalledWith(42, { __tag: 'dbAdmin' });
+    // The excluded instance is the only candidate, no insight survives to score against the rule.
+    expect(mockCreateIfUnderQuota).not.toHaveBeenCalled();
+  });
+
+  it('fetches the active correction set exactly once per job run and passes it to runCurationPipeline (no double-fetch)', async () => {
+    mockGetEnabledRules.mockResolvedValueOnce([cashBurnRule()]);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetMonthlyBuckets.mockResolvedValueOnce(
+      monthlyBuckets([
+        ['2026-04', { revenue: 1_000, expenses: 0 }],
+        ['2026-05', { revenue: 1_000, expenses: 0 }],
+        ['2026-06', { revenue: 1_000, expenses: 500 }],
+      ]),
+    );
+    mockGetActiveCorrections.mockResolvedValueOnce(['5:runway:_:_']);
+
+    await handleEvaluateOrgJob({ id: 'j-cb-single-fetch', data: baseJobData } as never);
+
+    expect(mockGetActiveCorrections).toHaveBeenCalledTimes(1);
+    expect(mockRunCurationPipeline).toHaveBeenCalledWith(
+      42,
+      100,
+      { __tag: 'dbAdmin' },
+      null,
+      ['5:runway:_:_'],
+    );
+  });
+
+  it('skips the getMonthlyBucketsByDataset query, but still fetches corrections once, when cash_burn_spikes is not enabled', async () => {
+    mockGetEnabledRules.mockResolvedValueOnce([runwayRule()]);
+    mockRunCurationPipeline.mockResolvedValueOnce([runwayInsight(2)]);
+    mockGetActiveCorrections.mockResolvedValueOnce([]);
+
+    await handleEvaluateOrgJob({ id: 'j-no-cash-burn', data: baseJobData } as never);
+
+    expect(mockGetActiveCorrections).toHaveBeenCalledTimes(1);
+    expect(mockGetMonthlyBuckets).not.toHaveBeenCalled();
+  });
+
+  it('leaves cash_burn_spikes unaffected when the active correction does not match this dataset instance', async () => {
+    mockGetEnabledRules.mockResolvedValueOnce([cashBurnRule()]);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetMonthlyBuckets.mockResolvedValueOnce(
+      monthlyBuckets([
+        ['2026-04', { revenue: 1_000, expenses: 0 }],
+        ['2026-05', { revenue: 1_000, expenses: 0 }],
+        ['2026-06', { revenue: 1_000, expenses: 500 }],
+      ]),
+    );
+    mockGetActiveCorrections.mockResolvedValueOnce(['999:cash_flow:_:w6']);
+
+    await handleEvaluateOrgJob({ id: 'j-cb-unrelated-correction', data: baseJobData } as never);
+
     expect(mockCreateIfUnderQuota).toHaveBeenCalledWith(
       expect.objectContaining({ ruleKind: 'cash_burn_spikes', band: 3, currentValue: 150 }),
       3,

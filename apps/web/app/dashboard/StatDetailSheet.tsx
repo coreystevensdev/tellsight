@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { useStatDetail } from '@/lib/hooks/useStatDetail';
 import { SourceRowsPanel } from './SourceRowsPanel';
+import { StatCorrectionForm } from './StatCorrectionForm';
 
 export interface StatDetailSheetProps {
   open: boolean;
@@ -94,6 +95,10 @@ export function StatDetailSheet({ open, onOpenChange, datasetId, statId }: StatD
 
           {showSourceRows && datasetId !== null && (
             <SourceRowsPanel datasetId={datasetId} statId={statId} />
+          )}
+
+          {status === 'done' && datasetId !== null && (
+            <StatCorrectionForm datasetId={datasetId} statId={statId} />
           )}
         </div>
 

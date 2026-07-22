@@ -1,7 +1,7 @@
 import type { BusinessProfile, OrgFinancials } from 'shared/types';
 
 import { logger } from '../../lib/logger.js';
-import { dataRowsQueries, aiSummariesQueries } from '../../db/queries/index.js';
+import { dataRowsQueries, aiSummariesQueries, statCorrectionsQueries } from '../../db/queries/index.js';
 import type { db, DbTransaction } from '../../lib/db.js';
 import { computeStats } from './computation.js';
 import { scoreInsights, scoringConfig } from './scoring.js';
@@ -16,6 +16,10 @@ export async function runCurationPipeline(
   datasetId: number,
   client?: typeof db | DbTransaction,
   financials?: OrgFinancials | null,
+  // Callers that already fetched the org's active corrections for another
+  // reason (evaluateOrg.ts needs the same set for a side-channel query) can
+  // pass it through here instead of paying for a second identical query.
+  activeCorrectionIds?: string[],
 ): Promise<ScoredInsight[]> {
   const rows = await dataRowsQueries.getRowsByDataset(orgId, datasetId, client);
 
@@ -32,7 +36,14 @@ export async function runCurationPipeline(
   });
   logger.info({ orgId, statCount: stats.length }, 'curation layer 1 complete');
 
-  const insights = scoreInsights(stats);
+  const resolvedCorrectionIds =
+    activeCorrectionIds ?? (await statCorrectionsQueries.getActiveCorrectionStatIds(orgId, client));
+  const excludedStatIds = new Set(resolvedCorrectionIds);
+  if (excludedStatIds.size > 0) {
+    logger.info({ orgId, datasetId, excludedCount: excludedStatIds.size }, 'excluding approved stat corrections from scoring');
+  }
+
+  const insights = scoreInsights(stats, excludedStatIds, datasetId);
   logger.info({ orgId, insightCount: insights.length }, 'curation layer 2 complete');
 
   return insights;

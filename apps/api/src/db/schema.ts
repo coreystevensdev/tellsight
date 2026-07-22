@@ -515,6 +515,7 @@ export const orgsRelations = relations(orgs, ({ many, one }) => ({
   digestHistory: many(digestHistory),
   milestoneAwards: many(milestoneAwards),
   agentProposals: many(agentProposals),
+  statCorrections: many(statCorrections),
   activeDataset: one(datasets, {
     fields: [orgs.activeDatasetId],
     references: [datasets.id],
@@ -722,6 +723,73 @@ export const alertRules = pgTable(
       .where(sql`${table.deletedAt} is null`),
   ],
 );
+
+export const statCorrectionStatusEnum = pgEnum('stat_correction_status', [
+  'pending',
+  'approved',
+  'rejected',
+  'expired',
+]);
+
+// Tier 1 (annotation) rows carry status: null, they're never a queue item.
+// Tier 2 ("apply going forward") rows go through pending -> approved/rejected,
+// then approved -> expired once expiresAt passes. idx_stat_corrections_org_stat_active
+// (partial unique, status in pending/approved) is what actually enforces the
+// one-active-Tier-2-request-per-stat rule; the 409 in the route is UX, the
+// index is the real guarantee under concurrent requests.
+export const statCorrections = pgTable(
+  'stat_corrections',
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    orgId: integer('org_id')
+      .notNull()
+      .references(() => orgs.id, { onDelete: 'cascade' }),
+    datasetId: integer('dataset_id')
+      .notNull()
+      .references(() => datasets.id, { onDelete: 'cascade' }),
+    statInstanceId: text('stat_instance_id').notNull(),
+    userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+    note: text().notNull(),
+    appliesGoingForward: boolean('applies_going_forward').default(false).notNull(),
+    status: statCorrectionStatusEnum(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    resolvedByUserId: integer('resolved_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+  },
+  (table) => [
+    index('idx_stat_corrections_org_dataset').on(table.orgId, table.datasetId),
+    uniqueIndex('idx_stat_corrections_org_stat_active')
+      .on(table.orgId, table.statInstanceId)
+      .where(sql`${table.status} in ('pending', 'approved')`),
+    index('idx_stat_corrections_expires_at')
+      .on(table.expiresAt)
+      .where(sql`${table.status} in ('pending', 'approved')`),
+  ],
+);
+
+export const statCorrectionsRelations = relations(statCorrections, ({ one }) => ({
+  org: one(orgs, {
+    fields: [statCorrections.orgId],
+    references: [orgs.id],
+  }),
+  dataset: one(datasets, {
+    fields: [statCorrections.datasetId],
+    references: [datasets.id],
+  }),
+  user: one(users, {
+    fields: [statCorrections.userId],
+    references: [users.id],
+    relationName: 'correctionAuthor',
+  }),
+  resolvedByUser: one(users, {
+    fields: [statCorrections.resolvedByUserId],
+    references: [users.id],
+    relationName: 'correctionResolver',
+  }),
+}));
 
 export const alertRulesRelations = relations(alertRules, ({ one, many }) => ({
   org: one(orgs, {

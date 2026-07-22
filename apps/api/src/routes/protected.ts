@@ -17,6 +17,7 @@ import { integrationsRouter } from './integrations.js';
 import { preferencesEmailRouter } from './preferencesEmail.js';
 import { digestRouter } from './digest.js';
 import { proposalsRouter } from './proposals.js';
+import { statCorrectionsRouter } from './statCorrections.js';
 
 const protectedRouter = Router();
 
@@ -39,6 +40,7 @@ protectedRouter.use('/integrations', integrationsRouter);
 protectedRouter.use('/preferences/email', preferencesEmailRouter);
 protectedRouter.use('/digest', digestRouter);
 protectedRouter.use('/proposals', proposalsRouter);
+protectedRouter.use('/stat-corrections', statCorrectionsRouter);
 protectedRouter.use('/admin', roleGuard('admin'), adminRouter);
 
 export default protectedRouter;
