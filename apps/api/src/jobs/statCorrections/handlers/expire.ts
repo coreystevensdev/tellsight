@@ -10,8 +10,10 @@ export async function handleExpireJob(_job: Job): Promise<void> {
 
   // Symmetric to admin.ts's approval-side invalidation: a correction that
   // just expired changes what the next runFullPipeline call excludes, and
-  // ai_summaries is cache-first, so without this the stat stays hidden
-  // until the org's next CSV upload. expireCorrections already committed the
+  // ai_summaries is cache-first, so without this the stat stays hidden on
+  // the dashboard until the org's next CSV upload (see admin.ts for why
+  // this only affects the dashboard-audience cache, not digest's, which is
+  // pinned to weekStart by design). expireCorrections already committed the
   // status flip, so a retry after a markStale failure here would re-query
   // for status='approved' and silently miss these now-'expired' rows -- each
   // call is wrapped so one failure can't crash the job and trigger that.

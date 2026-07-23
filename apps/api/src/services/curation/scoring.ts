@@ -156,8 +156,6 @@ export function scoreInsights(
   excludedStatIds?: Set<string>,
   datasetId?: number,
 ): ScoredInsight[] {
-  if (stats.length === 0) return [];
-
   if ((excludedStatIds !== undefined) !== (datasetId !== undefined)) {
     // Exactly one of the pair supplied (regardless of whether the set is
     // empty) is always a caller bug -- both must be passed together, or
@@ -165,11 +163,16 @@ export function scoreInsights(
     // defined datasetId is the normal "no active corrections" case and
     // must not warn. Warn rather than throw: still safe to score
     // everything unfiltered, just not the caller's intended behavior.
+    // Checked before the empty-stats early return below so a caller bug
+    // isn't masked just because this particular call happened to have
+    // nothing to score.
     logger.warn(
       { hasExcludedStatIds: excludedStatIds !== undefined, hasDatasetId: datasetId !== undefined },
       'scoreInsights called with only one of excludedStatIds/datasetId; exclusion silently skipped',
     );
   }
+
+  if (stats.length === 0) return [];
 
   const candidates =
     excludedStatIds && excludedStatIds.size > 0 && datasetId !== undefined

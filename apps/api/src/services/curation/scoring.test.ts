@@ -580,10 +580,13 @@ describe('scoreInsights with excludedStatIds', () => {
     vi.clearAllMocks();
   });
 
-  it('is byte-for-byte unchanged when excludedStatIds is omitted (Tier 1 has no scoring effect)', async () => {
+  it('is byte-for-byte unchanged whether both params are omitted or datasetId is passed alone (Tier 1 has no scoring effect either way)', async () => {
     mockConfig(validConfig);
     const { scoreInsights } = await import('./scoring.js');
 
+    // datasetId alone (no excludedStatIds) is the mismatched-pair case the
+    // warn guard exists for -- still degrades safely to unfiltered scoring,
+    // this test only asserts the output, the warn itself is covered below.
     expect(scoreInsights(fixtureStats)).toEqual(scoreInsights(fixtureStats, undefined, 1));
   });
 
@@ -649,6 +652,18 @@ describe('scoreInsights with excludedStatIds', () => {
     const { scoreInsights } = await import('./scoring.js');
 
     scoreInsights(fixtureStats, undefined, 1);
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ hasExcludedStatIds: false, hasDatasetId: true }),
+      expect.stringContaining('only one of excludedStatIds/datasetId'),
+    );
+  });
+
+  it('warns on a mismatched pair even when stats is empty', async () => {
+    mockConfig(validConfig);
+    const { scoreInsights } = await import('./scoring.js');
+
+    scoreInsights([], undefined, 1);
 
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({ hasExcludedStatIds: false, hasDatasetId: true }),

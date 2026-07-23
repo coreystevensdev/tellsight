@@ -7,7 +7,7 @@ import { z } from 'zod';
 export const createStatCorrectionSchema = z.object({
   statInstanceId: z.string().min(1),
   datasetId: z.number().int().positive(),
-  note: z.string().min(1).max(1000),
+  note: z.string().trim().min(1).max(1000),
   appliesGoingForward: z.boolean().optional().default(false),
 });
 
