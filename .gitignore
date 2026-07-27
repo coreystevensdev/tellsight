@@ -60,6 +60,11 @@ docs/demo-walkthrough-plan.md
 docs/deployment-roadmap.md
 scripts/check-story-status.sh
 
+# Terraform (provider binary cache; .terraform.lock.hcl IS committed)
+infra/terraform/.terraform/
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.backup
+
 # BMAD framework + planning artifacts (local-only)
 _bmad/
 _bmad-output/

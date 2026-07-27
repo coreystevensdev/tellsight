@@ -162,14 +162,15 @@ resource "aws_iam_role_policy" "github_actions" {
 # ------------------------------------------------------------------
 
 locals {
-  # nginx config + Docker Compose template written during first boot.
+  # Caddy placeholder config + Docker Compose template written during first boot.
   # Secrets are NOT in user_data -- they are written by the deploy workflow
   # via SSM SendCommand on each deploy.
   user_data = <<-SHELL
     #!/bin/bash
     set -e
 
-    # 1 GB swap prevents OOM on t2.micro (1 GB RAM total, shared with redis + nginx)
+    # 1 GB swap prevents OOM on t2.micro (1 GB RAM total, shared with
+    # redis + api + web + Caddy on the host)
     fallocate -l 1G /swapfile
     chmod 600 /swapfile
     mkswap /swapfile
@@ -188,9 +189,21 @@ locals {
       -o /usr/local/lib/docker/cli-plugins/docker-compose
     chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
-    # nginx + certbot (certbot run manually post-deploy; see infra/README.md)
-    yum install -y nginx python3-certbot-nginx
-    systemctl enable nginx
+    # Caddy (auto-HTTPS via Let's Encrypt, no manual certbot step)
+    yum install -y dnf-plugins-core
+    dnf copr enable -y @caddy/caddy
+    yum install -y caddy
+    systemctl enable caddy
+
+    # Real domain isn't known until the Elastic IP exists (see outputs.tf
+    # eip_public_dns), so this placeholder gets overwritten by deploy-aws.yml
+    # via SSM on first deploy, same pattern already used for .env secrets.
+    mkdir -p /etc/caddy
+    cat > /etc/caddy/Caddyfile << 'CADDY'
+    :80 {
+        respond "tellsight: awaiting first deploy"
+    }
+    CADDY
 
     # App directory
     mkdir -p /opt/tellsight
@@ -233,44 +246,23 @@ locals {
       redis_data:
     COMPOSE
 
-    # nginx: proxy / to web:3000 and /api to api:3001
-    cat > /etc/nginx/conf.d/tellsight.conf << 'NGINX'
-    server {
-        listen 80;
-        server_name ${var.domain};
+    # No Prometheus/Grafana on this instance -- 1 GB RAM (free tier) doesn't
+    # reliably fit them alongside redis/api/web. Local dev's docker-compose.yml
+    # still runs the full observability stack; this is a demo-cost trade-off,
+    # not a claim that observability doesn't exist in the codebase.
 
-        location /api/ {
-            proxy_pass         http://127.0.0.1:3001;
-            proxy_http_version 1.1;
-            proxy_set_header   Host              $host;
-            proxy_set_header   X-Real-IP         $remote_addr;
-            proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
-            proxy_set_header   X-Forwarded-Proto $scheme;
-            proxy_read_timeout 120s;
-        }
-
-        location / {
-            proxy_pass         http://127.0.0.1:3000;
-            proxy_http_version 1.1;
-            proxy_set_header   Upgrade           $http_upgrade;
-            proxy_set_header   Connection        'upgrade';
-            proxy_set_header   Host              $host;
-            proxy_set_header   X-Real-IP         $remote_addr;
-            proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
-            proxy_set_header   X-Forwarded-Proto $scheme;
-            proxy_cache_bypass $http_upgrade;
-        }
-    }
-    NGINX
-
-    rm -f /etc/nginx/conf.d/default.conf
-    systemctl start nginx
+    # Caddy: reverse proxy / to web:3000 and /api to api:3001, automatic HTTPS.
+    # This is the placeholder Caddyfile written above at /etc/caddy/Caddyfile;
+    # nothing further to do here -- the real domain + reload happens post-boot.
+    systemctl start caddy
   SHELL
 }
 
 resource "aws_instance" "main" {
-  ami                    = data.aws_ami.al2023.id
-  # Free tier: t2.micro 750 hrs/month for the first 12 months.
+  ami = data.aws_ami.al2023.id
+  # Free tier: 750 hrs/month for the first 12 months on a new AWS account.
+  # 1 GB RAM fits redis + api + web + Caddy with the swap below; Prometheus
+  # and Grafana were dropped from this instance specifically to fit this size.
   instance_type          = "t2.micro"
   iam_instance_profile   = aws_iam_instance_profile.ec2.name
   vpc_security_group_ids = [aws_security_group.ec2.id]

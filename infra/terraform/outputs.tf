@@ -1,6 +1,11 @@
 output "instance_public_ip" {
-  description = "Static public IP -- create an A record for '${var.domain}' pointing here, then run certbot"
+  description = "Static public IP of the instance"
   value       = aws_eip.main.public_ip
+}
+
+output "eip_public_dns" {
+  description = "Auto-generated public DNS name -- no domain purchase needed. Use this for PRODUCTION_URL/APP_URL/PUBLIC_API_URL and as the Caddy domain (Caddy gets a real Let's Encrypt cert against it)"
+  value       = aws_eip.main.public_dns
 }
 
 output "instance_id" {

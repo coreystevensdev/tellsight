@@ -1,26 +1,7 @@
-resource "aws_ecr_repository" "api" {
-  name                 = "${local.name_prefix}-api"
-  image_tag_mutability = "MUTABLE"
-
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-
-  tags = { Name = "${local.name_prefix}-api" }
-}
-
-resource "aws_ecr_repository" "web" {
-  name                 = "${local.name_prefix}-web"
-  image_tag_mutability = "MUTABLE"
-
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-
-  tags = { Name = "${local.name_prefix}-web" }
-}
-
-# Expire untagged images after 14 days; keep the 10 most recent tagged images.
+# aws_ecr_repository.api / .web are declared in ec2.tf (referenced directly by
+# the compose template in local.user_data). This file only adds lifecycle
+# policies on top of those, expire untagged images after 14 days; keep the 10
+# most recent tagged images.
 resource "aws_ecr_lifecycle_policy" "api" {
   repository = aws_ecr_repository.api.name
 

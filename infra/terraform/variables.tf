@@ -15,9 +15,3 @@ variable "db_password" {
   type        = string
   sensitive   = true
 }
-
-variable "domain" {
-  description = "Public domain for the app (e.g. tellsight.coreystevens.dev)"
-  type        = string
-  default     = "tellsight.coreystevens.dev"
-}

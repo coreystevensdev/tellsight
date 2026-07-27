@@ -71,10 +71,14 @@ jobs:
       # Write .env and restart containers via SSM (no SSH key stored anywhere).
       # All secrets are consumed via env: -- they are masked in CI logs and
       # never directly interpolated into a run: command string.
+      # DATABASE_URL is the restricted app_user role (RLS enforced);
+      # DATABASE_ADMIN_URL is the RDS master/app_admin role (RLS bypassed for
+      # migrations). Both must exist first -- see infra/rds-init.sql.
       - name: Deploy via SSM
         env:
           EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_ADMIN_URL: ${{ secrets.DATABASE_ADMIN_URL }}
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
           CLAUDE_MODEL: ${{ secrets.CLAUDE_MODEL }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
@@ -83,29 +87,79 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          PRODUCTION_DOMAIN: ${{ secrets.PRODUCTION_DOMAIN }}
+          EMAIL_FROM_ADDRESS: ${{ secrets.EMAIL_FROM_ADDRESS }}
+          EMAIL_FROM_NAME: ${{ secrets.EMAIL_FROM_NAME }}
+          EMAIL_MAILING_ADDRESS: ${{ secrets.EMAIL_MAILING_ADDRESS }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_WEBHOOK_SECRET: ${{ secrets.RESEND_WEBHOOK_SECRET }}
+          METRICS_TOKEN: ${{ secrets.METRICS_TOKEN }}
+          QUICKBOOKS_CLIENT_ID: ${{ secrets.QUICKBOOKS_CLIENT_ID }}
+          QUICKBOOKS_CLIENT_SECRET: ${{ secrets.QUICKBOOKS_CLIENT_SECRET }}
+          QUICKBOOKS_REDIRECT_URI: ${{ secrets.QUICKBOOKS_REDIRECT_URI }}
+          QUICKBOOKS_ENVIRONMENT: ${{ secrets.QUICKBOOKS_ENVIRONMENT }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
           ECR_API_REPO: ${{ secrets.ECR_API_REPO }}
         run: |
           python3 - << 'PY'
           import base64, json, os, subprocess, sys, time
 
+          domain = os.environ['PRODUCTION_DOMAIN']
+
           env_lines = [
+              f"NODE_ENV=production",
               f"DATABASE_URL={os.environ['DATABASE_URL']}",
-              f"DATABASE_ADMIN_URL={os.environ['DATABASE_URL']}",
+              f"DATABASE_ADMIN_URL={os.environ['DATABASE_ADMIN_URL']}",
               f"CLAUDE_API_KEY={os.environ['CLAUDE_API_KEY']}",
-              f"CLAUDE_MODEL={os.environ.get('CLAUDE_MODEL', 'claude-sonnet-4-6')}",
+              f"CLAUDE_MODEL={os.environ.get('CLAUDE_MODEL', 'claude-sonnet-4-5-20250929')}",
               f"STRIPE_SECRET_KEY={os.environ['STRIPE_SECRET_KEY']}",
               f"STRIPE_WEBHOOK_SECRET={os.environ['STRIPE_WEBHOOK_SECRET']}",
               f"STRIPE_PRICE_ID={os.environ['STRIPE_PRICE_ID']}",
               f"GOOGLE_CLIENT_ID={os.environ['GOOGLE_CLIENT_ID']}",
               f"GOOGLE_CLIENT_SECRET={os.environ['GOOGLE_CLIENT_SECRET']}",
               f"JWT_SECRET={os.environ['JWT_SECRET']}",
+              f"APP_URL=https://{domain}",
+              f"PUBLIC_API_URL=https://{domain}",
+              f"EMAIL_PROVIDER=resend",
+              f"EMAIL_FROM_ADDRESS={os.environ['EMAIL_FROM_ADDRESS']}",
+              f"EMAIL_FROM_NAME={os.environ['EMAIL_FROM_NAME']}",
+              f"EMAIL_MAILING_ADDRESS={os.environ['EMAIL_MAILING_ADDRESS']}",
+              f"RESEND_API_KEY={os.environ['RESEND_API_KEY']}",
+              f"RESEND_WEBHOOK_SECRET={os.environ['RESEND_WEBHOOK_SECRET']}",
+              f"METRICS_TOKEN={os.environ['METRICS_TOKEN']}",
+              f"QUICKBOOKS_ENVIRONMENT={os.environ.get('QUICKBOOKS_ENVIRONMENT') or 'sandbox'}",
           ]
+
+          # QuickBooks is fully optional (isQbConfigured() gates the connector
+          # off when any is missing). config.ts's .optional() only skips
+          # validation when the key is absent entirely -- an empty string from
+          # an unset GitHub secret still fails z.string().url()/.length(64), so
+          # these are omitted rather than written as blank lines.
+          optional_vars = {
+              "QUICKBOOKS_CLIENT_ID": os.environ.get("QUICKBOOKS_CLIENT_ID", ""),
+              "QUICKBOOKS_CLIENT_SECRET": os.environ.get("QUICKBOOKS_CLIENT_SECRET", ""),
+              "QUICKBOOKS_REDIRECT_URI": os.environ.get("QUICKBOOKS_REDIRECT_URI", ""),
+              "ENCRYPTION_KEY": os.environ.get("ENCRYPTION_KEY", ""),
+          }
+          for key, value in optional_vars.items():
+              if value:
+                  env_lines.append(f"{key}={value}")
+
           # Base64-encode so no shell-quoting issues when the string hits the EC2 shell.
           env_b64 = base64.b64encode("\n".join(env_lines).encode()).decode()
           ecr_host = os.environ['ECR_API_REPO'].split('/')[0]
 
+          caddyfile = f"""{domain} {{
+              reverse_proxy /api/* 127.0.0.1:3001
+              reverse_proxy 127.0.0.1:3000
+          }}
+          """
+          caddy_b64 = base64.b64encode(caddyfile.encode()).decode()
+
           commands = [
               f"printf '%s' '{env_b64}' | base64 -d > /opt/tellsight/.env",
+              f"printf '%s' '{caddy_b64}' | base64 -d > /etc/caddy/Caddyfile",
+              "systemctl reload caddy",
               f"aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin {ecr_host}",
               "cd /opt/tellsight && docker compose pull",
               "docker compose up -d --remove-orphans",
