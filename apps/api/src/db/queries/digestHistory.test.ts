@@ -141,6 +141,17 @@ describe('getTrailingDigests', () => {
 
     expect(await getTrailingDigests(99, 4)).toEqual([]);
   });
+
+  it('passes each row\'s keyStats through unchanged, proving the ComputedStat[] cast does not drop or rewrite it', async () => {
+    const keyStats = [
+      { statType: 'trend', category: 'Sales', value: 100, details: { slope: 1, intercept: 0, growthPercent: 5, dataPoints: 4, firstValue: 90, lastValue: 100 } },
+    ];
+    mockFindMany.mockResolvedValueOnce([{ id: 9, weekStart: new Date('2026-05-25T00:00:00Z'), keyStats }]);
+
+    const [result] = await getTrailingDigests(3, 4);
+
+    expect(result!.keyStats).toBe(keyStats);
+  });
 });
 
 describe('saveDigestHistory', () => {

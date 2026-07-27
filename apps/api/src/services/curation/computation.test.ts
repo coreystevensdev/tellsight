@@ -13,6 +13,7 @@ import {
   cashFlowForAlerting,
   netsFromBuckets,
   resolveStatById,
+  resolveStatByType,
   assignIds,
   monthKey,
   marginTrendMonths,
@@ -1496,6 +1497,73 @@ describe('resolveStatById', () => {
     )!.id;
 
     expect(resolveStatById(fixture.multiCategory, 1, idForOtherDataset)).toBeNull();
+  });
+});
+
+describe('resolveStatByType', () => {
+  it('finds a stat by statType and category, matching the id assignIds would produce', () => {
+    const expected = assignIds(computeStats(fixture.multiCategory), 1).find(
+      (s) => s.statType === StatType.Total && s.category === 'Sales' && s.details.scope === 'category',
+    )!;
+
+    const resolved = resolveStatByType(fixture.multiCategory, 1, StatType.Total, 'Sales');
+
+    expect(resolved).not.toBeNull();
+    expect(resolved!.id).toBe(expected.id);
+    expect(resolved!.value).toBe(7000);
+  });
+
+  it('matches on statType alone when category is omitted, for org-wide stats like cash flow', () => {
+    const rows = [
+      ...ccfMonth(2026, 1, 8000, 9000),
+      ...ccfMonth(2026, 2, 8000, 9000),
+      ...ccfMonth(2026, 3, 8000, 9000),
+    ];
+    const expected = assignIds(computeStats(rows), 1).find((s) => s.statType === StatType.CashFlow)!;
+
+    expect(resolveStatByType(rows, 1, StatType.CashFlow)!.id).toBe(expected.id);
+  });
+
+  it('returns null when no stat matches the requested statType and category', () => {
+    expect(resolveStatByType(fixture.multiCategory, 1, StatType.MarginTrend, 'Sales')).toBeNull();
+  });
+
+  it('picks the most recent month when computeYearOverYear emits more than one stat for the same category', () => {
+    // Day 15 (not day 1, like ccfRow uses) so local-timezone reads of these
+    // dates can't roll a month over into the neighboring one at UTC offsets
+    // west of UTC. Jan and Mar 2026 both clear the 3% significance threshold
+    // vs. 2025; Feb doesn't. computeYearOverYear pushes Jan before Mar
+    // (row/month insertion order), so picking "the first match" would
+    // silently return the stale January comparison.
+    function revenueRow(year: number, month: number, amount: number) {
+      return {
+        id: _ccfRowId++,
+        orgId: 1,
+        datasetId: 1,
+        sourceType: 'csv' as const,
+        category: 'Revenue',
+        parentCategory: 'Income' as const,
+        date: new Date(year, month - 1, 15),
+        amount: amount.toFixed(2),
+        label: null,
+        metadata: null,
+        createdAt: new Date(),
+      };
+    }
+    const rows = [
+      revenueRow(2025, 1, 1000),
+      revenueRow(2025, 2, 1000),
+      revenueRow(2025, 3, 1000),
+      revenueRow(2026, 1, 1200),
+      revenueRow(2026, 2, 1000),
+      revenueRow(2026, 3, 1500),
+    ];
+
+    const yoyStats = assignIds(computeStats(rows), 1).filter((s) => s.statType === StatType.YearOverYear);
+    expect(yoyStats).toHaveLength(2); // proves the fixture actually produces the ambiguity under test
+
+    const resolved = resolveStatByType(rows, 1, StatType.YearOverYear, 'Revenue');
+    expect(resolved!.value).toBe(1500);
   });
 });
 

@@ -982,6 +982,53 @@ export function resolveStatById(
   return identified.find((s) => s.id === statId) ?? null;
 }
 
+// Shared by resolveStatByType and the Q&A tool registry's digest-history
+// matcher, so the two call sites can't drift on what "matches" means.
+export function matchesStatShape(
+  stat: { statType: StatType; category: string | null },
+  statType: StatType,
+  category?: string,
+): boolean {
+  return stat.statType === statType && (category === undefined || stat.category === category);
+}
+
+// computeYearOverYear emits one stat per significant month within the current
+// year, all sharing (category: 'Revenue', statType: 'year_over_year') --
+// statDiscriminator already accounts for this when minting ids. Every other
+// producer emits at most one stat per shape, so this only has real work to
+// do for year_over_year; array order otherwise reflects a single match.
+function mostRecentMatch(matches: ComputedStat[]): ComputedStat {
+  let latest = matches[0]!;
+  for (const s of matches) {
+    if (s.statType === StatType.YearOverYear && latest.statType === StatType.YearOverYear) {
+      const monthNames: readonly string[] = MONTH_NAMES;
+      if (monthNames.indexOf(s.details.month) > monthNames.indexOf(latest.details.month)) latest = s;
+    }
+  }
+  return latest;
+}
+
+// Same matching rule as matchesStatShape, but resolves ambiguity when more
+// than one stat shares (category, statType) instead of returning array order.
+export function findMatchingStat<T extends ComputedStat>(stats: T[], statType: StatType, category?: string): T | null {
+  const matches = stats.filter((s) => matchesStatShape(s, statType, category));
+  return matches.length > 0 ? (mostRecentMatch(matches) as T) : null;
+}
+
+// Same compute+assign sequence as resolveStatById, but for callers that only
+// know a metric's shape (statType + optional category), not a citation id
+// yet -- the NL Q&A tool registry's case.
+export function resolveStatByType(
+  rows: DataRow[],
+  datasetId: number,
+  statType: StatType,
+  category?: string,
+  opts?: Parameters<typeof computeStats>[1],
+): IdentifiedStat | null {
+  const identified = assignIds(computeStats(rows, opts), datasetId);
+  return findMatchingStat(identified, statType, category);
+}
+
 // Maps stats to IdentifiedStat[], deduping byte-identical entries (keeps first).
 // Relies on each producer function emitting at most one stat per (category, statType),
 // except Anomaly, whose only possible collision is two same-value anomalies in one

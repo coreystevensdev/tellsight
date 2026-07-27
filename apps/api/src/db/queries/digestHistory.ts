@@ -62,11 +62,14 @@ export async function getTrailingDigests(
   limit: number,
   client: Client = dbAdmin,
 ) {
-  return client.query.digestHistory.findMany({
+  const rows = await client.query.digestHistory.findMany({
     where: eq(digestHistory.orgId, orgId),
     orderBy: desc(digestHistory.weekStart),
     limit,
   });
+  // key_stats is stored as untyped jsonb, cast at the query-helper layer
+  // like getLastDigest does, so callers never see the raw jsonb column type.
+  return rows.map((row) => ({ ...row, keyStats: row.keyStats as ComputedStat[] }));
 }
 
 // Append-only write of one week's delivery record. The (org_id, week_start)
