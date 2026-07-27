@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 
-import type { LlmProvider, StreamResult } from './provider.js';
+import type { LlmProvider, StreamResult, ToolCall } from './provider.js';
 import { getProvider, registerProvider, resetProvider } from './provider.js';
 
 function makeFakeProvider(name: string): LlmProvider {
@@ -11,6 +11,8 @@ function makeFakeProvider(name: string): LlmProvider {
       onText('chunk');
       return { fullText: 'chunk', usage: { inputTokens: 1, outputTokens: 1 } };
     },
+    generateTool: async (_prompt, tools): Promise<ToolCall[]> =>
+      tools.map((t) => ({ name: t.name, input: { generatedBy: name } })),
     checkHealth: async () => ({ status: 'ok', latencyMs: 1 }),
   };
 }
@@ -63,5 +65,23 @@ describe('LLM provider registry', () => {
 
     const health = await provider.checkHealth();
     expect(health.status).toBe('ok');
+  });
+
+  it('generateTool returns zero calls when no tools are passed', async () => {
+    registerProvider(makeFakeProvider('tool-check'));
+
+    const result = await getProvider().generateTool({ system: '', user: 'any' }, []);
+
+    expect(result).toEqual([]);
+  });
+
+  it('generateTool returns one call per tool offered', async () => {
+    registerProvider(makeFakeProvider('tool-check'));
+
+    const result = await getProvider().generateTool({ system: '', user: 'any' }, [
+      { name: 'record_proposal', description: 'record a finding', inputSchema: { type: 'object' } },
+    ]);
+
+    expect(result).toEqual([{ name: 'record_proposal', input: { generatedBy: 'tool-check' } }]);
   });
 });

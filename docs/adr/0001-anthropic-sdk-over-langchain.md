@@ -64,3 +64,9 @@ Adopting LangChain now would still buy nothing this path uses, and it would cost
 - The privacy edge. The "evidence must cite an allowed stat ID, else drop" rule in `parseProposals` enforces the no-raw-data-leak boundary at the output. A generic output parser would not scope that for us.
 
 What would reopen the question: proposals that require the model to call tools and observe results across multiple turns, which is a real tool-use agent. Even then the first move is to grow the provider seam's `PromptInput` and return type to carry tool calls (the Anthropic SDK supports tool use natively), and to lean on Postgres plus BullMQ for any durable human-in-the-loop state, rather than adopt an orchestration framework. Status stays Accepted.
+
+## Revisited 2026-07-27 (provider seam grew for single-turn tool use)
+
+The trigger named above landed, in the narrow single-turn form. `LlmProvider` gained a fourth method, `generateTool(input, tools) -> ToolCall[]`, alongside the unchanged `generate`/`stream`/`checkHealth`. `claudeClient.ts` implements it with `tool_choice: { type: 'auto' }` and the same circuit breaker, cost gate, and error mapping the other methods already use. `curation/proposals.ts` is the first caller: it hands the model one `record_proposal` tool, turns each `tool_use` block into a validated `AgentProposal` (schema plus evidence-scope check, `dedupKey`/`period` derived in code, never trusted from the model), and returns the list. No message history, no multi-turn loop, no observe-act cycle, still a single request/response call through the SDK. `generateProposals` is directly callable and fully tested but not yet wired into any route, job, or cron; scheduling it in production is separate work.
+
+This does not reopen the question. There is still no framework, still no autonomous tool-execution loop, still one call per invocation. Status stays Accepted.

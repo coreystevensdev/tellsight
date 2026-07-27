@@ -4,12 +4,12 @@ import { env } from '../../config.js';
 import { logger } from '../../lib/logger.js';
 import { ExternalServiceError, CostBudgetExceededError } from '../../lib/appError.js';
 import { CircuitBreaker } from '../../lib/circuitBreaker.js';
-import { computeCost, exceedsBudget, recordCost } from '../../lib/cost.js';
+import { computeCost, exceedsBudget, recordCost, type Usage } from '../../lib/cost.js';
 import { aiCostBudgetExceeded } from '../../lib/metrics.js';
-import type { LlmProvider, PromptInput, StreamResult, ProviderHealth } from './provider.js';
+import type { LlmProvider, PromptInput, StreamResult, ProviderHealth, ToolDefinition, ToolCall } from './provider.js';
 import { getProvider, registerProvider } from './provider.js';
 
-export type { StreamResult };
+export type { StreamResult, ToolDefinition, ToolCall };
 
 const client = new Anthropic({
   apiKey: env.CLAUDE_API_KEY,
@@ -59,6 +59,47 @@ function systemParam(input: PromptInput) {
   ];
 }
 
+// Post-call cost gate shared by anthropicGenerate and anthropicGenerateTool.
+// Tokens are already spent by the time we know the cost, so this is an
+// anomaly detector, the next request gets the benefit. Real prevention is
+// upstream (max_tokens, timeout). Anomalies are NOT recorded into median
+// history; recording would raise the floor and let the next anomaly slip
+// through. anthropicStream keeps its own log-only variant, it can't throw
+// after content has already streamed to the client.
+function applyCostGate(usage: Usage, caller: string): number | null {
+  const cost = computeCost(usage);
+  if (cost === null) return null;
+
+  const budget = exceedsBudget(cost);
+  if (budget.exceeded) {
+    aiCostBudgetExceeded.inc({ caller });
+    logger.warn(
+      { cost, cap: budget.cap, median: budget.median, model: env.CLAUDE_MODEL },
+      'Claude API cost budget exceeded, request refused',
+    );
+    throw new CostBudgetExceededError(cost, budget.cap);
+  }
+  recordCost(cost);
+  return cost;
+}
+
+// Error mapping shared by anthropicGenerate and anthropicGenerateTool.
+function mapAnthropicError(err: unknown): never {
+  // Cost gate threw our domain error, propagate unchanged so the error
+  // handler returns 503 with the typed COST_BUDGET_EXCEEDED code.
+  if (err instanceof CostBudgetExceededError) throw err;
+
+  if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.BadRequestError) {
+    logger.error({ err: (err as Error).message }, 'Claude API non-retryable error');
+  } else {
+    logger.warn({ err: (err as Error).message }, 'Claude API retryable error exhausted');
+  }
+
+  throw new ExternalServiceError('Claude API', {
+    originalError: (err as Error).message,
+  });
+}
+
 async function anthropicGenerate(input: PromptInput): Promise<string> {
   return runInBreaker(async () => {
     try {
@@ -71,25 +112,7 @@ async function anthropicGenerate(input: PromptInput): Promise<string> {
 
       const block = message.content[0];
       const text = block?.type === 'text' ? block.text : '';
-
-      // Post-call cost gate. Tokens are already spent by the time we know
-      // the cost, so this is an anomaly detector, the next request gets
-      // the benefit. Real prevention is upstream (max_tokens, timeout).
-      // Anomalies are NOT recorded into median history; recording would
-      // raise the floor and let the next anomaly slip through.
-      const cost = computeCost(message.usage);
-      if (cost !== null) {
-        const budget = exceedsBudget(cost);
-        if (budget.exceeded) {
-          aiCostBudgetExceeded.inc({ caller: 'generate' });
-          logger.warn(
-            { cost, cap: budget.cap, median: budget.median, model: env.CLAUDE_MODEL },
-            'Claude API cost budget exceeded, request refused',
-          );
-          throw new CostBudgetExceededError(cost, budget.cap);
-        }
-        recordCost(cost);
-      }
+      const cost = applyCostGate(message.usage, 'generate');
 
       logger.info(
         { model: env.CLAUDE_MODEL, usage: message.usage, cost },
@@ -98,19 +121,66 @@ async function anthropicGenerate(input: PromptInput): Promise<string> {
 
       return text;
     } catch (err) {
-      // Cost gate threw our domain error, propagate unchanged so the error
-      // handler returns 503 with the typed COST_BUDGET_EXCEEDED code.
-      if (err instanceof CostBudgetExceededError) throw err;
+      mapAnthropicError(err);
+    }
+  });
+}
 
-      if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.BadRequestError) {
-        logger.error({ err: (err as Error).message }, 'Claude API non-retryable error');
-      } else {
-        logger.warn({ err: (err as Error).message }, 'Claude API retryable error exhausted');
+async function anthropicGenerateTool(input: PromptInput, tools: ToolDefinition[]): Promise<ToolCall[]> {
+  // No tools to offer means the API call can't return a tool_use block --
+  // skip the request entirely rather than spend tokens on a call that can
+  // only ever come back empty.
+  if (tools.length === 0) return [];
+
+  return runInBreaker(async () => {
+    try {
+      const message = await client.messages.create({
+        model: env.CLAUDE_MODEL,
+        max_tokens: 1024,
+        ...(systemParam(input) && { system: systemParam(input) }),
+        messages: [{ role: 'user', content: input.user }],
+        tools: tools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          input_schema: tool.inputSchema as Anthropic.Tool.InputSchema,
+        })),
+        tool_choice: { type: 'auto' },
+      });
+
+      if (message.stop_reason === 'max_tokens') {
+        logger.warn(
+          { model: env.CLAUDE_MODEL, usage: message.usage },
+          'Claude API tool-use response truncated at max_tokens, tool_use input may be incomplete',
+        );
+      } else if (message.stop_reason !== 'end_turn' && message.stop_reason !== 'tool_use') {
+        logger.warn(
+          { model: env.CLAUDE_MODEL, usage: message.usage, stopReason: message.stop_reason },
+          'Claude API tool-use response ended for an unexpected reason, tool_use input may be incomplete or missing',
+        );
       }
 
-      throw new ExternalServiceError('Claude API', {
-        originalError: (err as Error).message,
-      });
+      const calls: ToolCall[] = message.content
+        .filter((block): block is Anthropic.ToolUseBlock => block.type === 'tool_use')
+        .map((block) => ({ name: block.name, input: block.input }));
+
+      const textBlockCount = message.content.filter((block) => block.type === 'text').length;
+      if (textBlockCount > 0) {
+        logger.info(
+          { model: env.CLAUDE_MODEL, textBlockCount, toolCallCount: calls.length },
+          'Claude API tool-use response included text alongside or instead of tool calls',
+        );
+      }
+
+      const cost = applyCostGate(message.usage, 'generateTool');
+
+      logger.info(
+        { model: env.CLAUDE_MODEL, usage: message.usage, cost, toolCallCount: calls.length },
+        'Claude API tool-use response received',
+      );
+
+      return calls;
+    } catch (err) {
+      mapAnthropicError(err);
     }
   });
 }
@@ -194,6 +264,7 @@ export const anthropicProvider: LlmProvider = {
   name: 'anthropic',
   generate: anthropicGenerate,
   stream: anthropicStream,
+  generateTool: anthropicGenerateTool,
   checkHealth: anthropicHealth,
 };
 
@@ -218,4 +289,8 @@ export async function streamInterpretation(
 
 export async function checkClaudeHealth(): Promise<ProviderHealth> {
   return getProvider().checkHealth();
+}
+
+export async function generateWithTools(input: PromptInput, tools: ToolDefinition[]): Promise<ToolCall[]> {
+  return getProvider().generateTool(input, tools);
 }

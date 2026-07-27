@@ -418,3 +418,222 @@ describe('streamInterpretation', () => {
     expect(mockRecordCost).not.toHaveBeenCalled();
   });
 });
+
+describe('generateWithTools', () => {
+  const tool = {
+    name: 'record_proposal',
+    description: 'Record one finding.',
+    inputSchema: { type: 'object', properties: { title: { type: 'string' } }, required: ['title'] },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockComputeCost.mockReturnValue(0.018);
+    mockExceedsBudget.mockReturnValue({
+      exceeded: false,
+      observed: 0.018,
+      cap: null,
+      median: null,
+    });
+  });
+
+  it('returns an empty array when the model calls no tool', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'text', text: 'nothing worth flagging' }],
+      usage: { input_tokens: 100, output_tokens: 20 },
+    });
+
+    const { generateWithTools } = await import('./claudeClient.js');
+    const result = await generateWithTools({ system: '', user: 'analyze' }, [tool]);
+
+    expect(result).toEqual([]);
+  });
+
+  it('returns one tool call when the model calls the tool once', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'Revenue dipped' } }],
+      usage: { input_tokens: 200, output_tokens: 80 },
+    });
+
+    const { generateWithTools } = await import('./claudeClient.js');
+    const result = await generateWithTools({ system: '', user: 'analyze' }, [tool]);
+
+    expect(result).toEqual([{ name: 'record_proposal', input: { title: 'Revenue dipped' } }]);
+  });
+
+  it('returns every tool call when the model calls the tool multiple times in one response', async () => {
+    mockCreate.mockResolvedValue({
+      content: [
+        { type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'First' } },
+        { type: 'tool_use', id: 'call_2', name: 'record_proposal', input: { title: 'Second' } },
+      ],
+      usage: { input_tokens: 300, output_tokens: 120 },
+    });
+
+    const { generateWithTools } = await import('./claudeClient.js');
+    const result = await generateWithTools({ system: '', user: 'analyze' }, [tool]);
+
+    expect(result).toHaveLength(2);
+    expect(result.map((c) => c.input)).toEqual([{ title: 'First' }, { title: 'Second' }]);
+  });
+
+  it('ignores text blocks mixed alongside tool_use blocks', async () => {
+    mockCreate.mockResolvedValue({
+      content: [
+        { type: 'text', text: 'Here is what I found:' },
+        { type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'Only this counts' } },
+      ],
+      usage: { input_tokens: 150, output_tokens: 60 },
+    });
+
+    const { generateWithTools } = await import('./claudeClient.js');
+    const result = await generateWithTools({ system: '', user: 'analyze' }, [tool]);
+
+    expect(result).toEqual([{ name: 'record_proposal', input: { title: 'Only this counts' } }]);
+  });
+
+  it('logs a warning when the response was truncated at max_tokens', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'cut off' } }],
+      usage: { input_tokens: 900, output_tokens: 1024 },
+      stop_reason: 'max_tokens',
+    });
+
+    const { generateWithTools } = await import('./claudeClient.js');
+    const { logger } = await import('../../lib/logger.js');
+    await generateWithTools({ system: '', user: 'analyze' }, [tool]);
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ model: expect.any(String) }),
+      expect.stringContaining('truncated'),
+    );
+  });
+
+  it('does not warn when the response completes normally', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'complete' } }],
+      usage: { input_tokens: 200, output_tokens: 80 },
+      stop_reason: 'tool_use',
+    });
+
+    const { generateWithTools } = await import('./claudeClient.js');
+    const { logger } = await import('../../lib/logger.js');
+    await generateWithTools({ system: '', user: 'analyze' }, [tool]);
+
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('sends tool_choice auto and translates ToolDefinition into the SDK Tool shape', async () => {
+    mockCreate.mockResolvedValue({
+      content: [],
+      usage: { input_tokens: 50, output_tokens: 10 },
+    });
+
+    const { generateWithTools } = await import('./claudeClient.js');
+    await generateWithTools({ system: '', user: 'analyze' }, [tool]);
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tool_choice: { type: 'auto' },
+        tools: [
+          {
+            name: 'record_proposal',
+            description: 'Record one finding.',
+            input_schema: tool.inputSchema,
+          },
+        ],
+      }),
+    );
+  });
+
+  it('wraps API errors in ExternalServiceError', async () => {
+    mockCreate.mockRejectedValue(new Error('connection timeout'));
+
+    const { generateWithTools } = await import('./claudeClient.js');
+
+    await expect(generateWithTools({ system: '', user: 'analyze' }, [tool])).rejects.toThrow(
+      'External service error: Claude API',
+    );
+  });
+
+  it('throws CostBudgetExceededError when tool-call cost exceeds budget', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'Expensive' } }],
+      usage: { input_tokens: 100000, output_tokens: 100000 },
+    });
+    mockComputeCost.mockReturnValue(2.0);
+    mockExceedsBudget.mockReturnValue({
+      exceeded: true,
+      observed: 2.0,
+      cap: 1.0,
+      median: 0.05,
+    });
+
+    const { generateWithTools } = await import('./claudeClient.js');
+
+    await expect(generateWithTools({ system: '', user: 'analyze' }, [tool])).rejects.toMatchObject({
+      code: 'COST_BUDGET_EXCEEDED',
+      statusCode: 503,
+    });
+    expect(mockBudgetMetric.inc).toHaveBeenCalledWith({ caller: 'generateTool' });
+    expect(mockRecordCost).not.toHaveBeenCalled();
+  });
+
+  it('records cost into history on a successful call', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'ok' } }],
+      usage: { input_tokens: 1000, output_tokens: 1000 },
+    });
+
+    const { generateWithTools } = await import('./claudeClient.js');
+    await generateWithTools({ system: '', user: 'analyze' }, [tool]);
+
+    expect(mockRecordCost).toHaveBeenCalledWith(0.018);
+    expect(mockBudgetMetric.inc).not.toHaveBeenCalled();
+  });
+
+  it('skips the API call entirely when no tools are offered', async () => {
+    const { generateWithTools } = await import('./claudeClient.js');
+    const result = await generateWithTools({ system: '', user: 'analyze' }, []);
+
+    expect(result).toEqual([]);
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('warns when the response ends for an unexpected reason other than max_tokens', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'text', text: 'I decline to answer that.' }],
+      usage: { input_tokens: 100, output_tokens: 20 },
+      stop_reason: 'refusal',
+    });
+
+    const { generateWithTools } = await import('./claudeClient.js');
+    const { logger } = await import('../../lib/logger.js');
+    await generateWithTools({ system: '', user: 'analyze' }, [tool]);
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ stopReason: 'refusal' }),
+      expect.stringContaining('unexpected reason'),
+    );
+  });
+
+  it('logs when the response includes text alongside a tool call', async () => {
+    mockCreate.mockResolvedValue({
+      content: [
+        { type: 'text', text: 'Here is what I found:' },
+        { type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'Only this counts' } },
+      ],
+      usage: { input_tokens: 150, output_tokens: 60 },
+      stop_reason: 'tool_use',
+    });
+
+    const { generateWithTools } = await import('./claudeClient.js');
+    const { logger } = await import('../../lib/logger.js');
+    await generateWithTools({ system: '', user: 'analyze' }, [tool]);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({ textBlockCount: 1, toolCallCount: 1 }),
+      expect.stringContaining('included text'),
+    );
+  });
+});

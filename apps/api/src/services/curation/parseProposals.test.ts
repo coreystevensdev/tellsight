@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockLogger = { warn: vi.fn(), info: vi.fn() };
 vi.mock('../../lib/logger.js', () => ({ logger: mockLogger }));
 
-const { parseProposals } = await import('./parseProposals.js');
+const { parseProposals, validateProposalCandidate } = await import('./parseProposals.js');
 
 // ── fixtures ──────────────────────────────────────────────────────────────────
 
@@ -116,6 +116,36 @@ describe('evidence scope enforcement', () => {
 
     expect(parseProposals(raw, allowed)).toHaveLength(1);
     expect(mockLogger.info).not.toHaveBeenCalled();
+  });
+});
+
+// ── validateProposalCandidate (shared with the tool-call path) ────────────────
+
+describe('validateProposalCandidate', () => {
+  it('returns the parsed proposal for a valid candidate', () => {
+    const result = validateProposalCandidate(validProposal(), allowed);
+
+    expect(result).toMatchObject({ kind: 'trend', title: 'Revenue dipped 15%' });
+  });
+
+  it('returns null and logs a warning for a candidate that fails schema validation', () => {
+    const result = validateProposalCandidate(validProposal({ confidence: 5 }), allowed);
+
+    expect(result).toBeNull();
+    expect(mockLogger.warn).toHaveBeenCalledOnce();
+  });
+
+  it('returns null and logs info for a candidate whose evidence is out of scope', () => {
+    const result = validateProposalCandidate(validProposal({ evidence: ['unknown_stat'] }), allowed);
+
+    expect(result).toBeNull();
+    expect(mockLogger.info).toHaveBeenCalledOnce();
+  });
+
+  it('trims incidental whitespace around an evidence id before checking scope', () => {
+    const result = validateProposalCandidate(validProposal({ evidence: ['  monthly_revenue  '] }), allowed);
+
+    expect(result?.evidence).toEqual(['monthly_revenue']);
   });
 });
 
