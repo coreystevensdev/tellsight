@@ -458,7 +458,7 @@ describe('generateWithTools', () => {
     const { generateWithTools } = await import('./claudeClient.js');
     const result = await generateWithTools({ system: '', user: 'analyze' }, [tool]);
 
-    expect(result).toEqual([{ name: 'record_proposal', input: { title: 'Revenue dipped' } }]);
+    expect(result).toEqual([{ id: 'call_1', name: 'record_proposal', input: { title: 'Revenue dipped' } }]);
   });
 
   it('returns every tool call when the model calls the tool multiple times in one response', async () => {
@@ -489,7 +489,7 @@ describe('generateWithTools', () => {
     const { generateWithTools } = await import('./claudeClient.js');
     const result = await generateWithTools({ system: '', user: 'analyze' }, [tool]);
 
-    expect(result).toEqual([{ name: 'record_proposal', input: { title: 'Only this counts' } }]);
+    expect(result).toEqual([{ id: 'call_1', name: 'record_proposal', input: { title: 'Only this counts' } }]);
   });
 
   it('logs a warning when the response was truncated at max_tokens', async () => {
@@ -634,6 +634,190 @@ describe('generateWithTools', () => {
     expect(logger.info).toHaveBeenCalledWith(
       expect.objectContaining({ textBlockCount: 1, toolCallCount: 1 }),
       expect.stringContaining('included text'),
+    );
+  });
+});
+
+describe('converseWithTools', () => {
+  const tool = {
+    name: 'get_metric_with_trend',
+    description: 'Get one metric.',
+    inputSchema: { type: 'object', properties: { statType: { type: 'string' } }, required: ['statType'] },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockComputeCost.mockReturnValue(0.01);
+    mockExceedsBudget.mockReturnValue({ exceeded: false, observed: 0.01, cap: null, median: null });
+  });
+
+  it('throws synchronously without calling the SDK when toolResults is empty and state is non-null', async () => {
+    const { converseWithTools } = await import('./claudeClient.js');
+    const priorState = [{ role: 'user', content: 'analyze' }];
+
+    await expect(converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], [])).rejects.toThrow(
+      'toolResults must be non-empty once state is non-null',
+    );
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('sends only the user question as the first turn, with tools and tool_choice auto', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: { statType: 'trend' } }],
+      usage: { input_tokens: 200, output_tokens: 80 },
+    });
+
+    const { converseWithTools } = await import('./claudeClient.js');
+    await converseWithTools(null, { system: '', user: 'How is revenue trending?' }, [tool], []);
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [{ role: 'user', content: 'How is revenue trending?' }],
+        tools: [{ name: 'get_metric_with_trend', description: 'Get one metric.', input_schema: tool.inputSchema }],
+        tool_choice: { type: 'auto' },
+      }),
+      { signal: undefined },
+    );
+  });
+
+  it('returns ToolCalls with an id and the turn usage', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: { statType: 'trend' } }],
+      usage: { input_tokens: 200, output_tokens: 80 },
+    });
+
+    const { converseWithTools } = await import('./claudeClient.js');
+    const result = await converseWithTools(null, { system: '', user: 'analyze' }, [tool], []);
+
+    expect(result.toolCalls).toEqual([{ id: 'call_1', name: 'get_metric_with_trend', input: { statType: 'trend' } }]);
+    expect(result.usage).toEqual({ inputTokens: 200, outputTokens: 80 });
+    expect(result.text).toBe('');
+  });
+
+  it('joins text blocks into the turn text when the model answers instead of calling a tool', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'text', text: 'Revenue is up 12% this quarter.' }],
+      usage: { input_tokens: 150, output_tokens: 40 },
+    });
+
+    const { converseWithTools } = await import('./claudeClient.js');
+    const result = await converseWithTools(null, { system: '', user: 'analyze' }, [tool], []);
+
+    expect(result.toolCalls).toEqual([]);
+    expect(result.text).toBe('Revenue is up 12% this quarter.');
+  });
+
+  it('threads a prior state and appends tool_result blocks keyed by toolCallId on a later turn', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'text', text: 'Based on that, revenue is trending up.' }],
+      usage: { input_tokens: 100, output_tokens: 30 },
+    });
+
+    const priorState = [
+      { role: 'user', content: 'analyze' },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: {} }] },
+    ];
+
+    const { converseWithTools } = await import('./claudeClient.js');
+    await converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], [
+      { toolCallId: 'call_1', output: { value: 42 } },
+    ]);
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [
+          ...priorState,
+          {
+            role: 'user',
+            content: [{ type: 'tool_result', tool_use_id: 'call_1', content: JSON.stringify({ value: 42 }) }],
+          },
+        ],
+      }),
+      { signal: undefined },
+    );
+  });
+
+  it('marks a rejected tool call is_error in the tool_result block', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'text', text: 'ok' }],
+      usage: { input_tokens: 50, output_tokens: 10 },
+    });
+
+    const { converseWithTools } = await import('./claudeClient.js');
+    await converseWithTools([], { system: '', user: 'analyze' }, [tool], [
+      { toolCallId: 'call_bad', output: { error: 'rejected' }, isError: true },
+    ]);
+
+    const body = mockCreate.mock.calls[0]![0] as { messages: Array<{ content: unknown }> };
+    expect(body.messages[0]!.content).toEqual([
+      { type: 'tool_result', tool_use_id: 'call_bad', content: JSON.stringify({ error: 'rejected' }), is_error: true },
+    ]);
+  });
+
+  it('omits tools and tool_choice from the request when tools is empty, forcing a text-only turn', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'text', text: 'final answer' }],
+      usage: { input_tokens: 50, output_tokens: 10 },
+    });
+
+    const { converseWithTools } = await import('./claudeClient.js');
+    await converseWithTools(null, { system: '', user: 'analyze' }, [], []);
+
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    const body = mockCreate.mock.calls[0]![0] as Record<string, unknown>;
+    expect(body).not.toHaveProperty('tools');
+    expect(body).not.toHaveProperty('tool_choice');
+  });
+
+  it('throws CostBudgetExceededError when a turn costs more than the budget', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'text', text: 'expensive' }],
+      usage: { input_tokens: 100000, output_tokens: 100000 },
+    });
+    mockComputeCost.mockReturnValue(2.0);
+    mockExceedsBudget.mockReturnValue({ exceeded: true, observed: 2.0, cap: 1.0, median: 0.05 });
+
+    const { converseWithTools } = await import('./claudeClient.js');
+
+    await expect(converseWithTools(null, { system: '', user: 'analyze' }, [tool], [])).rejects.toMatchObject({
+      code: 'COST_BUDGET_EXCEEDED',
+      statusCode: 503,
+    });
+    expect(mockBudgetMetric.inc).toHaveBeenCalledWith({ caller: 'converseWithTools' });
+  });
+
+  it('passes the abort signal to the SDK call', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'text', text: 'ok' }],
+      usage: { input_tokens: 10, output_tokens: 5 },
+    });
+    const controller = new AbortController();
+
+    const { converseWithTools } = await import('./claudeClient.js');
+    await converseWithTools(null, { system: '', user: 'analyze' }, [], [], controller.signal);
+
+    expect(mockCreate).toHaveBeenCalledWith(expect.anything(), { signal: controller.signal });
+  });
+
+  it('throws an aborted-by-client error when the signal is aborted and the call rejects', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    mockCreate.mockRejectedValue(new Error('fetch aborted'));
+
+    const { converseWithTools } = await import('./claudeClient.js');
+
+    await expect(
+      converseWithTools(null, { system: '', user: 'analyze' }, [tool], [], controller.signal),
+    ).rejects.toThrow('aborted by client');
+  });
+
+  it('wraps a genuine provider error in ExternalServiceError', async () => {
+    mockCreate.mockRejectedValue(new Error('connection timeout'));
+
+    const { converseWithTools } = await import('./claudeClient.js');
+
+    await expect(converseWithTools(null, { system: '', user: 'analyze' }, [tool], [])).rejects.toThrow(
+      'External service error: Claude API',
     );
   });
 });

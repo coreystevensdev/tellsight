@@ -6,10 +6,19 @@ import { ExternalServiceError, CostBudgetExceededError } from '../../lib/appErro
 import { CircuitBreaker } from '../../lib/circuitBreaker.js';
 import { computeCost, exceedsBudget, recordCost, type Usage } from '../../lib/cost.js';
 import { aiCostBudgetExceeded } from '../../lib/metrics.js';
-import type { LlmProvider, PromptInput, StreamResult, ProviderHealth, ToolDefinition, ToolCall } from './provider.js';
+import type {
+  LlmProvider,
+  PromptInput,
+  StreamResult,
+  ProviderHealth,
+  ToolDefinition,
+  ToolCall,
+  ToolResultInput,
+  ConversationTurn,
+} from './provider.js';
 import { getProvider, registerProvider } from './provider.js';
 
-export type { StreamResult, ToolDefinition, ToolCall };
+export type { StreamResult, ToolDefinition, ToolCall, ToolResultInput, ConversationTurn };
 
 const client = new Anthropic({
   apiKey: env.CLAUDE_API_KEY,
@@ -161,7 +170,7 @@ async function anthropicGenerateTool(input: PromptInput, tools: ToolDefinition[]
 
       const calls: ToolCall[] = message.content
         .filter((block): block is Anthropic.ToolUseBlock => block.type === 'tool_use')
-        .map((block) => ({ name: block.name, input: block.input }));
+        .map((block) => ({ id: block.id, name: block.name, input: block.input }));
 
       const textBlockCount = message.content.filter((block) => block.type === 'text').length;
       if (textBlockCount > 0) {
@@ -180,6 +189,133 @@ async function anthropicGenerateTool(input: PromptInput, tools: ToolDefinition[]
 
       return calls;
     } catch (err) {
+      mapAnthropicError(err);
+    }
+  });
+}
+
+// Builds the messages array for one turn. `state === null` means this is the
+// first turn (send the caller's question); otherwise `state` is the prior
+// turn's message history and `toolResults` become this turn's tool_result
+// user message, answering the ToolCalls the prior turn returned.
+function buildConversationMessages(
+  state: unknown,
+  input: PromptInput,
+  toolResults: ToolResultInput[],
+): Anthropic.MessageParam[] {
+  if (state === null) return [{ role: 'user', content: input.user }];
+
+  // An empty tool_result message is only valid on the first turn (state ===
+  // null); past that, every turn exists because the prior one returned at
+  // least one ToolCall the caller owes a result for.
+  if (toolResults.length === 0) {
+    throw new Error('converseWithTools: toolResults must be non-empty once state is non-null');
+  }
+
+  return [
+    ...(state as Anthropic.MessageParam[]),
+    {
+      role: 'user',
+      content: toolResults.map((result) => ({
+        type: 'tool_result' as const,
+        tool_use_id: result.toolCallId,
+        content: JSON.stringify(result.output) ?? String(result.output),
+        ...(result.isError && { is_error: true }),
+      })),
+    },
+  ];
+}
+
+async function anthropicConverseWithTools(
+  state: unknown,
+  input: PromptInput,
+  tools: ToolDefinition[],
+  toolResults: ToolResultInput[],
+  signal?: AbortSignal,
+): Promise<ConversationTurn> {
+  // Built outside the breaker: a caller-contract violation (mismatched
+  // state/toolResults) is a programmer error, not a Claude API failure, and
+  // must not trip the circuit breaker or surface as an ExternalServiceError.
+  const messages = buildConversationMessages(state, input, toolResults);
+
+  return runInBreaker(async () => {
+    try {
+      const message = await client.messages.create(
+        {
+          model: env.CLAUDE_MODEL,
+          max_tokens: 1024,
+          ...(systemParam(input) && { system: systemParam(input) }),
+          messages,
+          ...(tools.length > 0 && {
+            tools: tools.map((tool) => ({
+              name: tool.name,
+              description: tool.description,
+              input_schema: tool.inputSchema as Anthropic.Tool.InputSchema,
+            })),
+            tool_choice: { type: 'auto' as const },
+          }),
+        },
+        { signal },
+      );
+
+      if (message.stop_reason === 'max_tokens') {
+        logger.warn(
+          { model: env.CLAUDE_MODEL, usage: message.usage },
+          'Claude API multi-turn tool conversation truncated at max_tokens, tool_use input or text may be incomplete',
+        );
+      } else if (message.stop_reason !== 'end_turn' && message.stop_reason !== 'tool_use') {
+        logger.warn(
+          { model: env.CLAUDE_MODEL, usage: message.usage, stopReason: message.stop_reason },
+          'Claude API multi-turn tool conversation ended for an unexpected reason',
+        );
+      }
+
+      const toolCalls: ToolCall[] = message.content
+        .filter((block): block is Anthropic.ToolUseBlock => block.type === 'tool_use')
+        .map((block) => ({ id: block.id, name: block.name, input: block.input }));
+
+      const text = message.content
+        .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+        .map((block) => block.text)
+        .join('');
+
+      if (text.length > 0 && toolCalls.length > 0) {
+        logger.info(
+          { model: env.CLAUDE_MODEL, toolCallCount: toolCalls.length },
+          'Claude API multi-turn tool conversation turn included text alongside tool calls',
+        );
+      }
+
+      const cost = applyCostGate(message.usage, 'converseWithTools');
+
+      logger.info(
+        { model: env.CLAUDE_MODEL, usage: message.usage, cost, toolCallCount: toolCalls.length },
+        'Claude API multi-turn tool conversation turn received',
+      );
+
+      // message.content (response ContentBlocks) isn't the same TS type as
+      // what MessageParam accepts back as input (ContentBlockParams), but
+      // it's the standard Anthropic multi-turn tool-use pattern to feed a
+      // turn's own response straight back in as the next assistant message.
+      const assistantContent = message.content as unknown as Anthropic.MessageParam['content'];
+      const nextState: Anthropic.MessageParam[] = [...messages, { role: 'assistant', content: assistantContent }];
+
+      return {
+        state: nextState,
+        toolCalls,
+        text,
+        usage: { inputTokens: message.usage.input_tokens, outputTokens: message.usage.output_tokens },
+      };
+    } catch (err) {
+      // Cost gate takes precedence over the abort check: a signal that's
+      // already aborted for unrelated reasons (e.g. the request just also
+      // happened to be cancelled) shouldn't mask a real budget error and
+      // report a benign-looking abort instead.
+      if (err instanceof CostBudgetExceededError) throw err;
+      if (signal?.aborted) {
+        logger.info({ aborted: true }, 'Claude API multi-turn tool conversation aborted by client');
+        throw new AbortedByClient();
+      }
       mapAnthropicError(err);
     }
   });
@@ -265,6 +401,7 @@ export const anthropicProvider: LlmProvider = {
   generate: anthropicGenerate,
   stream: anthropicStream,
   generateTool: anthropicGenerateTool,
+  converseWithTools: anthropicConverseWithTools,
   checkHealth: anthropicHealth,
 };
 
@@ -293,4 +430,14 @@ export async function checkClaudeHealth(): Promise<ProviderHealth> {
 
 export async function generateWithTools(input: PromptInput, tools: ToolDefinition[]): Promise<ToolCall[]> {
   return getProvider().generateTool(input, tools);
+}
+
+export async function converseWithTools(
+  state: unknown,
+  input: PromptInput,
+  tools: ToolDefinition[],
+  toolResults: ToolResultInput[],
+  signal?: AbortSignal,
+): Promise<ConversationTurn> {
+  return getProvider().converseWithTools(state, input, tools, toolResults, signal);
 }

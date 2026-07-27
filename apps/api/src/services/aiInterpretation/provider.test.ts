@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 
-import type { LlmProvider, StreamResult, ToolCall } from './provider.js';
+import type { ConversationTurn, LlmProvider, StreamResult, ToolCall } from './provider.js';
 import { getProvider, registerProvider, resetProvider } from './provider.js';
 
 function makeFakeProvider(name: string): LlmProvider {
@@ -12,7 +12,13 @@ function makeFakeProvider(name: string): LlmProvider {
       return { fullText: 'chunk', usage: { inputTokens: 1, outputTokens: 1 } };
     },
     generateTool: async (_prompt, tools): Promise<ToolCall[]> =>
-      tools.map((t) => ({ name: t.name, input: { generatedBy: name } })),
+      tools.map((t, i) => ({ id: `call_${i}`, name: t.name, input: { generatedBy: name } })),
+    converseWithTools: async (state, _prompt, tools, _toolResults): Promise<ConversationTurn> => ({
+      state: state ?? 'started',
+      toolCalls: tools.map((t, i) => ({ id: `call_${i}`, name: t.name, input: { generatedBy: name } })),
+      text: tools.length === 0 ? `final answer from ${name}` : '',
+      usage: { inputTokens: 1, outputTokens: 1 },
+    }),
     checkHealth: async () => ({ status: 'ok', latencyMs: 1 }),
   };
 }
@@ -82,6 +88,21 @@ describe('LLM provider registry', () => {
       { name: 'record_proposal', description: 'record a finding', inputSchema: { type: 'object' } },
     ]);
 
-    expect(result).toEqual([{ name: 'record_proposal', input: { generatedBy: 'tool-check' } }]);
+    expect(result).toEqual([{ id: 'call_0', name: 'record_proposal', input: { generatedBy: 'tool-check' } }]);
+  });
+
+  it('converseWithTools returns a ToolCall per tool on a tool-enabled turn and threads state forward', async () => {
+    registerProvider(makeFakeProvider('convo-check'));
+    const tool = { name: 'record_proposal', description: 'record a finding', inputSchema: { type: 'object' } };
+
+    const first = await getProvider().converseWithTools(null, { system: '', user: 'any' }, [tool], []);
+    expect(first.state).toBe('started');
+    expect(first.toolCalls).toEqual([{ id: 'call_0', name: 'record_proposal', input: { generatedBy: 'convo-check' } }]);
+
+    const second = await getProvider().converseWithTools(first.state, { system: '', user: 'any' }, [], [
+      { toolCallId: 'call_0', output: 'ok' },
+    ]);
+    expect(second.toolCalls).toEqual([]);
+    expect(second.text).toBe('final answer from convo-check');
   });
 });

@@ -26,10 +26,31 @@ export interface ToolDefinition {
 
 // One invocation the model made against a tool. `input` is unvalidated at
 // this layer, callers must validate before trusting it (see parseProposals.ts
-// for the record_proposal case).
+// for the record_proposal case). `id` correlates a call to the ToolResultInput
+// answering it in a multi-turn conversation.
 export interface ToolCall {
+  id: string;
   name: string;
   input: unknown;
+}
+
+// Answers one ToolCall from a completed turn, threaded back into the next
+// converseWithTools call so the model sees its own tool's result. `isError`
+// marks a call the orchestrator rejected (malformed input, unknown tool
+// name), not a failure inside the tool itself.
+export interface ToolResultInput {
+  toolCallId: string;
+  output: unknown;
+  isError?: boolean;
+}
+
+// One turn of a multi-turn tool-calling conversation. `state` is opaque to
+// the caller, thread it back into the next converseWithTools call unchanged.
+export interface ConversationTurn {
+  state: unknown;
+  toolCalls: ToolCall[];
+  text: string;
+  usage: { inputTokens: number; outputTokens: number };
 }
 
 // Pluggable LLM contract. One active provider at a time, selected via config.
@@ -41,8 +62,20 @@ export interface LlmProvider {
   stream(input: PromptInput, onText: (delta: string) => void, signal?: AbortSignal): Promise<StreamResult>;
   // Tool choice is always 'auto' internally, zero calls back is a valid result
   // (nothing worth calling the tool for), not an error. No message history,
-  // single-turn only; a multi-turn loop is a different, larger method.
+  // single-turn only, see converseWithTools below for a multi-turn loop.
   generateTool(input: PromptInput, tools: ToolDefinition[]): Promise<ToolCall[]>;
+  // Multi-turn tool-calling conversation. Pass state: null to start; thread
+  // each turn's returned state into the next call along with ToolResultInputs
+  // answering that turn's ToolCalls (an empty array is only valid when state
+  // is null). Pass tools: [] to force a text-only turn, used for a turn-cap
+  // or cost-cap forced final answer.
+  converseWithTools(
+    state: unknown,
+    input: PromptInput,
+    tools: ToolDefinition[],
+    toolResults: ToolResultInput[],
+    signal?: AbortSignal,
+  ): Promise<ConversationTurn>;
   checkHealth(): Promise<ProviderHealth>;
 }
 
