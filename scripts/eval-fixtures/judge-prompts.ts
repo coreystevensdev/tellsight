@@ -1,4 +1,4 @@
-// Prompt builders for the two LLM judges. Each returns the provider's PromptInput
+// Prompt builders for the LLM judges. Each returns the provider's PromptInput
 // ({ system, user }). The system half pins the judge to a single job and a strict
 // JSON contract; the user half carries the case-specific inputs.
 //
@@ -64,5 +64,22 @@ export function completenessJudge(answerKey: StatType[], summary: string): Promp
   return {
     system: COMPLETENESS_SYSTEM,
     user: `ANSWER KEY (${answerKey.length} items the summary must cover):\n${key}\n\nSUMMARY:\n${summary}`,
+  };
+}
+
+const INTERPRETATION_SYSTEM = `You are grading a Q&A answer from a small-business analytics assistant as either "interpretive" or "lookup".
+
+You receive the QUESTION, a list of KNOWN FIGURES (numbers already present in the question itself), and the ANSWER. Classify:
+- "interpretive": the answer surfaces a comparison, trend, or benchmark tied to at least one figure that is NOT already in the known figures list. Restating a known figure does not count; the new figure is what makes it interpretive.
+- "lookup": the answer only states a raw figure, only restates a figure already in the known figures list, or contains no new figure at all.
+
+A figure can be a dollar amount, a percent, a count, or a ratio. Judge only what the answer's text actually says, not what it could have said. Be deterministic: same inputs, same output. Respond with JSON only, no prose, no code fences. Shape:
+{"verdict":"interpretive|lookup","reason":"<one clause>"}`;
+
+export function interpretationJudge(question: string, knownFigures: string[], answer: string): PromptInput {
+  const known = knownFigures.length > 0 ? knownFigures.join(', ') : '(none)';
+  return {
+    system: INTERPRETATION_SYSTEM,
+    user: `QUESTION:\n${question}\n\nKNOWN FIGURES (already in the question):\n${known}\n\nANSWER:\n${answer}`,
   };
 }

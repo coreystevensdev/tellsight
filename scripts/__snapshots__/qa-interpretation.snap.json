@@ -1,0 +1,42 @@
+{
+  "floor": 0.85,
+  "samplesPerFixture": 3,
+  "fixtures": [
+    {
+      "id": "trend-comparison",
+      "label": "New answer introduces a prior-period figure and a trend direction",
+      "expectedVerdict": "interpretive",
+      "accuracy": 1,
+      "overrideCount": 0
+    },
+    {
+      "id": "benchmark-comparison",
+      "label": "New answer ties the figure to an external benchmark",
+      "expectedVerdict": "interpretive",
+      "accuracy": 1,
+      "overrideCount": 0
+    },
+    {
+      "id": "bare-lookup",
+      "label": "Raw figure only, no comparison",
+      "expectedVerdict": "lookup",
+      "accuracy": 1,
+      "overrideCount": 0
+    },
+    {
+      "id": "restated-figure",
+      "label": "Answer only affirms a figure already stated in the question",
+      "expectedVerdict": "lookup",
+      "accuracy": 1,
+      "overrideCount": 0
+    },
+    {
+      "id": "verbose-padding",
+      "label": "Trend language with zero numeric figures outside the cite tag",
+      "expectedVerdict": "lookup",
+      "accuracy": 1,
+      "overrideCount": 0
+    }
+  ],
+  "aggregate": 1
+}
