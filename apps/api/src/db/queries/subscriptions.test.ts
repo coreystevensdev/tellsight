@@ -158,3 +158,37 @@ describe('getActiveTier', () => {
     expect(statusValues).toContain('canceled');
   });
 });
+
+describe('getAgentEnabled', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns true when the active row has agentEnabled set', async () => {
+    mockLimit._resultPromise = Promise.resolve([{ agentEnabled: true }]);
+
+    const { getAgentEnabled } = await import('./subscriptions.js');
+    expect(await getAgentEnabled(1)).toBe(true);
+  });
+
+  it('returns false when the active row has agentEnabled unset', async () => {
+    mockLimit._resultPromise = Promise.resolve([{ agentEnabled: false }]);
+
+    const { getAgentEnabled } = await import('./subscriptions.js');
+    expect(await getAgentEnabled(1)).toBe(false);
+  });
+
+  it('returns false when no active row exists', async () => {
+    mockLimit._resultPromise = Promise.resolve([]);
+
+    const { getAgentEnabled } = await import('./subscriptions.js');
+    expect(await getAgentEnabled(1)).toBe(false);
+  });
+
+  it('fails closed on query error, not fails open', async () => {
+    mockLimit._resultPromise = Promise.reject(new Error('relation "subscriptions" does not exist'));
+
+    const { getAgentEnabled } = await import('./subscriptions.js');
+    expect(await getAgentEnabled(1)).toBe(false);
+  });
+});

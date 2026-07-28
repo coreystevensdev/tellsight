@@ -24,6 +24,7 @@ import { ChartSkeleton } from './charts/ChartSkeleton';
 import { LazyChart } from './charts/LazyChart';
 import { FilterBar, computeDateRange, type FilterState } from './FilterBar';
 import { AiSummaryCard } from './AiSummaryCard';
+import { QaAskBox } from './QaAskBox';
 import { AiSummaryErrorBoundary } from './AiSummaryErrorBoundary';
 import { TransparencyPanel } from './TransparencyPanel';
 import { ShareFab } from './ShareMenu';
@@ -523,6 +524,10 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
             <div className="mt-2 px-1">
               <LastDigestIndicator />
             </div>
+          </AiSummaryErrorBoundary>
+
+          <AiSummaryErrorBoundary className="mt-6">
+            <QaAskBox datasetId={data.datasetId} />
           </AiSummaryErrorBoundary>
         </div>
 

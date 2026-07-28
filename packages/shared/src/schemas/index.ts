@@ -98,3 +98,6 @@ export type {
   CreateStatCorrectionInput,
   ResolveStatCorrectionInput,
 } from './stat-corrections.js';
+
+export { askQuestionSchema } from './qa.js';
+export type { AskQuestionInput } from './qa.js';

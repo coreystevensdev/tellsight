@@ -35,6 +35,34 @@ export async function getActiveTier(
   }
 }
 
+// Same active-row lookup as getActiveTier, returns the flag off that row
+// instead of deriving a tier. Defaults false on no active row or query
+// failure -- an entitlement gate should never fail open.
+export async function getAgentEnabled(
+  orgId: number,
+  client: typeof db | DbTransaction = db,
+): Promise<boolean> {
+  try {
+    const now = new Date();
+    const result = await client
+      .select({ agentEnabled: subscriptions.agentEnabled })
+      .from(subscriptions)
+      .where(
+        and(
+          eq(subscriptions.orgId, orgId),
+          or(
+            and(eq(subscriptions.status, 'active'), or(gt(subscriptions.currentPeriodEnd, now), isNull(subscriptions.currentPeriodEnd))),
+            and(eq(subscriptions.status, 'canceled'), isNotNull(subscriptions.currentPeriodEnd), gt(subscriptions.currentPeriodEnd, now)),
+          ),
+        ),
+      )
+      .limit(1);
+    return result[0]?.agentEnabled ?? false;
+  } catch {
+    return false;
+  }
+}
+
 interface UpsertSubscriptionParams {
   orgId: number;
   stripeCustomerId: string;

@@ -51,6 +51,8 @@ export type { StatCorrectionStatus, StatCorrection } from './statCorrection.js';
 
 export type { BusinessProfile, OrgFinancials } from '../schemas/businessProfile.js';
 
+export type { QaTermination, QaAnswer } from './qa.js';
+
 export interface ApiResponse<T> {
   data: T;
   meta?: Record<string, unknown>;
