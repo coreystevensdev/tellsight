@@ -11,11 +11,14 @@ vi.mock('../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
+const mockBreakerInstances: Array<{ name: string; execSpy: ReturnType<typeof vi.fn> }> = [];
+
 vi.mock('../../lib/circuitBreaker.js', () => ({
-  CircuitBreaker: vi.fn().mockImplementation(() => ({
-    exec: <T>(fn: () => Promise<T>) => fn(),
-    isOpen: () => false,
-  })),
+  CircuitBreaker: vi.fn().mockImplementation((opts: { name: string }) => {
+    const execSpy = vi.fn((fn: () => Promise<unknown>) => fn());
+    mockBreakerInstances.push({ name: opts.name, execSpy });
+    return { exec: execSpy, isOpen: () => false };
+  }),
   CircuitOpenError: class CircuitOpenError extends Error {
     readonly code = 'CIRCUIT_OPEN';
     constructor(name: string) { super(`Circuit breaker "${name}" is open`); }
@@ -65,6 +68,43 @@ vi.mock('@anthropic-ai/sdk', () => {
 });
 
 import { logger } from '../../lib/logger.js';
+
+describe('circuit breaker wiring', () => {
+  it('routes generate/stream/converseWithTools through the shared breaker and generateTool through its own', async () => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    mockBreakerInstances.length = 0;
+
+    mockComputeCost.mockReturnValue(0.01);
+    mockExceedsBudget.mockReturnValue({ exceeded: false, observed: 0.01, cap: null, median: null });
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'text', text: 'ok' }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 10, output_tokens: 5 },
+    });
+
+    const claudeClient = await import('./claudeClient.js');
+
+    expect(mockBreakerInstances).toHaveLength(2);
+    const shared = mockBreakerInstances.find((b) => b.name === 'claude-api');
+    const tool = mockBreakerInstances.find((b) => b.name === 'claude-api-tool');
+    if (!shared || !tool) throw new Error('expected both a shared and a tool-scoped breaker instance');
+
+    await claudeClient.generateInterpretation({ system: '', user: 'hi' });
+    expect(shared.execSpy).toHaveBeenCalledTimes(1);
+    expect(tool.execSpy).not.toHaveBeenCalled();
+
+    await claudeClient.generateWithTools({ system: '', user: 'hi' }, [
+      { name: 'lookup', description: 'test tool', inputSchema: {} },
+    ]);
+    expect(tool.execSpy).toHaveBeenCalledTimes(1);
+    expect(shared.execSpy).toHaveBeenCalledTimes(1);
+
+    await claudeClient.converseWithTools(null, { system: '', user: 'hi' }, [], []);
+    expect(shared.execSpy).toHaveBeenCalledTimes(2);
+    expect(tool.execSpy).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('generateInterpretation', () => {
   beforeEach(() => {

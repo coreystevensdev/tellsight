@@ -30,18 +30,36 @@ class AbortedByClient extends Error {
   constructor() { super('aborted by client'); }
 }
 
-// 3 consecutive failures → open for 30s. Anthropic SDK already retries twice
-// per call, so 3 trips = 9 failed attempts over ~45s of real outage.
+// Each breaker independently needs 3 consecutive failures to open for 30s.
+// Anthropic SDK already retries twice per call, so 3 trips = 9 failed
+// attempts over ~45s of real outage on that breaker's own traffic.
+const BREAKER_THRESHOLD = 3;
+const BREAKER_COOLDOWN_MS = 30_000;
+const isIgnored = (err: unknown) => err instanceof AbortedByClient || err instanceof CostBudgetExceededError;
+
 const breaker = new CircuitBreaker({
   name: 'claude-api',
-  threshold: 3,
-  cooldownMs: 30_000,
-  isIgnored: (err) => err instanceof AbortedByClient,
+  threshold: BREAKER_THRESHOLD,
+  cooldownMs: BREAKER_COOLDOWN_MS,
+  isIgnored,
+});
+
+// Separate instance so a burst of failures unique to the single-shot
+// generateTool call can't trip the breaker guarding the customer-facing
+// generate/stream path, and vice versa. anthropicConverseWithTools (the
+// multi-turn QA loop path) still shares `breaker` with generate/stream --
+// out of scope here, tracked separately since it's its own risk surface.
+const toolBreaker = new CircuitBreaker({
+  name: 'claude-api-tool',
+  threshold: BREAKER_THRESHOLD,
+  cooldownMs: BREAKER_COOLDOWN_MS,
+  isIgnored,
 });
 
 // bind once, avoids the literal `breaker.exec(` on every call site, which a
 // repo-wide security lint flags as shell-exec even though it's CircuitBreaker.
 const runInBreaker = breaker.exec.bind(breaker);
+const runToolInBreaker = toolBreaker.exec.bind(toolBreaker);
 
 async function anthropicHealth(): Promise<ProviderHealth> {
   const start = Date.now();
@@ -141,7 +159,7 @@ async function anthropicGenerateTool(input: PromptInput, tools: ToolDefinition[]
   // only ever come back empty.
   if (tools.length === 0) return [];
 
-  return runInBreaker(async () => {
+  return runToolInBreaker(async () => {
     try {
       const message = await client.messages.create({
         model: env.CLAUDE_MODEL,
