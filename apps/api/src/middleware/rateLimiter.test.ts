@@ -33,7 +33,8 @@ vi.mock('ioredis', () => {
 const { createTestApp } = await import('../test/helpers/testApp.js');
 
 // rate-limiter-flexible with mocked Redis will fall through to insurance (memory) limiter
-const { rateLimitAuth, rateLimitAi, rateLimitPublic, rateLimitDashboardCompute } = await import('./rateLimiter.js');
+const { rateLimitAuth, rateLimitAi, rateLimitPublic, rateLimitDashboardCompute, rateLimitStatCorrectionTier1 } =
+  await import('./rateLimiter.js');
 
 // retry, memory-backed limiter + concurrent Promise.all can race on busy CI runners
 describe('rateLimiter', { retry: 2 }, () => {
@@ -189,6 +190,63 @@ describe('rateLimiter', { retry: 2 }, () => {
 
       const blocked = responses.filter((r) => r.status === 429);
       expect(blocked.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('rateLimitStatCorrectionTier1', () => {
+    let server: http.Server;
+    let baseUrl: string;
+
+    beforeAll(async () => {
+      const result = await createTestApp((app) => {
+        // simulate authMiddleware having already attached req.user
+        app.use((req: Request, _res: Response, next) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (req as any).user = { sub: 'stat-correction-user-1' };
+          next();
+        });
+        // statInstanceId is only known per-request, hence the factory + route param
+        app.post('/stat-corrections/:statInstanceId', (req: Request, res: Response, next) => {
+          rateLimitStatCorrectionTier1(req.params.statInstanceId as string)(req, res, next);
+        }, (_req: Request, res: Response) => {
+          res.status(201).json({ data: { ok: true } });
+        });
+      });
+      server = result.server;
+      baseUrl = result.baseUrl;
+    });
+
+    afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
+
+    it('allows a request under the limit', async () => {
+      const res = await fetch(`${baseUrl}/stat-corrections/stat-a`, { method: 'POST' });
+      expect(res.status).toBe(201);
+    });
+
+    it('allows exactly 3 requests then returns 429 with Retry-After for the 4th, pinning the cap', async () => {
+      // sequential, not concurrent, so this pins the exact limit (3) instead
+      // of just asserting "some" requests got blocked out of a burst
+      for (let i = 0; i < 3; i++) {
+        const res = await fetch(`${baseUrl}/stat-corrections/stat-b`, { method: 'POST' });
+        expect(res.status).toBe(201);
+      }
+
+      const blockedRes = await fetch(`${baseUrl}/stat-corrections/stat-b`, { method: 'POST' });
+      expect(blockedRes.status).toBe(429);
+      expect(blockedRes.headers.get('Retry-After')).toBeTruthy();
+
+      const body = (await blockedRes.json()) as { error: { code: string } };
+      expect(body.error.code).toBe('RATE_LIMITED');
+    });
+
+    it('allows two different statInstanceId args for the same user independently', async () => {
+      const [resC, resD] = await Promise.all([
+        fetch(`${baseUrl}/stat-corrections/stat-c`, { method: 'POST' }),
+        fetch(`${baseUrl}/stat-corrections/stat-d`, { method: 'POST' }),
+      ]);
+
+      expect(resC.status).toBe(201);
+      expect(resD.status).toBe(201);
     });
   });
 

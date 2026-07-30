@@ -61,6 +61,19 @@ const dashboardComputeLimiter = new RateLimiterRedis({
   insuranceLimiter: dashboardComputeFallback,
 });
 
+const statCorrectionTier1Fallback = new RateLimiterMemory({
+  points: RATE_LIMITS.statCorrectionTier1.max,
+  duration: RATE_LIMITS.statCorrectionTier1.windowMs / 1000,
+});
+
+const statCorrectionTier1Limiter = new RateLimiterRedis({
+  storeClient: redis,
+  keyPrefix: 'rl_stat_correction_tier1',
+  points: RATE_LIMITS.statCorrectionTier1.max,
+  duration: RATE_LIMITS.statCorrectionTier1.windowMs / 1000,
+  insuranceLimiter: statCorrectionTier1Fallback,
+});
+
 function sendRateLimited(res: Response, rlRes: RateLimiterRes) {
   const retryAfter = Math.ceil(rlRes.msBeforeNext / 1000);
   res.set('Retry-After', String(retryAfter));
@@ -151,4 +164,31 @@ export function rateLimitDashboardCompute(req: Request, res: Response, next: Nex
       logger.warn({ err: rlRes }, 'Rate limiter error, failing open');
       next();
     });
+}
+
+// Keyed by statInstanceId in addition to user, so it needs the resource id
+// bound in before it can act as an (req, res, next) middleware -- unlike the
+// limiters above, which key off req.user/req.ip alone.
+export function rateLimitStatCorrectionTier1(statInstanceId: string) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (bypass) return next();
+    const key = `${req.user?.sub ?? req.ip ?? 'unknown'}:${statInstanceId}`;
+
+    if (!req.user?.sub) {
+      logger.warn({ path: req.path }, 'Stat correction rate limiter missing user, falling back to IP');
+    }
+
+    statCorrectionTier1Limiter
+      .consume(key)
+      .then(() => next())
+      .catch((rlRes) => {
+        if (rlRes instanceof RateLimiterRes) {
+          rateLimitHits.inc({ limiter: 'stat_correction_tier1' });
+          logger.warn({ key, path: req.path }, 'Stat correction Tier 1 rate limit exceeded');
+          return sendRateLimited(res, rlRes);
+        }
+        logger.warn({ err: rlRes }, 'Rate limiter error, failing open');
+        next();
+      });
+  };
 }

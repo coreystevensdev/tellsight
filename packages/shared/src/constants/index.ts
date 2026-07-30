@@ -33,6 +33,10 @@ export const RATE_LIMITS = {
   // generous enough for page load + occasional refresh (~3-5/min typical),
   // tight enough to catch loop-bug or abuse patterns (60+/min).
   dashboardCompute: { max: 30, windowMs: 60_000 },
+  // Tier 1 stat-correction annotations have no DB-level dedup (unlike Tier 2,
+  // which the partial unique index on active corrections already covers), so
+  // this caps duplicate submissions against one statInstanceId directly.
+  statCorrectionTier1: { max: 3, windowMs: 300_000 },
 } as const;
 
 export const ROLES = {

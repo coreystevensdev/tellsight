@@ -4,6 +4,7 @@ import { createStatCorrectionSchema } from 'shared/schemas';
 import { requireUser } from '../lib/requireUser.js';
 import { withRlsContext } from '../lib/rls.js';
 import { roleGuard } from '../middleware/roleGuard.js';
+import { rateLimitStatCorrectionTier1 } from '../middleware/rateLimiter.js';
 import { statCorrectionsQueries, datasetsQueries } from '../db/queries/index.js';
 import { ValidationError, NotFoundError, AuthorizationError } from '../lib/appError.js';
 
@@ -55,11 +56,29 @@ statCorrectionsRouter.post('/', roleGuard('member'), async (req, res: Response) 
     const dataset = await datasetsQueries.getDatasetById(user.org_id, datasetId, tx);
     if (!dataset) throw new NotFoundError('Dataset not found');
 
+    // Tier 2 already has DB-level dedup via the partial unique index on active
+    // corrections; Tier 1 has none, so it needs this guard instead. Consumed
+    // after the dataset lookup so a mistyped datasetId (404) doesn't burn a
+    // Tier 1 submitter's quota for a request that never creates a row.
+    if (!appliesGoingForward) {
+      await new Promise<void>((resolve, reject) => {
+        rateLimitStatCorrectionTier1(statInstanceId)(req, res, (err?: unknown) => {
+          if (err) reject(err);
+          else resolve();
+        });
+        res.once('finish', resolve);
+        res.once('close', resolve);
+      });
+      if (res.headersSent) return undefined;
+    }
+
     return statCorrectionsQueries.createCorrection(
       { orgId: user.org_id, datasetId, statInstanceId, userId, note, appliesGoingForward },
       tx,
     );
   });
+
+  if (res.headersSent) return;
 
   req.log.info(
     { orgId: user.org_id, userId, datasetId, statInstanceId, appliesGoingForward, action: 'created' },

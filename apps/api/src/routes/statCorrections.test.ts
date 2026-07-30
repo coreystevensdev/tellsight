@@ -1,10 +1,19 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import http from 'node:http';
+import type { Response } from 'express';
 
 const mockVerifyAccessToken = vi.fn();
 const mockGetCorrectionsByDataset = vi.fn();
 const mockCreateCorrection = vi.fn();
 const mockGetDatasetById = vi.fn();
+
+const mockRateLimitStatCorrectionTier1Factory = vi.fn(
+  (_statInstanceId: string) => (_req: unknown, _res: Response, next: () => void) => next(),
+);
+vi.mock('../middleware/rateLimiter.js', () => ({
+  rateLimitStatCorrectionTier1: (statInstanceId: string) =>
+    mockRateLimitStatCorrectionTier1Factory(statInstanceId),
+}));
 
 vi.mock('../services/auth/tokenService.js', () => ({
   verifyAccessToken: mockVerifyAccessToken,
@@ -263,5 +272,78 @@ describe('POST /stat-corrections', () => {
 
     expect(res.status).toBe(409);
     expect(json.error.code).toBe('CONFLICT');
+  });
+
+  it('invokes the Tier 1 rate limiter guard for a Tier 1 submission', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload());
+    mockGetDatasetById.mockResolvedValueOnce(mockDataset);
+    mockCreateCorrection.mockResolvedValueOnce(mockCorrection);
+
+    await fetch(`${baseUrl}/stat-corrections`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ datasetId: 7, statInstanceId: '7:runway:_:_', note: 'note' }),
+    });
+
+    expect(mockRateLimitStatCorrectionTier1Factory).toHaveBeenCalledWith('7:runway:_:_');
+  });
+
+  it('does not invoke the Tier 1 rate limiter guard when the dataset lookup 404s', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload());
+    mockGetDatasetById.mockResolvedValueOnce(undefined);
+
+    const res = await fetch(`${baseUrl}/stat-corrections`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ datasetId: 999, statInstanceId: '999:runway:_:_', note: 'note' }),
+    });
+
+    expect(res.status).toBe(404);
+    expect(mockRateLimitStatCorrectionTier1Factory).not.toHaveBeenCalled();
+  });
+
+  it('does not invoke the Tier 1 rate limiter guard for a Tier 2 submission', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload());
+    mockGetDatasetById.mockResolvedValueOnce(mockDataset);
+    mockCreateCorrection.mockResolvedValueOnce({ ...mockCorrection, appliesGoingForward: true, status: 'pending' });
+
+    await fetch(`${baseUrl}/stat-corrections`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({
+        datasetId: 7,
+        statInstanceId: '7:runway:_:_',
+        note: 'note',
+        appliesGoingForward: true,
+      }),
+    });
+
+    expect(mockRateLimitStatCorrectionTier1Factory).not.toHaveBeenCalled();
+  });
+
+  it('returns 429 and skips createCorrection when the Tier 1 guard rate-limits', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload());
+    mockGetDatasetById.mockResolvedValueOnce(mockDataset);
+    mockRateLimitStatCorrectionTier1Factory.mockImplementationOnce(
+      (_statInstanceId: string) => (_req: unknown, res: Response, _next: () => void) => {
+        res.set('Retry-After', '120');
+        res.status(429).json({ error: { code: 'RATE_LIMITED', message: 'Too many requests' } });
+      },
+    );
+
+    const res = await fetch(`${baseUrl}/stat-corrections`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ datasetId: 7, statInstanceId: '7:runway:_:_', note: 'note' }),
+    });
+    const json = (await res.json()) as { error: { code: string } };
+
+    expect(res.status).toBe(429);
+    expect(json.error.code).toBe('RATE_LIMITED');
+    expect(res.headers.get('Retry-After')).toBe('120');
+    // guard fires after the dataset lookup (so a 404 doesn't burn quota), but
+    // still before the actual row write
+    expect(mockGetDatasetById).toHaveBeenCalled();
+    expect(mockCreateCorrection).not.toHaveBeenCalled();
   });
 });
