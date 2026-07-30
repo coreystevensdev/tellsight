@@ -94,7 +94,7 @@ export const GET_METRIC_WITH_TREND_TOOL: ToolDefinition = {
 // these genuinely belong to the same tool call, so they share one
 // `SET LOCAL` scope instead of paying for a transaction each. `periodsBack`
 // omitted means getMetricWithTrend's caller, which never reads digest history.
-async function loadToolContext(ctx: ToolContext, periodsBack?: number) {
+async function fetchToolContext(ctx: ToolContext, periodsBack?: number) {
   const [rows, excludedIds, profile, digests] = await withRlsContext(ctx.orgId, ctx.isAdmin, (tx) =>
     Promise.all([
       dataRowsQueries.getRowsByDataset(ctx.orgId, ctx.datasetId, tx),
@@ -109,27 +109,89 @@ async function loadToolContext(ctx: ToolContext, periodsBack?: number) {
   return { rows, excludedStatIds: new Set(excludedIds), financials, digests };
 }
 
+type LoadedToolContext = Awaited<ReturnType<typeof fetchToolContext>>;
+
+// Scoped to one runQaLoop invocation and thrown away with it -- a module-level
+// cache would leak stats across orgs and requests. `context` memoizes the
+// promise itself, not just its result, so two calls racing for the same key
+// within a single Promise.all-driven turn share one in-flight fetch instead
+// of both hitting the DB. `stat` memoizes resolveStatByType's synchronous
+// output, since compareToPriorPeriods and getMetricWithTrend load different
+// periodsBack values but can still ask for the same statType/category.
+export interface ToolCallCache {
+  context: Map<string, Promise<LoadedToolContext>>;
+  stat: Map<string, IdentifiedStat | null>;
+}
+
+export function createToolCallCache(): ToolCallCache {
+  return { context: new Map(), stat: new Map() };
+}
+
+// Mirrors assembly.ts's templateCache get-or-compute-and-set idiom.
+// periodsBack is part of the key because compareToPriorPeriods's
+// digest-bearing load must not collide with getMetricWithTrend's digest-free
+// one for the same org/dataset. isAdmin is part of the key too -- it changes
+// the RLS scope a read runs under, so it can't be left out just because it
+// never actually varies within one runQaLoop call today.
+function loadToolContext(ctx: ToolContext, cache: ToolCallCache, periodsBack?: number): Promise<LoadedToolContext> {
+  const key = `${ctx.orgId}:${ctx.isAdmin}:${ctx.datasetId}:${periodsBack ?? 'none'}`;
+  const cached = cache.context.get(key);
+  if (cached) return cached;
+  const promise = fetchToolContext(ctx, periodsBack);
+  cache.context.set(key, promise);
+  return promise;
+}
+
+// Keyed on the *resolved* category, not the raw input -- resolveCategoryScope
+// normalizes org-wide stat types (cash flow, runway, ...) to `undefined`, and
+// keying on the raw input would miss that a category the model passed
+// alongside one of those types is ignored.
+function getCachedStat(
+  cache: ToolCallCache,
+  ctx: ToolContext,
+  loaded: LoadedToolContext,
+  statType: TrendCarryingStatType,
+  category: string | undefined,
+): IdentifiedStat | null {
+  const key = `${ctx.orgId}:${ctx.datasetId}:${statType}:${category ?? 'none'}`;
+  if (cache.stat.has(key)) return cache.stat.get(key)!;
+  const stat = resolveStatByType(loaded.rows, ctx.datasetId, statType, category, {
+    trendMinPoints: scoringConfig.thresholds.trendMinDataPoints,
+    financials: loaded.financials,
+    now: ctx.now,
+  });
+  cache.stat.set(key, stat);
+  return stat;
+}
+
 // `found: false` distinguishes why no stat came back: `not_found` covers bad
 // input and a genuine no-match, `suppressed` means a stat matched but an
 // approved correction excludes it, information a future Q&A answer surface
 // can use ("you flagged this metric") instead of a bare miss.
 export type GetMetricWithTrendResult = { found: true; stat: IdentifiedStat } | { found: false; reason: 'not_found' | 'suppressed' };
 
-export async function getMetricWithTrend(input: GetMetricWithTrendInput, ctx: ToolContext): Promise<GetMetricWithTrendResult> {
+// signal?.throwIfAborted() below is best-effort: postgres/drizzle-orm's
+// postgres-js driver has no query-level AbortSignal support, so this stops
+// the next unit of work (skips the DB call, or skips the resolve step) rather
+// than cancelling a query already in flight.
+export async function getMetricWithTrend(
+  input: GetMetricWithTrendInput,
+  ctx: ToolContext,
+  cache: ToolCallCache,
+  signal?: AbortSignal,
+): Promise<GetMetricWithTrendResult> {
+  signal?.throwIfAborted();
   if (!isValidContext(ctx)) return { found: false, reason: 'not_found' };
   const scope = resolveCategoryScope(input.statType, input.category);
   if (!scope.ok) return { found: false, reason: 'not_found' };
 
-  const { rows, excludedStatIds, financials } = await loadToolContext(ctx);
+  const loaded = await loadToolContext(ctx, cache);
 
-  const stat = resolveStatByType(rows, ctx.datasetId, input.statType, scope.category, {
-    trendMinPoints: scoringConfig.thresholds.trendMinDataPoints,
-    financials,
-    now: ctx.now,
-  });
+  signal?.throwIfAborted();
+  const stat = getCachedStat(cache, ctx, loaded, input.statType, scope.category);
 
   if (!stat) return { found: false, reason: 'not_found' };
-  if (excludedStatIds.has(stat.id)) return { found: false, reason: 'suppressed' };
+  if (loaded.excludedStatIds.has(stat.id)) return { found: false, reason: 'suppressed' };
   return { found: true, stat };
 }
 
@@ -185,27 +247,30 @@ function findMatchInKeyStats(
   return findMatchingStat(keyStats, statType, category);
 }
 
-export async function compareToPriorPeriods(input: CompareToPriorPeriodsInput, ctx: ToolContext): Promise<CompareToPriorPeriodsOutcome> {
+export async function compareToPriorPeriods(
+  input: CompareToPriorPeriodsInput,
+  ctx: ToolContext,
+  cache: ToolCallCache,
+  signal?: AbortSignal,
+): Promise<CompareToPriorPeriodsOutcome> {
+  signal?.throwIfAborted();
   if (!isValidContext(ctx)) return { found: false, reason: 'not_found' };
   const scope = resolveCategoryScope(input.statType, input.category);
   if (!scope.ok) return { found: false, reason: 'not_found' };
 
   const periodsBack = clampPeriodsBack(input.periodsBack);
-  const { rows, excludedStatIds, financials, digests } = await loadToolContext(ctx, periodsBack);
+  const loaded = await loadToolContext(ctx, cache, periodsBack);
 
-  const current = resolveStatByType(rows, ctx.datasetId, input.statType, scope.category, {
-    trendMinPoints: scoringConfig.thresholds.trendMinDataPoints,
-    financials,
-    now: ctx.now,
-  });
+  signal?.throwIfAborted();
+  const current = getCachedStat(cache, ctx, loaded, input.statType, scope.category);
 
   if (!current) return { found: false, reason: 'not_found' };
-  if (excludedStatIds.has(current.id)) return { found: false, reason: 'suppressed' };
+  if (loaded.excludedStatIds.has(current.id)) return { found: false, reason: 'suppressed' };
 
   const priorPeriods: PriorPeriodPoint[] = [];
-  for (const digest of digests) {
+  for (const digest of loaded.digests) {
     const match = findMatchInKeyStats(digest.keyStats, input.statType, scope.category);
-    if (!match || excludedStatIds.has(statInstanceId(match, ctx.datasetId))) continue;
+    if (!match || loaded.excludedStatIds.has(statInstanceId(match, ctx.datasetId))) continue;
     priorPeriods.push({ weekStart: digest.weekStart.toISOString(), value: match.value });
   }
 

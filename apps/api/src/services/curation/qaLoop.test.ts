@@ -18,6 +18,7 @@ vi.mock('../aiInterpretation/claudeClient.js', () => ({
 
 const mockGetMetricWithTrend = vi.fn();
 const mockCompareToPriorPeriods = vi.fn();
+const mockCreateToolCallCache = vi.fn(() => ({ context: new Map(), stat: new Map() }));
 vi.mock('./interpretationTools.js', () => ({
   GET_METRIC_WITH_TREND_TOOL: {
     name: 'get_metric_with_trend',
@@ -41,6 +42,7 @@ vi.mock('./interpretationTools.js', () => ({
   ],
   getMetricWithTrend: (...args: unknown[]) => mockGetMetricWithTrend(...args),
   compareToPriorPeriods: (...args: unknown[]) => mockCompareToPriorPeriods(...args),
+  createToolCallCache: () => mockCreateToolCallCache(),
 }));
 
 import { logger } from '../../lib/logger.js';
@@ -111,7 +113,7 @@ describe('runQaLoop', () => {
 
     const result = await runQaLoop(QUESTION, CTX);
 
-    expect(mockGetMetricWithTrend).toHaveBeenCalledWith({ statType: 'trend', category: undefined }, CTX);
+    expect(mockGetMetricWithTrend).toHaveBeenCalledWith({ statType: 'trend', category: undefined }, CTX, expect.any(Object), undefined);
     expect(result.toolResults).toEqual([
       {
         name: 'get_metric_with_trend',
@@ -132,7 +134,7 @@ describe('runQaLoop', () => {
 
     await runQaLoop(QUESTION, CTX);
 
-    expect(mockCompareToPriorPeriods).toHaveBeenCalledWith({ statType: 'runway', category: undefined, periodsBack: 3 }, CTX);
+    expect(mockCompareToPriorPeriods).toHaveBeenCalledWith({ statType: 'runway', category: undefined, periodsBack: 3 }, CTX, expect.any(Object), undefined);
   });
 
   it('sends null to the model for both a not_found and a suppressed getMetricWithTrend result, logging only the suppressed case', async () => {
@@ -302,5 +304,72 @@ describe('runQaLoop', () => {
     mockConverseWithTools.mockRejectedValueOnce(new Error('Claude API is down'));
 
     await expect(runQaLoop(QUESTION, CTX)).rejects.toThrow('Claude API is down');
+  });
+
+  it('dispatches two tool calls in one turn concurrently, both starting before either resolves, and keeps turn.toolCalls order in the result regardless of resolution order', async () => {
+    let resolveFirst!: (value: unknown) => void;
+    let resolveSecond!: (value: unknown) => void;
+    const firstCall = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondCall = new Promise((resolve) => {
+      resolveSecond = resolve;
+    });
+    mockGetMetricWithTrend.mockReturnValueOnce(firstCall);
+    mockCompareToPriorPeriods.mockReturnValueOnce(secondCall);
+
+    mockConverseWithTools
+      .mockResolvedValueOnce(
+        turn({
+          toolCalls: [
+            toolCall({ id: 'call_a', name: 'get_metric_with_trend' }),
+            toolCall({ id: 'call_b', name: 'compare_to_prior_periods', input: { statType: 'runway' } }),
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(turn({ text: 'done' }));
+
+    const resultPromise = runQaLoop(QUESTION, CTX);
+
+    // Flush enough microtask ticks for runQaLoop's continuation past the
+    // first converseWithTools call to reach the Promise.all dispatch, without
+    // letting either deferred tool call resolve.
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+
+    expect(mockGetMetricWithTrend).toHaveBeenCalledTimes(1);
+    expect(mockCompareToPriorPeriods).toHaveBeenCalledTimes(1);
+
+    // Same cache instance reaches both calls in the turn -- a regression that
+    // built a fresh cache per dispatch would defeat the whole point of this change.
+    expect(mockGetMetricWithTrend.mock.calls[0]![2]).toBe(mockCompareToPriorPeriods.mock.calls[0]![2]);
+
+    // Resolve out of call order (second, then first) -- the result must still
+    // land in turn.toolCalls order, proving the ordering doesn't just happen
+    // to match because this test resolved them in order.
+    resolveSecond({ found: true, current: { id: '1:runway:0' }, hasHistory: false });
+    resolveFirst({ found: true, stat: { id: '1:trend:Sales:0', statType: 'trend', category: 'Sales', value: 0.1, details: {} } });
+
+    const result = await resultPromise;
+
+    expect(result.toolResults.map((r) => r.name)).toEqual(['get_metric_with_trend', 'compare_to_prior_periods']);
+    expect(mockConverseWithTools.mock.calls[1]![3]).toEqual([
+      { toolCallId: 'call_a', output: { id: '1:trend:Sales:0', statType: 'trend', category: 'Sales', value: 0.1, details: {} } },
+      { toolCallId: 'call_b', output: { current: { id: '1:runway:0' }, hasHistory: false } },
+    ]);
+  });
+
+  it('propagates an error thrown during tool dispatch without issuing another turn', async () => {
+    class AbortedByClient extends Error {
+      constructor() {
+        super('aborted mid-dispatch');
+      }
+    }
+    mockGetMetricWithTrend.mockRejectedValueOnce(new AbortedByClient());
+    mockConverseWithTools.mockResolvedValueOnce(turn({ toolCalls: [toolCall()] }));
+
+    const controller = new AbortController();
+
+    await expect(runQaLoop(QUESTION, CTX, controller.signal)).rejects.toThrow('aborted mid-dispatch');
+    expect(mockConverseWithTools).toHaveBeenCalledTimes(1);
   });
 });

@@ -13,7 +13,9 @@ import {
   TREND_CARRYING_STAT_TYPES,
   getMetricWithTrend,
   compareToPriorPeriods,
+  createToolCallCache,
   type ToolContext,
+  type ToolCallCache,
   type GetMetricWithTrendInput,
   type CompareToPriorPeriodsInput,
   type TrendCarryingStatType,
@@ -126,11 +128,11 @@ type DispatchOutcome = { ok: true; output: unknown } | { ok: false };
 // not_found/suppressed distinction interpretationTools.ts now carries isn't
 // wired into the prompt yet, so a suppressed lookup is logged for
 // observability and otherwise collapses to null the same as a genuine miss.
-async function dispatchToolCall(call: ToolCall, ctx: ToolContext): Promise<DispatchOutcome> {
+async function dispatchToolCall(call: ToolCall, ctx: ToolContext, cache: ToolCallCache, signal?: AbortSignal): Promise<DispatchOutcome> {
   if (call.name === GET_METRIC_WITH_TREND_TOOL.name) {
     const input = validateGetMetricWithTrendInput(call.input);
     if (!input) return { ok: false };
-    const result = await getMetricWithTrend(input, ctx);
+    const result = await getMetricWithTrend(input, ctx, cache, signal);
     if (!result.found && result.reason === 'suppressed') {
       logger.info({ toolName: call.name, orgId: ctx.orgId, datasetId: ctx.datasetId }, 'Q&A tool result suppressed by an active correction');
     }
@@ -140,7 +142,7 @@ async function dispatchToolCall(call: ToolCall, ctx: ToolContext): Promise<Dispa
   if (call.name === COMPARE_TO_PRIOR_PERIODS_TOOL.name) {
     const input = validateCompareToPriorPeriodsInput(call.input);
     if (!input) return { ok: false };
-    const result = await compareToPriorPeriods(input, ctx);
+    const result = await compareToPriorPeriods(input, ctx, cache, signal);
     if (!result.found) {
       if (result.reason === 'suppressed') {
         logger.info({ toolName: call.name, orgId: ctx.orgId, datasetId: ctx.datasetId }, 'Q&A tool result suppressed by an active correction');
@@ -172,6 +174,9 @@ export async function runQaLoop(question: string, ctx: ToolContext, signal?: Abo
   let turnCount = 0;
   let forcedTermination: QaTermination | null = null;
   const toolResults: QaToolResult[] = [];
+  // Fresh per invocation, never module-level -- a cache that survived past
+  // this answer would leak stats across requests and orgs.
+  const cache = createToolCallCache();
 
   for (;;) {
     turnCount++;
@@ -202,14 +207,31 @@ export async function runQaLoop(question: string, ctx: ToolContext, signal?: Abo
     }
 
     toolResultInputs = [];
+    // Every call in a turn is an independent read-only lookup, so they
+    // dispatch concurrently. The cap check stays synchronous and outside the
+    // dispatched work so a skipped call never touches dispatchToolCall; the
+    // map preserves turn.toolCalls order regardless of resolution order, so
+    // building toolResults/toolResultInputs from it afterward needs no
+    // re-sorting. Promise.all only propagates the first rejection it sees --
+    // each dispatch logs its own failure on the way past so a second,
+    // concurrent failure in the same turn isn't silently dropped.
+    const dispatched = await Promise.all(
+      turn.toolCalls.map((call, i) => {
+        if (i >= MAX_TOOL_CALLS_PER_TURN) return null;
+        return dispatchToolCall(call, ctx, cache, signal).catch((err: unknown) => {
+          logger.error({ toolName: call.name, err }, 'Q&A loop tool call failed during dispatch');
+          throw err;
+        });
+      }),
+    );
     for (const [i, call] of turn.toolCalls.entries()) {
-      if (i >= MAX_TOOL_CALLS_PER_TURN) {
+      // dispatched has exactly one entry per turn.toolCalls index (the map
+      // above never drops one), so this index always lands within bounds.
+      const outcome = dispatched[i]!;
+      if (outcome === null) {
         logger.warn({ toolName: call.name }, 'Q&A loop turn exceeded the per-turn tool call cap, remainder skipped');
         toolResultInputs.push({ toolCallId: call.id, output: { error: 'tool call skipped, per-turn call limit reached' }, isError: true });
-        continue;
-      }
-      const outcome = await dispatchToolCall(call, ctx);
-      if (outcome.ok) {
+      } else if (outcome.ok) {
         toolResults.push({ name: call.name, input: call.input, output: outcome.output });
         toolResultInputs.push({ toolCallId: call.id, output: outcome.output });
       } else {

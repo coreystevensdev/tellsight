@@ -31,9 +31,11 @@ vi.mock('../../lib/logger.js', () => ({
 import {
   getMetricWithTrend,
   compareToPriorPeriods,
+  createToolCallCache,
   GET_METRIC_WITH_TREND_TOOL,
   COMPARE_TO_PRIOR_PERIODS_TOOL,
   TREND_CARRYING_STAT_TYPES,
+  type ToolCallCache,
 } from './interpretationTools.js';
 import { computeStats, assignIds, statInstanceId } from './computation.js';
 import { StatType } from './types.js';
@@ -128,12 +130,15 @@ function findSalesTrendId(): string {
 const NOW = new Date('2026-04-13T00:00:00Z');
 const ctx = { orgId: ORG_ID, isAdmin: false, datasetId: DATASET_ID, now: NOW };
 
+let cache: ToolCallCache;
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockGetRowsByDataset.mockResolvedValue(salesRows);
   mockGetBusinessProfile.mockResolvedValue(null);
   mockGetActiveCorrectionStatIds.mockResolvedValue([]);
   mockGetTrailingDigests.mockResolvedValue([]);
+  cache = createToolCallCache();
 });
 
 describe('tool schemas', () => {
@@ -161,7 +166,7 @@ describe('tool schemas', () => {
 
 describe('getMetricWithTrend', () => {
   it('resolves a trend-carrying stat for a matching statType and category, carrying its instance id', async () => {
-    const result = await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, ctx);
+    const result = await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
 
     expect(result.found).toBe(true);
     if (!result.found) throw new Error('expected found');
@@ -172,27 +177,27 @@ describe('getMetricWithTrend', () => {
   });
 
   it('reports not_found when no stat matches the requested statType and category', async () => {
-    const result = await getMetricWithTrend({ statType: StatType.MarginTrend, category: 'NonExistent' }, ctx);
+    const result = await getMetricWithTrend({ statType: StatType.MarginTrend, category: 'NonExistent' }, ctx, cache);
     expect(result).toEqual({ found: false, reason: 'not_found' });
   });
 
   it('reports suppressed, not not_found, for a stat excluded by an active correction', async () => {
     mockGetActiveCorrectionStatIds.mockResolvedValue([findSalesTrendId()]);
 
-    const result = await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, ctx);
+    const result = await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
     expect(result).toEqual({ found: false, reason: 'suppressed' });
   });
 
   it('reports not_found when the row fetch comes back empty, the shape an RLS-scoped cross-tenant read produces', async () => {
     mockGetRowsByDataset.mockResolvedValueOnce([]);
 
-    const result = await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, ctx);
+    const result = await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
     expect(result).toEqual({ found: false, reason: 'not_found' });
   });
 
   it('reports not_found for a non-positive or non-integer datasetId without querying', async () => {
     for (const datasetId of [0, -1, 1.5]) {
-      const result = await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, { ...ctx, datasetId });
+      const result = await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, { ...ctx, datasetId }, cache);
       expect(result).toEqual({ found: false, reason: 'not_found' });
     }
     expect(mockGetRowsByDataset).not.toHaveBeenCalled();
@@ -200,14 +205,14 @@ describe('getMetricWithTrend', () => {
 
   it('reports not_found for a non-positive orgId or a non-boolean isAdmin without querying', async () => {
     for (const bad of [{ orgId: 0 }, { orgId: -1 }, { orgId: 1.5 }, { isAdmin: 'yes' as unknown as boolean }]) {
-      const result = await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, { ...ctx, ...bad });
+      const result = await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, { ...ctx, ...bad }, cache);
       expect(result).toEqual({ found: false, reason: 'not_found' });
     }
     expect(mockGetRowsByDataset).not.toHaveBeenCalled();
   });
 
   it('reports not_found when a category-scoped statType is requested with no category', async () => {
-    const result = await getMetricWithTrend({ statType: StatType.Trend }, ctx);
+    const result = await getMetricWithTrend({ statType: StatType.Trend }, ctx, cache);
     expect(result).toEqual({ found: false, reason: 'not_found' });
     expect(mockGetRowsByDataset).not.toHaveBeenCalled();
   });
@@ -215,7 +220,7 @@ describe('getMetricWithTrend', () => {
   it('ignores a category supplied alongside an org-wide statType instead of failing to match', async () => {
     mockGetRowsByDataset.mockResolvedValue(cashFlowRows);
 
-    const result = await getMetricWithTrend({ statType: StatType.CashFlow, category: 'Sales' }, ctx);
+    const result = await getMetricWithTrend({ statType: StatType.CashFlow, category: 'Sales' }, ctx, cache);
     expect(result.found).toBe(true);
     if (!result.found) throw new Error('expected found');
     expect(result.stat.statType).toBe(StatType.CashFlow);
@@ -236,10 +241,13 @@ describe('getMetricWithTrend', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2030-01-01T00:00:00Z'));
     try {
-      const soonAfter = await getMetricWithTrend({ statType: StatType.Runway }, { ...ctx, now: new Date('2026-04-15T00:00:00Z') });
+      // Separate caches -- these two calls stand in for two different
+      // runQaLoop invocations at different points in time, not one invocation
+      // replaying the same now, so they shouldn't share a stat cache entry.
+      const soonAfter = await getMetricWithTrend({ statType: StatType.Runway }, { ...ctx, now: new Date('2026-04-15T00:00:00Z') }, createToolCallCache());
       expect(soonAfter.found).toBe(true);
 
-      const wayAfter = await getMetricWithTrend({ statType: StatType.Runway }, { ...ctx, now: new Date('2026-10-15T00:00:00Z') });
+      const wayAfter = await getMetricWithTrend({ statType: StatType.Runway }, { ...ctx, now: new Date('2026-10-15T00:00:00Z') }, createToolCallCache());
       expect(wayAfter).toEqual({ found: false, reason: 'not_found' });
     } finally {
       vi.useRealTimers();
@@ -251,7 +259,7 @@ describe('compareToPriorPeriods', () => {
   it('marks hasHistory: false rather than fabricating a series when there are fewer than 2 trailing digests', async () => {
     mockGetTrailingDigests.mockResolvedValue([{ weekStart: new Date('2026-04-06'), keyStats: [] }]);
 
-    const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, ctx);
+    const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
 
     expect(result).toEqual({ found: true, current: expect.objectContaining({ id: findSalesTrendId() }), hasHistory: false });
   });
@@ -259,7 +267,7 @@ describe('compareToPriorPeriods', () => {
   it('marks hasHistory: false with zero trailing digests', async () => {
     mockGetTrailingDigests.mockResolvedValue([]);
 
-    const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, ctx);
+    const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
 
     expect(result).toEqual({ found: true, current: expect.objectContaining({ id: findSalesTrendId() }), hasHistory: false });
   });
@@ -272,7 +280,7 @@ describe('compareToPriorPeriods', () => {
       { weekStart: new Date('2026-03-23'), keyStats: [] }, // no matching stat that week
     ]);
 
-    const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales', periodsBack: 3 }, ctx);
+    const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales', periodsBack: 3 }, ctx, cache);
 
     expect(result).toEqual({
       found: true,
@@ -302,7 +310,7 @@ describe('compareToPriorPeriods', () => {
       { weekStart: new Date('2026-03-30'), keyStats: [januaryYoy] },
     ]);
 
-    const result = await compareToPriorPeriods({ statType: StatType.YearOverYear, category: 'Revenue' }, ctx);
+    const result = await compareToPriorPeriods({ statType: StatType.YearOverYear, category: 'Revenue' }, ctx, cache);
 
     // current resolves to the March comparison (the most recent qualifying
     // month), a different instance id than the corrected January one, so the
@@ -311,12 +319,12 @@ describe('compareToPriorPeriods', () => {
   });
 
   it('defaults periodsBack to 4 when omitted', async () => {
-    await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, ctx);
+    await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
     expect(mockGetTrailingDigests).toHaveBeenCalledWith(ORG_ID, 4, {});
   });
 
   it('reports not_found, not a hasHistory marker, when no stat matches the requested statType and category', async () => {
-    const result = await compareToPriorPeriods({ statType: StatType.MarginTrend, category: 'NonExistent' }, ctx);
+    const result = await compareToPriorPeriods({ statType: StatType.MarginTrend, category: 'NonExistent' }, ctx, cache);
     expect(result).toEqual({ found: false, reason: 'not_found' });
   });
 
@@ -327,31 +335,31 @@ describe('compareToPriorPeriods', () => {
       { weekStart: new Date('2026-03-30'), keyStats: [] },
     ]);
 
-    const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, ctx);
+    const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
     expect(result).toEqual({ found: false, reason: 'suppressed' });
   });
 
   it('reports not_found when the row fetch comes back empty, the shape an RLS-scoped cross-tenant read produces', async () => {
     mockGetRowsByDataset.mockResolvedValueOnce([]);
 
-    const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, ctx);
+    const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
     expect(result).toEqual({ found: false, reason: 'not_found' });
   });
 
   it('reports not_found for a non-positive or non-integer datasetId without querying', async () => {
-    const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, { ...ctx, datasetId: 0 });
+    const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, { ...ctx, datasetId: 0 }, cache);
     expect(result).toEqual({ found: false, reason: 'not_found' });
     expect(mockGetRowsByDataset).not.toHaveBeenCalled();
   });
 
   it('reports not_found for a non-positive orgId or a non-boolean isAdmin without querying', async () => {
-    const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, { ...ctx, orgId: -1 });
+    const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, { ...ctx, orgId: -1 }, cache);
     expect(result).toEqual({ found: false, reason: 'not_found' });
     expect(mockGetRowsByDataset).not.toHaveBeenCalled();
   });
 
   it('reports not_found when a category-scoped statType is requested with no category', async () => {
-    const result = await compareToPriorPeriods({ statType: StatType.Trend }, ctx);
+    const result = await compareToPriorPeriods({ statType: StatType.Trend }, ctx, cache);
     expect(result).toEqual({ found: false, reason: 'not_found' });
     expect(mockGetRowsByDataset).not.toHaveBeenCalled();
   });
@@ -363,21 +371,69 @@ describe('compareToPriorPeriods', () => {
       { weekStart: new Date('2026-03-23'), keyStats: [] },
     ]);
 
-    const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, ctx);
+    const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
 
     expect(result).toEqual({ found: true, current: expect.objectContaining({ id: findSalesTrendId() }), hasHistory: false });
   });
 
   it('clamps periodsBack into the schema-documented 2-8 range instead of passing an out-of-range value to the query', async () => {
-    await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales', periodsBack: 0 }, ctx);
+    await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales', periodsBack: 0 }, ctx, cache);
     expect(mockGetTrailingDigests).toHaveBeenCalledWith(ORG_ID, 2, {});
 
     mockGetTrailingDigests.mockClear();
-    await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales', periodsBack: 100 }, ctx);
+    await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales', periodsBack: 100 }, ctx, cache);
     expect(mockGetTrailingDigests).toHaveBeenCalledWith(ORG_ID, 8, {});
 
     mockGetTrailingDigests.mockClear();
-    await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales', periodsBack: Number.NaN }, ctx);
+    await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales', periodsBack: Number.NaN }, ctx, cache);
     expect(mockGetTrailingDigests).toHaveBeenCalledWith(ORG_ID, 4, {});
+  });
+});
+
+describe('ToolCallCache', () => {
+  it('shares a cache hit across two identical getMetricWithTrend calls, hitting getRowsByDataset only once', async () => {
+    const first = await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
+    const second = await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
+
+    expect(mockGetRowsByDataset).toHaveBeenCalledTimes(1);
+    if (!first.found || !second.found) throw new Error('expected both calls to find the stat');
+    expect(second.stat).toBe(first.stat);
+  });
+
+  it('lets compareToPriorPeriods reuse a stat already cached by a getMetricWithTrend call for the same statType/category', async () => {
+    const priorLookup = await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
+    if (!priorLookup.found) throw new Error('expected the prior lookup to find the stat');
+
+    const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
+
+    // getRowsByDataset still runs a second time -- compareToPriorPeriods's
+    // periodsBack-bearing loadToolContext key misses the digest-free one --
+    // but the stat itself comes from the cache, not a second resolveStatByType.
+    expect(mockGetRowsByDataset).toHaveBeenCalledTimes(2);
+    if (!result.found) throw new Error('expected found');
+    expect(result.current).toBe(priorLookup.stat);
+  });
+
+  it('lets getMetricWithTrend reuse a stat already cached by a compareToPriorPeriods call for the same statType/category', async () => {
+    const priorLookup = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
+    if (!priorLookup.found) throw new Error('expected the prior lookup to find the stat');
+
+    const result = await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
+
+    // Same story in reverse -- compareToPriorPeriods's digest-bearing loadToolContext
+    // key doesn't cover getMetricWithTrend's digest-free one, so getRowsByDataset
+    // still runs a second time, but the stat itself is the same cached instance.
+    expect(mockGetRowsByDataset).toHaveBeenCalledTimes(2);
+    if (!result.found) throw new Error('expected found');
+    expect(result.stat).toBe(priorLookup.current);
+  });
+
+  it('rejects both tool functions before any DB call when the signal is already aborted', async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, ctx, cache, controller.signal)).rejects.toThrow();
+    await expect(compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, ctx, cache, controller.signal)).rejects.toThrow();
+    expect(mockGetRowsByDataset).not.toHaveBeenCalled();
   });
 });
