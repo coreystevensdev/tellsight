@@ -206,6 +206,34 @@ describe('send worker retries-exhausted analytics (AC #8)', () => {
     );
   });
 
+  it('does not emit DIGEST_FAILED when job.data fails schema validation', async () => {
+    const { initDigestSendWorker } = await import('./workers.js');
+    initDigestSendWorker();
+    const w = findWorker('digest-send');
+    const { logger } = await import('../../lib/logger.js');
+
+    const malformedJob = {
+      id: 'send-z',
+      data: { ...sendJobData, orgId: undefined },
+      attemptsMade: 3,
+      opts: { attempts: 3 },
+    };
+
+    (w as unknown as { listeners: Map<string, Array<(...args: unknown[]) => void>> })
+      .listeners.get('failed')!
+      .forEach((fn) => fn(malformedJob, new Error('still rate limited')));
+
+    expect(mockTrackEvent).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobId: 'send-z',
+        correlationId: 'corr-1',
+        issues: expect.any(Array),
+      }),
+      expect.any(String),
+    );
+  });
+
   it('does not emit DIGEST_FAILED for the org or orchestrator workers', async () => {
     const { initDigestOrgWorker, initDigestOrchestratorWorker } = await import('./workers.js');
     initDigestOrgWorker();

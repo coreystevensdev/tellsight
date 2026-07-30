@@ -9,7 +9,7 @@ import {
   QUEUE_ORCHESTRATOR,
   QUEUE_ORG,
   QUEUE_SEND,
-  type SendJobData,
+  sendJobDataSchema,
 } from './queue.js';
 import { handleOrchestratorJob } from './handlers/orchestrator.js';
 import { handlePerOrgJob } from './handlers/perOrg.js';
@@ -54,15 +54,26 @@ function attachSendFailedAnalytics(worker: Worker): void {
     const totalAttempts = job.opts.attempts ?? 1;
     if (job.attemptsMade < totalAttempts) return;
 
-    const data = job.data as SendJobData | undefined;
-    if (!data) return;
+    const parsed = sendJobDataSchema.safeParse(job.data);
+    if (!parsed.success) {
+      logger.warn(
+        {
+          jobId: job.id,
+          correlationId: typeof job.data?.correlationId === 'string' ? job.data.correlationId : undefined,
+          issues: parsed.error.issues,
+        },
+        'invalid job payload, skipping failed analytics',
+      );
+      return;
+    }
 
-    trackEvent(data.orgId, data.userId, ANALYTICS_EVENTS.DIGEST_FAILED, {
+    const { orgId, userId, correlationId } = parsed.data;
+    trackEvent(orgId, userId, ANALYTICS_EVENTS.DIGEST_FAILED, {
       reason: 'retries_exhausted',
       attemptsMade: job.attemptsMade,
       totalAttempts,
       message: err instanceof Error ? err.message : String(err),
-      correlationId: data.correlationId,
+      correlationId,
     });
   });
 }
