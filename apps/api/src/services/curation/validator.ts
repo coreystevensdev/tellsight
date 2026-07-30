@@ -4,6 +4,7 @@ import {
   citeTagCapture,
   citeTagGlobal,
   citeClosingTagGlobal,
+  citeTagEnclosedGlobal,
 } from 'shared/constants';
 import { statInstanceId } from './computation.js';
 import type { ComputedStat } from './types.js';
@@ -302,12 +303,20 @@ export function validateCiteRefs(summary: string, stats: ComputedStat[], dataset
 // to the self-closing form so a missing-slash tag doesn't persist permanently
 // unpaired once its matching </cite> is gone. A bare tag (no id attribute at
 // all) has nothing to validate against invalidRefs, so it strips unconditionally.
+// The citeTagEnclosedGlobal pass runs first to drop text the model wrote
+// between a non-self-closing open tag and its </cite>, before the tag-only
+// passes below ever see it.
 export function stripInvalidCiteRefs(summary: string, invalidRefs: string[]): string {
   const ids = new Set(invalidRefs);
-  return summary.replace(citeClosingTagGlobal(), '').replace(citeTagGlobal(), (full) => {
-    const idMatch = full.match(/id="([^"]*)"/);
-    if (!idMatch) return '';
-    const id = idMatch[1]!;
-    return ids.has(id) ? '' : `<cite id="${id}"/>`;
-  });
+  return summary
+    .replace(citeTagEnclosedGlobal(), (_full, id: string | undefined) =>
+      id !== undefined && !ids.has(id) ? `<cite id="${id}"/>` : '',
+    )
+    .replace(citeClosingTagGlobal(), '')
+    .replace(citeTagGlobal(), (full) => {
+      const idMatch = full.match(/id="([^"]*)"/);
+      if (!idMatch) return '';
+      const id = idMatch[1]!;
+      return ids.has(id) ? '' : `<cite id="${id}"/>`;
+    });
 }

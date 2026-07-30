@@ -1,5 +1,5 @@
 import { logger } from '../../lib/logger.js';
-import { AI_DISCLAIMER, citeTagGlobal, citeTagCapture, citeClosingTagGlobal } from 'shared/constants';
+import { AI_DISCLAIMER, citeTagGlobal, citeTagCapture, citeClosingTagGlobal, citeTagEnclosedGlobal } from 'shared/constants';
 import { BANNED_IMPERATIVES } from 'shared/agent';
 import { GET_METRIC_WITH_TREND_TOOL, COMPARE_TO_PRIOR_PERIODS_TOOL } from './interpretationTools.js';
 import type { QaLoopResult, QaTermination } from './qaLoop.js';
@@ -61,19 +61,26 @@ function citableIds(toolResults: QaLoopResult['toolResults']): Set<string> {
 // Strip-not-throw, same convention as validator.ts's stripInvalidCiteRefs: a
 // surviving valid tag is normalized to self-closing form, an orphaned closing
 // tag is dropped unconditionally, and a bare tag (no id attribute) has nothing
-// to check against allowedIds so it strips unconditionally too.
+// to check against allowedIds so it strips unconditionally too. The enclosed-span
+// pass runs first so text between a non-self-closing tag and its </cite> never
+// survives as literal prose.
 function stripInvalidCites(text: string, allowedIds: Set<string>): { text: string; citedStatIds: string[] } {
   const cited = new Set<string>();
   for (const match of text.matchAll(citeTagCapture())) {
     if (allowedIds.has(match[1]!)) cited.add(match[1]!);
   }
 
-  const stripped = text.replace(citeClosingTagGlobal(), '').replace(citeTagGlobal(), (full) => {
-    const idMatch = full.match(/id="([^"]*)"/);
-    if (!idMatch) return '';
-    const id = idMatch[1]!;
-    return allowedIds.has(id) ? `<cite id="${id}"/>` : '';
-  });
+  const stripped = text
+    .replace(citeTagEnclosedGlobal(), (_full, id: string | undefined) =>
+      id !== undefined && allowedIds.has(id) ? `<cite id="${id}"/>` : '',
+    )
+    .replace(citeClosingTagGlobal(), '')
+    .replace(citeTagGlobal(), (full) => {
+      const idMatch = full.match(/id="([^"]*)"/);
+      if (!idMatch) return '';
+      const id = idMatch[1]!;
+      return allowedIds.has(id) ? `<cite id="${id}"/>` : '';
+    });
 
   return { text: stripped, citedStatIds: [...cited] };
 }

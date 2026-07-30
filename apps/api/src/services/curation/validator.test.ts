@@ -572,9 +572,24 @@ describe('stripInvalidCiteRefs', () => {
     expect(stripInvalidCiteRefs(summary, [])).toBe('<cite id="1:runway:_:_"/> good orphan');
   });
 
-  it('normalizes a surviving valid tag to the self-closing form so it is not left permanently unpaired once its closing tag is stripped', () => {
+  it('normalizes a surviving valid tag to the self-closing form and drops the enclosed text', () => {
     const summary = '<cite id="1:runway:_:_">3 months</cite> tight';
-    expect(stripInvalidCiteRefs(summary, [])).toBe('<cite id="1:runway:_:_"/>3 months tight');
+    expect(stripInvalidCiteRefs(summary, [])).toBe('<cite id="1:runway:_:_"/> tight');
+  });
+
+  it('strips an invalid tag along with its enclosed text', () => {
+    const summary = '<cite id="ghost">3 months</cite> tight';
+    expect(stripInvalidCiteRefs(summary, ['ghost'])).toBe(' tight');
+  });
+
+  it('resolves a nested cite tag on its own validity instead of collapsing both into one match', () => {
+    const summary = '<cite id="a">text <cite id="b">inner</cite> more</cite> tight';
+    expect(stripInvalidCiteRefs(summary, ['b'])).toBe('<cite id="a"/>text  more tight');
+  });
+
+  it('drops the enclosed text when the closing tag has a stray space before the bracket', () => {
+    const summary = '<cite id="1:runway:_:_">3 months</cite > tight';
+    expect(stripInvalidCiteRefs(summary, [])).toBe('<cite id="1:runway:_:_"/> tight');
   });
 
   it('strips a bare self-closed tag without throwing', () => {

@@ -132,6 +132,72 @@ describe('assembleQaAnswer', () => {
     expect(result.citedStatIds).toEqual([]);
   });
 
+  it('normalizes a valid non-self-closing cite to self-closing and drops its enclosed text', () => {
+    const result = assembleQaAnswer(
+      loopResult({
+        answer: 'Runway is <cite id="1:runway:_:_">3 months</cite> at this burn.',
+        toolResults: [compareResult('1:runway:_:_')],
+      }),
+    );
+
+    expect(result.answer).toContain('<cite id="1:runway:_:_"/>');
+    expect(result.answer).not.toContain('3 months');
+    expect(result.citedStatIds).toEqual(['1:runway:_:_']);
+  });
+
+  it('strips an invalid non-self-closing cite along with its enclosed text', () => {
+    const result = assembleQaAnswer(
+      loopResult({
+        answer: 'Sales grew 12% <cite id="fabricated">wrong</cite> this quarter.',
+        toolResults: [getMetricResult('3:trend:Sales:0')],
+      }),
+    );
+
+    expect(result.answer).not.toContain('fabricated');
+    expect(result.answer).not.toContain('wrong');
+    expect(result.citedStatIds).toEqual([]);
+  });
+
+  it('strips a bare non-self-closing cite along with its enclosed text', () => {
+    const result = assembleQaAnswer(
+      loopResult({
+        answer: 'Sales grew 12% <cite>wrong</cite> this quarter.',
+        toolResults: [getMetricResult('3:trend:Sales:0')],
+      }),
+    );
+
+    expect(result.answer).not.toContain('<cite');
+    expect(result.answer).not.toContain('wrong');
+    expect(result.citedStatIds).toEqual([]);
+  });
+
+  it('resolves a nested cite tag on its own validity instead of collapsing both into one match', () => {
+    const result = assembleQaAnswer(
+      loopResult({
+        answer: 'Sales grew <cite id="3:trend:Sales:0">up <cite id="fabricated">wrong</cite> more</cite> this quarter.',
+        toolResults: [getMetricResult('3:trend:Sales:0')],
+      }),
+    );
+
+    expect(result.answer).toContain('<cite id="3:trend:Sales:0"/>');
+    expect(result.answer).not.toContain('fabricated');
+    expect(result.answer).not.toContain('wrong');
+    expect(result.citedStatIds).toEqual(['3:trend:Sales:0']);
+  });
+
+  it('drops the enclosed text when the closing tag has a stray space before the bracket', () => {
+    const result = assembleQaAnswer(
+      loopResult({
+        answer: 'Runway is <cite id="1:runway:_:_">3 months</cite > at this burn.',
+        toolResults: [compareResult('1:runway:_:_')],
+      }),
+    );
+
+    expect(result.answer).toContain('<cite id="1:runway:_:_"/>');
+    expect(result.answer).not.toContain('3 months');
+    expect(result.citedStatIds).toEqual(['1:runway:_:_']);
+  });
+
   it('logs a warning and still returns the answer when a banned imperative is present', () => {
     const result = assembleQaAnswer(loopResult({ answer: 'You should cut costs this month.' }));
 

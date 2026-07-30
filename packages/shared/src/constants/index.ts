@@ -169,6 +169,22 @@ export function citeClosingTagGlobal(): RegExp {
 export function citeClosingTagOpenFragment(): RegExp {
   return /<\/(?:c|ci|cit|cite)?$/;
 }
+// Separate from citeTagGlobal because it matches the non-self-closing open
+// tag plus its enclosed content as one unit: the model sometimes writes
+// <cite id="x">some text</cite> instead of the self-closing form, and
+// stripping the tags alone would leave "some text" behind as literal prose.
+// Whatever the model put inside the tag is discarded along with it -- the
+// prompt only ever instructs the self-closing form, so enclosed content is
+// treated as malformed output, not a value worth salvaging. The body can't
+// contain another <cite or </cite>, so a tag's own match never swallows a
+// second tag nested or chained inside it -- but that also means a tag
+// wrapping another cite tag fails to match here at all and falls through
+// to the tag-only pass below, where the wrapper's own directly-owned text
+// still leaks (nested cite tags aren't valid grammar to begin with; DW-94
+// scoped this to the single, non-nested tag case).
+export function citeTagEnclosedGlobal(): RegExp {
+  return /<cite(?:\s+id="([^"]*)")?\s*>(?:(?!<\/?cite)[\s\S])*?<\/cite\s*>/g;
+}
 export function stripAllCiteTags(text: string): string {
   return text.replace(citeTagGlobal(), '').replace(citeClosingTagGlobal(), '');
 }
