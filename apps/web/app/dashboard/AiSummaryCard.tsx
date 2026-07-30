@@ -8,6 +8,7 @@ import { useAiStream, stripDisplayTags } from '@/lib/hooks/useAiStream';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { trackClientEvent } from '@/lib/analytics';
 import { UpgradeCta } from '@/components/common/UpgradeCta';
+import { Spinner } from '@/components/ui/spinner';
 import { AiSummarySkeleton } from './AiSummarySkeleton';
 import { ShareMenu, type ShareStatus, type LinkStatus } from './ShareMenu';
 import { parseStatBindings, type StatBinding } from './parseStatBindings';
@@ -67,20 +68,6 @@ export function truncateAtWordBoundary(
   const words = text.split(/\s+/).filter(Boolean);
   if (words.length <= maxWords) return { preview: text, wasTruncated: false };
   return { preview: words.slice(0, maxWords).join(' '), wasTruncated: true };
-}
-
-function RetrySpinner() {
-  return (
-    <svg
-      className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-    >
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-    </svg>
-  );
 }
 
 function StreamingCursor() {
@@ -600,7 +587,7 @@ export function AiSummaryCard({
             onClick={retry}
             className="mt-3 inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
           >
-            {retryPending && <RetrySpinner />}
+            {retryPending && <Spinner className="mr-2" />}
             {retryPending ? 'Retrying...' : 'Try again'}
           </button>
         )}
