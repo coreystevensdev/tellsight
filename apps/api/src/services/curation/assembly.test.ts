@@ -19,7 +19,7 @@ vi.mock('node:fs', () => ({
 Stat types: {{statTypeList}}
 Categories: {{categoryCount}}
 Insights: {{insightCount}}
-Allow: {{allowedStatIds}}
+Allow: {{allowedStatTypes}}
 Template end`;
   }),
 }));
@@ -73,7 +73,7 @@ function setDefaultFsMock(readFileSyncMock: ReturnType<typeof vi.fn>) {
 Stat types: {{statTypeList}}
 Categories: {{categoryCount}}
 Insights: {{insightCount}}
-Allow: {{allowedStatIds}}
+Allow: {{allowedStatTypes}}
 Template end`;
   });
 }
@@ -147,7 +147,7 @@ describe('assemblePrompt', () => {
         err.code = 'ENOENT';
         throw err;
       }
-      return 'Allow: {{allowedStatIds}}';
+      return 'Allow: {{allowedStatTypes}}';
     });
 
     const { assemblePrompt } = await import('./assembly.js');
@@ -166,7 +166,7 @@ describe('assemblePrompt', () => {
         err.code = 'ENOENT';
         throw err;
       }
-      return 'Allow: {{allowedStatIds}}';
+      return 'Allow: {{allowedStatTypes}}';
     });
 
     const { assemblePrompt } = await import('./assembly.js');

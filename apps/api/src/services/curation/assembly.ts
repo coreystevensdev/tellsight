@@ -171,7 +171,7 @@ function renderUser(
     businessContext: string;
     benchmarks: string;
     statTypeList: string;
-    allowedStatIds: string;
+    allowedStatTypes: string;
     categoryCount: string;
     insightCount: string;
     priorContext: string;
@@ -183,7 +183,7 @@ function renderUser(
     .replace('{{businessContext}}', vars.businessContext)
     .replace('{{industryBenchmarks}}', vars.benchmarks)
     .replace('{{statTypeList}}', vars.statTypeList)
-    .replace('{{allowedStatIds}}', vars.allowedStatIds)
+    .replace('{{allowedStatTypes}}', vars.allowedStatTypes)
     .replace('{{categoryCount}}', vars.categoryCount)
     .replace('{{insightCount}}', vars.insightCount)
     .replace('{{priorContext}}', vars.priorContext);
@@ -210,7 +210,7 @@ export function assemblePrompt(
       businessContext,
       benchmarks,
       statTypeList: 'none',
-      allowedStatIds: 'none',
+      allowedStatTypes: 'none',
       categoryCount: '0',
       insightCount: '0',
       priorContext,
@@ -232,7 +232,7 @@ export function assemblePrompt(
 
   const statSummaries = insights.map((i) => formatStat(i, datasetId)).join('\n');
   const statTypes = [...new Set(insights.map((i) => i.stat.statType))];
-  const allowedStatIds = [...statTypes].sort().join(', ');
+  const allowedStatTypes = [...statTypes].sort().join(', ');
   const categories = new Set(insights.map((i) => i.stat.category).filter(Boolean));
   const { breakdown } = insights[0]!;
 
@@ -242,7 +242,7 @@ export function assemblePrompt(
     businessContext,
     benchmarks,
     statTypeList: statTypes.join(', '),
-    allowedStatIds,
+    allowedStatTypes,
     categoryCount: String(categories.size),
     insightCount: String(insights.length),
     priorContext,

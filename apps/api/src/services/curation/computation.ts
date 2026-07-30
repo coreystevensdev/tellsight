@@ -931,7 +931,7 @@ export function computeStats(
 }
 
 // Per-instance id for the audit drawer and NL Q&A citation system.
-// Different from allowedStatIds (assembly.ts), which refers to stat *types*, not instances.
+// Different from allowedStatTypes (assembly.ts), which refers to stat *types*, not instances.
 export function statInstanceId(stat: ComputedStat, datasetId: number): string {
   // Swap for lookalike characters rather than stripping. The quote swap
   // keeps a literal ASCII quote from breaking the <cite id="..."> attribute

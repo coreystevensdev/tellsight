@@ -553,14 +553,14 @@ describe('chart-tag pipeline integration', () => {
     vi.resetModules();
   });
 
-  it('assembles a prompt with the stat-ID allowlist injected', async () => {
+  it('assembles a prompt with the stat-type allowlist injected', async () => {
     const { readFileSync } = await import('node:fs');
     // path-aware mock, scoring config still loads JSON, prompt-template
     // calls return the allowlist-aware mock
     vi.mocked(readFileSync).mockImplementation((...args: unknown[]) => {
       const p = String(args[0]);
       if (p.includes('prompt-templates')) {
-        return 'Allowlist: {{allowedStatIds}}\nStats:\n{{statSummaries}}\n';
+        return 'Allowlist: {{allowedStatTypes}}\nStats:\n{{statSummaries}}\n';
       }
       return JSON.stringify({
         version: '1.0',
