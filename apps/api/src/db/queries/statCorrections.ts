@@ -2,7 +2,7 @@ import { and, desc, eq, lt } from 'drizzle-orm';
 
 import { db, dbAdmin, type DbTransaction } from '../../lib/db.js';
 import { ConflictError } from '../../lib/appError.js';
-import { statCorrections } from '../schema.js';
+import { statCorrections, orgs, datasets } from '../schema.js';
 
 export type StatCorrectionRow = typeof statCorrections.$inferSelect;
 
@@ -61,6 +61,43 @@ export async function getCorrectionsByDataset(
     .from(statCorrections)
     .where(and(eq(statCorrections.orgId, orgId), eq(statCorrections.datasetId, datasetId)))
     .orderBy(desc(statCorrections.createdAt));
+}
+
+// Cross-org admin discovery route, same reasoning as auditLogs.query and
+// getOrgsWithStats: there's no per-org list of pending Tier 2 requests
+// anywhere in the product, so the admin has no way to find one without this.
+export async function getPendingCorrections(client: Client = dbAdmin) {
+  return client
+    .select({
+      id: statCorrections.id,
+      orgId: statCorrections.orgId,
+      orgName: orgs.name,
+      datasetId: statCorrections.datasetId,
+      datasetName: datasets.name,
+      statInstanceId: statCorrections.statInstanceId,
+      note: statCorrections.note,
+      appliesGoingForward: statCorrections.appliesGoingForward,
+      createdAt: statCorrections.createdAt,
+    })
+    .from(statCorrections)
+    .innerJoin(orgs, eq(orgs.id, statCorrections.orgId))
+    .innerJoin(datasets, eq(datasets.id, statCorrections.datasetId))
+    .where(eq(statCorrections.status, 'pending'))
+    .orderBy(desc(statCorrections.createdAt));
+}
+
+// Unscoped by status, unlike resolveCorrection's guarded UPDATE, so a failed
+// resolve can tell a missing row apart from one that's already settled.
+export async function findById(
+  correctionId: number,
+  orgId: number,
+  client: Client = dbAdmin,
+): Promise<StatCorrectionRow | null> {
+  const [row] = await client
+    .select()
+    .from(statCorrections)
+    .where(and(eq(statCorrections.id, correctionId), eq(statCorrections.orgId, orgId)));
+  return row ?? null;
 }
 
 // Approve/reject a pending Tier 2 request. Atomic WHERE status = 'pending',

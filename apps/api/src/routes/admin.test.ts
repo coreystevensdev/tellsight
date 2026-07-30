@@ -12,7 +12,10 @@ const mockGetAnalyticsEventsTotal = vi.fn();
 const mockAuditQuery = vi.fn();
 const mockAuditTotal = vi.fn();
 const mockResolveCorrection = vi.fn();
+const mockGetPendingCorrections = vi.fn();
+const mockFindById = vi.fn();
 const mockMarkStale = vi.fn().mockResolvedValue(undefined);
+const mockAudit = vi.fn();
 
 vi.mock('../services/auth/tokenService.js', () => ({
   verifyAccessToken: mockVerifyAccessToken,
@@ -38,10 +41,16 @@ vi.mock('../db/queries/index.js', () => ({
   },
   statCorrectionsQueries: {
     resolveCorrection: (...args: unknown[]) => mockResolveCorrection(...args),
+    getPendingCorrections: (...args: unknown[]) => mockGetPendingCorrections(...args),
+    findById: (...args: unknown[]) => mockFindById(...args),
   },
   aiSummariesQueries: {
     markStale: (...args: unknown[]) => mockMarkStale(...args),
   },
+}));
+
+vi.mock('../services/audit/auditService.js', () => ({
+  audit: (...args: unknown[]) => mockAudit(...args),
 }));
 
 vi.mock('../lib/db.js', () => ({
@@ -463,6 +472,45 @@ describe('GET /admin/alert-compliance', () => {
   });
 });
 
+const fakePendingCorrections = [
+  {
+    id: 1, orgId: 1, orgName: 'Acme', datasetId: 5, datasetName: 'Q3 Books',
+    statInstanceId: '5:runway:_:_', note: 'This double-counts the SBA loan.',
+    appliesGoingForward: true, createdAt: '2026-07-20T12:00:00.000Z',
+  },
+  {
+    id: 2, orgId: 2, orgName: 'Widgets Co', datasetId: 9, datasetName: 'FY26',
+    statInstanceId: '9:anomaly:_:_', note: 'One-time refund, not a trend.',
+    appliesGoingForward: true, createdAt: '2026-07-21T09:00:00.000Z',
+  },
+];
+
+describe('GET /admin/stat-corrections', () => {
+  it('returns 200 with pending corrections across orgs for admin', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
+    mockGetPendingCorrections.mockResolvedValueOnce(fakePendingCorrections);
+
+    const res = await fetch(`${baseUrl}/admin/stat-corrections`, { headers: authHeaders });
+    const json = (await res.json()) as { data: unknown; meta: { total: number } };
+
+    expect(res.status).toBe(200);
+    expect(json.data).toEqual(fakePendingCorrections);
+    expect(json.meta.total).toBe(2);
+  });
+
+  it('returns 403 for non-admin user', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(regularPayload());
+
+    const res = await fetch(`${baseUrl}/admin/stat-corrections`, { headers: authHeaders });
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 401 without auth', async () => {
+    const res = await fetch(`${baseUrl}/admin/stat-corrections`);
+    expect(res.status).toBe(401);
+  });
+});
+
 const fakeCorrection = {
   id: 3,
   orgId: 10,
@@ -508,6 +556,31 @@ describe('PATCH /admin/stat-corrections/:orgId/:id', () => {
     expect(mockMarkStale).toHaveBeenCalledWith(10, { __tag: 'dbAdmin' }, 7);
   });
 
+  it('writes an audit log with the target org id, not the resolving admin\'s own org', async () => {
+    // Platform admin's own org (99) differs from the org being corrected (10)
+    // on purpose, this is the exact distinction the audit call has to get right.
+    mockVerifyAccessToken.mockResolvedValueOnce({ ...adminPayload(), org_id: 99 });
+    mockResolveCorrection.mockResolvedValueOnce(fakeCorrection);
+
+    const res = await fetch(`${baseUrl}/admin/stat-corrections/10/3`, {
+      method: 'PATCH',
+      headers: authHeaders,
+      body: JSON.stringify({ status: 'approved', expiresInDays: 90 }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockAudit).toHaveBeenCalledTimes(1);
+    const [, entry] = mockAudit.mock.calls[0] as [unknown, Record<string, unknown>];
+    expect(entry).toMatchObject({
+      orgId: 10,
+      userId: 1,
+      action: 'admin.stat_correction_resolved',
+      targetType: 'stat_correction',
+      targetId: '3',
+      metadata: { status: 'approved' },
+    });
+  });
+
   it('rejects a pending correction without requiring expiresInDays', async () => {
     mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
     mockResolveCorrection.mockResolvedValueOnce({ ...fakeCorrection, status: 'rejected', expiresAt: null });
@@ -524,6 +597,9 @@ describe('PATCH /admin/stat-corrections/:orgId/:id', () => {
     expect(mockResolveCorrection).toHaveBeenCalledWith(3, 10, 1, { status: 'rejected' });
     // Rejection has no scoring effect, ever, so nothing to invalidate.
     expect(mockMarkStale).not.toHaveBeenCalled();
+    expect(mockAudit).toHaveBeenCalledTimes(1);
+    const [, entry] = mockAudit.mock.calls[0] as [unknown, Record<string, unknown>];
+    expect(entry).toMatchObject({ metadata: { status: 'rejected' } });
   });
 
   it('rejects an approval missing expiresInDays', async () => {
@@ -554,17 +630,74 @@ describe('PATCH /admin/stat-corrections/:orgId/:id', () => {
     expect(mockResolveCorrection).not.toHaveBeenCalled();
   });
 
-  it('returns 404 when the correction is already resolved (race guard)', async () => {
+  it('returns 404 when the correction id does not exist for the org', async () => {
     mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
     mockResolveCorrection.mockResolvedValueOnce(null);
+    mockFindById.mockResolvedValueOnce(null);
 
     const res = await fetch(`${baseUrl}/admin/stat-corrections/10/3`, {
       method: 'PATCH',
       headers: authHeaders,
       body: JSON.stringify({ status: 'rejected' }),
     });
+    const json = (await res.json()) as { error: { code: string } };
 
     expect(res.status).toBe(404);
+    expect(json.error.code).toBe('NOT_FOUND');
+    expect(mockAudit).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when the correction is already resolved (race guard)', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
+    mockResolveCorrection.mockResolvedValueOnce(null);
+    mockFindById.mockResolvedValueOnce({ ...fakeCorrection, status: 'approved' });
+
+    const res = await fetch(`${baseUrl}/admin/stat-corrections/10/3`, {
+      method: 'PATCH',
+      headers: authHeaders,
+      body: JSON.stringify({ status: 'rejected' }),
+    });
+    const json = (await res.json()) as { error: { code: string; message: string } };
+
+    expect(res.status).toBe(409);
+    expect(json.error.code).toBe('CONFLICT');
+    expect(json.error.message).toContain('approved');
+    expect(mockAudit).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when the correction has already expired', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
+    mockResolveCorrection.mockResolvedValueOnce(null);
+    mockFindById.mockResolvedValueOnce({ ...fakeCorrection, status: 'expired' });
+
+    const res = await fetch(`${baseUrl}/admin/stat-corrections/10/3`, {
+      method: 'PATCH',
+      headers: authHeaders,
+      body: JSON.stringify({ status: 'rejected' }),
+    });
+    const json = (await res.json()) as { error: { code: string; message: string } };
+
+    expect(res.status).toBe(409);
+    expect(json.error.code).toBe('CONFLICT');
+    expect(json.error.message).toContain('expired');
+    expect(mockAudit).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when the correction is a Tier 1 annotation never queued for review', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
+    mockResolveCorrection.mockResolvedValueOnce(null);
+    mockFindById.mockResolvedValueOnce({ ...fakeCorrection, status: null });
+
+    const res = await fetch(`${baseUrl}/admin/stat-corrections/10/3`, {
+      method: 'PATCH',
+      headers: authHeaders,
+      body: JSON.stringify({ status: 'rejected' }),
+    });
+    const json = (await res.json()) as { error: { code: string } };
+
+    expect(res.status).toBe(400);
+    expect(json.error.code).toBe('VALIDATION_ERROR');
+    expect(mockAudit).not.toHaveBeenCalled();
   });
 
   it('returns 403 for non-admin user, correcting org cannot self-approve', async () => {

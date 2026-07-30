@@ -231,6 +231,7 @@ export const AUDIT_ACTIONS = {
   INTEGRATION_CONNECTED: 'integration.connected',
   INTEGRATION_DISCONNECTED: 'integration.disconnected',
   ADMIN_ORG_VIEWED: 'admin.org_viewed',
+  ADMIN_STAT_CORRECTION_RESOLVED: 'admin.stat_correction_resolved',
   SETTINGS_DIGEST_CHANGED: 'settings.digest_changed',
   SHARE_CREATED: 'share.created',
   FINANCIALS_UPDATED: 'financials.updated',

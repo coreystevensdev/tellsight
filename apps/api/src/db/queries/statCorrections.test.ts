@@ -1,10 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
+import { and, eq } from 'drizzle-orm';
+import { statCorrections, orgs, datasets } from '../schema.js';
 
 vi.mock('../../lib/db.js', () => ({ db: {}, dbAdmin: {} }));
 
 const {
   createCorrection,
   getCorrectionsByDataset,
+  getPendingCorrections,
+  findById,
   resolveCorrection,
   getActiveCorrectionStatIds,
   expireCorrections,
@@ -32,6 +36,16 @@ function selectWhereClient(rows: unknown[]) {
   const from = vi.fn(() => ({ where }));
   const select = vi.fn(() => ({ from }));
   return { client: { select } as never, mocks: { select, from, where } };
+}
+
+function selectDoubleJoinClient(rows: unknown[]) {
+  const orderBy = vi.fn().mockResolvedValue(rows);
+  const where = vi.fn(() => ({ orderBy }));
+  const innerJoin2 = vi.fn(() => ({ where }));
+  const innerJoin1 = vi.fn(() => ({ innerJoin: innerJoin2 }));
+  const from = vi.fn(() => ({ innerJoin: innerJoin1 }));
+  const select = vi.fn(() => ({ from }));
+  return { client: { select } as never, mocks: { select, from, innerJoin1, innerJoin2, where, orderBy } };
 }
 
 function updateReturningClient(rows: unknown[]) {
@@ -104,6 +118,29 @@ describe('getCorrectionsByDataset', () => {
   });
 });
 
+describe('getPendingCorrections', () => {
+  it('joins on org id and dataset id and filters to pending status', async () => {
+    const rows = [
+      { id: 1, orgId: 1, orgName: 'Acme', datasetId: 5, datasetName: 'Q3 Books', statInstanceId: '5:runway:_:_' },
+      { id: 2, orgId: 2, orgName: 'Widgets Co', datasetId: 9, datasetName: 'FY26', statInstanceId: '9:anomaly:_:_' },
+    ];
+    const { client, mocks } = selectDoubleJoinClient(rows);
+
+    const result = await getPendingCorrections(client);
+
+    expect(result).toEqual(rows);
+    expect(mocks.innerJoin1).toHaveBeenCalledWith(orgs, eq(orgs.id, statCorrections.orgId));
+    expect(mocks.innerJoin2).toHaveBeenCalledWith(datasets, eq(datasets.id, statCorrections.datasetId));
+    expect(mocks.where).toHaveBeenCalledWith(eq(statCorrections.status, 'pending'));
+  });
+
+  it('returns an empty array when nothing is pending', async () => {
+    const { client } = selectDoubleJoinClient([]);
+
+    expect(await getPendingCorrections(client)).toEqual([]);
+  });
+});
+
 describe('resolveCorrection', () => {
   it('approves a pending correction and sets the computed expiresAt', async () => {
     const expiresAt = new Date('2026-08-22');
@@ -130,6 +167,28 @@ describe('resolveCorrection', () => {
     const { client } = updateReturningClient([]);
 
     expect(await resolveCorrection(3, 1, 9, { status: 'rejected' }, client)).toBeNull();
+  });
+});
+
+describe('findById', () => {
+  it('returns the row regardless of status, scoped by both id and org', async () => {
+    const row = { id: 3, orgId: 1, status: 'approved' };
+    const { client, mocks } = selectWhereClient([row]);
+
+    expect(await findById(3, 1, client)).toEqual(row);
+    expect(mocks.where).toHaveBeenCalledWith(and(eq(statCorrections.id, 3), eq(statCorrections.orgId, 1)));
+  });
+
+  it('returns null when the id exists but under a different org', async () => {
+    const { client } = selectWhereClient([]);
+
+    expect(await findById(3, 2, client)).toBeNull();
+  });
+
+  it('returns null when no row matches the id and org', async () => {
+    const { client } = selectWhereClient([]);
+
+    expect(await findById(999, 1, client)).toBeNull();
   });
 });
 

@@ -13,8 +13,10 @@ import { deleteExpired as deleteExpiredShares } from '../db/queries/shares.js';
 import { auditLogsQueries, statCorrectionsQueries, aiSummariesQueries } from '../db/queries/index.js';
 import { dbAdmin } from '../lib/db.js';
 import { resolveStatCorrectionSchema } from 'shared/schemas';
+import { AUDIT_ACTIONS } from 'shared/constants';
 import { requireUser } from '../lib/requireUser.js';
-import { ValidationError, NotFoundError } from '../lib/appError.js';
+import { ValidationError, NotFoundError, ConflictError } from '../lib/appError.js';
+import { audit } from '../services/audit/auditService.js';
 import { env } from '../config.js';
 import { logger } from '../lib/logger.js';
 
@@ -130,6 +132,14 @@ adminRouter.get('/audit-logs', async (req: Request, res: Response) => {
   });
 });
 
+// Cross-org admin discovery, same reasoning as /orgs and /audit-logs: an admin
+// has no other way to find a pending Tier 2 request without already knowing
+// its org and id. Low-volume queue, not a log, so no pagination.
+adminRouter.get('/stat-corrections', async (_req: Request, res: Response) => {
+  const rows = await statCorrectionsQueries.getPendingCorrections();
+  res.json({ data: rows, meta: { total: rows.length } });
+});
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function parseCorrectionParams(raw: { orgId: string; id: string }): { orgId: number; correctionId: number } {
@@ -162,7 +172,14 @@ adminRouter.patch('/stat-corrections/:orgId/:id', async (req: Request, res: Resp
       : { status: 'rejected' as const };
 
   const row = await statCorrectionsQueries.resolveCorrection(correctionId, orgId, resolverId, resolution);
-  if (!row) throw new NotFoundError('Stat correction not found or already resolved');
+  if (!row) {
+    const existing = await statCorrectionsQueries.findById(correctionId, orgId);
+    if (!existing) throw new NotFoundError('Stat correction not found');
+    if (existing.status === null) {
+      throw new ValidationError('This is a Tier 1 annotation, never queued for review');
+    }
+    throw new ConflictError(`Stat correction is already ${existing.status}`);
+  }
 
   // Approval changes what the next runFullPipeline call excludes, but
   // ai_summaries is cache-first and only goes stale on upload otherwise.
@@ -189,6 +206,18 @@ adminRouter.patch('/stat-corrections/:orgId/:id', async (req: Request, res: Resp
       );
     }
   }
+
+  // orgId here is the correction's target org, not the resolving admin's own
+  // org (req.user.org_id), which is why this calls audit() directly instead
+  // of auditAuth().
+  audit(req, {
+    orgId,
+    userId: resolverId,
+    action: AUDIT_ACTIONS.ADMIN_STAT_CORRECTION_RESOLVED,
+    targetType: 'stat_correction',
+    targetId: String(correctionId),
+    metadata: { status: parsed.data.status },
+  });
 
   logger.info(
     { orgId, correctionId, resolverId, status: parsed.data.status },
