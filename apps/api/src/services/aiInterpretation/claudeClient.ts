@@ -257,6 +257,55 @@ function pendingToolUseIds(state: Anthropic.MessageParam[]): Set<string> {
   );
 }
 
+// Tool output round-trips back into the model's own context on every
+// remaining turn (up to MAX_TOOL_TURNS in qaLoop.ts), so one oversized or
+// bidi/zero-width-laced category (traced back to a raw, org-uploaded CSV
+// value) compounds instead of appearing once. Character-level filtering
+// only -- no semantic prompt-injection detection. Truncation cuts the
+// already-stringified JSON, so a truncated tool_result may not itself be
+// valid JSON; the model still receives it as a legible, deliberately
+// shortened string, which is fine for reading, not for re-parsing. The strip
+// regex is `\p{Cf}` minus ZWJ/ZWNJ (the only two format characters with a
+// legitimate use here, for Arabic/Persian/Devanagari conjuncts and compound
+// emoji) rather than a hand-picked list of "known dangerous" code points --
+// a maintained allowlist misses whatever Cf character nobody thought to name
+// (BOM, word joiner, the Unicode Tag block used in ASCII-smuggling attacks),
+// so the set difference is the safer default.
+const MAX_TOOL_RESULT_CONTENT_LENGTH = 4000;
+// Built via the RegExp constructor, not a literal: the `v` flag needs
+// target es2024+ for TS's literal-regex flag check, and this repo's tsconfig
+// targets es2022. Node 20+ supports `v` at runtime regardless.
+const UNSAFE_CODE_POINTS = new RegExp('[\\p{Cc}\\u2028\\u2029[\\p{Cf}--[\\u200c\\u200d]]]', 'gv');
+const TRUNCATION_MARKER = '... [truncated]';
+
+// value.slice(0, length) can land inside a UTF-16 surrogate pair (an emoji or
+// other astral character in a category value), leaving a lone unpaired
+// surrogate. Back off one code unit when the cut would split a pair.
+function safeSlice(value: string, length: number): string {
+  const cutsHighSurrogate = length > 0 && value.charCodeAt(length - 1) >= 0xd800 && value.charCodeAt(length - 1) <= 0xdbff;
+  return value.slice(0, cutsHighSurrogate ? length - 1 : length);
+}
+
+function sanitizeToolResultContent(output: unknown): string {
+  const raw = JSON.stringify(output) ?? String(output);
+  const stripped = raw.replace(UNSAFE_CODE_POINTS, '');
+
+  if (stripped.length !== raw.length) {
+    logger.warn(
+      { removedCount: raw.length - stripped.length },
+      'Tool result content had unsafe code points stripped before re-entering the conversation',
+    );
+  }
+
+  if (stripped.length <= MAX_TOOL_RESULT_CONTENT_LENGTH) return stripped;
+
+  logger.warn(
+    { preTruncationLength: stripped.length, cap: MAX_TOOL_RESULT_CONTENT_LENGTH },
+    'Tool result content exceeded the length cap and was truncated before re-entering the conversation',
+  );
+  return safeSlice(stripped, MAX_TOOL_RESULT_CONTENT_LENGTH - TRUNCATION_MARKER.length) + TRUNCATION_MARKER;
+}
+
 // Builds the messages array for one turn. `state === null` means this is the
 // first turn (send the caller's question); otherwise `state` is the prior
 // turn's message history and `toolResults` become this turn's tool_result
@@ -311,7 +360,7 @@ function buildConversationMessages(
       content: toolResults.map((result) => ({
         type: 'tool_result' as const,
         tool_use_id: result.toolCallId,
-        content: JSON.stringify(result.output) ?? String(result.output),
+        content: sanitizeToolResultContent(result.output),
         ...(result.isError && { is_error: true }),
       })),
     },

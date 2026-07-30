@@ -816,6 +816,151 @@ describe('converseWithTools', () => {
     ]);
   });
 
+  describe('tool_result content sanitization', () => {
+    const priorState = [
+      { role: 'user', content: 'analyze' },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: {} }] },
+    ];
+
+    async function sendToolResult(output: unknown) {
+      mockCreate.mockResolvedValue({
+        content: [{ type: 'text', text: 'ok' }],
+        usage: { input_tokens: 50, output_tokens: 10 },
+        stop_reason: 'end_turn',
+      });
+
+      const { converseWithTools } = await import('./claudeClient.js');
+      await converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], [
+        { toolCallId: 'call_1', output },
+      ]);
+
+      const body = mockCreate.mock.calls[0]![0] as { messages: Array<{ content: Array<{ content: string }> }> };
+      return body.messages[2]!.content[0]!.content;
+    }
+
+    it('leaves normal stat output unchanged', async () => {
+      const output = { id: '3:trend:Sales:0', category: 'Retail', value: 120 };
+      expect(await sendToolResult(output)).toBe(JSON.stringify(output));
+    });
+
+    it('preserves ZWJ and ZWNJ, the two legitimate joiners excluded from the strip', async () => {
+      const content = await sendToolResult({ category: 'Retail\u200D\u200CSales' });
+      expect(content).toBe(JSON.stringify({ category: 'Retail\u200D\u200CSales' }));
+    });
+
+    it('strips a Cc control character JSON.stringify does not escape', async () => {
+      // JSON.stringify only escapes < 0x20; DEL (0x7F) passes through raw.
+      const content = await sendToolResult({ category: 'Retail\u007fSales' });
+      expect(content).toBe(JSON.stringify({ category: 'RetailSales' }));
+    });
+
+    it('strips a C1 control character', async () => {
+      const content = await sendToolResult({ category: 'Retail\u0085Sales' });
+      expect(content).toBe(JSON.stringify({ category: 'RetailSales' }));
+    });
+
+    it('strips a Unicode Tag-block character (ASCII-smuggling payload)', async () => {
+      // Proves the strip covers all of \p{Cf}, not just a hand-picked list --
+      // the Tag block isn't named anywhere in this file's source.
+      const content = await sendToolResult({ category: 'Retail\u{E0001}Sales' });
+      expect(content).toBe(JSON.stringify({ category: 'RetailSales' }));
+    });
+
+    it('strips bidi-override and zero-width characters from a category value', async () => {
+      const content = await sendToolResult({ category: 'Retail\u202E\u200Bhidden' });
+      expect(content).toBe(JSON.stringify({ category: 'Retailhidden' }));
+    });
+
+    it('strips line and paragraph separator characters', async () => {
+      const content = await sendToolResult({ category: 'Retail\u2028Sales\u2029' });
+      expect(content).toBe(JSON.stringify({ category: 'RetailSales' }));
+    });
+
+    it('truncates oversized output to the length cap with a trailing marker', async () => {
+      const content = await sendToolResult({ category: 'x'.repeat(5000) });
+      expect(content.length).toBeLessThanOrEqual(4000);
+      expect(content.endsWith('... [truncated]')).toBe(true);
+    });
+
+    it('does not truncate content exactly at the cap', async () => {
+      const wrapperLength = JSON.stringify({ category: '' }).length;
+      const content = await sendToolResult({ category: 'x'.repeat(4000 - wrapperLength) });
+      expect(content.length).toBe(4000);
+      expect(content.endsWith('[truncated]')).toBe(false);
+    });
+
+    it('truncates content one character over the cap', async () => {
+      const wrapperLength = JSON.stringify({ category: '' }).length;
+      const content = await sendToolResult({ category: 'x'.repeat(4000 - wrapperLength + 1) });
+      expect(content.length).toBe(4000);
+      expect(content.endsWith('... [truncated]')).toBe(true);
+    });
+
+    it('does not split a surrogate pair at the truncation boundary', async () => {
+      // Sweeps a window of cut positions around the cap so the emoji's
+      // surrogate pair lands exactly on the boundary at least once,
+      // without hand-deriving the marker length's exact offset.
+      const wrapperLength = JSON.stringify({ category: '' }).length;
+      const prefixLength = wrapperLength - 2; // length of `{"category":"`
+      const approxCutOffsetInCategory = 4000 - '... [truncated]'.length - prefixLength;
+      const emoji = '\u{1F600}'; // 2 UTF-16 code units
+
+      for (let offset = -5; offset <= 5; offset++) {
+        const leadingX = Math.max(0, approxCutOffsetInCategory + offset);
+        const content = await sendToolResult({ category: 'x'.repeat(leadingX) + emoji + 'x'.repeat(50) });
+        expect(content).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+        expect(content).not.toMatch(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/);
+      }
+    });
+
+    it('leaves a null output as the literal string "null"', async () => {
+      expect(await sendToolResult(null)).toBe('null');
+    });
+
+    it('leaves an undefined output on the String(output) fallback path', async () => {
+      expect(await sendToolResult(undefined)).toBe('undefined');
+    });
+
+    it('warns with a removed-character count when content is stripped', async () => {
+      await sendToolResult({ category: 'Retail\u202EHidden' });
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        { removedCount: 1 },
+        'Tool result content had unsafe code points stripped before re-entering the conversation',
+      );
+    });
+
+    it('warns with the pre-truncation length and cap when content is truncated', async () => {
+      await sendToolResult({ category: 'x'.repeat(5000) });
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        { preTruncationLength: JSON.stringify({ category: 'x'.repeat(5000) }).length, cap: 4000 },
+        'Tool result content exceeded the length cap and was truncated before re-entering the conversation',
+      );
+    });
+
+    it('does not warn when content needs no stripping or truncation', async () => {
+      await sendToolResult({ category: 'Retail', value: 120 });
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('warns on both the stripping and truncation paths when a single tool result needs both', async () => {
+      const output = { category: 'Retail\u202E' + 'x'.repeat(5000) };
+      const stripped = JSON.stringify(output).replaceAll('\u202E', '');
+      await sendToolResult(output);
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        { removedCount: JSON.stringify(output).length - stripped.length },
+        'Tool result content had unsafe code points stripped before re-entering the conversation',
+      );
+      expect(logger.warn).toHaveBeenCalledWith(
+        { preTruncationLength: stripped.length, cap: 4000 },
+        'Tool result content exceeded the length cap and was truncated before re-entering the conversation',
+      );
+      expect(logger.warn).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it('rejects a non-array state without calling the SDK', async () => {
     const { converseWithTools } = await import('./claudeClient.js');
 
