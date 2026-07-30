@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { logger } from '../../lib/logger.js';
 import { AppError, CostBudgetExceededError } from '../../lib/appError.js';
-import { computeCost, exceedsBudget } from '../../lib/cost.js';
+import { computeCost, exceedsBudget, ABSOLUTE_CEILING_USD } from '../../lib/cost.js';
 import type { PromptInput } from '../aiInterpretation/provider.js';
 import { converseWithTools, type ToolCall, type ToolResultInput } from '../aiInterpretation/claudeClient.js';
 import {
@@ -46,6 +46,14 @@ export const MAX_TOOL_TURNS = 5;
 // response. Every call still gets an answering tool_result, skipped or not,
 // the API requires one per tool_use block in the prior assistant turn.
 export const MAX_TOOL_CALLS_PER_TURN = 6;
+
+// Flat dollar bound, not turn-count-scaled -- a loop whose every turn stays
+// just under exceedsBudget's per-call cap would otherwise coast up to
+// MAX_TOOL_TURNS times that cap before the turn cap alone stopped it. 2x
+// leaves headroom for a legitimate multi-turn answer while staying far below
+// that old ~MAX_TOOL_TURNS-x exposure.
+const LOOP_COST_CEILING_MULTIPLIER = 2;
+export const MAX_LOOP_COST_USD = ABSOLUTE_CEILING_USD * LOOP_COST_CEILING_MULTIPLIER;
 
 const TOOLS = [GET_METRIC_WITH_TREND_TOOL, COMPARE_TO_PRIOR_PERIODS_TOOL];
 
@@ -239,11 +247,12 @@ export async function runQaLoop(question: string, ctx: ToolContext, signal?: Abo
       }
     }
 
-    // Cost checked against the per-turn average, not the raw sum -- exceedsBudget's
-    // cap is calibrated for one call, and summing several ordinary turns would
-    // otherwise trip it well before the turn cap. Checked ahead of the turn cap
-    // so a turn that trips both reports the more informative 'cost-exceeded'.
-    if (exceedsBudget(totalCost / turnCount).exceeded) {
+    // Cost checked two ways: the per-turn average against exceedsBudget's
+    // per-call cap, and totalCost against a flat ceiling that a run of
+    // just-under-cap turns can't evade. Either alone is enough to trip
+    // cost-exceeded, checked ahead of the turn cap so a turn that trips both
+    // reports the more informative outcome.
+    if (exceedsBudget(totalCost / turnCount).exceeded || totalCost > MAX_LOOP_COST_USD) {
       forcedTermination = 'cost-exceeded';
     } else if (turnCount >= MAX_TOOL_TURNS) {
       forcedTermination = 'turn-cap';

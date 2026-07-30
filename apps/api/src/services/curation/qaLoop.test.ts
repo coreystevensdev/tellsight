@@ -9,6 +9,7 @@ const mockExceedsBudget = vi.fn();
 vi.mock('../../lib/cost.js', () => ({
   computeCost: (...args: unknown[]) => mockComputeCost(...args),
   exceedsBudget: (...args: unknown[]) => mockExceedsBudget(...args),
+  ABSOLUTE_CEILING_USD: 1.0,
 }));
 
 const mockConverseWithTools = vi.fn();
@@ -47,7 +48,7 @@ vi.mock('./interpretationTools.js', () => ({
 
 import { logger } from '../../lib/logger.js';
 import { CostBudgetExceededError } from '../../lib/appError.js';
-import { runQaLoop, MAX_TOOL_TURNS } from './qaLoop.js';
+import { runQaLoop, MAX_TOOL_TURNS, MAX_LOOP_COST_USD } from './qaLoop.js';
 import type { ToolContext } from './interpretationTools.js';
 
 const CTX: ToolContext = { orgId: 1, isAdmin: false, datasetId: 7, now: new Date('2026-04-13T00:00:00Z') };
@@ -255,6 +256,52 @@ describe('runQaLoop', () => {
 
     const finalCallArgs = mockConverseWithTools.mock.calls[1]!;
     expect(finalCallArgs[2]).toEqual([]);
+  });
+
+  it('stops issuing tool-enabled turns once totalCost crosses the flat MAX_LOOP_COST_USD ceiling, even though every turn stays under the per-call cap', async () => {
+    // Each turn costs just under the real per-call ceiling (mocked ABSOLUTE_CEILING_USD
+    // is 1.0), so exceedsBudget's average check never trips, but three of them
+    // together clear the flat ceiling well before MAX_TOOL_TURNS would.
+    const costPerTurn = 0.99;
+
+    mockConverseWithTools
+      .mockResolvedValueOnce(turn({ toolCalls: [toolCall({ id: 'call_1' })] }))
+      .mockResolvedValueOnce(turn({ toolCalls: [toolCall({ id: 'call_2' })] }))
+      .mockResolvedValueOnce(turn({ toolCalls: [toolCall({ id: 'call_3' })] }))
+      .mockResolvedValueOnce(turn({ text: 'Here is what I found before the loop cost ceiling tripped.' }));
+    mockComputeCost.mockReturnValueOnce(costPerTurn).mockReturnValueOnce(costPerTurn).mockReturnValueOnce(costPerTurn);
+    mockExceedsBudget
+      .mockReturnValueOnce({ exceeded: false, observed: costPerTurn, cap: 1.5, median: 0.5 })
+      .mockReturnValueOnce({ exceeded: false, observed: costPerTurn, cap: 1.5, median: 0.5 })
+      .mockReturnValueOnce({ exceeded: false, observed: costPerTurn, cap: 1.5, median: 0.5 });
+
+    const result = await runQaLoop(QUESTION, CTX);
+
+    expect(result.termination).toBe('cost-exceeded');
+    expect(result.turnCount).toBe(4);
+    expect(result.turnCount).toBeLessThan(MAX_TOOL_TURNS);
+    expect(mockConverseWithTools).toHaveBeenCalledTimes(4);
+
+    const finalCallArgs = mockConverseWithTools.mock.calls[3]!;
+    expect(finalCallArgs[2]).toEqual([]);
+  });
+
+  it('does not trip cost-exceeded when totalCost lands exactly on MAX_LOOP_COST_USD (strictly-greater, not greater-or-equal)', async () => {
+    const costPerTurn = MAX_LOOP_COST_USD / 2;
+
+    mockConverseWithTools
+      .mockResolvedValueOnce(turn({ toolCalls: [toolCall({ id: 'call_1' })] }))
+      .mockResolvedValueOnce(turn({ toolCalls: [toolCall({ id: 'call_2' })] }))
+      .mockResolvedValueOnce(turn({ text: 'Landed exactly on the ceiling and kept going.' }));
+    mockComputeCost.mockReturnValueOnce(costPerTurn).mockReturnValueOnce(costPerTurn);
+    mockExceedsBudget
+      .mockReturnValueOnce({ exceeded: false, observed: costPerTurn, cap: 1.5, median: 0.5 })
+      .mockReturnValueOnce({ exceeded: false, observed: costPerTurn, cap: 1.5, median: 0.5 });
+
+    const result = await runQaLoop(QUESTION, CTX);
+
+    expect(result.termination).toBe('answered');
+    expect(result.turnCount).toBe(3);
   });
 
   it('recovers from a single-turn cost-anomaly by forcing a no-tools final turn', async () => {
