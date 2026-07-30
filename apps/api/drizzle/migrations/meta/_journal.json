@@ -246,6 +246,13 @@
       "when": 1782777600000,
       "tag": "0034_add-stat-correction-orphaned-status",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1782864000000,
+      "tag": "0035_ai-summaries-digest-unique-excludes-stale",
+      "breakpoints": true
     }
   ]
 }

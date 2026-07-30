@@ -50,7 +50,8 @@ export async function getById(
 }
 
 /** Digest-audience cache lookup. weekStart pins the row to a specific week so
- *  back-to-back Sunday cron ticks land on the same cached row. */
+ *  back-to-back Sunday cron ticks land on the same cached row. Excludes
+ *  staleAt rows so markStale invalidates the current week's digest too. */
 export async function getCachedDigest(
   orgId: number,
   datasetId: number,
@@ -63,6 +64,7 @@ export async function getCachedDigest(
       eq(aiSummaries.datasetId, datasetId),
       eq(aiSummaries.audience, 'digest-weekly'),
       eq(aiSummaries.weekStart, weekStart),
+      isNull(aiSummaries.staleAt),
     ),
   });
 }

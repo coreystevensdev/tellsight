@@ -297,12 +297,14 @@ describe('seed-summary cache regression (AC #14j)', () => {
         eq(aiSummaries.datasetId, 1),
         eq(aiSummaries.audience, 'digest-weekly'),
         eq(aiSummaries.weekStart, weekStart),
+        isNull(aiSummaries.staleAt),
       ),
     });
     const { sql, params } = query.toSQL();
 
     expect(sql).toMatch(/"(?:ai_summaries|aiSummaries)"\."audience"\s*=\s*\$/);
     expect(sql).toMatch(/"(?:ai_summaries|aiSummaries)"\."week_start"\s*=\s*\$/);
+    expect(sql).toMatch(/"(?:ai_summaries|aiSummaries)"\."stale_at"\s+is\s+null/i);
     expect(params).toContain('digest-weekly');
     // Drizzle serializes timestamptz values as ISO strings on the wire.
     const containsWeekStart = params.some((p) =>

@@ -185,13 +185,13 @@ adminRouter.patch('/stat-corrections/:orgId/:id', async (req: Request, res: Resp
   // ai_summaries is cache-first and only goes stale on upload otherwise.
   // Without this the exclusion wouldn't be visible on the dashboard until
   // the org's next CSV upload, even though the DB-level suppression is
-  // already live. This only affects the dashboard-audience cache
-  // (getCachedSummary checks staleAt); the digest-audience cache
-  // (getCachedDigest) is pinned to weekStart by design and never consults
-  // staleAt, so a correction approved after a digest is already cached for
-  // the current week won't retroactively change that cached digest -- it
-  // takes effect on the next digest generation cycle instead, the same way
-  // any other data change already behaves for digest.
+  // already live. markStale invalidates both the dashboard-audience cache
+  // (getCachedSummary checks staleAt) and the digest-audience cache
+  // (getCachedDigest also checks staleAt), so a correction approved after a
+  // digest is already cached for the current week now invalidates that
+  // cached digest too -- the next digest read regenerates it, and
+  // idx_ai_summaries_digest_unique's widened partial condition
+  // (stale_at IS NULL) lets the new row coexist with the stale one.
   // resolveCorrection's WHERE status='pending' guard means a retry after a
   // markStale failure here would 404 (the row is already 'approved'), so
   // this can't be recovered by simply retrying the request -- swallow and

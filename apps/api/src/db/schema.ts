@@ -213,7 +213,7 @@ export const aiSummaries = pgTable(
     index('idx_ai_summaries_org_dataset').on(table.orgId, table.datasetId),
     uniqueIndex('idx_ai_summaries_digest_unique')
       .on(table.orgId, table.datasetId, table.audience, table.weekStart)
-      .where(sql`${table.audience} = 'digest-weekly'`),
+      .where(sql`${table.audience} = 'digest-weekly' AND ${table.staleAt} IS NULL`),
     uniqueIndex('idx_ai_summaries_alert_unique')
       .on(table.orgId, table.datasetId, table.audience, table.fireId)
       .where(sql`${table.audience} = 'alert'`),
