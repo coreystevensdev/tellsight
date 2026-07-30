@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Link from 'next/link';
 
 interface Props {
@@ -16,8 +16,14 @@ type Status = 'idle' | 'pending' | 'success' | 'error';
 export function DigestUnsubscribeConfirmCard({ token }: Props) {
   const [status, setStatus] = useState<Status>('idle');
   const [message, setMessage] = useState('');
+  const pendingRef = useRef(false);
 
   async function confirmUnsubscribe() {
+    // status hasn't committed yet when a second click lands in the same
+    // tick, so both handlers would read 'idle' off a state check; the ref
+    // flips synchronously and actually closes the race.
+    if (pendingRef.current) return;
+    pendingRef.current = true;
     setStatus('pending');
     try {
       const res = await fetch(`/api/digest/unsubscribe/${encodeURIComponent(token)}`, {
@@ -36,13 +42,22 @@ export function DigestUnsubscribeConfirmCard({ token }: Props) {
     } catch {
       setStatus('error');
       setMessage("We couldn't reach our server. Please try again in a few minutes.");
+    } finally {
+      pendingRef.current = false;
     }
+  }
+
+  function retry() {
+    setStatus('idle');
+    setMessage('');
   }
 
   if (status === 'success' || status === 'error') {
     return (
       <>
-        <p className="text-sm leading-relaxed text-muted-foreground">{message}</p>
+        <p aria-live="polite" className="text-sm leading-relaxed text-muted-foreground">
+          {message}
+        </p>
         <div className="mt-8 flex items-center gap-4 text-sm">
           <Link href="/" className="text-primary hover:underline">
             Back to Tellsight
@@ -60,6 +75,11 @@ export function DigestUnsubscribeConfirmCard({ token }: Props) {
               Manage preferences
             </Link>
           )}
+          {status === 'error' && (
+            <button type="button" onClick={retry} className="text-primary hover:underline">
+              Try again
+            </button>
+          )}
         </div>
       </>
     );
@@ -67,7 +87,7 @@ export function DigestUnsubscribeConfirmCard({ token }: Props) {
 
   return (
     <>
-      <p className="text-sm leading-relaxed text-muted-foreground">
+      <p aria-live="polite" className="text-sm leading-relaxed text-muted-foreground">
         You&apos;ll stop receiving weekly digest emails once you confirm.
       </p>
       <button
