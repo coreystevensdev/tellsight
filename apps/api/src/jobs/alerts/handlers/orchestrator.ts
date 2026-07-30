@@ -40,8 +40,9 @@ async function enqueueEvaluateOrg(
 /**
  * Single entry point for both triggers. On-upload jobs carry orgId+datasetId
  * and fan out to exactly one org; cron jobs carry neither and page every
- * eligible org. `evaluateOrg` re-verifies tier and rules itself either way,
- * this handler only decides who gets a job.
+ * eligible org. A payload with only one of the two set is rejected rather
+ * than silently treated as a cron job. `evaluateOrg` re-verifies tier and
+ * rules itself either way, this handler only decides who gets a job.
  */
 export async function handleOrchestratorJob(job: Job): Promise<void> {
   const parsed = orchestratorJobDataSchema.safeParse(job.data);
@@ -60,6 +61,17 @@ export async function handleOrchestratorJob(job: Job): Promise<void> {
   const { orgId, datasetId, correlationId: incomingCorrelationId } = parsed.data;
   const correlationId = incomingCorrelationId === 'cron-bootstrap' ? randomUUID() : incomingCorrelationId;
   const start = Date.now();
+
+  // Schema allows orgId/datasetId independently since cron jobs carry neither, but a
+  // payload with only one set can't be a valid on-upload or cron job -- likely a tampered
+  // or hand-edited job (e.g. a Bull Board retry-with-edit), not one either branch produces.
+  if ((orgId !== undefined) !== (datasetId !== undefined)) {
+    logger.warn(
+      { jobId: job.id, correlationId, orgId, datasetId },
+      'malformed job payload: exactly one of orgId/datasetId defined, skipping',
+    );
+    return;
+  }
 
   if (orgId !== undefined && datasetId !== undefined) {
     await enqueueEvaluateOrg(orgId, datasetId, 'on-upload', correlationId);

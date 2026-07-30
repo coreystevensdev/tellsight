@@ -152,4 +152,51 @@ describe('handleOrchestratorJob: invalid job payload', () => {
       'invalid job payload, skipping',
     );
   });
+
+  it('skips and logs a warning when only orgId is defined', async () => {
+    const { logger } = await import('../../../lib/logger.js');
+
+    await handleOrchestratorJob({
+      id: 'orch-bad-3',
+      data: { orgId: 42, correlationId: 'req-only-org' },
+    } as never);
+
+    expect(mockFindEligibleOrgs).not.toHaveBeenCalled();
+    expect(mockEvaluateOrgQueueAdd).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: 'orch-bad-3', correlationId: 'req-only-org', orgId: 42 }),
+      'malformed job payload: exactly one of orgId/datasetId defined, skipping',
+    );
+  });
+
+  it('skips and logs a warning when only datasetId is defined', async () => {
+    const { logger } = await import('../../../lib/logger.js');
+
+    await handleOrchestratorJob({
+      id: 'orch-bad-4',
+      data: { datasetId: 7, correlationId: 'req-only-dataset' },
+    } as never);
+
+    expect(mockFindEligibleOrgs).not.toHaveBeenCalled();
+    expect(mockEvaluateOrgQueueAdd).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: 'orch-bad-4', correlationId: 'req-only-dataset', datasetId: 7 }),
+      'malformed job payload: exactly one of orgId/datasetId defined, skipping',
+    );
+  });
+
+  it('treats orgId: 0 as defined, not falsy, when datasetId is missing', async () => {
+    const { logger } = await import('../../../lib/logger.js');
+
+    await handleOrchestratorJob({
+      id: 'orch-bad-5',
+      data: { orgId: 0, correlationId: 'req-zero-org' },
+    } as never);
+
+    expect(mockEvaluateOrgQueueAdd).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: 'orch-bad-5', orgId: 0 }),
+      'malformed job payload: exactly one of orgId/datasetId defined, skipping',
+    );
+  });
 });
