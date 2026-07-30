@@ -1244,7 +1244,7 @@ function buckets(entries: Array<[string, { revenue: number; expenses: number }]>
 }
 
 describe('bucketRowsByMonth', () => {
-  it('aggregates income + expenses per local-time month', () => {
+  it('aggregates income + expenses per UTC calendar month', () => {
     const rows = [
       ...midMonth(2026, 1, 10_000, 6_000),
       ...midMonth(2026, 1, 5_000, 1_000), // same month, sums
