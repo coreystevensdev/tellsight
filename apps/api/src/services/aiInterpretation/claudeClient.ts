@@ -216,6 +216,47 @@ async function anthropicGenerateTool(input: PromptInput, tools: ToolDefinition[]
   });
 }
 
+// String content (a plain user question) or an array of content blocks are
+// both valid; a null/non-object block would otherwise crash the tool_use
+// scan below with a raw TypeError instead of the clear error this guards for.
+function isValidMessageContent(content: unknown): boolean {
+  if (typeof content === 'string') return true;
+  return (
+    Array.isArray(content) &&
+    content.length > 0 &&
+    content.every((block) => typeof block === 'object' && block !== null && typeof (block as { type?: unknown }).type === 'string')
+  );
+}
+
+// `[].every(...)` is vacuously true, so an empty array needs its own check --
+// state is never legitimately empty, it's either null (first turn) or a
+// non-empty history built by anthropicConverseWithTools.
+function isMessageParamArray(value: unknown): value is Anthropic.MessageParam[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((m) => {
+      if (typeof m !== 'object' || m === null) return false;
+      const { role, content } = m as { role?: unknown; content?: unknown };
+      return (role === 'user' || role === 'assistant') && isValidMessageContent(content);
+    })
+  );
+}
+
+// The last message in a valid `state` is always the assistant turn that
+// triggered this round-trip (anthropicConverseWithTools always appends one),
+// so its tool_use blocks are exactly the ids this turn's toolResults answer.
+function pendingToolUseIds(state: Anthropic.MessageParam[]): Set<string> {
+  const content = state.at(-1)?.content;
+  if (!Array.isArray(content)) return new Set();
+
+  return new Set(
+    content
+      .filter((block): block is Anthropic.ToolUseBlockParam => block.type === 'tool_use' && typeof block.id === 'string')
+      .map((block) => block.id),
+  );
+}
+
 // Builds the messages array for one turn. `state === null` means this is the
 // first turn (send the caller's question); otherwise `state` is the prior
 // turn's message history and `toolResults` become this turn's tool_result
@@ -227,6 +268,15 @@ function buildConversationMessages(
 ): Anthropic.MessageParam[] {
   if (state === null) return [{ role: 'user', content: input.user }];
 
+  if (!Array.isArray(state)) {
+    throw new Error(
+      `converseWithTools: state must be the message array returned by a prior turn, got ${typeof state}`,
+    );
+  }
+  if (!isMessageParamArray(state)) {
+    throw new Error('converseWithTools: state does not match the message shape returned by a prior turn');
+  }
+
   // An empty tool_result message is only valid on the first turn (state ===
   // null); past that, every turn exists because the prior one returned at
   // least one ToolCall the caller owes a result for.
@@ -234,8 +284,28 @@ function buildConversationMessages(
     throw new Error('converseWithTools: toolResults must be non-empty once state is non-null');
   }
 
+  // Only checks over-count (duplicates) and mismatches (unanswerable ids).
+  // A pending id nothing answers isn't checked -- a caller may legitimately
+  // only resolve a subset of the tools a turn asked for.
+  const pendingIds = pendingToolUseIds(state);
+  const seen = new Set<string>();
+  for (const result of toolResults) {
+    if (seen.has(result.toolCallId)) {
+      throw new Error(
+        `converseWithTools: duplicate toolCallId in toolResults: ${result.toolCallId}`,
+      );
+    }
+    seen.add(result.toolCallId);
+
+    if (!pendingIds.has(result.toolCallId)) {
+      throw new Error(
+        `converseWithTools: toolCallId ${result.toolCallId} does not match a pending tool_use id`,
+      );
+    }
+  }
+
   return [
-    ...(state as Anthropic.MessageParam[]),
+    ...state,
     {
       role: 'user',
       content: toolResults.map((result) => ({

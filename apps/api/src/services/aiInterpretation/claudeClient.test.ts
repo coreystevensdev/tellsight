@@ -800,15 +800,158 @@ describe('converseWithTools', () => {
       usage: { input_tokens: 50, output_tokens: 10 },
     });
 
+    const priorState = [
+      { role: 'user', content: 'analyze' },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'call_bad', name: 'get_metric_with_trend', input: {} }] },
+    ];
+
     const { converseWithTools } = await import('./claudeClient.js');
-    await converseWithTools([], { system: '', user: 'analyze' }, [tool], [
+    await converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], [
       { toolCallId: 'call_bad', output: { error: 'rejected' }, isError: true },
     ]);
 
     const body = mockCreate.mock.calls[0]![0] as { messages: Array<{ content: unknown }> };
-    expect(body.messages[0]!.content).toEqual([
+    expect(body.messages[2]!.content).toEqual([
       { type: 'tool_result', tool_use_id: 'call_bad', content: JSON.stringify({ error: 'rejected' }), is_error: true },
     ]);
+  });
+
+  it('rejects a non-array state without calling the SDK', async () => {
+    const { converseWithTools } = await import('./claudeClient.js');
+
+    await expect(
+      converseWithTools('opaque-string', { system: '', user: 'analyze' }, [tool], [{ toolCallId: 'call_1', output: {} }]),
+    ).rejects.toThrow('state must be the message array returned by a prior turn');
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('rejects an undefined state without calling the SDK', async () => {
+    const { converseWithTools } = await import('./claudeClient.js');
+
+    await expect(
+      converseWithTools(undefined, { system: '', user: 'analyze' }, [tool], [{ toolCallId: 'call_1', output: {} }]),
+    ).rejects.toThrow('state must be the message array returned by a prior turn');
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a state array whose elements are not message-shaped without calling the SDK', async () => {
+    const { converseWithTools } = await import('./claudeClient.js');
+
+    await expect(
+      converseWithTools([1, 2, 3], { system: '', user: 'analyze' }, [tool], [{ toolCallId: 'call_1', output: {} }]),
+    ).rejects.toThrow('state does not match the message shape returned by a prior turn');
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('rejects an empty array state without calling the SDK', async () => {
+    const { converseWithTools } = await import('./claudeClient.js');
+
+    await expect(
+      converseWithTools([], { system: '', user: 'analyze' }, [tool], [{ toolCallId: 'call_1', output: {} }]),
+    ).rejects.toThrow('state does not match the message shape returned by a prior turn');
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a state message with an invalid role without calling the SDK', async () => {
+    const priorState = [{ role: 'system', content: 'analyze' }];
+
+    const { converseWithTools } = await import('./claudeClient.js');
+    await expect(
+      converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], [{ toolCallId: 'call_1', output: {} }]),
+    ).rejects.toThrow('state does not match the message shape returned by a prior turn');
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a state message with a malformed content block without calling the SDK', async () => {
+    const priorState = [
+      { role: 'user', content: 'analyze' },
+      { role: 'assistant', content: [null] },
+    ];
+
+    const { converseWithTools } = await import('./claudeClient.js');
+    await expect(
+      converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], [{ toolCallId: 'call_1', output: {} }]),
+    ).rejects.toThrow('state does not match the message shape returned by a prior turn');
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a state message with an empty content array without calling the SDK', async () => {
+    const priorState = [
+      { role: 'user', content: 'analyze' },
+      { role: 'assistant', content: [] },
+    ];
+
+    const { converseWithTools } = await import('./claudeClient.js');
+    await expect(
+      converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], [{ toolCallId: 'call_1', output: {} }]),
+    ).rejects.toThrow('state does not match the message shape returned by a prior turn');
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('rejects any toolCallId when the prior turn left no tool_use blocks pending', async () => {
+    const priorState = [
+      { role: 'user', content: 'analyze' },
+      { role: 'assistant', content: [{ type: 'text', text: 'thinking out loud' }] },
+    ];
+
+    const { converseWithTools } = await import('./claudeClient.js');
+    await expect(
+      converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], [{ toolCallId: 'call_1', output: {} }]),
+    ).rejects.toThrow('does not match a pending tool_use id');
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a duplicate toolCallId without calling the SDK', async () => {
+    const priorState = [
+      { role: 'user', content: 'analyze' },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: {} }] },
+    ];
+
+    const { converseWithTools } = await import('./claudeClient.js');
+    await expect(
+      converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], [
+        { toolCallId: 'call_1', output: { value: 1 } },
+        { toolCallId: 'call_1', output: { value: 2 } },
+      ]),
+    ).rejects.toThrow('duplicate toolCallId');
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a toolCallId that does not match a pending tool_use id without calling the SDK', async () => {
+    const priorState = [
+      { role: 'user', content: 'analyze' },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: {} }] },
+    ];
+
+    const { converseWithTools } = await import('./claudeClient.js');
+    await expect(
+      converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], [{ toolCallId: 'call_9', output: {} }]),
+    ).rejects.toThrow('does not match a pending tool_use id');
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('allows toolResults to answer only a subset of the pending tool_use ids', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'text', text: 'ok' }],
+      usage: { input_tokens: 10, output_tokens: 5 },
+    });
+    const priorState = [
+      { role: 'user', content: 'analyze' },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: {} },
+          { type: 'tool_use', id: 'call_2', name: 'get_metric_with_trend', input: {} },
+        ],
+      },
+    ];
+
+    const { converseWithTools } = await import('./claudeClient.js');
+    await converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], [
+      { toolCallId: 'call_1', output: { value: 1 } },
+    ]);
+
+    expect(mockCreate).toHaveBeenCalledTimes(1);
   });
 
   it('omits tools and tool_choice from the request when tools is empty, forcing a text-only turn', async () => {
