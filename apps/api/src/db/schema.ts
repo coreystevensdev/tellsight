@@ -729,12 +729,17 @@ export const statCorrectionStatusEnum = pgEnum('stat_correction_status', [
   'approved',
   'rejected',
   'expired',
+  'orphaned',
 ]);
 
 // Tier 1 (annotation) rows carry status: null, they're never a queue item.
 // Tier 2 ("apply going forward") rows go through pending -> approved/rejected,
-// then approved -> expired once expiresAt passes. idx_stat_corrections_org_stat_active
-// (partial unique, status in pending/approved) is what actually enforces the
+// then approved -> expired once expiresAt passes, or -> orphaned if the expiry
+// sweep's Anomaly re-validation pass finds the row's statInstanceId no longer
+// matches a fresh recompute (DW-64: an Anomaly id embeds its value, so a
+// QuickBooks-synced dataset's next sync can silently drift it out from under
+// an approved correction). idx_stat_corrections_org_stat_active (partial
+// unique, status in pending/approved) is what actually enforces the
 // one-active-Tier-2-request-per-stat rule; the 409 in the route is UX, the
 // index is the real guarantee under concurrent requests.
 export const statCorrections = pgTable(

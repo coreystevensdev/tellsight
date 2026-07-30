@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { statCorrections, orgs, datasets } from '../schema.js';
 
 vi.mock('../../lib/db.js', () => ({ db: {}, dbAdmin: {} }));
@@ -12,6 +12,8 @@ const {
   resolveCorrection,
   getActiveCorrectionStatIds,
   expireCorrections,
+  getApprovedCorrections,
+  orphanCorrections,
 } = await import('./statCorrections.js');
 
 function insertClient(rows: unknown[], insertError?: unknown) {
@@ -229,5 +231,53 @@ describe('expireCorrections', () => {
     const { client } = updateReturningClient([]);
 
     expect(await expireCorrections(new Date(), client)).toEqual([]);
+  });
+});
+
+describe('getApprovedCorrections', () => {
+  it('returns id, orgId, datasetId, and statInstanceId for every approved row', async () => {
+    const rows = [
+      { id: 1, orgId: 1, datasetId: 5, statInstanceId: '5:anomaly:Sales:v500' },
+      { id: 2, orgId: 1, datasetId: 5, statInstanceId: '5:runway:_:_' },
+    ];
+    const { client, mocks } = selectWhereClient(rows);
+
+    const result = await getApprovedCorrections(client);
+
+    expect(result).toEqual(rows);
+    expect(mocks.where).toHaveBeenCalledWith(eq(statCorrections.status, 'approved'));
+  });
+
+  it('returns an empty array when nothing is approved', async () => {
+    const { client } = selectWhereClient([]);
+
+    expect(await getApprovedCorrections(client)).toEqual([]);
+  });
+});
+
+describe('orphanCorrections', () => {
+  it('flips the given ids to orphaned, guarded by status = approved', async () => {
+    const { client, mocks } = updateReturningClient([{ id: 1 }, { id: 2 }]);
+
+    const result = await orphanCorrections([1, 2], client);
+
+    expect(result).toEqual([1, 2]);
+    expect(mocks.set).toHaveBeenCalledWith({ status: 'orphaned' });
+    expect(mocks.where).toHaveBeenCalledWith(
+      and(inArray(statCorrections.id, [1, 2]), eq(statCorrections.status, 'approved')),
+    );
+  });
+
+  it('returns only the ids that were still approved (race with resolve/expire)', async () => {
+    const { client } = updateReturningClient([{ id: 1 }]);
+
+    expect(await orphanCorrections([1, 2], client)).toEqual([1]);
+  });
+
+  it('returns an empty array without querying the client when given no ids', async () => {
+    const { client, mocks } = updateReturningClient([]);
+
+    expect(await orphanCorrections([], client)).toEqual([]);
+    expect(mocks.update).not.toHaveBeenCalled();
   });
 });

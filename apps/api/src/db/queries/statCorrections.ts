@@ -1,4 +1,4 @@
-import { and, desc, eq, lt } from 'drizzle-orm';
+import { and, desc, eq, inArray, lt } from 'drizzle-orm';
 
 import { db, dbAdmin, type DbTransaction } from '../../lib/db.js';
 import { ConflictError } from '../../lib/appError.js';
@@ -161,4 +161,40 @@ export async function expireCorrections(before: Date, client: Client = dbAdmin):
       orgId: statCorrections.orgId,
       datasetId: statCorrections.datasetId,
     });
+}
+
+export interface ApprovedCorrection {
+  id: number;
+  orgId: number;
+  datasetId: number;
+  statInstanceId: string;
+}
+
+// Feeds the expiry sweep's Anomaly re-validation pass (DW-64). Returns every
+// approved row regardless of stat type; the handler is the one that filters
+// down to Anomaly ids, so this stays a plain unfiltered read.
+export async function getApprovedCorrections(client: Client = dbAdmin): Promise<ApprovedCorrection[]> {
+  return client
+    .select({
+      id: statCorrections.id,
+      orgId: statCorrections.orgId,
+      datasetId: statCorrections.datasetId,
+      statInstanceId: statCorrections.statInstanceId,
+    })
+    .from(statCorrections)
+    .where(eq(statCorrections.status, 'approved'));
+}
+
+// Bulk flip for rows the expiry sweep found no longer match a fresh recompute
+// (DW-64). WHERE status = 'approved' mirrors expireCorrections' guard, so a
+// row that resolved or expired between the sweep's SELECT and this UPDATE
+// can't be double-flipped. Returns only the ids that actually flipped.
+export async function orphanCorrections(ids: number[], client: Client = dbAdmin): Promise<number[]> {
+  if (ids.length === 0) return [];
+  const rows = await client
+    .update(statCorrections)
+    .set({ status: 'orphaned' })
+    .where(and(inArray(statCorrections.id, ids), eq(statCorrections.status, 'approved')))
+    .returning({ id: statCorrections.id });
+  return rows.map((r) => r.id);
 }

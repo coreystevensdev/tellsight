@@ -936,9 +936,10 @@ export function statInstanceId(stat: ComputedStat, datasetId: number): string {
   // Swap for lookalike characters rather than stripping. The quote swap
   // keeps a literal ASCII quote from breaking the <cite id="..."> attribute
   // delimiter downstream (assembly.ts). The colon swap is forward-hardening
-  // (DW-32): no current consumer splits the id on ':', but keeping a literal
-  // colon out of category means the id can't later be misread by a parser
-  // that assumes datasetId:statType:category:discriminator. Both avoid
+  // (DW-32): keeping a literal colon out of category means the id can't be
+  // misread by a parser that assumes datasetId:statType:category:discriminator
+  // -- expire.ts's Anomaly re-validation sweep (DW-64) is exactly that parser,
+  // splitting on ':' to read off the statType segment. Both swaps avoid
   // collapsing two categories that differ only by an escaped character onto
   // the same id, or an escaped-only category onto an empty segment.
   const category = stat.category ? stat.category.replace(/"/g, '”').replace(/:/g, '：') : '_';
