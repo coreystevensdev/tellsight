@@ -24,7 +24,10 @@ function statusLabel(status: string | null): string {
 // path ever touches the AI prompt, Tier 1 is UI-only and Tier 2 only takes
 // effect after admin approval flips it into scoreInsights' exclusion set.
 export function StatCorrectionForm({ datasetId, statId }: StatCorrectionFormProps) {
-  const { corrections, submitStatus, submitError, submitCorrection } = useStatCorrections(datasetId, statId);
+  const { status, corrections, error, submitStatus, submitError, submitCorrection } = useStatCorrections(
+    datasetId,
+    statId,
+  );
   const [note, setNote] = useState('');
   const [appliesGoingForward, setAppliesGoingForward] = useState(false);
 
@@ -44,6 +47,12 @@ export function StatCorrectionForm({ datasetId, statId }: StatCorrectionFormProp
   return (
     <div className="flex flex-col gap-3 border-t border-border pt-4">
       <h3 className="text-sm font-medium text-card-foreground">Something look wrong?</h3>
+
+      {status === 'error' && (
+        <p className="text-sm text-destructive" role="alert">
+          Couldn&apos;t load past corrections: {error || 'Something went wrong.'}
+        </p>
+      )}
 
       {existing.length > 0 && (
         <ul className="flex flex-col gap-2">

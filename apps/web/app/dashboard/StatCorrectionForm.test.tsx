@@ -96,4 +96,36 @@ describe('StatCorrectionForm', () => {
 
     expect(screen.getByText('A pending or approved correction already exists for this stat')).toBeInTheDocument();
   });
+
+  it('shows a fetch-error message when the initial load fails', () => {
+    mockUseStatCorrections.mockReturnValue(baseHookReturn({ status: 'error', error: 'Request failed (500)' }));
+
+    render(<StatCorrectionForm datasetId={7} statId="7:runway:_:_" />);
+
+    expect(screen.getByText("Couldn't load past corrections: Request failed (500)")).toBeInTheDocument();
+  });
+
+  it('still shows a fetch-error message when the hook reports an empty error string', () => {
+    mockUseStatCorrections.mockReturnValue(baseHookReturn({ status: 'error', error: '' }));
+
+    render(<StatCorrectionForm datasetId={7} statId="7:runway:_:_" />);
+
+    expect(screen.getByText("Couldn't load past corrections: Something went wrong.")).toBeInTheDocument();
+  });
+
+  it('shows both the fetch error and a submit error at once, without either hiding the other', () => {
+    mockUseStatCorrections.mockReturnValue(
+      baseHookReturn({
+        status: 'error',
+        error: 'Request failed (500)',
+        submitStatus: 'error',
+        submitError: 'A pending or approved correction already exists for this stat',
+      }),
+    );
+
+    render(<StatCorrectionForm datasetId={7} statId="7:runway:_:_" />);
+
+    expect(screen.getByText("Couldn't load past corrections: Request failed (500)")).toBeInTheDocument();
+    expect(screen.getByText('A pending or approved correction already exists for this stat')).toBeInTheDocument();
+  });
 });
