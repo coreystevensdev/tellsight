@@ -5,7 +5,7 @@ import { requireUser } from '../lib/requireUser.js';
 import { withRlsContext } from '../lib/rls.js';
 import { roleGuard } from '../middleware/roleGuard.js';
 import { statCorrectionsQueries, datasetsQueries } from '../db/queries/index.js';
-import { ValidationError, NotFoundError } from '../lib/appError.js';
+import { ValidationError, NotFoundError, AuthorizationError } from '../lib/appError.js';
 
 export const statCorrectionsRouter = Router();
 
@@ -26,7 +26,10 @@ statCorrectionsRouter.get('/:datasetId', async (req, res: Response) => {
   res.json({ data: corrections });
 });
 
-statCorrectionsRouter.post('/', roleGuard('owner'), async (req, res: Response) => {
+// Tier 1 (a note, no scoring effect) is open to any org member. Tier 2
+// ("apply going forward", admin-reviewed, actually influences future AI
+// output) requires owner, checked below once appliesGoingForward is known.
+statCorrectionsRouter.post('/', roleGuard('member'), async (req, res: Response) => {
   const user = requireUser(req);
   const userId = parseInt(user.sub, 10);
   const parsed = createStatCorrectionSchema.safeParse(req.body);
@@ -43,6 +46,10 @@ statCorrectionsRouter.post('/', roleGuard('owner'), async (req, res: Response) =
   }
 
   const { datasetId, statInstanceId, note, appliesGoingForward } = parsed.data;
+
+  if (appliesGoingForward && user.role !== 'owner') {
+    throw new AuthorizationError('Owner access required to request a correction apply going forward');
+  }
 
   const correction = await withRlsContext(user.org_id, user.isAdmin, async (tx) => {
     const dataset = await datasetsQueries.getDatasetById(user.org_id, datasetId, tx);

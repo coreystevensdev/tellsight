@@ -208,10 +208,17 @@ aiSummaryRouter.get('/:datasetId', subscriptionGate, async (req, res: Response) 
   }
 
   await new Promise<void>((resolve, reject) => {
+    // rateLimitAi fails open on unexpected errors (calls next()) and on an
+    // actual 429 responds via res directly instead of calling next -- this
+    // callback never fires on that path. res.once('finish'/'close') below
+    // is the fallback that unblocks this promise for the 429 and
+    // client-disconnect branches.
     rateLimitAi(req, res, (err?: unknown) => {
       if (err) reject(err);
       else resolve();
     });
+    res.once('finish', resolve);
+    res.once('close', resolve);
   });
 
   if (res.headersSent) return;

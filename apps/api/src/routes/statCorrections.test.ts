@@ -181,8 +181,10 @@ describe('POST /stat-corrections', () => {
     expect(mockCreateCorrection).not.toHaveBeenCalled();
   });
 
-  it('rejects a non-owner org member with 403 before the handler body runs', async () => {
+  it('allows a non-owner org member to create a Tier 1 annotation', async () => {
     mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload({ role: 'member' }));
+    mockGetDatasetById.mockResolvedValueOnce(mockDataset);
+    mockCreateCorrection.mockResolvedValueOnce(mockCorrection);
 
     const res = await fetch(`${baseUrl}/stat-corrections`, {
       method: 'POST',
@@ -190,8 +192,40 @@ describe('POST /stat-corrections', () => {
       body: JSON.stringify({ datasetId: 7, statInstanceId: '7:runway:_:_', note: 'note' }),
     });
 
+    expect(res.status).toBe(201);
+    expect(mockCreateCorrection).toHaveBeenCalledWith(
+      expect.objectContaining({ appliesGoingForward: false }),
+      expect.anything(),
+    );
+  });
+
+  it('rejects a non-owner org member requesting Tier 2 (appliesGoingForward) with 403', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload({ role: 'member' }));
+
+    const res = await fetch(`${baseUrl}/stat-corrections`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({
+        datasetId: 7,
+        statInstanceId: '7:runway:_:_',
+        note: 'note',
+        appliesGoingForward: true,
+      }),
+    });
+    const json = (await res.json()) as { error: { code: string } };
+
     expect(res.status).toBe(403);
+    expect(json.error.code).toBe('FORBIDDEN');
     expect(mockCreateCorrection).not.toHaveBeenCalled();
+  });
+
+  it('returns 401 without auth on POST', async () => {
+    const res = await fetch(`${baseUrl}/stat-corrections`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ datasetId: 7, statInstanceId: '7:runway:_:_', note: 'note' }),
+    });
+    expect(res.status).toBe(401);
   });
 
   it('returns 404 when the dataset belongs to a different org', async () => {
