@@ -32,4 +32,50 @@ describe('deriveDedupKey', () => {
     const y = deriveDedupKey({ kind: 'trend', subject: 'a', facet: 'b' });
     expect(x).not.toBe(y);
   });
+
+  it('collapses "cash runway" and "runway" to the same key', () => {
+    const a = deriveDedupKey({ kind: 'trend', subject: 'cash runway', facet: 'down' });
+    const b = deriveDedupKey({ kind: 'trend', subject: 'runway', facet: 'down' });
+    expect(a).toBe(b);
+  });
+
+  it('collapses "profit margin", "gross margin", and "margin" to the same key', () => {
+    const a = deriveDedupKey({ kind: 'trend', subject: 'profit margin', facet: 'down' });
+    const b = deriveDedupKey({ kind: 'trend', subject: 'gross margin', facet: 'down' });
+    const c = deriveDedupKey({ kind: 'trend', subject: 'margin', facet: 'down' });
+    expect(a).toBe(b);
+    expect(b).toBe(c);
+  });
+
+  it('does not fuzzy-collapse unaliased freeform subjects', () => {
+    const a = deriveDedupKey({ kind: 'trend', subject: 'Marketing' });
+    const b = deriveDedupKey({ kind: 'trend', subject: 'Market' });
+    expect(a).not.toBe(b);
+  });
+
+  it('does not run facet through the subject alias table', () => {
+    const a = deriveDedupKey({ kind: 'trend', subject: 'runway', facet: 'margin' });
+    const b = deriveDedupKey({ kind: 'trend', subject: 'runway', facet: 'gross_margin' });
+    expect(a).not.toBe(b);
+  });
+
+  it('collapses a hyphenated alias variant the same as the space-separated form', () => {
+    const a = deriveDedupKey({ kind: 'trend', subject: 'cash-runway', facet: 'down' });
+    const b = deriveDedupKey({ kind: 'trend', subject: 'runway', facet: 'down' });
+    expect(a).toBe(b);
+  });
+
+  it('collapses a trailing colon the same as the bare subject', () => {
+    const a = deriveDedupKey({ kind: 'trend', subject: 'cash runway:', facet: 'down' });
+    const b = deriveDedupKey({ kind: 'trend', subject: 'runway', facet: 'down' });
+    expect(a).toBe(b);
+  });
+
+  it('does not fall through to Object.prototype for a subject like "__proto__"', () => {
+    const a = deriveDedupKey({ kind: 'trend', subject: '__proto__' });
+    const b = deriveDedupKey({ kind: 'trend', subject: 'constructor' });
+    expect(a).toBe('trend:proto:default');
+    expect(b).toBe('trend:constructor:default');
+    expect(a).not.toBe(b);
+  });
 });
