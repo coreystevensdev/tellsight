@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import { Sheet, SheetContent, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -30,10 +30,15 @@ export function StatDetailSheet({ open, onOpenChange, datasetId, statId }: StatD
   const isMobile = useIsMobile();
   const { status, data, error } = useStatDetail(open ? datasetId : null, open ? statId : null);
   const [showSourceRows, setShowSourceRows] = useState(false);
+  const key = `${datasetId}:${statId}:${open}`;
+  const [priorKey, setPriorKey] = useState(key);
 
-  useEffect(() => {
+  // A different citation (or a fresh open) shouldn't keep the previous
+  // citation's source-rows panel expanded.
+  if (key !== priorKey) {
+    setPriorKey(key);
     setShowSourceRows(false);
-  }, [datasetId, statId, open]);
+  }
 
   if (!statId) return null;
 

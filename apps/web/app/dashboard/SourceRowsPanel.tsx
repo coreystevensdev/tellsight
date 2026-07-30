@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -32,10 +32,14 @@ function SkeletonRows() {
 // own page state so re-opening a different citation resets to page 1.
 export function SourceRowsPanel({ datasetId, statId }: SourceRowsPanelProps) {
   const [page, setPage] = useState(1);
+  const key = `${datasetId}:${statId}`;
+  const [priorKey, setPriorKey] = useState(key);
 
-  useEffect(() => {
+  // Re-opening a different citation's source rows should start back at page 1.
+  if (key !== priorKey) {
+    setPriorKey(key);
     setPage(1);
-  }, [datasetId, statId]);
+  }
 
   const { status, rows, meta, error } = useSourceRows(datasetId, statId, page);
 

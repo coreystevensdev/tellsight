@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Info } from 'lucide-react';
 
 import { AI_DISCLAIMER, stripAllCiteTags } from 'shared/constants';
 import { cn } from '@/lib/utils';
-import { useQaAnswer } from '@/lib/hooks/useQaAnswer';
+import { useQaAnswer, type QaAnswerState } from '@/lib/hooks/useQaAnswer';
 import { UpgradeCta } from '@/components/common/UpgradeCta';
 import { Spinner } from '@/components/ui/spinner';
 import { StatDetailSheet } from './StatDetailSheet';
@@ -119,23 +119,46 @@ function AnswerText({ rawText, onOpenCite }: { rawText: string; onOpenCite: (sta
 export function QaAskBox({ datasetId, className }: QaAskBoxProps) {
   const [question, setQuestion] = useState('');
   const [openCiteId, setOpenCiteId] = useState<string | null>(null);
-  const { status, answer, error, code, ask } = useQaAnswer(datasetId);
+  const [priorDatasetId, setPriorDatasetId] = useState(datasetId);
+  const [staleAnswer, setStaleAnswer] = useState<QaAnswerState | null>(null);
+  const qaAnswer = useQaAnswer(datasetId);
   const inputId = useId();
   const router = useRouter();
 
   // A citation sheet or in-flight question tied to the previous dataset
-  // shouldn't survive a dataset switch -- useQaAnswer resets its own state
-  // on the same dependency, this clears the box's local state alongside it.
-  useEffect(() => {
+  // shouldn't survive a dataset switch. useQaAnswer resets its own state on
+  // the same dependency, but that reset lands a render later via effect
+  // cleanup, so snapshot its still-stale output here and mask it below until
+  // the real output actually moves off the snapshot.
+  if (datasetId !== priorDatasetId) {
+    setPriorDatasetId(datasetId);
     setQuestion('');
     setOpenCiteId(null);
-  }, [datasetId]);
+    setStaleAnswer({ status: qaAnswer.status, answer: qaAnswer.answer, error: qaAnswer.error, code: qaAnswer.code });
+  } else if (
+    staleAnswer &&
+    (qaAnswer.status !== staleAnswer.status ||
+      qaAnswer.answer !== staleAnswer.answer ||
+      qaAnswer.error !== staleAnswer.error ||
+      qaAnswer.code !== staleAnswer.code)
+  ) {
+    setStaleAnswer(null);
+  }
+
+  const { status, answer, error, code, ask } = staleAnswer
+    ? { status: 'idle' as const, answer: null, error: null, code: null, ask: qaAnswer.ask }
+    : qaAnswer;
 
   const isAsking = status === 'asking';
   const canSubmit = question.trim().length > 0 && !isAsking && status !== 'locked' && datasetId !== null;
 
   function submit() {
     if (!canSubmit) return;
+    // A fresh ask on the current dataset is unambiguous proof we're past
+    // the masking window -- clear it here instead of waiting on the
+    // qaAnswer comparison above, which can get stuck if the new ask's
+    // 'asking' state happens to match the stale snapshot field-for-field.
+    setStaleAnswer(null);
     ask(question.trim());
   }
 

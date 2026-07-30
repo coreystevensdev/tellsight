@@ -36,17 +36,28 @@ export function useSourceRows(
   const [rows, setRows] = useState<SourceRowView[]>([]);
   const [meta, setMeta] = useState<SourceRowsMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const key = `${datasetId}:${statId}`;
+  const [priorKey, setPriorKey] = useState(key);
+
+  // The fetch effect below only notices an id change after paint -- without
+  // this, switching directly from one resolved citation to another would
+  // flash the previous citation's stale rows for a frame.
+  if (key !== priorKey) {
+    setPriorKey(key);
+    setStatus('idle');
+    setRows([]);
+    setMeta(null);
+    setError(null);
+  }
 
   useEffect(() => {
-    if (datasetId === null || statId === null) {
-      setStatus('idle');
-      setRows([]);
-      setMeta(null);
-      setError(null);
-      return;
-    }
+    if (datasetId === null || statId === null) return;
 
     const controller = new AbortController();
+    // Kicking off the fetch, not resetting per-id state -- that's the
+    // render-time check above. The abort on cleanup is what this effect
+    // actually synchronizes with the outside world.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setStatus('loading');
     setError(null);
 
