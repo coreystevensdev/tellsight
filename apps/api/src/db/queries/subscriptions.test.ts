@@ -3,19 +3,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockSelect = vi.fn();
 const mockFrom = vi.fn();
 const mockWhere = vi.fn();
+const mockOrderBy = vi.fn();
 const mockLimit = vi.fn() as ReturnType<typeof vi.fn> & { _resultPromise: Promise<unknown[]> };
 
 vi.mock('../../lib/db.js', () => ({
   db: {
     select: () => {
       mockSelect();
-      return { from: (...args: unknown[]) => { mockFrom(...args); return { where: (...wArgs: unknown[]) => { mockWhere(...wArgs); return { limit: (n: number) => { mockLimit(n); return mockLimit._resultPromise; } }; } }; } };
+      return { from: (...args: unknown[]) => { mockFrom(...args); return { where: (...wArgs: unknown[]) => { mockWhere(...wArgs); return { orderBy: (...oArgs: unknown[]) => { mockOrderBy(...oArgs); return { limit: (n: number) => { mockLimit(n); return mockLimit._resultPromise; } }; } }; } }; } };
     },
   },
 }));
 
 vi.mock('../schema.js', () => ({
   subscriptions: {
+    id: 'id',
     orgId: 'org_id',
     status: 'status',
     currentPeriodEnd: 'current_period_end',
@@ -24,6 +26,7 @@ vi.mock('../schema.js', () => ({
 
 vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => args,
+  desc: (a: unknown) => ({ desc: a }),
   eq: (a: unknown, b: unknown) => ({ eq: [a, b] }),
   gt: (a: unknown, b: unknown) => ({ gt: [a, b] }),
   ne: (a: unknown, b: unknown) => ({ ne: [a, b] }),
@@ -157,6 +160,15 @@ describe('getActiveTier', () => {
     expect(statusValues).toContain('active');
     expect(statusValues).toContain('canceled');
   });
+
+  it('orders by id descending for deterministic row selection', async () => {
+    mockLimit._resultPromise = Promise.resolve([]);
+
+    const { getActiveTier } = await import('./subscriptions.js');
+    await getActiveTier(1);
+
+    expect(mockOrderBy).toHaveBeenCalledWith({ desc: 'id' });
+  });
 });
 
 describe('getAgentEnabled', () => {
@@ -190,5 +202,14 @@ describe('getAgentEnabled', () => {
 
     const { getAgentEnabled } = await import('./subscriptions.js');
     expect(await getAgentEnabled(1)).toBe(false);
+  });
+
+  it('orders by id descending for deterministic row selection', async () => {
+    mockLimit._resultPromise = Promise.resolve([]);
+
+    const { getAgentEnabled } = await import('./subscriptions.js');
+    await getAgentEnabled(1);
+
+    expect(mockOrderBy).toHaveBeenCalledWith({ desc: 'id' });
   });
 });

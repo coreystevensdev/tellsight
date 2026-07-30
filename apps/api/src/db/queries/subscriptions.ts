@@ -1,4 +1,4 @@
-import { and, eq, gt, isNotNull, isNull, ne, or } from 'drizzle-orm';
+import { and, desc, eq, gt, isNotNull, isNull, ne, or } from 'drizzle-orm';
 
 import type { SubscriptionTier } from 'shared/types';
 
@@ -27,6 +27,7 @@ export async function getActiveTier(
           ),
         ),
       )
+      .orderBy(desc(subscriptions.id))
       .limit(1);
     return result.length > 0 ? 'pro' : 'free';
   } catch {
@@ -56,6 +57,7 @@ export async function getAgentEnabled(
           ),
         ),
       )
+      .orderBy(desc(subscriptions.id))
       .limit(1);
     return result[0]?.agentEnabled ?? false;
   } catch {

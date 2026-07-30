@@ -3,6 +3,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { ANALYTICS_EVENTS } from 'shared/constants';
 import { subscriptionsQueries } from '../db/queries/index.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
+import { withRlsContext } from '../lib/rls.js';
 import { logger } from '../lib/logger.js';
 
 // Retained for callers that want the nominal type alias; the Request module
@@ -20,8 +21,12 @@ export async function subscriptionGate(req: Request, _res: Response, next: NextF
     return;
   }
 
+  const isAdmin = req.user?.isAdmin ?? false;
+
   try {
-    req.subscriptionTier = await subscriptionsQueries.getActiveTier(orgId);
+    req.subscriptionTier = await withRlsContext(orgId, isAdmin, (tx) =>
+      subscriptionsQueries.getActiveTier(orgId, tx),
+    );
   } catch (err) {
     logger.warn({ orgId, err: (err as Error).message }, 'subscription lookup failed, defaulting to free');
     req.subscriptionTier = 'free';

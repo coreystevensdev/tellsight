@@ -19,6 +19,11 @@ vi.mock('../services/analytics/trackEvent.js', () => ({
   trackEvent: (...args: unknown[]) => mockTrackEvent(...args),
 }));
 
+const mockWithRlsContext = vi.fn();
+vi.mock('../lib/rls.js', () => ({
+  withRlsContext: (...args: unknown[]) => mockWithRlsContext(...args),
+}));
+
 function makeReq(overrides = {}): TieredRequest {
   return { subscriptionTier: undefined, ...overrides } as unknown as TieredRequest;
 }
@@ -29,6 +34,7 @@ describe('subscriptionGate', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     next = vi.fn();
+    mockWithRlsContext.mockImplementation((_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({}));
   });
 
   it('sets subscriptionTier to free when no subscription exists', async () => {
@@ -116,5 +122,28 @@ describe('subscriptionGate', () => {
     await subscriptionGate(req, res, next);
 
     expect(mockTrackEvent).not.toHaveBeenCalled();
+  });
+
+  it('scopes the lookup to the request org via withRlsContext', async () => {
+    mockGetActiveTier.mockResolvedValue('pro');
+    const req = makeReq({ user: { org_id: 7, sub: '1', isAdmin: true } });
+    const res = {} as Response;
+
+    const { subscriptionGate } = await import('./subscriptionGate.js');
+    await subscriptionGate(req, res, next);
+
+    expect(mockWithRlsContext).toHaveBeenCalledWith(7, true, expect.any(Function));
+    expect(mockGetActiveTier).toHaveBeenCalledWith(7, {});
+  });
+
+  it('defaults isAdmin to false when absent from req.user', async () => {
+    mockGetActiveTier.mockResolvedValue('free');
+    const req = makeReq({ user: { org_id: 1, sub: '1' } });
+    const res = {} as Response;
+
+    const { subscriptionGate } = await import('./subscriptionGate.js');
+    await subscriptionGate(req, res, next);
+
+    expect(mockWithRlsContext).toHaveBeenCalledWith(1, false, expect.any(Function));
   });
 });

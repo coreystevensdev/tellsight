@@ -6,6 +6,7 @@ import { requireUser } from '../lib/requireUser.js';
 import { rateLimitAi } from '../middleware/rateLimiter.js';
 import { register, deregister } from '../lib/activeStreams.js';
 import { subscriptionsQueries } from '../db/queries/index.js';
+import { withRlsContext } from '../lib/rls.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
 import { runQaLoop } from '../services/curation/qaLoop.js';
 import { assembleQaAnswer } from '../services/curation/qaAnswer.js';
@@ -57,7 +58,19 @@ qaRouter.post('/:datasetId', async (req, res: Response) => {
 
   // Hard gate, not subscriptionGate's annotate-not-block posture: a question
   // the org isn't entitled to ask has no partial/preview shape to fall back to.
-  const agentEnabled = await subscriptionsQueries.getAgentEnabled(orgId);
+  // withRlsContext can throw before getAgentEnabled's own fail-closed catch
+  // ever runs (bad orgId, dropped connection during SET LOCAL). Catching it
+  // here routes the failure through the fail-closed path below instead of
+  // an unhandled rejection and a raw 500.
+  let agentEnabled: boolean;
+  try {
+    agentEnabled = await withRlsContext(orgId, user.isAdmin, (tx) =>
+      subscriptionsQueries.getAgentEnabled(orgId, tx),
+    );
+  } catch (err) {
+    logger.warn({ orgId, err: (err as Error).message }, 'agent entitlement lookup failed, defaulting to disabled');
+    agentEnabled = false;
+  }
   if (clientDisconnected) return;
   if (!agentEnabled) {
     deregister(abortController);

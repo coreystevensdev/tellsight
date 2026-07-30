@@ -29,6 +29,11 @@ vi.mock('../services/analytics/trackEvent.js', () => ({
   trackEvent: (...args: unknown[]) => mockTrackEvent(...args),
 }));
 
+const mockWithRlsContext = vi.fn();
+vi.mock('../lib/rls.js', () => ({
+  withRlsContext: (...args: unknown[]) => mockWithRlsContext(...args),
+}));
+
 const mockRateLimitAi = vi.fn((_req: unknown, _res: unknown, next: () => void) => next());
 vi.mock('../middleware/rateLimiter.js', () => ({
   rateLimitAi: (req: unknown, res: unknown, next: () => void) => mockRateLimitAi(req, res, next),
@@ -65,7 +70,10 @@ beforeAll(async () => {
 
 afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockWithRlsContext.mockImplementation((_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({}));
+});
 
 function ownerPayload() {
   return {
@@ -187,6 +195,42 @@ describe('POST /qa/:datasetId', () => {
     expect(res.status).toBe(403);
     expect(json.error.code).toBe('AGENT_TIER_REQUIRED');
     expect(mockRunQaLoop).not.toHaveBeenCalled();
+  });
+
+  it('scopes the entitlement check to the request org via withRlsContext', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload());
+    mockGetAgentEnabled.mockResolvedValueOnce(true);
+    mockRunQaLoop.mockResolvedValueOnce(mockLoopResult);
+    mockAssembleQaAnswer.mockReturnValueOnce(mockAnswer);
+
+    await fetch(`${baseUrl}/qa/7`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ question: 'How is my runway?' }),
+    });
+
+    expect(mockWithRlsContext).toHaveBeenCalledWith(10, false, expect.any(Function));
+    expect(mockGetAgentEnabled).toHaveBeenCalledWith(10, {});
+  });
+
+  it('fails closed with 403 and deregisters the abort controller when withRlsContext throws', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload());
+    mockWithRlsContext.mockRejectedValueOnce(new Error('SET LOCAL failed'));
+
+    const { activeCount } = await import('../lib/activeStreams.js');
+    const before = activeCount();
+
+    const res = await fetch(`${baseUrl}/qa/7`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ question: 'How is my runway?' }),
+    });
+    const json = (await res.json()) as { error: { code: string } };
+
+    expect(res.status).toBe(403);
+    expect(json.error.code).toBe('AGENT_TIER_REQUIRED');
+    expect(mockRunQaLoop).not.toHaveBeenCalled();
+    expect(activeCount()).toBe(before);
   });
 
   it('returns 500 when the loop throws', async () => {
