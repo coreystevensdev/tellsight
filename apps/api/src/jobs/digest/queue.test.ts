@@ -74,6 +74,108 @@ describe('queue singletons', () => {
   });
 });
 
+describe('orgJobDataSchema', () => {
+  const base = { orgId: 1, correlationId: 'c1' };
+
+  it('coerces ISO string weekStart/weekEnd into Date instances', async () => {
+    const { orgJobDataSchema } = await import('./queue.js');
+    const result = orgJobDataSchema.safeParse({
+      ...base,
+      weekStart: '2026-05-03T00:00:00.000Z',
+      weekEnd: '2026-05-10T00:00:00.000Z',
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.weekStart).toBeInstanceOf(Date);
+      expect(result.data.weekEnd).toBeInstanceOf(Date);
+      expect(result.data.weekStart.toISOString()).toBe('2026-05-03T00:00:00.000Z');
+      expect(result.data.weekEnd.toISOString()).toBe('2026-05-10T00:00:00.000Z');
+    }
+  });
+
+  it('accepts real Date instances', async () => {
+    const { orgJobDataSchema } = await import('./queue.js');
+    const weekStart = new Date('2026-05-03T00:00:00.000Z');
+    const weekEnd = new Date('2026-05-10T00:00:00.000Z');
+    const result = orgJobDataSchema.safeParse({ ...base, weekStart, weekEnd });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.weekStart).toBeInstanceOf(Date);
+      expect(result.data.weekEnd).toBeInstanceOf(Date);
+    }
+  });
+
+  it('fails on an unparseable weekStart', async () => {
+    const { orgJobDataSchema } = await import('./queue.js');
+    const result = orgJobDataSchema.safeParse({
+      ...base,
+      weekStart: 'not-a-date',
+      weekEnd: '2026-05-10T00:00:00.000Z',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('fails on an unparseable weekEnd', async () => {
+    const { orgJobDataSchema } = await import('./queue.js');
+    const result = orgJobDataSchema.safeParse({
+      ...base,
+      weekStart: '2026-05-03T00:00:00.000Z',
+      weekEnd: 'not-a-date',
+    });
+
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('sendJobDataSchema', () => {
+  const base = {
+    userId: 1,
+    orgId: 1,
+    summaryId: 1,
+    userEmail: 'owner@example.com',
+    orgName: 'Acme',
+    subjectLine: 'Your weekly digest',
+    correlationId: 'c1',
+  };
+
+  it('coerces ISO string weekStart into a Date instance', async () => {
+    const { sendJobDataSchema } = await import('./queue.js');
+    const result = sendJobDataSchema.safeParse({
+      ...base,
+      weekStart: '2026-05-03T00:00:00.000Z',
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.weekStart).toBeInstanceOf(Date);
+      expect(result.data.weekStart.toISOString()).toBe('2026-05-03T00:00:00.000Z');
+    }
+  });
+
+  it('accepts a real Date instance', async () => {
+    const { sendJobDataSchema } = await import('./queue.js');
+    const result = sendJobDataSchema.safeParse({
+      ...base,
+      weekStart: new Date('2026-05-03T00:00:00.000Z'),
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.weekStart).toBeInstanceOf(Date);
+    }
+  });
+
+  it('fails on an unparseable weekStart', async () => {
+    const { sendJobDataSchema } = await import('./queue.js');
+    const result = sendJobDataSchema.safeParse({ ...base, weekStart: 'not-a-date' });
+
+    expect(result.success).toBe(false);
+  });
+});
+
 describe('closeQueues', () => {
   it('closes any initialized queues and resets singletons', async () => {
     const { getOrchestratorQueue, getOrgQueue, closeQueues, getSendQueue } =

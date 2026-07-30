@@ -25,18 +25,14 @@ export interface OrchestratorJobData {
   correlationId: string;
 }
 
-// weekStart/weekEnd skip validation (z.custom always passes) but keep the
-// Date type. BullMQ JSON-serializes them to ISO strings with no
-// re-hydration, so a real worker reads a string here, not a Date -- z.date()
-// would reject that string and turn today's loud, retry-eligible TypeError
-// (from perOrg/perSend calling .getTime()/.toISOString() on a string) into a
-// silently completed job instead.
-const unvalidatedDate = z.custom<Date>(() => true);
-
 export const orgJobDataSchema = z.object({
   orgId: z.number().int().finite(),
-  weekStart: unvalidatedDate,
-  weekEnd: unvalidatedDate,
+  // BullMQ JSON-serializes job.data to Redis, so a real worker reads these
+  // back as ISO strings, not Date instances. z.coerce.date() re-hydrates the
+  // string into a real Date at the parse boundary, before perOrg.ts calls
+  // .getTime() on it.
+  weekStart: z.coerce.date(),
+  weekEnd: z.coerce.date(),
   correlationId: z.string().min(1),
 });
 export type OrgJobData = z.infer<typeof orgJobDataSchema>;
@@ -51,7 +47,9 @@ export const sendJobDataSchema = z.object({
   userId: z.number().int().finite(),
   orgId: z.number().int().finite(),
   summaryId: z.number().int().finite(),
-  weekStart: unvalidatedDate,
+  // Same BullMQ round-trip as orgJobDataSchema.weekStart above: coerce back
+  // into a Date before perSend.ts calls .toISOString() on it.
+  weekStart: z.coerce.date(),
   userEmail: z.string(),
   orgName: z.string(),
   subjectLine: subjectLineSchema.catch(FALLBACK_SUBJECT_LINE),
