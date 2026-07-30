@@ -288,8 +288,10 @@ export function validateCiteRefs(summary: string, stats: ComputedStat[], dataset
   const allowed = new Set(stats.map((s) => statInstanceId(s, datasetId)));
   const invalid = new Set<string>();
   for (const match of summary.matchAll(citeTagCapture())) {
-    const id = match[1]!;
-    if (!allowed.has(id)) invalid.add(id);
+    const id = match[1];
+    // a bare tag has no id to check against allowed; stripInvalidCiteRefs
+    // strips it unconditionally regardless of invalidRefs, so nothing to flag here.
+    if (id !== undefined && !allowed.has(id)) invalid.add(id);
   }
   return { invalidRefs: [...invalid] };
 }
@@ -298,11 +300,14 @@ export function validateCiteRefs(summary: string, stats: ComputedStat[], dataset
 // </cite> left by an off-script open/close pair (that half never carries an
 // id, so it's stripped unconditionally). A surviving valid tag is normalized
 // to the self-closing form so a missing-slash tag doesn't persist permanently
-// unpaired once its matching </cite> is gone.
+// unpaired once its matching </cite> is gone. A bare tag (no id attribute at
+// all) has nothing to validate against invalidRefs, so it strips unconditionally.
 export function stripInvalidCiteRefs(summary: string, invalidRefs: string[]): string {
   const ids = new Set(invalidRefs);
   return summary.replace(citeClosingTagGlobal(), '').replace(citeTagGlobal(), (full) => {
-    const id = full.match(/id="([^"]*)"/)![1]!;
+    const idMatch = full.match(/id="([^"]*)"/);
+    if (!idMatch) return '';
+    const id = idMatch[1]!;
     return ids.has(id) ? '' : `<cite id="${id}"/>`;
   });
 }

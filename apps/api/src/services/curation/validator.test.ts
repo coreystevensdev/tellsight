@@ -532,6 +532,13 @@ describe('validateCiteRefs', () => {
 
     expect(validateCiteRefs(summary, stats, 1)).toEqual({ invalidRefs: [] });
   });
+
+  it('ignores a bare tag with no id attribute instead of flagging it invalid', () => {
+    const stats = [runwayStat(15000, -5000, 3)];
+    const summary = 'Runway is 3 months <cite/> at this burn.';
+
+    expect(validateCiteRefs(summary, stats, 1)).toEqual({ invalidRefs: [] });
+  });
 });
 
 describe('stripInvalidCiteRefs', () => {
@@ -569,6 +576,16 @@ describe('stripInvalidCiteRefs', () => {
     const summary = '<cite id="1:runway:_:_">3 months</cite> tight';
     expect(stripInvalidCiteRefs(summary, [])).toBe('<cite id="1:runway:_:_"/>3 months tight');
   });
+
+  it('strips a bare self-closed tag without throwing', () => {
+    const summary = 'Runway is tight <cite/> this month';
+    expect(stripInvalidCiteRefs(summary, [])).toBe('Runway is tight  this month');
+  });
+
+  it('strips a bare non-self-closed tag without throwing', () => {
+    const summary = 'Runway is tight <cite> this month';
+    expect(stripInvalidCiteRefs(summary, [])).toBe('Runway is tight  this month');
+  });
 });
 
 describe('citeTagCapture malformed tag shapes', () => {
@@ -582,5 +599,17 @@ describe('citeTagCapture malformed tag shapes', () => {
     const matches = [...'<cite id="1:total:Sales:category">'.matchAll(citeTagCapture())];
     expect(matches).toHaveLength(1);
     expect(matches[0]![1]).toBe('1:total:Sales:category');
+  });
+
+  it('captures a bare self-closed tag with an undefined id', () => {
+    const matches = [...'<cite/>'.matchAll(citeTagCapture())];
+    expect(matches).toHaveLength(1);
+    expect(matches[0]![1]).toBeUndefined();
+  });
+
+  it('captures a bare non-self-closed tag with an undefined id', () => {
+    const matches = [...'<cite>'.matchAll(citeTagCapture())];
+    expect(matches).toHaveLength(1);
+    expect(matches[0]![1]).toBeUndefined();
   });
 });

@@ -119,6 +119,19 @@ describe('assembleQaAnswer', () => {
     expect(result.citedStatIds).toEqual([]);
   });
 
+  it('strips a bare cite tag without throwing and without citing it', () => {
+    const result = assembleQaAnswer(
+      loopResult({
+        answer: 'Sales grew 12% <cite/> this quarter.',
+        toolResults: [getMetricResult('3:trend:Sales:0')],
+      }),
+    );
+
+    expect(result.answer).toContain('Sales grew 12%  this quarter.');
+    expect(result.answer).not.toContain('<cite');
+    expect(result.citedStatIds).toEqual([]);
+  });
+
   it('logs a warning and still returns the answer when a banned imperative is present', () => {
     const result = assembleQaAnswer(loopResult({ answer: 'You should cut costs this month.' }));
 

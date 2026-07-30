@@ -139,18 +139,21 @@ export function stripAllStatTags(text: string): string {
 // Per-stat-instance citation token (Story 12.2), a different mechanism from
 // <stat id="statType"/> above: many per paragraph, keyed by statInstanceId
 // (colon-delimited, so the id capture allows anything but a closing quote).
-// The id value may be empty and the trailing slash is optional, an LLM that
-// emits `<cite id=""/>` or drops the self-closing slash still gets captured
-// here instead of leaking as literal text; validateCiteRefs is what actually
-// rejects a bad id.
+// The id attribute itself is optional too: an LLM that emits a bare
+// `<cite>`/`<cite/>`, drops the id, or drops the self-closing slash still
+// gets captured here instead of leaking as literal text, with an empty or
+// undefined id group in the bare case; validateCiteRefs rejects a bad id and
+// ignores a missing one, the strip functions discard both unconditionally.
 export function citeTagGlobal(): RegExp {
-  return /<cite\s+id="[^"]*"\s*\/?>/g;
+  return /<cite(?:\s+id="[^"]*")?\s*\/?>/g;
 }
 export function citeTagCapture(): RegExp {
-  return /<cite\s+id="([^"]*)"\s*\/?>/g;
+  return /<cite(?:\s+id="([^"]*)")?\s*\/?>/g;
 }
+// Also hides a bare "<cite" or "<cite/" fragment with no attribute at all,
+// not just one mid-attribute, since the id is now optional in the tag itself.
 export function citeTagOpenFragment(): RegExp {
-  return /<cite(?:\s[^>]*)?$/;
+  return /<cite\/?(?:\s[^>]*)?$/;
 }
 // Covers the orphaned </cite> an off-script open/close pair leaves behind
 // once the (now-optional-slash) opening regex above eats the opening half.

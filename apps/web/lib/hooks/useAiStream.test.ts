@@ -292,6 +292,15 @@ describe('stripCiteTags', () => {
   it('hides a closing tag fragment split across a chunk boundary', () => {
     expect(stripCiteTags('grew 12%</cit')).toBe('grew 12%');
   });
+
+  it('strips a complete bare tag', () => {
+    expect(stripCiteTags('grew 12% <cite/> this quarter')).toBe('grew 12%  this quarter');
+    expect(stripCiteTags('grew 12% <cite> this quarter')).toBe('grew 12%  this quarter');
+  });
+
+  it('hides a bare self-closing tag streaming fragment', () => {
+    expect(stripCiteTags('prose <cite/')).toBe('prose ');
+  });
 });
 
 describe('stripDisplayTags', () => {

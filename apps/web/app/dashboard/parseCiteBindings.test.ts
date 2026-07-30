@@ -101,4 +101,9 @@ describe('parseCiteBindings', () => {
     const raw = 'Revenue hit $5,000<cite id=""/> this month.';
     expect(parseCiteBindings(raw)).toEqual([]);
   });
+
+  it('does not bind a bare cite tag, even immediately after a number', () => {
+    const raw = 'Revenue hit $5,000<cite/> this month.';
+    expect(parseCiteBindings(raw)).toEqual([]);
+  });
 });
