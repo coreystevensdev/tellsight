@@ -1,6 +1,8 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { webEnv } from '@/lib/config';
 
+const NULL_BODY_STATUSES = new Set([204, 205, 304]);
+
 // GET must never mutate: security-gateway link scanners (Defender Safe
 // Links, Proofpoint, Mimecast) prefetch email links, so this only redirects
 // to the confirm page where the mute happens behind an explicit click.
@@ -16,15 +18,28 @@ export async function POST(
   { params }: { params: Promise<{ token: string }> },
 ) {
   const { token } = await params;
+  let res: Response;
   try {
-    const res = await fetch(`${webEnv.API_INTERNAL_URL}/alerts/mute/${encodeURIComponent(token)}`, {
+    res = await fetch(`${webEnv.API_INTERNAL_URL}/alerts/mute/${encodeURIComponent(token)}`, {
       method: 'POST',
     });
-    return NextResponse.json(await res.json(), { status: res.status });
-  } catch {
+  } catch (err) {
+    console.warn('[mute-bare-route] upstream unreachable', err);
     return NextResponse.json(
       { error: { code: 'UPSTREAM_UNAVAILABLE', message: 'API server unreachable' } },
       { status: 502 },
+    );
+  }
+
+  try {
+    return NextResponse.json(await res.json(), { status: res.status });
+  } catch (err) {
+    console.warn('[mute-bare-route] upstream returned non-JSON body', err);
+    // NextResponse.json throws if paired with a null-body status (204/205/304)
+    const status = NULL_BODY_STATUSES.has(res.status) ? 502 : res.status;
+    return NextResponse.json(
+      { error: { code: 'UPSTREAM_INVALID_RESPONSE', message: 'API server returned an invalid response' } },
+      { status },
     );
   }
 }

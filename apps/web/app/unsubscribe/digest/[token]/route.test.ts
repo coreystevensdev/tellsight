@@ -1,0 +1,109 @@
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { NextRequest } from 'next/server';
+import { GET, POST } from './route';
+
+const params = Promise.resolve({ token: 'sometoken' });
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe('GET /unsubscribe/digest/[token]', () => {
+  it('redirects to the confirm page without calling fetch', () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    const res = GET(new NextRequest('http://localhost/unsubscribe/digest/sometoken'));
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get('location')).toBe('http://localhost/unsubscribe/digest/sometoken/confirm');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /unsubscribe/digest/[token]', () => {
+  it('passes through a successful upstream response', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      status: 200,
+      json: () => Promise.resolve({ data: { unsubscribed: true } }),
+    } as Response);
+
+    const res = await POST(new NextRequest('http://localhost/unsubscribe/digest/sometoken', { method: 'POST' }), { params });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ data: { unsubscribed: true } });
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('passes through an invalid-token error response unchanged', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      status: 400,
+      json: () => Promise.resolve({ error: { code: 'INVALID_TOKEN', message: 'bad token' } }),
+    } as Response);
+
+    const res = await POST(new NextRequest('http://localhost/unsubscribe/digest/sometoken', { method: 'POST' }), { params });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: { code: 'INVALID_TOKEN', message: 'bad token' } });
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('returns 502 UPSTREAM_UNAVAILABLE when fetch rejects', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('connection refused'));
+
+    const res = await POST(new NextRequest('http://localhost/unsubscribe/digest/sometoken', { method: 'POST' }), { params });
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({
+      error: { code: 'UPSTREAM_UNAVAILABLE', message: 'API server unreachable' },
+    });
+    expect(warnSpy).toHaveBeenCalledWith('[unsubscribe-bare-route] upstream unreachable', expect.any(Error));
+  });
+
+  it('returns the upstream status with UPSTREAM_INVALID_RESPONSE when the body is not JSON', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      status: 500,
+      json: () => Promise.reject(new SyntaxError('Unexpected token < in JSON')),
+    } as unknown as Response);
+
+    const res = await POST(new NextRequest('http://localhost/unsubscribe/digest/sometoken', { method: 'POST' }), { params });
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({
+      error: { code: 'UPSTREAM_INVALID_RESPONSE', message: 'API server returned an invalid response' },
+    });
+    expect(warnSpy).toHaveBeenCalledWith('[unsubscribe-bare-route] upstream returned non-JSON body', expect.any(SyntaxError));
+  });
+
+  it('falls back to 502 instead of a null-body status when the body is not JSON', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      status: 204,
+      json: () => Promise.reject(new SyntaxError('Unexpected end of JSON input')),
+    } as unknown as Response);
+
+    const res = await POST(new NextRequest('http://localhost/unsubscribe/digest/sometoken', { method: 'POST' }), { params });
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({
+      error: { code: 'UPSTREAM_INVALID_RESPONSE', message: 'API server returned an invalid response' },
+    });
+  });
+
+  it('forwards to the expected upstream URL', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      status: 200,
+      json: () => Promise.resolve({ data: { unsubscribed: true } }),
+    } as Response);
+
+    await POST(new NextRequest('http://localhost/unsubscribe/digest/sometoken', { method: 'POST' }), { params });
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('http://api:3001/digest/unsubscribe/sometoken'),
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+});
