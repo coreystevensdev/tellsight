@@ -143,7 +143,7 @@ describe('GET /ai-summaries/:datasetId', () => {
 
   it('calls streamToSSE on cache miss', async () => {
     mockGetCachedSummary.mockResolvedValue(null);
-    mockStreamToSSE.mockImplementation(async (_req: unknown, res: { end: () => void }) => {
+    mockStreamToSSE.mockImplementation(async (res: { end: () => void }) => {
       res.end();
       return { ok: true };
     });
@@ -152,10 +152,10 @@ describe('GET /ai-summaries/:datasetId', () => {
 
     expect(mockStreamToSSE).toHaveBeenCalledOnce();
     const args = mockStreamToSSE.mock.calls[0]!;
-    expect(args[2]).toBe(1);     // orgId
-    expect(args[3]).toBe(42);    // datasetId
-    expect(typeof args[4]).toBe('number'); // userId from JWT
-    expect(args[5]).toBe('free'); // tier
+    expect(args[1]).toBe(1);     // orgId
+    expect(args[2]).toBe(42);    // datasetId
+    expect(typeof args[3]).toBe('number'); // userId from JWT
+    expect(args[4]).toBe('free'); // tier
   });
 
   it('rejects invalid datasetId', async () => {

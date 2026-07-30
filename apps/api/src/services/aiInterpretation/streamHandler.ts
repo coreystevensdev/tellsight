@@ -1,4 +1,4 @@
-import type { Request, Response } from 'express';
+import type { Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import type { SseTextEvent, SseDoneEvent, SseErrorEvent, SsePartialEvent, SseUpgradeRequiredEvent, BusinessProfile } from 'shared/types';
 import type { SubscriptionTier } from '../../db/queries/subscriptions.js';
@@ -54,7 +54,6 @@ export interface StreamOutcome {
 }
 
 export async function streamToSSE(
-  req: Request,
   res: Response,
   orgId: number,
   datasetId: number,
@@ -63,6 +62,17 @@ export async function streamToSSE(
   client?: typeof db | DbTransaction,
   businessProfile?: BusinessProfile | null,
 ): Promise<StreamOutcome> {
+  // A caller can already have consumed this connection's 'close' event before
+  // reaching here (aiSummary.ts's rate-limit wait listens via res.once('close', ...)),
+  // and Node never replays a past event to a listener registered after it fired.
+  // qa.ts avoids this by registering its listener before any async gates; this
+  // function runs after aiSummary.ts's gates, so res.destroyed is the only way
+  // left to catch that disconnect.
+  if (res.destroyed) {
+    logger.info({ orgId, datasetId }, 'client disconnected before AI stream started');
+    return { ok: false };
+  }
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -89,7 +99,11 @@ export async function streamToSSE(
     abortController.abort();
   }, AI_TIMEOUT_MS);
 
-  req.on('close', () => {
+  // res.on('close'), not req.on('close'): req fires 'close' as soon as express.json()
+  // drains the request body, even on a live connection -- verified against this
+  // project's Express version. res only closes early on a real drop.
+  res.on('close', () => {
+    if (res.writableEnded) return;
     clientDisconnected = true;
     deregister(abortController);
     abortController.abort();
