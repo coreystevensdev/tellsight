@@ -541,12 +541,29 @@ describe('generateWithTools', () => {
 
     const { generateWithTools } = await import('./claudeClient.js');
     const { logger } = await import('../../lib/logger.js');
-    await generateWithTools({ system: '', user: 'analyze' }, [tool]);
+    const result = await generateWithTools({ system: '', user: 'analyze' }, [tool]);
 
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({ model: expect.any(String) }),
       expect.stringContaining('truncated'),
     );
+    expect(result).toEqual([]);
+  });
+
+  it('drops every tool call, not just the last one, when truncated at max_tokens', async () => {
+    mockCreate.mockResolvedValue({
+      content: [
+        { type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'First' } },
+        { type: 'tool_use', id: 'call_2', name: 'record_proposal', input: { title: 'cut off' } },
+      ],
+      usage: { input_tokens: 900, output_tokens: 1024 },
+      stop_reason: 'max_tokens',
+    });
+
+    const { generateWithTools } = await import('./claudeClient.js');
+    const result = await generateWithTools({ system: '', user: 'analyze' }, [tool]);
+
+    expect(result).toEqual([]);
   });
 
   it('does not warn when the response completes normally', async () => {

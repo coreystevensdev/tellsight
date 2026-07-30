@@ -26,7 +26,7 @@ export const actionMutates = (type: string): boolean => ACTION_MUTATES[type] ?? 
 
 const moneyImpactSchema = z.object({
   amount: z.number().nonnegative(),
-  currency: z.string().length(3), // ISO 4217
+  currency: z.string().regex(/^[A-Z]{3}$/, 'currency must be an uppercase ISO 4217 code'),
 });
 
 const proposedActionSchema = z.object({

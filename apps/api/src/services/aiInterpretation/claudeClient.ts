@@ -177,7 +177,7 @@ async function anthropicGenerateTool(input: PromptInput, tools: ToolDefinition[]
       if (message.stop_reason === 'max_tokens') {
         logger.warn(
           { model: env.CLAUDE_MODEL, usage: message.usage },
-          'Claude API tool-use response truncated at max_tokens, tool_use input may be incomplete',
+          'Claude API tool-use response truncated at max_tokens, dropping all tool calls from this response',
         );
       } else if (message.stop_reason !== 'end_turn' && message.stop_reason !== 'tool_use') {
         logger.warn(
@@ -204,6 +204,10 @@ async function anthropicGenerateTool(input: PromptInput, tools: ToolDefinition[]
         { model: env.CLAUDE_MODEL, usage: message.usage, cost, toolCallCount: calls.length },
         'Claude API tool-use response received',
       );
+
+      // no signal for which tool_use block a max_tokens cutoff actually clipped,
+      // so drop the whole batch rather than gamble one's JSON closed cleanly
+      if (message.stop_reason === 'max_tokens') return [];
 
       return calls;
     } catch (err) {

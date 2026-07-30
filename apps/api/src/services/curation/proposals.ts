@@ -70,7 +70,11 @@ const RECORD_PROPOSAL_TOOL: ToolDefinition = {
             type: 'object',
             properties: {
               amount: { type: 'number', minimum: 0 },
-              currency: { type: 'string', minLength: 3, maxLength: 3, description: 'ISO 4217 currency code, e.g. USD.' },
+              currency: {
+                type: 'string',
+                pattern: '^[A-Z]{3}$',
+                description: 'ISO 4217 currency code, three uppercase letters, e.g. USD.',
+              },
             },
             required: ['amount', 'currency'],
           },
