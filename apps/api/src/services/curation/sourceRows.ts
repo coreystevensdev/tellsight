@@ -49,8 +49,8 @@ export function resolveSourceRows(rows: DataRow[], stat: IdentifiedStat): DataRo
       const { month, currentYearLabel, priorYearLabel } = stat.details;
       return rows.filter((r) => {
         if (r.parentCategory !== 'Income') return false;
-        if (MONTH_NAMES[r.date.getMonth()] !== month) return false;
-        const year = String(r.date.getFullYear());
+        if (MONTH_NAMES[r.date.getUTCMonth()] !== month) return false;
+        const year = String(r.date.getUTCFullYear());
         return year === currentYearLabel || year === priorYearLabel;
       });
     }
@@ -59,7 +59,7 @@ export function resolveSourceRows(rows: DataRow[], stat: IdentifiedStat): DataRo
       const basisMonths = new Set(stat.details.basisMonths);
       return rows.filter((r) => {
         if (r.parentCategory !== 'Income') return false;
-        return basisMonths.has(`${MONTH_NAMES[r.date.getMonth()]} ${r.date.getFullYear()}`);
+        return basisMonths.has(`${MONTH_NAMES[r.date.getUTCMonth()]} ${r.date.getUTCFullYear()}`);
       });
     }
 

@@ -245,3 +245,77 @@ describe('resolveSourceRows', () => {
     expect(fixtureRows.length).toBe(rowsSnapshot);
   });
 });
+
+// DW-52 regression: the YearOverYear/SeasonalProjection filters used to read
+// r.date with local-time accessors. A UTC-midnight day-1 row rolls back a
+// calendar day under a TZ west of UTC, so the filter's month/year label never
+// matches the stat it's supposed to be citing and the row silently drops out
+// of the audit-drawer citation. Stubbed per-test, not file-wide, so the rest
+// of this file stays proof the filters are timezone-independent away from a
+// boundary.
+describe('resolveSourceRows UTC month-boundary regression (DW-52)', () => {
+  function stubTz(tz: string): () => void {
+    const original = process.env.TZ;
+    process.env.TZ = tz;
+    return () => {
+      if (original === undefined) delete process.env.TZ;
+      else process.env.TZ = original;
+    };
+  }
+
+  it('year_over_year: matches UTC-midnight day-1 rows as source rows under a TZ west of UTC', () => {
+    const restore = stubTz('America/New_York');
+    try {
+      const boundaryRows = [
+        row('Revenue', 'Income', new Date(Date.UTC(2025, 1, 1)), 1000),
+        row('Revenue', 'Income', new Date(Date.UTC(2026, 1, 1)), 1500),
+      ];
+      const boundaryIdentified = assignIds(computeStats(boundaryRows), 1);
+      const stat = findStat(StatType.YearOverYear, undefined, boundaryIdentified);
+
+      const rows = resolveSourceRows(boundaryRows, stat);
+      expect(rows).toEqual(boundaryRows);
+    } finally {
+      restore();
+    }
+  });
+
+  it('seasonal_projection: matches a UTC-midnight day-1 basis row as a source row under a TZ west of UTC', () => {
+    const restore = stubTz('America/New_York');
+    try {
+      const boundaryRows = [
+        row('Revenue', 'Income', new Date(2026, 0, 15), 1200), // safe, local-time mid-month
+        row('Revenue', 'Income', new Date(Date.UTC(2025, 1, 1)), 900), // boundary row under test
+      ];
+      const boundaryIdentified = assignIds(computeStats(boundaryRows), 1);
+      const stat = findStat(StatType.SeasonalProjection, undefined, boundaryIdentified);
+
+      const rows = resolveSourceRows(boundaryRows, stat);
+      expect(rows).toEqual([boundaryRows[1]]);
+    } finally {
+      restore();
+    }
+  });
+
+  it('year_over_year: does not pull in a UTC-midnight row from the adjacent month at the same boundary', () => {
+    // The mirror-image failure mode: a row that should stay excluded getting
+    // pulled backward across the boundary into the cited month, not just a
+    // cited row getting pushed out of it.
+    const restore = stubTz('America/New_York');
+    try {
+      const marchRow = row('Revenue', 'Income', new Date(Date.UTC(2026, 2, 1)), 400); // March 1st UTC midnight
+      const boundaryRows = [
+        row('Revenue', 'Income', new Date(Date.UTC(2025, 1, 1)), 1000),
+        row('Revenue', 'Income', new Date(Date.UTC(2026, 1, 1)), 1500),
+        marchRow,
+      ];
+      const boundaryIdentified = assignIds(computeStats(boundaryRows), 1);
+      const stat = findStat(StatType.YearOverYear, undefined, boundaryIdentified);
+
+      const rows = resolveSourceRows(boundaryRows, stat);
+      expect(rows).not.toContain(marchRow);
+    } finally {
+      restore();
+    }
+  });
+});

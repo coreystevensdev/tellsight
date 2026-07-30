@@ -50,8 +50,11 @@ function parseAmount(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// UTC, not local time: `date` values arrive from Drizzle/postgres-js as
+// UTC-midnight instants, and the process's local timezone shouldn't decide
+// which calendar month a row lands in near a boundary.
 export function monthKey(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
 function groupByCategory(rows: DataRow[]): Map<string, CategoryGroup> {
@@ -252,8 +255,8 @@ function computeYearOverYear(rows: DataRow[]): ComputedStat[] {
     const amt = parseAmount(row.amount);
     if (amt === null) continue;
 
-    const year = row.date.getFullYear();
-    const month = row.date.getMonth();
+    const year = row.date.getUTCFullYear();
+    const month = row.date.getUTCMonth();
     if (!revenueByYearMonth.has(year)) revenueByYearMonth.set(year, new Map());
     const ym = revenueByYearMonth.get(year)!;
     ym.set(month, (ym.get(month) ?? 0) + amt);
@@ -377,8 +380,8 @@ function computeSeasonalProjection(rows: DataRow[]): ComputedStat[] {
     const amt = parseAmount(row.amount);
     if (amt === null) continue;
 
-    const year = row.date.getFullYear();
-    const month = row.date.getMonth();
+    const year = row.date.getUTCFullYear();
+    const month = row.date.getUTCMonth();
     if (!revenueByYearMonth.has(year)) revenueByYearMonth.set(year, new Map());
     revenueByYearMonth.get(year)!.set(month, (revenueByYearMonth.get(year)!.get(month) ?? 0) + amt);
   }

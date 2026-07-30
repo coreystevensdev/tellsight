@@ -26,6 +26,8 @@ import type {
   BreakEvenStat,
   CashForecastStat,
   MarginTrendStat,
+  YearOverYearStat,
+  SeasonalProjectionStat,
 } from './types.js';
 import { StatType } from './types.js';
 
@@ -1209,11 +1211,11 @@ describe('computeCashForecast', () => {
   });
 });
 
-// Local-time mid-month row, sidesteps the UTC-midnight-crosses-timezone-boundary
-// quirk ccfRow has when the test runner's TZ is west of UTC. monthlyNetsWindow
-// uses getFullYear/getMonth (local time) like the rest of the pipeline, so the
-// cleanest way to assert specific month keys is to build rows that are safely
-// mid-month in every zone.
+// Local-time mid-month row. monthKey now reads UTC accessors, so this no
+// longer needs to dodge a timezone boundary, day 15 local time is safely
+// mid-month under UTC too. Kept as local-time construction anyway: it's the
+// simplest way to build a row whose calendar month is unambiguous regardless
+// of which accessor reads it.
 let _midRowId = 50_000;
 function midMonthRow(parentCategory: 'Income' | 'Expenses', year: number, m: number, amount: number) {
   return {
@@ -1618,5 +1620,162 @@ describe('marginTrendMonths', () => {
 
   it('returns null for empty rows', () => {
     expect(marginTrendMonths([])).toBeNull();
+  });
+});
+
+// DW-51/52 regression: dataRows.date arrives from Drizzle/postgres-js as a
+// UTC-midnight instant. Reading it with local-time accessors under a TZ west
+// of UTC rolls day-1-of-month rows into the prior month. process.env.TZ is
+// stubbed per-test (Node re-reads it on every local Date call) rather than
+// for the whole file, so every other test in here stays proof the surrounding
+// functions are timezone-independent by construction.
+describe('UTC month-boundary regression (DW-51/52)', () => {
+  function stubTz(tz: string): () => void {
+    const original = process.env.TZ;
+    process.env.TZ = tz;
+    return () => {
+      if (original === undefined) delete process.env.TZ;
+      else process.env.TZ = original;
+    };
+  }
+
+  it('monthKey attributes a UTC-midnight day-1 row to the UTC month, not the local one', () => {
+    const restore = stubTz('America/New_York');
+    try {
+      expect(monthKey(new Date(Date.UTC(2026, 1, 1)))).toBe('2026-02');
+    } finally {
+      restore();
+    }
+  });
+
+  it('computeYearOverYear (via computeStats) attributes UTC-midnight day-1 rows to the UTC month', () => {
+    const restore = stubTz('America/New_York');
+    try {
+      function boundaryRevenueRow(year: number, month: number, amount: number) {
+        return {
+          id: _ccfRowId++,
+          orgId: 1,
+          datasetId: 1,
+          sourceType: 'csv' as const,
+          category: 'Revenue',
+          parentCategory: 'Income' as const,
+          date: new Date(Date.UTC(year, month - 1, 1)),
+          amount: amount.toFixed(2),
+          label: null,
+          metadata: null,
+          createdAt: new Date(),
+        };
+      }
+      // Both rows land on Feb 1st UTC midnight. In America/New_York (UTC-5),
+      // local accessors would read this as Jan 31st, misattributing both
+      // years to January and reporting the wrong comparison month.
+      const rows = [boundaryRevenueRow(2025, 2, 1000), boundaryRevenueRow(2026, 2, 1500)];
+
+      const yoyStats = computeStats(rows).filter(
+        (s): s is YearOverYearStat => s.statType === StatType.YearOverYear,
+      );
+
+      expect(yoyStats).toHaveLength(1);
+      expect(yoyStats[0]!.details.month).toBe('Feb');
+      expect(yoyStats[0]!.details.currentYearLabel).toBe('2026');
+      expect(yoyStats[0]!.details.priorYearLabel).toBe('2025');
+      expect(yoyStats[0]!.value).toBe(1500);
+    } finally {
+      restore();
+    }
+  });
+
+  it('computeSeasonalProjection (via computeStats) anchors a UTC-midnight day-1 basis row to the UTC month', () => {
+    const restore = stubTz('America/New_York');
+    try {
+      function revenueRow(amount: number, date: Date) {
+        return {
+          id: _ccfRowId++,
+          orgId: 1,
+          datasetId: 1,
+          sourceType: 'csv' as const,
+          category: 'Revenue',
+          parentCategory: 'Income' as const,
+          date,
+          amount: amount.toFixed(2),
+          label: null,
+          metadata: null,
+          createdAt: new Date(),
+        };
+      }
+      const rows = [
+        // Safe, local-time mid-month row: establishes 2026's latest month as
+        // January, so the projection target is February.
+        revenueRow(1200, new Date(2026, 0, 15)),
+        // The row under test: Feb 1st 2025 UTC midnight. If read with local
+        // accessors under America/New_York, this rolls back into January
+        // 2025 and drops out of the February basis entirely.
+        revenueRow(900, new Date(Date.UTC(2025, 1, 1))),
+      ];
+
+      const seasonalStats = computeStats(rows).filter(
+        (s): s is SeasonalProjectionStat => s.statType === StatType.SeasonalProjection,
+      );
+
+      expect(seasonalStats).toHaveLength(1);
+      expect(seasonalStats[0]!.details.projectedMonth).toBe('Feb 2026');
+      expect(seasonalStats[0]!.details.basisMonths).toEqual(['Feb 2025']);
+      expect(seasonalStats[0]!.details.basisValues).toEqual([900]);
+    } finally {
+      restore();
+    }
+  });
+
+  it('monthKey stays UTC-anchored east of UTC too, for any UTC instant, not just midnight', () => {
+    // dataRows.date always parses to UTC midnight, which a positive offset
+    // (max +14h) can never roll into the next day, so this data shape alone
+    // can't exercise an eastward boundary crossing. monthKey is a general
+    // Date -> string utility, not a midnight-only one, so this proves it's
+    // unconditionally UTC-anchored using a late-day UTC instant: 23:00 UTC
+    // on Jan 31st is already Feb 1st in Pacific/Auckland (UTC+13).
+    const restore = stubTz('Pacific/Auckland');
+    try {
+      expect(monthKey(new Date(Date.UTC(2026, 0, 31, 23, 0, 0)))).toBe('2026-01');
+    } finally {
+      restore();
+    }
+  });
+
+  it('computeYearOverYear (via computeStats) attributes a Dec 31/Jan 1 UTC boundary row to the UTC year, not just the UTC month', () => {
+    // The pre-fix bug misattributed the *year*, not only the month, for a
+    // row sitting on a year boundary: computeYearOverYear buckets by
+    // row.date.getUTCFullYear() first. A month-only regression case can't
+    // catch a year-keying mistake.
+    const restore = stubTz('America/New_York');
+    try {
+      function boundaryRevenueRow(year: number, amount: number) {
+        return {
+          id: _ccfRowId++,
+          orgId: 1,
+          datasetId: 1,
+          sourceType: 'csv' as const,
+          category: 'Revenue',
+          parentCategory: 'Income' as const,
+          date: new Date(Date.UTC(year, 0, 1)), // Jan 1st UTC midnight
+          amount: amount.toFixed(2),
+          label: null,
+          metadata: null,
+          createdAt: new Date(),
+        };
+      }
+      const rows = [boundaryRevenueRow(2025, 1000), boundaryRevenueRow(2026, 1500)];
+
+      const yoyStats = computeStats(rows).filter(
+        (s): s is YearOverYearStat => s.statType === StatType.YearOverYear,
+      );
+
+      expect(yoyStats).toHaveLength(1);
+      expect(yoyStats[0]!.details.month).toBe('Jan');
+      expect(yoyStats[0]!.details.currentYearLabel).toBe('2026');
+      expect(yoyStats[0]!.details.priorYearLabel).toBe('2025');
+      expect(yoyStats[0]!.value).toBe(1500);
+    } finally {
+      restore();
+    }
   });
 });

@@ -8,6 +8,7 @@ export const queryClient = postgres(env.DATABASE_URL, {
   idle_timeout: 20,
   connect_timeout: 10,
   onnotice: () => {},
+  connection: { timezone: 'UTC' },
 });
 
 export const adminClient = postgres(env.DATABASE_ADMIN_URL, {
@@ -15,6 +16,7 @@ export const adminClient = postgres(env.DATABASE_ADMIN_URL, {
   idle_timeout: 20,
   connect_timeout: 10,
   onnotice: () => {},
+  connection: { timezone: 'UTC' },
 });
 
 export const db = drizzle(queryClient, { schema });
