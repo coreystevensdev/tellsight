@@ -92,6 +92,7 @@ qaRouter.post('/:datasetId', async (req, res: Response) => {
   // here so every tool call this turn makes computes against one snapshot.
   const ctx: ToolContext = { orgId, isAdmin: user.isAdmin, datasetId: rawId, now: new Date() };
 
+  const startedAt = Date.now();
   trackEvent(orgId, userId, ANALYTICS_EVENTS.QA_QUESTION_ASKED, { datasetId: rawId });
 
   let answer;
@@ -105,9 +106,15 @@ qaRouter.post('/:datasetId', async (req, res: Response) => {
     // log it as a failure. Anything else (a genuine runQaLoop error that
     // happened to land in the same tick as a disconnect) still gets logged,
     // no question text in the log line, only the identifiers.
-    if (!(err instanceof Error && err.name === 'AbortError')) {
+    const aborted = err instanceof Error && err.name === 'AbortError';
+    if (!aborted) {
       logger.error({ orgId, datasetId: rawId, err }, 'qa loop failed');
     }
+    trackEvent(orgId, userId, ANALYTICS_EVENTS.QA_QUESTION_FAILED, {
+      datasetId: rawId,
+      aborted,
+      computationTimeMs: Date.now() - startedAt,
+    });
     if (clientDisconnected) return;
     res.status(500).json({
       error: { code: 'QA_LOOP_FAILED', message: 'Failed to answer the question' },
@@ -116,6 +123,15 @@ qaRouter.post('/:datasetId', async (req, res: Response) => {
   }
 
   deregister(abortController);
+
+  trackEvent(orgId, userId, ANALYTICS_EVENTS.QA_QUESTION_COMPLETED, {
+    datasetId: rawId,
+    termination: answer.termination,
+    turnCount: answer.turnCount,
+    citedStatCount: answer.citedStatIds.length,
+    computationTimeMs: Date.now() - startedAt,
+  });
+
   if (clientDisconnected) return;
 
   res.json({ data: answer });

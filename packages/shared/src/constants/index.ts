@@ -109,6 +109,8 @@ export const ANALYTICS_EVENTS = {
   ALERT_UNMUTED: 'alert.unmuted',
   ALERT_CLICKED: 'alert.clicked',
   QA_QUESTION_ASKED: 'qa.question_asked',
+  QA_QUESTION_COMPLETED: 'qa.question_completed',
+  QA_QUESTION_FAILED: 'qa.question_failed',
 } as const;
 
 export type AnalyticsEventName =

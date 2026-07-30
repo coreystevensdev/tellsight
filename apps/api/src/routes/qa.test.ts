@@ -128,6 +128,18 @@ describe('POST /qa/:datasetId', () => {
     );
     expect(mockAssembleQaAnswer).toHaveBeenCalledWith(mockLoopResult);
     expect(mockTrackEvent).toHaveBeenCalledWith(10, 5, 'qa.question_asked', { datasetId: 7 });
+    expect(mockTrackEvent).toHaveBeenCalledWith(
+      10,
+      5,
+      'qa.question_completed',
+      expect.objectContaining({
+        datasetId: 7,
+        termination: 'answered',
+        turnCount: 1,
+        citedStatCount: 1,
+        computationTimeMs: expect.any(Number),
+      }),
+    );
   });
 
   it('rejects an empty question with 400 before touching the loop', async () => {
@@ -191,6 +203,12 @@ describe('POST /qa/:datasetId', () => {
 
     expect(res.status).toBe(500);
     expect(json.error.code).toBe('QA_LOOP_FAILED');
+    expect(mockTrackEvent).toHaveBeenCalledWith(
+      10,
+      5,
+      'qa.question_failed',
+      expect.objectContaining({ datasetId: 7, aborted: false, computationTimeMs: expect.any(Number) }),
+    );
   });
 
   it('does not hang when rateLimitAi responds 429 without calling next (regression)', async () => {
@@ -254,6 +272,12 @@ describe('POST /qa/:datasetId', () => {
     // (e.g. an app-wide abortAll() on shutdown), not a real backend error.
     expect(res.status).toBe(500);
     expect(logger.error).not.toHaveBeenCalled();
+    expect(mockTrackEvent).toHaveBeenCalledWith(
+      10,
+      5,
+      'qa.question_failed',
+      expect.objectContaining({ datasetId: 7, aborted: true, computationTimeMs: expect.any(Number) }),
+    );
   });
 
   it('logs a genuine runQaLoop failure even though it is not an AbortError', async () => {
@@ -331,6 +355,17 @@ describe('POST /qa/:datasetId', () => {
     clientReq.destroy();
 
     await vi.waitFor(() => expect(capturedSignal?.aborted).toBe(true));
+    // The real disconnect path (socket destroyed, not a hand-thrown
+    // AbortError) still has to reach the same tracking call as the
+    // synthetic AbortError test above.
+    await vi.waitFor(() =>
+      expect(mockTrackEvent).toHaveBeenCalledWith(
+        10,
+        5,
+        'qa.question_failed',
+        expect.objectContaining({ datasetId: 7, aborted: true }),
+      ),
+    );
   });
 
   it('answers with no cited stats when the dataset belongs to another org (RLS isolation)', async () => {
