@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { webEnv } from '@/lib/config';
+import { upstreamSignal } from '@/lib/bff-proxy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,6 +17,7 @@ export async function GET(
   try {
     upstream = await fetch(`${webEnv.API_INTERNAL_URL}/ai-summaries/${datasetId}`, {
       headers: { cookie },
+      signal: upstreamSignal(request),
     });
   } catch {
     return NextResponse.json(
@@ -50,11 +52,15 @@ export async function GET(
 
   // JSON cache hit, forward directly
   let data: unknown;
+  let bodyReadFailed = false;
   try {
     data = await upstream.json();
   } catch {
+    bodyReadFailed = true;
     data = { error: { code: 'UPSTREAM_ERROR', message: 'Unexpected response from server' } };
   }
 
-  return NextResponse.json(data, { status: upstream.status });
+  // A body-read failure (including an abort mid-read) means upstream.status is
+  // stale and can't be trusted, even if it was a 2xx when headers arrived.
+  return NextResponse.json(data, { status: bodyReadFailed ? 502 : upstream.status });
 }

@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { webEnv } from '@/lib/config';
+import { upstreamSignal } from '@/lib/bff-proxy';
 
 const NULL_BODY_STATUSES = new Set([204, 205, 304]);
 
@@ -8,7 +9,7 @@ const NULL_BODY_STATUSES = new Set([204, 205, 304]);
 // button click, not page render, so a link prefetch or crawler visiting the
 // confirmation page can never trigger the mute as a side effect.
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ token: string }> },
 ) {
   const { token } = await params;
@@ -16,6 +17,7 @@ export async function POST(
   try {
     res = await fetch(`${webEnv.API_INTERNAL_URL}/alerts/mute/${encodeURIComponent(token)}`, {
       method: 'POST',
+      signal: upstreamSignal(request),
     });
   } catch (err) {
     console.warn('[mute-route] upstream unreachable', err);
@@ -29,8 +31,10 @@ export async function POST(
     return NextResponse.json(await res.json(), { status: res.status });
   } catch (err) {
     console.warn('[mute-route] upstream returned non-JSON body', err);
-    // NextResponse.json throws if paired with a null-body status (204/205/304)
-    const status = NULL_BODY_STATUSES.has(res.status) ? 502 : res.status;
+    // A 2xx status paired with an unreadable body (including an abort mid-read)
+    // is as broken as a null-body status (204/205/304) -- both mean the caller
+    // can't trust res.status here, so both collapse to 502.
+    const status = res.ok || NULL_BODY_STATUSES.has(res.status) ? 502 : res.status;
     return NextResponse.json(
       { error: { code: 'UPSTREAM_INVALID_RESPONSE', message: 'API server returned an invalid response' } },
       { status },

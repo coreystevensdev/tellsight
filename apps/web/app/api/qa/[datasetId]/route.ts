@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { webEnv } from '@/lib/config';
+import { upstreamSignal } from '@/lib/bff-proxy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,9 +20,9 @@ export async function POST(
       method: 'POST',
       headers: { cookie, 'Content-Type': 'application/json' },
       body,
-      // Forwarded so a client disconnect cancels the upstream Express request too,
-      // not just this proxy's fetch; qa.ts's AbortController is otherwise unreachable.
-      signal: request.signal,
+      // Forwards the client's disconnect (qa.ts's AbortController is otherwise
+      // unreachable) and adds a timeout backstop for a hung Claude call.
+      signal: upstreamSignal(request),
     });
   } catch {
     return NextResponse.json(
@@ -31,12 +32,16 @@ export async function POST(
   }
 
   let data: unknown;
+  let bodyReadFailed = false;
   try {
     data = await upstream.json();
   } catch {
+    bodyReadFailed = true;
     data = { error: { code: 'UPSTREAM_ERROR', message: 'Unexpected response from server' } };
   }
 
-  const status = !upstream.ok && upstream.status >= 500 ? 502 : upstream.status;
+  // A body-read failure (including an abort mid-read) means upstream.status is
+  // stale and can't be trusted, even if it was a 2xx when headers arrived.
+  const status = bodyReadFailed || (!upstream.ok && upstream.status >= 500) ? 502 : upstream.status;
   return NextResponse.json(data, { status });
 }
