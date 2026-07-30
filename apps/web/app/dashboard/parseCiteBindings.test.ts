@@ -106,4 +106,68 @@ describe('parseCiteBindings', () => {
     const raw = 'Revenue hit $5,000<cite/> this month.';
     expect(parseCiteBindings(raw)).toEqual([]);
   });
+
+  it('binds a cite tag forward to the number right after it', () => {
+    const raw = '<cite id="X"/>$5,000 total this month.';
+    expect(parseCiteBindings(raw)).toEqual([{ paragraphIndex: 0, numberIndex: 0, statId: 'X' }]);
+  });
+
+  it('binds a chain of cite tags forward to the number that follows them', () => {
+    const raw = '<cite id="A"/><cite id="B"/>$5,000 total this month.';
+    expect(parseCiteBindings(raw)).toEqual([
+      { paragraphIndex: 0, numberIndex: 0, statId: 'A' },
+      { paragraphIndex: 0, numberIndex: 0, statId: 'B' },
+    ]);
+  });
+
+  it('drops a forward-pending tag when the gap to the next number is not whitespace-only', () => {
+    const raw = '<cite id="X"/> up nicely $5,000 this quarter.';
+    expect(parseCiteBindings(raw)).toEqual([]);
+  });
+
+  it('dedupes two consecutive tags sharing an id bound backward to the same number', () => {
+    const raw = '$5,000<cite id="X"/><cite id="X"/> this month.';
+    expect(parseCiteBindings(raw)).toEqual([{ paragraphIndex: 0, numberIndex: 0, statId: 'X' }]);
+  });
+
+  it('dedupes two consecutive tags sharing an id bound forward to the same number', () => {
+    const raw = '<cite id="X"/><cite id="X"/>$5,000 this month.';
+    expect(parseCiteBindings(raw)).toEqual([{ paragraphIndex: 0, numberIndex: 0, statId: 'X' }]);
+  });
+
+  it('keeps two bindings for the same id when it is cited near two different numbers', () => {
+    const raw = '$5,000<cite id="X"/> and 12%<cite id="X"/> this quarter.';
+    expect(parseCiteBindings(raw)).toEqual([
+      { paragraphIndex: 0, numberIndex: 0, statId: 'X' },
+      { paragraphIndex: 0, numberIndex: 1, statId: 'X' },
+    ]);
+  });
+
+  it('dedupes an id bound forward with one bound backward to the same number', () => {
+    const raw = '<cite id="X"/>$5,000<cite id="X"/> this month.';
+    expect(parseCiteBindings(raw)).toEqual([{ paragraphIndex: 0, numberIndex: 0, statId: 'X' }]);
+  });
+
+  it('drops a whole multi-id forward-pending chain when the gap to the number is not whitespace-only', () => {
+    const raw = '<cite id="A"/><cite id="B"/> up nicely $5,000 this quarter.';
+    expect(parseCiteBindings(raw)).toEqual([]);
+  });
+
+  it('dedupes non-consecutive repeats of the same id within one number', () => {
+    const raw = '$5,000<cite id="X"/><cite id="A"/><cite id="X"/> this month.';
+    expect(parseCiteBindings(raw)).toEqual([
+      { paragraphIndex: 0, numberIndex: 0, statId: 'X' },
+      { paragraphIndex: 0, numberIndex: 0, statId: 'A' },
+    ]);
+  });
+
+  it('does not let a forward-pending tag from one paragraph resolve against the next paragraph', () => {
+    const raw = ['<cite id="X"/> up nicely', 'Revenue hit $5,000 this month.'].join('\n\n');
+    expect(parseCiteBindings(raw)).toEqual([]);
+  });
+
+  it('restarts the forward-pending chain after a gap instead of extending it', () => {
+    const raw = '<cite id="A"/> gap <cite id="B"/>$5,000 this month.';
+    expect(parseCiteBindings(raw)).toEqual([{ paragraphIndex: 0, numberIndex: 0, statId: 'B' }]);
+  });
 });
