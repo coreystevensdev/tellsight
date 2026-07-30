@@ -60,7 +60,7 @@ describe('getLastDigest', () => {
 
     const result = await getLastDigest(3);
 
-    expect(result).toEqual(row);
+    expect(result).toEqual({ ...row, milestones: [] });
     expect(mockFindFirst).toHaveBeenCalledOnce();
   });
 
@@ -76,7 +76,7 @@ describe('getLastDigest', () => {
 
     const result = await getLastDigest(3, new Date('2026-05-25T00:00:00Z'));
 
-    expect(result).toEqual(row);
+    expect(result).toEqual({ ...row, milestones: [] });
     expect(mockFindFirst).toHaveBeenCalledOnce();
   });
 
@@ -118,6 +118,28 @@ describe('getLastDigest', () => {
 
     expect(sql).not.toMatch(/"(?:digest_history|digestHistory)"\."week_start"\s*</);
   });
+
+  it('keeps well-formed milestones and drops malformed ones', async () => {
+    const milestones = [
+      { kind: 'first_profitable_month', label: 'First profitable month', catalog: 'first_time' },
+      { kind: 'runway_crossed_12mo', label: 'not an object' }, // missing catalog
+      'not an object',
+      { kind: 'x', label: 'y', catalog: 'unknown_catalog' },
+    ];
+    mockFindFirst.mockResolvedValueOnce({ id: 7, orgId: 3, milestones });
+
+    const result = await getLastDigest(3);
+
+    expect(result!.milestones).toEqual([milestones[0]]);
+  });
+
+  it('defaults milestones to an empty array when the stored value is not an array', async () => {
+    mockFindFirst.mockResolvedValueOnce({ id: 8, orgId: 3, milestones: null });
+
+    const result = await getLastDigest(3);
+
+    expect(result!.milestones).toEqual([]);
+  });
 });
 
 describe('getTrailingDigests', () => {
@@ -130,7 +152,7 @@ describe('getTrailingDigests', () => {
 
     const result = await getTrailingDigests(3, 4);
 
-    expect(result).toEqual(rows);
+    expect(result).toEqual(rows.map((row) => ({ ...row, keyStats: [] })));
     expect(mockFindMany).toHaveBeenCalledWith(
       expect.objectContaining({ limit: 4 }),
     );
@@ -142,7 +164,7 @@ describe('getTrailingDigests', () => {
     expect(await getTrailingDigests(99, 4)).toEqual([]);
   });
 
-  it('passes each row\'s keyStats through unchanged, proving the ComputedStat[] cast does not drop or rewrite it', async () => {
+  it('passes each row\'s well-formed keyStats entries through, proving the ComputedStat[] cast preserves valid data', async () => {
     const keyStats = [
       { statType: 'trend', category: 'Sales', value: 100, details: { slope: 1, intercept: 0, growthPercent: 5, dataPoints: 4, firstValue: 90, lastValue: 100 } },
     ];
@@ -150,7 +172,90 @@ describe('getTrailingDigests', () => {
 
     const [result] = await getTrailingDigests(3, 4);
 
-    expect(result!.keyStats).toBe(keyStats);
+    expect(result!.keyStats).toEqual(keyStats);
+  });
+
+  it('drops keyStats entries that fail the base ComputedStat shape check, now that compare_to_prior_periods reads them into a model-citable response', async () => {
+    const valid = { statType: 'total', category: 'Revenue', value: 5000, details: { scope: 'org', count: 12 } };
+    const keyStats = [
+      valid,
+      { statType: 'total', category: 'Revenue', value: 'not a number' }, // value not a number
+      { statType: 'made_up_stat_type', category: 'Revenue', value: 10 }, // unknown statType
+      { statType: 'total', value: 10 }, // missing category
+      null,
+      'not an object',
+    ];
+    mockFindMany.mockResolvedValueOnce([{ id: 10, weekStart: new Date('2026-05-25T00:00:00Z'), keyStats }]);
+
+    const [result] = await getTrailingDigests(3, 4);
+
+    expect(result!.keyStats).toEqual([valid]);
+  });
+
+  it('drops year_over_year/seasonal_projection/cash_flow entries with a missing discriminator field, since statInstanceId dereferences it on every compare_to_prior_periods match', async () => {
+    const validYoy = { statType: 'year_over_year', category: 'Revenue', value: 1000, details: { currentYear: 2026, month: 'Mar', priorYear: 2025, changePercent: 10 } };
+    const keyStats = [
+      validYoy,
+      { statType: 'year_over_year', category: 'Revenue', value: 900, details: { currentYear: 2026 } }, // missing details.month
+      { statType: 'seasonal_projection', category: 'Revenue', value: 800, details: {} }, // missing details.projectedMonth
+      { statType: 'cash_flow', category: null, value: 700, details: { monthlyNet: 100 } }, // missing details.trailingMonths
+    ];
+    mockFindMany.mockResolvedValueOnce([{ id: 12, weekStart: new Date('2026-05-25T00:00:00Z'), keyStats }]);
+
+    const [result] = await getTrailingDigests(3, 4);
+
+    expect(result!.keyStats).toEqual([validYoy]);
+  });
+
+  it('drops a year_over_year entry whose details.month is not a real month name, since mostRecentMatch ties break on MONTH_NAMES.indexOf', async () => {
+    const keyStats = [
+      { statType: 'year_over_year', category: 'Revenue', value: 900, details: { currentYear: 2026, month: 'March' } }, // full name, not the 'Mar' MONTH_NAMES stores
+    ];
+    mockFindMany.mockResolvedValueOnce([{ id: 13, weekStart: new Date('2026-05-25T00:00:00Z'), keyStats }]);
+
+    const [result] = await getTrailingDigests(3, 4);
+
+    expect(result!.keyStats).toEqual([]);
+  });
+
+  it('drops year_over_year/cash_flow entries whose numeric discriminator field is NaN or Infinity', async () => {
+    const keyStats = [
+      { statType: 'year_over_year', category: 'Revenue', value: 900, details: { currentYear: NaN, month: 'Mar' } },
+      { statType: 'cash_flow', category: null, value: 700, details: { trailingMonths: Infinity } },
+    ];
+    mockFindMany.mockResolvedValueOnce([{ id: 14, weekStart: new Date('2026-05-25T00:00:00Z'), keyStats }]);
+
+    const [result] = await getTrailingDigests(3, 4);
+
+    expect(result!.keyStats).toEqual([]);
+  });
+
+  it('drops a total/average entry with a non-string details.scope, matching statDiscriminator\'s dereference of that field even though neither statType is reachable via compare_to_prior_periods today', async () => {
+    const keyStats = [
+      { statType: 'total', category: 'Revenue', value: 5000, details: {} }, // missing details.scope
+    ];
+    mockFindMany.mockResolvedValueOnce([{ id: 15, weekStart: new Date('2026-05-25T00:00:00Z'), keyStats }]);
+
+    const [result] = await getTrailingDigests(3, 4);
+
+    expect(result!.keyStats).toEqual([]);
+  });
+
+  it('defaults keyStats to an empty array when the stored value is not an array', async () => {
+    mockFindMany.mockResolvedValueOnce([{ id: 11, weekStart: new Date('2026-05-25T00:00:00Z'), keyStats: null }]);
+
+    const [result] = await getTrailingDigests(3, 4);
+
+    expect(result!.keyStats).toEqual([]);
+  });
+
+  it('keeps a trend entry with garbage details, since statDiscriminator\'s default branch never dereferences details for that stat type', async () => {
+    const trendWithGarbageDetails = { statType: 'trend', category: 'Sales', value: 100, details: 'not an object at all' };
+    mockFindMany.mockResolvedValueOnce([{ id: 16, weekStart: new Date('2026-05-25T00:00:00Z'), keyStats: [trendWithGarbageDetails] }]);
+
+    const [result] = await getTrailingDigests(3, 4);
+
+    expect(result!.keyStats).toEqual([trendWithGarbageDetails]);
   });
 });
 
