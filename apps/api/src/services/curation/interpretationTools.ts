@@ -8,11 +8,26 @@ import type { ComputedStat, IdentifiedStat } from './types.js';
 
 // Statement shape for the future Q&A orchestrator: never derived from a
 // request or session, matching the explicit-context idiom resolveCitation
-// and evaluateOrg already use.
+// and evaluateOrg already use. `now` is captured once by the caller (one Q&A
+// turn) and threaded through every tool call, so repeated calls within the
+// same turn compute against one snapshot instead of drifting with wall clock.
 export interface ToolContext {
   orgId: number;
   isAdmin: boolean;
   datasetId: number;
+  now: Date;
+}
+
+function isValidContext(ctx: ToolContext): boolean {
+  return (
+    Number.isInteger(ctx.orgId) &&
+    ctx.orgId > 0 &&
+    typeof ctx.isAdmin === 'boolean' &&
+    Number.isInteger(ctx.datasetId) &&
+    ctx.datasetId > 0 &&
+    ctx.now instanceof Date &&
+    !Number.isNaN(ctx.now.getTime())
+  );
 }
 
 // statTypes whose `details` already carry trend/comparison signal. total/average
@@ -73,43 +88,49 @@ export const GET_METRIC_WITH_TREND_TOOL: ToolDefinition = {
   },
 };
 
-async function loadRowsAndExclusions(ctx: ToolContext): Promise<{ rows: Awaited<ReturnType<typeof dataRowsQueries.getRowsByDataset>>; excludedStatIds: Set<string> }> {
-  const [rows, excludedIds] = await withRlsContext(ctx.orgId, ctx.isAdmin, (tx) =>
+// One RLS transaction for every read a tool call needs, rather than one per
+// query group -- getMetricWithTrend used to open two (rows+corrections,
+// financials), compareToPriorPeriods three (those two plus digests). All of
+// these genuinely belong to the same tool call, so they share one
+// `SET LOCAL` scope instead of paying for a transaction each. `periodsBack`
+// omitted means getMetricWithTrend's caller, which never reads digest history.
+async function loadToolContext(ctx: ToolContext, periodsBack?: number) {
+  const [rows, excludedIds, profile, digests] = await withRlsContext(ctx.orgId, ctx.isAdmin, (tx) =>
     Promise.all([
       dataRowsQueries.getRowsByDataset(ctx.orgId, ctx.datasetId, tx),
       statCorrectionsQueries.getActiveCorrectionStatIds(ctx.orgId, tx),
+      orgsQueries.getBusinessProfile(ctx.orgId, tx),
+      periodsBack === undefined ? Promise.resolve([]) : digestHistoryQueries.getTrailingDigests(ctx.orgId, periodsBack, tx),
     ]),
   );
-  return { rows, excludedStatIds: new Set(excludedIds) };
-}
-
-async function loadFinancials(orgId: number) {
-  const profile = await orgsQueries.getBusinessProfile(orgId);
-  return profile
+  const financials = profile
     ? { cashOnHand: profile.cashOnHand, cashAsOfDate: profile.cashAsOfDate, monthlyFixedCosts: profile.monthlyFixedCosts }
     : null;
+  return { rows, excludedStatIds: new Set(excludedIds), financials, digests };
 }
 
-export async function getMetricWithTrend(
-  input: GetMetricWithTrendInput,
-  ctx: ToolContext,
-): Promise<IdentifiedStat | null> {
-  if (!Number.isInteger(ctx.datasetId) || ctx.datasetId <= 0) return null;
-  const scope = resolveCategoryScope(input.statType, input.category);
-  if (!scope.ok) return null;
+// `found: false` distinguishes why no stat came back: `not_found` covers bad
+// input and a genuine no-match, `suppressed` means a stat matched but an
+// approved correction excludes it, information a future Q&A answer surface
+// can use ("you flagged this metric") instead of a bare miss.
+export type GetMetricWithTrendResult = { found: true; stat: IdentifiedStat } | { found: false; reason: 'not_found' | 'suppressed' };
 
-  const [{ rows, excludedStatIds }, financials] = await Promise.all([
-    loadRowsAndExclusions(ctx),
-    loadFinancials(ctx.orgId),
-  ]);
+export async function getMetricWithTrend(input: GetMetricWithTrendInput, ctx: ToolContext): Promise<GetMetricWithTrendResult> {
+  if (!isValidContext(ctx)) return { found: false, reason: 'not_found' };
+  const scope = resolveCategoryScope(input.statType, input.category);
+  if (!scope.ok) return { found: false, reason: 'not_found' };
+
+  const { rows, excludedStatIds, financials } = await loadToolContext(ctx);
 
   const stat = resolveStatByType(rows, ctx.datasetId, input.statType, scope.category, {
     trendMinPoints: scoringConfig.thresholds.trendMinDataPoints,
     financials,
+    now: ctx.now,
   });
 
-  if (!stat || excludedStatIds.has(stat.id)) return null;
-  return stat;
+  if (!stat) return { found: false, reason: 'not_found' };
+  if (excludedStatIds.has(stat.id)) return { found: false, reason: 'suppressed' };
+  return { found: true, stat };
 }
 
 export interface CompareToPriorPeriodsInput {
@@ -142,6 +163,10 @@ export type CompareToPriorPeriodsResult =
   | { current: IdentifiedStat; hasHistory: false }
   | { current: IdentifiedStat; hasHistory: true; priorPeriods: PriorPeriodPoint[] };
 
+// Same not_found/suppressed distinction as GetMetricWithTrendResult, applied
+// to the top-level `current` lookup.
+export type CompareToPriorPeriodsOutcome = ({ found: true } & CompareToPriorPeriodsResult) | { found: false; reason: 'not_found' | 'suppressed' };
+
 const DEFAULT_PERIODS_BACK = 4;
 
 // inputSchema's min/max are advisory to the model, not an enforced runtime
@@ -160,28 +185,22 @@ function findMatchInKeyStats(
   return findMatchingStat(keyStats, statType, category);
 }
 
-export async function compareToPriorPeriods(
-  input: CompareToPriorPeriodsInput,
-  ctx: ToolContext,
-): Promise<CompareToPriorPeriodsResult | null> {
-  if (!Number.isInteger(ctx.datasetId) || ctx.datasetId <= 0) return null;
+export async function compareToPriorPeriods(input: CompareToPriorPeriodsInput, ctx: ToolContext): Promise<CompareToPriorPeriodsOutcome> {
+  if (!isValidContext(ctx)) return { found: false, reason: 'not_found' };
   const scope = resolveCategoryScope(input.statType, input.category);
-  if (!scope.ok) return null;
+  if (!scope.ok) return { found: false, reason: 'not_found' };
 
   const periodsBack = clampPeriodsBack(input.periodsBack);
-
-  const [{ rows, excludedStatIds }, financials, digests] = await Promise.all([
-    loadRowsAndExclusions(ctx),
-    loadFinancials(ctx.orgId),
-    withRlsContext(ctx.orgId, ctx.isAdmin, (tx) => digestHistoryQueries.getTrailingDigests(ctx.orgId, periodsBack, tx)),
-  ]);
+  const { rows, excludedStatIds, financials, digests } = await loadToolContext(ctx, periodsBack);
 
   const current = resolveStatByType(rows, ctx.datasetId, input.statType, scope.category, {
     trendMinPoints: scoringConfig.thresholds.trendMinDataPoints,
     financials,
+    now: ctx.now,
   });
 
-  if (!current || excludedStatIds.has(current.id)) return null;
+  if (!current) return { found: false, reason: 'not_found' };
+  if (excludedStatIds.has(current.id)) return { found: false, reason: 'suppressed' };
 
   const priorPeriods: PriorPeriodPoint[] = [];
   for (const digest of digests) {
@@ -195,6 +214,6 @@ export async function compareToPriorPeriods(
   // key_stats is each week's curated top-N, not a full stat archive, so a
   // metric can easily be absent from every trailing digest even with plenty
   // of digest history overall.
-  if (priorPeriods.length === 0) return { current, hasHistory: false };
-  return { current, hasHistory: true, priorPeriods };
+  if (priorPeriods.length === 0) return { found: true, current, hasHistory: false };
+  return { found: true, current, hasHistory: true, priorPeriods };
 }

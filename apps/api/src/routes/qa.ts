@@ -88,8 +88,9 @@ qaRouter.post('/:datasetId', async (req, res: Response) => {
   }
 
   // Explicit construction per interpretationTools.ts's doc comment, never
-  // passed through from the request object directly.
-  const ctx: ToolContext = { orgId, isAdmin: user.isAdmin, datasetId: rawId };
+  // passed through from the request object directly. `now` is captured once
+  // here so every tool call this turn makes computes against one snapshot.
+  const ctx: ToolContext = { orgId, isAdmin: user.isAdmin, datasetId: rawId, now: new Date() };
 
   trackEvent(orgId, userId, ANALYTICS_EVENTS.QA_QUESTION_ASKED, { datasetId: rawId });
 

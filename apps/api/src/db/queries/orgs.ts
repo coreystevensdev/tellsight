@@ -19,8 +19,8 @@ export async function findOrgBySlug(slug: string) {
 }
 
 /** Cross-org lookup, orgs table is the org entity itself (intentional exception) */
-export async function findOrgById(orgId: number) {
-  return db.query.orgs.findFirst({
+export async function findOrgById(orgId: number, client: typeof db | DbTransaction = db) {
+  return client.query.orgs.findFirst({
     where: eq(orgs.id, orgId),
   });
 }
@@ -41,8 +41,8 @@ export function resetSeedOrgCache(): void {
   cachedSeedOrgId = null;
 }
 
-export async function getBusinessProfile(orgId: number): Promise<BusinessProfile | null> {
-  const org = await findOrgById(orgId);
+export async function getBusinessProfile(orgId: number, client: typeof db | DbTransaction = db): Promise<BusinessProfile | null> {
+  const org = await findOrgById(orgId, client);
   if (!org?.businessProfile) return null;
   const result = businessProfileSchema.safeParse(org.businessProfile);
   return result.success ? result.data : null;

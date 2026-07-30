@@ -104,18 +104,26 @@ describe('POST /qa/:datasetId', () => {
     mockRunQaLoop.mockResolvedValueOnce(mockLoopResult);
     mockAssembleQaAnswer.mockReturnValueOnce(mockAnswer);
 
+    const before = Date.now();
     const res = await fetch(`${baseUrl}/qa/7`, {
       method: 'POST',
       headers: authHeaders,
       body: JSON.stringify({ question: 'How did revenue trend this quarter?' }),
     });
+    const after = Date.now();
     const json = (await res.json()) as { data: typeof mockAnswer };
 
     expect(res.status).toBe(200);
     expect(json.data).toEqual(mockAnswer);
+    // now bounded to the actual request window, not just asserted to be *a*
+    // Date, so a bug that captured it at module load or from a stale value
+    // would fail this instead of passing under expect.any(Date).
+    const actualCtx = mockRunQaLoop.mock.calls[0]![1] as { now: Date };
+    expect(actualCtx.now.getTime()).toBeGreaterThanOrEqual(before);
+    expect(actualCtx.now.getTime()).toBeLessThanOrEqual(after);
     expect(mockRunQaLoop).toHaveBeenCalledWith(
       'How did revenue trend this quarter?',
-      { orgId: 10, isAdmin: false, datasetId: 7 },
+      { orgId: 10, isAdmin: false, datasetId: 7, now: actualCtx.now },
       expect.anything(),
     );
     expect(mockAssembleQaAnswer).toHaveBeenCalledWith(mockLoopResult);

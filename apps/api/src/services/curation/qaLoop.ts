@@ -121,17 +121,38 @@ type DispatchOutcome = { ok: true; output: unknown } | { ok: false };
 
 // call.input is unknown, the SDK doesn't validate tool-input shape against
 // our schema, so every call gets validated before it reaches a real query.
+//
+// The model still only ever sees the stat (or null) for a miss -- the
+// not_found/suppressed distinction interpretationTools.ts now carries isn't
+// wired into the prompt yet, so a suppressed lookup is logged for
+// observability and otherwise collapses to null the same as a genuine miss.
 async function dispatchToolCall(call: ToolCall, ctx: ToolContext): Promise<DispatchOutcome> {
   if (call.name === GET_METRIC_WITH_TREND_TOOL.name) {
     const input = validateGetMetricWithTrendInput(call.input);
     if (!input) return { ok: false };
-    return { ok: true, output: await getMetricWithTrend(input, ctx) };
+    const result = await getMetricWithTrend(input, ctx);
+    if (!result.found && result.reason === 'suppressed') {
+      logger.info({ toolName: call.name, orgId: ctx.orgId, datasetId: ctx.datasetId }, 'Q&A tool result suppressed by an active correction');
+    }
+    return { ok: true, output: result.found ? result.stat : null };
   }
 
   if (call.name === COMPARE_TO_PRIOR_PERIODS_TOOL.name) {
     const input = validateCompareToPriorPeriodsInput(call.input);
     if (!input) return { ok: false };
-    return { ok: true, output: await compareToPriorPeriods(input, ctx) };
+    const result = await compareToPriorPeriods(input, ctx);
+    if (!result.found) {
+      if (result.reason === 'suppressed') {
+        logger.info({ toolName: call.name, orgId: ctx.orgId, datasetId: ctx.datasetId }, 'Q&A tool result suppressed by an active correction');
+      }
+      return { ok: true, output: null };
+    }
+    return {
+      ok: true,
+      output: result.hasHistory
+        ? { current: result.current, hasHistory: true, priorPeriods: result.priorPeriods }
+        : { current: result.current, hasHistory: false },
+    };
   }
 
   logger.warn({ toolName: call.name }, 'Q&A loop received an unrecognized tool call');

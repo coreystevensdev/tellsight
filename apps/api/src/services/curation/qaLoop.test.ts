@@ -48,7 +48,7 @@ import { CostBudgetExceededError } from '../../lib/appError.js';
 import { runQaLoop, MAX_TOOL_TURNS } from './qaLoop.js';
 import type { ToolContext } from './interpretationTools.js';
 
-const CTX: ToolContext = { orgId: 1, isAdmin: false, datasetId: 7 };
+const CTX: ToolContext = { orgId: 1, isAdmin: false, datasetId: 7, now: new Date('2026-04-13T00:00:00Z') };
 const QUESTION = 'How is revenue trending?';
 
 function turn(over: Partial<{ state: unknown; toolCalls: unknown[]; text: string; usage: { inputTokens: number; outputTokens: number } }> = {}) {
@@ -69,8 +69,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockComputeCost.mockReturnValue(0.01);
   mockExceedsBudget.mockReturnValue({ exceeded: false, observed: 0.01, cap: null, median: null });
-  mockGetMetricWithTrend.mockResolvedValue({ id: '1:trend:Sales:0', statType: 'trend', category: 'Sales', value: 0.1, details: {} });
-  mockCompareToPriorPeriods.mockResolvedValue({ current: { id: '1:trend:Sales:0' }, hasHistory: false });
+  mockGetMetricWithTrend.mockResolvedValue({ found: true, stat: { id: '1:trend:Sales:0', statType: 'trend', category: 'Sales', value: 0.1, details: {} } });
+  mockCompareToPriorPeriods.mockResolvedValue({ found: true, current: { id: '1:trend:Sales:0' }, hasHistory: false });
 });
 
 describe('runQaLoop', () => {
@@ -133,6 +133,51 @@ describe('runQaLoop', () => {
     await runQaLoop(QUESTION, CTX);
 
     expect(mockCompareToPriorPeriods).toHaveBeenCalledWith({ statType: 'runway', category: undefined, periodsBack: 3 }, CTX);
+  });
+
+  it('sends null to the model for both a not_found and a suppressed getMetricWithTrend result, logging only the suppressed case', async () => {
+    mockGetMetricWithTrend.mockResolvedValueOnce({ found: false, reason: 'not_found' });
+    mockConverseWithTools
+      .mockResolvedValueOnce(turn({ toolCalls: [toolCall({ id: 'call_1' })] }))
+      .mockResolvedValueOnce(turn({ text: 'not found' }));
+    await runQaLoop(QUESTION, CTX);
+    expect(mockConverseWithTools.mock.calls[1]![3]).toEqual([{ toolCallId: 'call_1', output: null }]);
+    expect(logger.info).not.toHaveBeenCalled();
+
+    vi.clearAllMocks();
+    mockComputeCost.mockReturnValue(0.01);
+    mockExceedsBudget.mockReturnValue({ exceeded: false, observed: 0.01, cap: null, median: null });
+    mockGetMetricWithTrend.mockResolvedValueOnce({ found: false, reason: 'suppressed' });
+    mockConverseWithTools
+      .mockResolvedValueOnce(turn({ toolCalls: [toolCall({ id: 'call_2' })] }))
+      .mockResolvedValueOnce(turn({ text: 'suppressed' }));
+    await runQaLoop(QUESTION, CTX);
+    expect(mockConverseWithTools.mock.calls[1]![3]).toEqual([{ toolCallId: 'call_2', output: null }]);
+    expect(logger.info).toHaveBeenCalledWith(
+      { toolName: 'get_metric_with_trend', orgId: CTX.orgId, datasetId: CTX.datasetId },
+      'Q&A tool result suppressed by an active correction',
+    );
+  });
+
+  it('unwraps a found compare_to_prior_periods result to the bare current/hasHistory/priorPeriods shape, dropping the found tag', async () => {
+    mockCompareToPriorPeriods.mockResolvedValueOnce({
+      found: true,
+      current: { id: '1:runway:0' },
+      hasHistory: true,
+      priorPeriods: [{ weekStart: '2026-04-06T00:00:00.000Z', value: 4 }],
+    });
+    mockConverseWithTools
+      .mockResolvedValueOnce(turn({ toolCalls: [toolCall({ id: 'call_3', name: 'compare_to_prior_periods', input: { statType: 'runway' } })] }))
+      .mockResolvedValueOnce(turn({ text: 'done' }));
+
+    await runQaLoop(QUESTION, CTX);
+
+    expect(mockConverseWithTools.mock.calls[1]![3]).toEqual([
+      {
+        toolCallId: 'call_3',
+        output: { current: { id: '1:runway:0' }, hasHistory: true, priorPeriods: [{ weekStart: '2026-04-06T00:00:00.000Z', value: 4 }] },
+      },
+    ]);
   });
 
   it('feeds the second turn a tool_result keyed by the call id', async () => {

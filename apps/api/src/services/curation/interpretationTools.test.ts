@@ -125,7 +125,8 @@ function findSalesTrendId(): string {
   return trend.id;
 }
 
-const ctx = { orgId: ORG_ID, isAdmin: false, datasetId: DATASET_ID };
+const NOW = new Date('2026-04-13T00:00:00Z');
+const ctx = { orgId: ORG_ID, isAdmin: false, datasetId: DATASET_ID, now: NOW };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -162,43 +163,52 @@ describe('getMetricWithTrend', () => {
   it('resolves a trend-carrying stat for a matching statType and category, carrying its instance id', async () => {
     const result = await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, ctx);
 
-    expect(result).not.toBeNull();
-    expect(result!.statType).toBe(StatType.Trend);
-    expect(result!.category).toBe('Sales');
-    expect(result!.id).toBe(findSalesTrendId());
+    expect(result.found).toBe(true);
+    if (!result.found) throw new Error('expected found');
+    expect(result.stat.statType).toBe(StatType.Trend);
+    expect(result.stat.category).toBe('Sales');
+    expect(result.stat.id).toBe(findSalesTrendId());
     expect(mockGetRowsByDataset).toHaveBeenCalledWith(ORG_ID, DATASET_ID, {});
   });
 
-  it('returns null when no stat matches the requested statType and category', async () => {
+  it('reports not_found when no stat matches the requested statType and category', async () => {
     const result = await getMetricWithTrend({ statType: StatType.MarginTrend, category: 'NonExistent' }, ctx);
-    expect(result).toBeNull();
+    expect(result).toEqual({ found: false, reason: 'not_found' });
   });
 
-  it('excludes a stat with an active correction', async () => {
+  it('reports suppressed, not not_found, for a stat excluded by an active correction', async () => {
     mockGetActiveCorrectionStatIds.mockResolvedValue([findSalesTrendId()]);
 
     const result = await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, ctx);
-    expect(result).toBeNull();
+    expect(result).toEqual({ found: false, reason: 'suppressed' });
   });
 
-  it('returns null when the row fetch comes back empty, the shape an RLS-scoped cross-tenant read produces', async () => {
+  it('reports not_found when the row fetch comes back empty, the shape an RLS-scoped cross-tenant read produces', async () => {
     mockGetRowsByDataset.mockResolvedValueOnce([]);
 
     const result = await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, ctx);
-    expect(result).toBeNull();
+    expect(result).toEqual({ found: false, reason: 'not_found' });
   });
 
-  it('returns null for a non-positive or non-integer datasetId without querying', async () => {
+  it('reports not_found for a non-positive or non-integer datasetId without querying', async () => {
     for (const datasetId of [0, -1, 1.5]) {
       const result = await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, { ...ctx, datasetId });
-      expect(result).toBeNull();
+      expect(result).toEqual({ found: false, reason: 'not_found' });
     }
     expect(mockGetRowsByDataset).not.toHaveBeenCalled();
   });
 
-  it('returns null when a category-scoped statType is requested with no category', async () => {
+  it('reports not_found for a non-positive orgId or a non-boolean isAdmin without querying', async () => {
+    for (const bad of [{ orgId: 0 }, { orgId: -1 }, { orgId: 1.5 }, { isAdmin: 'yes' as unknown as boolean }]) {
+      const result = await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, { ...ctx, ...bad });
+      expect(result).toEqual({ found: false, reason: 'not_found' });
+    }
+    expect(mockGetRowsByDataset).not.toHaveBeenCalled();
+  });
+
+  it('reports not_found when a category-scoped statType is requested with no category', async () => {
     const result = await getMetricWithTrend({ statType: StatType.Trend }, ctx);
-    expect(result).toBeNull();
+    expect(result).toEqual({ found: false, reason: 'not_found' });
     expect(mockGetRowsByDataset).not.toHaveBeenCalled();
   });
 
@@ -206,8 +216,34 @@ describe('getMetricWithTrend', () => {
     mockGetRowsByDataset.mockResolvedValue(cashFlowRows);
 
     const result = await getMetricWithTrend({ statType: StatType.CashFlow, category: 'Sales' }, ctx);
-    expect(result).not.toBeNull();
-    expect(result!.statType).toBe(StatType.CashFlow);
+    expect(result.found).toBe(true);
+    if (!result.found) throw new Error('expected found');
+    expect(result.stat.statType).toBe(StatType.CashFlow);
+  });
+
+  it('threads ctx.now through to computeStats, so a Runway result depends on the caller-supplied snapshot, not wall-clock time', async () => {
+    mockGetRowsByDataset.mockResolvedValue(cashFlowRows);
+    mockGetBusinessProfile.mockResolvedValue({
+      cashOnHand: 20000,
+      cashAsOfDate: '2026-04-01',
+      monthlyFixedCosts: 5000,
+    });
+
+    // Real "now" is frozen years past cashAsOfDate, well outside computeRunway's
+    // 180-day staleness window. If the code fell back to computeRunway's own
+    // `new Date()` default instead of using ctx.now, this would suppress the
+    // stat and the assertion below would fail regardless of when this suite runs.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2030-01-01T00:00:00Z'));
+    try {
+      const soonAfter = await getMetricWithTrend({ statType: StatType.Runway }, { ...ctx, now: new Date('2026-04-15T00:00:00Z') });
+      expect(soonAfter.found).toBe(true);
+
+      const wayAfter = await getMetricWithTrend({ statType: StatType.Runway }, { ...ctx, now: new Date('2026-10-15T00:00:00Z') });
+      expect(wayAfter).toEqual({ found: false, reason: 'not_found' });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -217,7 +253,7 @@ describe('compareToPriorPeriods', () => {
 
     const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, ctx);
 
-    expect(result).toEqual({ current: expect.objectContaining({ id: findSalesTrendId() }), hasHistory: false });
+    expect(result).toEqual({ found: true, current: expect.objectContaining({ id: findSalesTrendId() }), hasHistory: false });
   });
 
   it('marks hasHistory: false with zero trailing digests', async () => {
@@ -225,7 +261,7 @@ describe('compareToPriorPeriods', () => {
 
     const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, ctx);
 
-    expect(result).toEqual({ current: expect.objectContaining({ id: findSalesTrendId() }), hasHistory: false });
+    expect(result).toEqual({ found: true, current: expect.objectContaining({ id: findSalesTrendId() }), hasHistory: false });
   });
 
   it('builds a prior-period series from trailing digests that contain a matching stat', async () => {
@@ -239,6 +275,7 @@ describe('compareToPriorPeriods', () => {
     const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales', periodsBack: 3 }, ctx);
 
     expect(result).toEqual({
+      found: true,
       current: expect.objectContaining({ id: findSalesTrendId() }),
       hasHistory: true,
       priorPeriods: [
@@ -270,7 +307,7 @@ describe('compareToPriorPeriods', () => {
     // current resolves to the March comparison (the most recent qualifying
     // month), a different instance id than the corrected January one, so the
     // live lookup is untouched -- only the corrected prior-period match is dropped.
-    expect(result).toEqual({ current: expect.objectContaining({ value: 1500 }), hasHistory: false });
+    expect(result).toEqual({ found: true, current: expect.objectContaining({ value: 1500 }), hasHistory: false });
   });
 
   it('defaults periodsBack to 4 when omitted', async () => {
@@ -278,12 +315,12 @@ describe('compareToPriorPeriods', () => {
     expect(mockGetTrailingDigests).toHaveBeenCalledWith(ORG_ID, 4, {});
   });
 
-  it('returns null, not a hasHistory marker, when no stat matches the requested statType and category', async () => {
+  it('reports not_found, not a hasHistory marker, when no stat matches the requested statType and category', async () => {
     const result = await compareToPriorPeriods({ statType: StatType.MarginTrend, category: 'NonExistent' }, ctx);
-    expect(result).toBeNull();
+    expect(result).toEqual({ found: false, reason: 'not_found' });
   });
 
-  it('excludes a stat with an active correction, returning null rather than a suppressed series', async () => {
+  it('reports suppressed, not not_found, for a stat excluded by an active correction', async () => {
     mockGetActiveCorrectionStatIds.mockResolvedValue([findSalesTrendId()]);
     mockGetTrailingDigests.mockResolvedValue([
       { weekStart: new Date('2026-04-06'), keyStats: [] },
@@ -291,25 +328,31 @@ describe('compareToPriorPeriods', () => {
     ]);
 
     const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, ctx);
-    expect(result).toBeNull();
+    expect(result).toEqual({ found: false, reason: 'suppressed' });
   });
 
-  it('returns null when the row fetch comes back empty, the shape an RLS-scoped cross-tenant read produces', async () => {
+  it('reports not_found when the row fetch comes back empty, the shape an RLS-scoped cross-tenant read produces', async () => {
     mockGetRowsByDataset.mockResolvedValueOnce([]);
 
     const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, ctx);
-    expect(result).toBeNull();
+    expect(result).toEqual({ found: false, reason: 'not_found' });
   });
 
-  it('returns null for a non-positive or non-integer datasetId without querying', async () => {
+  it('reports not_found for a non-positive or non-integer datasetId without querying', async () => {
     const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, { ...ctx, datasetId: 0 });
-    expect(result).toBeNull();
+    expect(result).toEqual({ found: false, reason: 'not_found' });
     expect(mockGetRowsByDataset).not.toHaveBeenCalled();
   });
 
-  it('returns null when a category-scoped statType is requested with no category', async () => {
+  it('reports not_found for a non-positive orgId or a non-boolean isAdmin without querying', async () => {
+    const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, { ...ctx, orgId: -1 });
+    expect(result).toEqual({ found: false, reason: 'not_found' });
+    expect(mockGetRowsByDataset).not.toHaveBeenCalled();
+  });
+
+  it('reports not_found when a category-scoped statType is requested with no category', async () => {
     const result = await compareToPriorPeriods({ statType: StatType.Trend }, ctx);
-    expect(result).toBeNull();
+    expect(result).toEqual({ found: false, reason: 'not_found' });
     expect(mockGetRowsByDataset).not.toHaveBeenCalled();
   });
 
@@ -322,7 +365,7 @@ describe('compareToPriorPeriods', () => {
 
     const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, ctx);
 
-    expect(result).toEqual({ current: expect.objectContaining({ id: findSalesTrendId() }), hasHistory: false });
+    expect(result).toEqual({ found: true, current: expect.objectContaining({ id: findSalesTrendId() }), hasHistory: false });
   });
 
   it('clamps periodsBack into the schema-documented 2-8 range instead of passing an out-of-range value to the query', async () => {
