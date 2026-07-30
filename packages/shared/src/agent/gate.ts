@@ -3,9 +3,14 @@ import { actionMutates } from './proposal.js';
 
 export type GateLane = 'auto_notify' | 'needs_approval' | 'suppress';
 
+// The prompt tells the model this floor exists (v1-agent-system.md:43,
+// "Below 0.6 the gate will suppress it automatically"). If that line's
+// number changes, change this too.
+export const DEFAULT_MIN_CONFIDENCE = 0.6;
+
 export interface GateConfig {
   approvalThreshold: number; // money impact at/above this needs a human
-  minConfidence: number; // below this, drop the proposal
+  minConfidence?: number; // below this, drop the proposal; defaults to DEFAULT_MIN_CONFIDENCE
   suppressSeenDays: number; // dedup window the caller used to build recentDedupKeys
 }
 
@@ -29,7 +34,7 @@ export interface GateDecision {
 // The function returns a decision plus a reason; the caller does the IO and
 // writes the audit row. Keeping side effects out keeps it replayable and pure.
 export function routeProposal(p: AgentProposal, cfg: GateConfig, ctx: GateContext): GateDecision {
-  if (p.confidence < cfg.minConfidence) {
+  if (p.confidence < (cfg.minConfidence ?? DEFAULT_MIN_CONFIDENCE)) {
     return { lane: 'suppress', reason: 'confidence below floor' };
   }
 

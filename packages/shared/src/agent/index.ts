@@ -9,7 +9,7 @@ export type { AgentProposal, ProposedAction, MoneyImpact, FindingKind } from './
 
 export { BANNED_IMPERATIVES } from './constants.js';
 
-export { routeProposal } from './gate.js';
+export { routeProposal, DEFAULT_MIN_CONFIDENCE } from './gate.js';
 
 export type { GateLane, GateConfig, GateContext, GateDecision } from './gate.js';
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { routeProposal, type GateConfig, type GateContext } from './gate.js';
+import { routeProposal, DEFAULT_MIN_CONFIDENCE, type GateConfig, type GateContext } from './gate.js';
 import type { AgentProposal, ProposedAction } from './proposal.js';
 
 const cfg: GateConfig = { approvalThreshold: 1000, minConfidence: 0.6, suppressSeenDays: 14 };
@@ -40,6 +40,17 @@ describe('routeProposal', () => {
 
   it('auto-notifies a fresh informational finding', () => {
     expect(routeProposal(p(), cfg, ctx()).lane).toBe('auto_notify');
+  });
+
+  it('falls back to the default when minConfidence is omitted', () => {
+    const cfgNoFloor: GateConfig = { approvalThreshold: 1000, suppressSeenDays: 14 };
+    expect(routeProposal(p({ confidence: DEFAULT_MIN_CONFIDENCE - 0.01 }), cfgNoFloor, ctx()).lane).toBe('suppress');
+    expect(routeProposal(p({ confidence: DEFAULT_MIN_CONFIDENCE }), cfgNoFloor, ctx()).lane).toBe('auto_notify');
+  });
+
+  it('honors an explicit minConfidence of 0 instead of falling back to the default', () => {
+    const cfgNoFloor: GateConfig = { approvalThreshold: 1000, minConfidence: 0, suppressSeenDays: 14 };
+    expect(routeProposal(p({ confidence: 0 }), cfgNoFloor, ctx()).lane).toBe('auto_notify');
   });
 
   it('suppresses a finding already seen in the dedup window', () => {
