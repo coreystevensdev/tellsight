@@ -53,24 +53,6 @@
     "label": "Keep open pending product/UX decision",
     "resolution": ""
   },
-  "DW-54": {
-    "answered_at": "2026-07-30",
-    "bundle_name": "",
-    "effect": "build",
-    "intent": "Replace the unvalidated z.custom<Date> passthrough for weekStart/weekEnd with z.coerce.date() in the job-data schema, closing the gap before the digest cron goes live in production.",
-    "key": "1",
-    "label": "Apply z.coerce.date() now",
-    "resolution": ""
-  },
-  "DW-66": {
-    "answered_at": "2026-07-30",
-    "bundle_name": "",
-    "effect": "build",
-    "intent": "Add the same isNull(staleAt) filter getCachedSummary uses to getCachedDigest, so an approved correction can invalidate the current week's cached digest the same way it does a cached AI summary.",
-    "key": "1",
-    "label": "Make getCachedDigest respect staleAt",
-    "resolution": ""
-  },
   "DW-87": {
     "answered_at": "2026-07-30",
     "bundle_name": "",
@@ -78,15 +60,6 @@
     "intent": "",
     "key": "3",
     "label": "Keep open for a future QA answer-quality story",
-    "resolution": ""
-  },
-  "DW-90": {
-    "answered_at": "2026-07-30",
-    "bundle_name": "",
-    "effect": "build",
-    "intent": "Add a second, separate cost check in qaLoop.ts that caps total accumulated cost per loop (not just the per-turn average), calibrated independently from the existing per-call cap.",
-    "key": "1",
-    "label": "Add an absolute per-loop cost ceiling",
     "resolution": ""
   },
   "DW-93": {
