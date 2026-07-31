@@ -9,12 +9,29 @@ export async function recordEvent(
   eventName: AnalyticsEventName,
   metadata?: Record<string, unknown>,
   client: typeof db | DbTransaction = db,
+  dedupeKey?: string,
 ) {
-  const [event] = await client
+  // Boolean(), not a null check: an empty string is falsy here too, so it's
+  // treated the same as "no dedupe key" on both the write and the conflict
+  // branch below instead of silently sneaking into the unique index.
+  const hasDedupeKey = Boolean(dedupeKey);
+  const insert = client
     .insert(analyticsEvents)
-    .values({ orgId, userId, eventName, metadata: metadata ?? null })
-    .returning();
-  if (!event) throw new Error('Insert failed to return analytics event');
+    .values({ orgId, userId, eventName, metadata: metadata ?? null, dedupeKey: hasDedupeKey ? dedupeKey : null });
+
+  const [event] = hasDedupeKey
+    ? await insert
+        .onConflictDoNothing({
+          target: analyticsEvents.dedupeKey,
+          where: sql`${analyticsEvents.dedupeKey} IS NOT NULL`,
+        })
+        .returning()
+    : await insert.returning();
+
+  if (!event) {
+    if (hasDedupeKey) return null;
+    throw new Error('Insert failed to return analytics event');
+  }
   return event;
 }
 

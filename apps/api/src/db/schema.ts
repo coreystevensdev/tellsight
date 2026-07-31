@@ -110,12 +110,16 @@ export const analyticsEvents = pgTable(
     eventName: varchar('event_name', { length: 100 }).notNull(),
     metadata: jsonb('metadata'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    dedupeKey: varchar('dedupe_key', { length: 200 }),
   },
   (table) => [
     index('idx_analytics_events_org_id').on(table.orgId),
     index('idx_analytics_events_event_name').on(table.eventName),
     index('idx_analytics_events_created_at').on(table.createdAt),
     index('idx_analytics_events_ai_usage').on(table.orgId, table.eventName, table.createdAt),
+    uniqueIndex('idx_analytics_events_dedupe_key')
+      .on(table.dedupeKey)
+      .where(sql`${table.dedupeKey} IS NOT NULL`),
   ],
 );
 

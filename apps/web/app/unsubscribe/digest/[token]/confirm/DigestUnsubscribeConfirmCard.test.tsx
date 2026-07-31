@@ -26,7 +26,10 @@ describe('DigestUnsubscribeConfirmCard', () => {
     fireEvent.click(screen.getByRole('button', { name: /confirm unsubscribe/i }));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith('/api/digest/unsubscribe/tok-1', { method: 'POST' });
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/digest/unsubscribe/tok-1',
+        expect.objectContaining({ method: 'POST' }),
+      );
     });
     expect(await screen.findByText(/won't receive any more weekly digest/i)).toBeInTheDocument();
   });
@@ -82,5 +85,43 @@ describe('DigestUnsubscribeConfirmCard', () => {
 
     expect(screen.getByRole('button', { name: /confirm unsubscribe/i })).toBeInTheDocument();
     expect(screen.queryByText(/expired or is invalid/i)).not.toBeInTheDocument();
+  });
+
+  it('moves focus to the confirm button after "Try again" is clicked', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({ error: { message: 'This unsubscribe link has expired or is invalid.' } }),
+    });
+    render(<DigestUnsubscribeConfirmCard token="tok-1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /confirm unsubscribe/i }));
+    await screen.findByText(/expired or is invalid/i);
+
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+
+    expect(screen.getByRole('button', { name: /confirm unsubscribe/i })).toHaveFocus();
+  });
+
+  it('does not autofocus the confirm button on initial mount', () => {
+    render(<DigestUnsubscribeConfirmCard token="tok-1" />);
+
+    expect(screen.getByRole('button', { name: /confirm unsubscribe/i })).not.toHaveFocus();
+  });
+
+  it('aborts the in-flight request when the component unmounts', async () => {
+    let resolveFetch: (value: unknown) => void = () => {};
+    fetchMock.mockReturnValueOnce(new Promise((resolve) => { resolveFetch = resolve; }));
+    const { unmount } = render(<DigestUnsubscribeConfirmCard token="tok-1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /confirm unsubscribe/i }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    const signal = (fetchMock.mock.calls[0]?.[1] as { signal: AbortSignal }).signal;
+    expect(signal.aborted).toBe(false);
+
+    unmount();
+
+    expect(signal.aborted).toBe(true);
+    resolveFetch({ ok: true, json: async () => ({ data: { unsubscribed: true } }) });
   });
 });

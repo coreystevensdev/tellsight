@@ -8,6 +8,10 @@ const mockWhere = vi.fn();
 const mockOrderBy = vi.fn();
 const mockLimit = vi.fn();
 const mockOffset = vi.fn();
+const mockInsert = vi.fn();
+const mockValues = vi.fn();
+const mockOnConflictDoNothing = vi.fn();
+const mockReturning = vi.fn();
 
 const chainable = {
   select: mockSelect,
@@ -18,6 +22,10 @@ const chainable = {
   orderBy: mockOrderBy,
   limit: mockLimit,
   offset: mockOffset,
+  insert: mockInsert,
+  values: mockValues,
+  onConflictDoNothing: mockOnConflictDoNothing,
+  returning: mockReturning,
 };
 
 for (const fn of Object.values(chainable)) {
@@ -25,8 +33,8 @@ for (const fn of Object.values(chainable)) {
 }
 
 vi.mock('../../lib/db.js', () => ({
-  db: { select: mockSelect },
-  dbAdmin: { select: mockSelect },
+  db: { select: mockSelect, insert: mockInsert },
+  dbAdmin: { select: mockSelect, insert: mockInsert },
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -46,6 +54,7 @@ vi.mock('../schema.js', () => ({
   analyticsEvents: {
     id: 'ae.id', orgId: 'ae.orgId', userId: 'ae.userId',
     eventName: 'ae.eventName', metadata: 'ae.metadata', createdAt: 'ae.createdAt',
+    dedupeKey: 'ae.dedupeKey',
   },
   orgs: { id: 'orgs.id', name: 'orgs.name' },
   users: { id: 'users.id', email: 'users.email', name: 'users.name' },
@@ -54,6 +63,57 @@ vi.mock('../schema.js', () => ({
 beforeEach(() => vi.clearAllMocks());
 
 describe('analyticsEvents queries', () => {
+  describe('recordEvent', () => {
+    it('throws on an empty returning() when no dedupeKey is passed', async () => {
+      mockReturning.mockResolvedValueOnce([]);
+
+      const { recordEvent } = await import('./analyticsEvents.js');
+
+      await expect(recordEvent(10, 5, 'user.signed_in')).rejects.toThrow(
+        'Insert failed to return analytics event',
+      );
+      expect(mockOnConflictDoNothing).not.toHaveBeenCalled();
+    });
+
+    it('applies onConflictDoNothing on the dedupe target and returns the inserted row', async () => {
+      const fakeEvent = { id: 1, eventName: 'alert.muted' };
+      mockReturning.mockResolvedValueOnce([fakeEvent]);
+
+      const { recordEvent } = await import('./analyticsEvents.js');
+      const { analyticsEvents } = await import('../schema.js');
+      const result = await recordEvent(
+        10,
+        5,
+        'alert.muted',
+        { muteUntil: null },
+        undefined,
+        'alert.muted:1:58765',
+      );
+
+      expect(mockOnConflictDoNothing).toHaveBeenCalledWith({
+        target: analyticsEvents.dedupeKey,
+        where: ' IS NOT NULL',
+      });
+      expect(result).toEqual(fakeEvent);
+    });
+
+    it('returns null instead of throwing on a dedupeKey collision', async () => {
+      mockReturning.mockResolvedValueOnce([]);
+
+      const { recordEvent } = await import('./analyticsEvents.js');
+      const result = await recordEvent(
+        10,
+        5,
+        'alert.muted',
+        { muteUntil: null },
+        undefined,
+        'alert.muted:1:58765',
+      );
+
+      expect(result).toBeNull();
+    });
+  });
+
   describe('getAllAnalyticsEvents', () => {
     it('returns events with org name and user email', async () => {
       const fakeEvents = [

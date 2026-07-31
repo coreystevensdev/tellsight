@@ -10,6 +10,17 @@ import { logger } from '../lib/logger.js';
 
 export const publicAlertMuteRouter = Router();
 
+// Bucketed, not permanent: collapses same-click-storm duplicates (two tabs
+// hitting the same token within milliseconds of each other). Short window on
+// purpose -- a mute -> unmute -> re-mute round trip lands on the same
+// eventName+ruleId key if it happens inside the same bucket, which would
+// silently drop the second mute's analytics row, so the window only needs to
+// outlast a click race, not stay open for legitimate re-mutes.
+const MUTE_DEDUPE_WINDOW_MS = 5_000;
+function muteDedupeKey(eventName: string, ruleId: number): string {
+  return `${eventName}:${ruleId}:${Math.floor(Date.now() / MUTE_DEDUPE_WINDOW_MS)}`;
+}
+
 function invalidTokenResponse(res: Response): void {
   res.status(400).json({
     error: { code: 'INVALID_TOKEN', message: 'This mute link has expired or is invalid.' },
@@ -47,7 +58,14 @@ publicAlertMuteRouter.post('/alerts/mute/:token', async (req, res: Response) => 
   }
 
   analyticsEventsQueries
-    .recordEvent(rule.orgId, rule.createdByUserId, ANALYTICS_EVENTS.ALERT_MUTED, { muteUntil: rule.muteUntil }, dbAdmin)
+    .recordEvent(
+      rule.orgId,
+      rule.createdByUserId,
+      ANALYTICS_EVENTS.ALERT_MUTED,
+      { muteUntil: rule.muteUntil },
+      dbAdmin,
+      muteDedupeKey(ANALYTICS_EVENTS.ALERT_MUTED, rule.id),
+    )
     .catch((err) => logger.error({ err, ruleId: rule.id }, 'Failed to record alert.muted event'));
 
   req.log.info({ orgId: rule.orgId, ruleId: rule.id, action: 'muted' }, 'Alert rule muted via email link');
@@ -71,7 +89,14 @@ publicAlertMuteRouter.post('/alerts/unmute/:token', async (req, res: Response) =
   }
 
   analyticsEventsQueries
-    .recordEvent(rule.orgId, rule.createdByUserId, ANALYTICS_EVENTS.ALERT_UNMUTED, { muteUntil: null }, dbAdmin)
+    .recordEvent(
+      rule.orgId,
+      rule.createdByUserId,
+      ANALYTICS_EVENTS.ALERT_UNMUTED,
+      { muteUntil: null },
+      dbAdmin,
+      muteDedupeKey(ANALYTICS_EVENTS.ALERT_UNMUTED, rule.id),
+    )
     .catch((err) => logger.error({ err, ruleId: rule.id }, 'Failed to record alert.unmuted event'));
 
   req.log.info({ orgId: rule.orgId, ruleId: rule.id, action: 'unmuted' }, 'Alert rule unmuted via email link');

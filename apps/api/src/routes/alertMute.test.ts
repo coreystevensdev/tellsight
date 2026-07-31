@@ -103,6 +103,7 @@ describe('POST /alerts/mute/:token', () => {
       'alert.muted',
       { muteUntil: mutedRule.muteUntil },
       { __admin: true },
+      expect.stringMatching(/^alert\.muted:1:\d+$/),
     );
   });
 
@@ -161,7 +162,14 @@ describe('POST /alerts/unmute/:token', () => {
       ruleKindLabel: 'cash runway',
       orgName: 'Acme Coffee',
     });
-    expect(mockRecordEvent).toHaveBeenCalledWith(10, 5, 'alert.unmuted', { muteUntil: null }, { __admin: true });
+    expect(mockRecordEvent).toHaveBeenCalledWith(
+      10,
+      5,
+      'alert.unmuted',
+      { muteUntil: null },
+      { __admin: true },
+      expect.stringMatching(/^alert\.unmuted:1:\d+$/),
+    );
   });
 
   it('returns 400 INVALID_TOKEN on an invalid token', async () => {

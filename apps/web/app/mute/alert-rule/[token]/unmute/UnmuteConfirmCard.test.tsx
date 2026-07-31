@@ -26,7 +26,10 @@ describe('UnmuteConfirmCard', () => {
     fireEvent.click(screen.getByRole('button', { name: /confirm unmute/i }));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith('/api/mute/alert-rule/tok-1/unmute', { method: 'POST' });
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/mute/alert-rule/tok-1/unmute',
+        expect.objectContaining({ method: 'POST' }),
+      );
     });
     expect(await screen.findByText(/notified again/i)).toBeInTheDocument();
   });
@@ -82,5 +85,43 @@ describe('UnmuteConfirmCard', () => {
 
     expect(screen.getByRole('button', { name: /confirm unmute/i })).toBeInTheDocument();
     expect(screen.queryByText(/expired or is invalid/i)).not.toBeInTheDocument();
+  });
+
+  it('moves focus to the confirm button after "Try again" is clicked', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({ error: { message: 'This unmute link has expired or is invalid.' } }),
+    });
+    render(<UnmuteConfirmCard token="tok-1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /confirm unmute/i }));
+    await screen.findByText(/expired or is invalid/i);
+
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+
+    expect(screen.getByRole('button', { name: /confirm unmute/i })).toHaveFocus();
+  });
+
+  it('does not autofocus the confirm button on initial mount', () => {
+    render(<UnmuteConfirmCard token="tok-1" />);
+
+    expect(screen.getByRole('button', { name: /confirm unmute/i })).not.toHaveFocus();
+  });
+
+  it('aborts the in-flight request when the component unmounts', async () => {
+    let resolveFetch: (value: unknown) => void = () => {};
+    fetchMock.mockReturnValueOnce(new Promise((resolve) => { resolveFetch = resolve; }));
+    const { unmount } = render(<UnmuteConfirmCard token="tok-1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /confirm unmute/i }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    const signal = (fetchMock.mock.calls[0]?.[1] as { signal: AbortSignal }).signal;
+    expect(signal.aborted).toBe(false);
+
+    unmount();
+
+    expect(signal.aborted).toBe(true);
+    resolveFetch({ ok: true, json: async () => ({ data: { muted: false } }) });
   });
 });

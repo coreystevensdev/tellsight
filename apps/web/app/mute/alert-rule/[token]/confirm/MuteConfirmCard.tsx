@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 
 interface Props {
@@ -34,6 +34,22 @@ export function MuteConfirmCard({ token }: Props) {
   const [message, setMessage] = useState('');
   const [unmuteHref, setUnmuteHref] = useState('');
   const pendingRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const confirmButtonRef = useRef<HTMLButtonElement>(null);
+  const focusOnIdleRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (status === 'idle' && focusOnIdleRef.current) {
+      confirmButtonRef.current?.focus();
+      focusOnIdleRef.current = false;
+    }
+  }, [status]);
 
   async function confirmMute() {
     // status hasn't committed yet when a second click lands in the same
@@ -42,11 +58,15 @@ export function MuteConfirmCard({ token }: Props) {
     if (pendingRef.current) return;
     pendingRef.current = true;
     setStatus('pending');
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       const res = await fetch(`/api/mute/alert-rule/${encodeURIComponent(token)}`, {
         method: 'POST',
+        signal: controller.signal,
       });
       const body = await res.json().catch(() => ({}));
+      if (controller.signal.aborted) return;
       if (res.ok && body?.data) {
         const { muteUntil, ruleKindLabel, orgName } = body.data as MuteData;
         setStatus('success');
@@ -57,6 +77,7 @@ export function MuteConfirmCard({ token }: Props) {
         setMessage(body?.error?.message ?? 'This mute link has expired or is invalid.');
       }
     } catch {
+      if (controller.signal.aborted) return;
       setStatus('error');
       setMessage("We couldn't reach our server. Please try again in a few minutes.");
     } finally {
@@ -65,6 +86,7 @@ export function MuteConfirmCard({ token }: Props) {
   }
 
   function retry() {
+    focusOnIdleRef.current = true;
     setStatus('idle');
     setMessage('');
   }
@@ -108,6 +130,7 @@ export function MuteConfirmCard({ token }: Props) {
         You&apos;ll stop hearing about this alert once you confirm.
       </p>
       <button
+        ref={confirmButtonRef}
         type="button"
         onClick={confirmMute}
         disabled={status === 'pending'}
