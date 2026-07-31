@@ -36,7 +36,29 @@
       "expectedVerdict": "lookup",
       "accuracy": 1,
       "overrideCount": 0
+    },
+    {
+      "id": "restated-plus-new-figure",
+      "label": "Answer restates the known figure and adds a genuinely new comparison figure",
+      "expectedVerdict": "interpretive",
+      "accuracy": 1,
+      "overrideCount": 0
+    },
+    {
+      "id": "multi-cite-period-comparison",
+      "label": "Two separately cited figures, current period against prior period",
+      "expectedVerdict": "interpretive",
+      "accuracy": 1,
+      "overrideCount": 0
+    },
+    {
+      "id": "adversarial-figure-free-benchmark",
+      "label": "Strong benchmark/trend framing with zero digits and zero spelled-figure words",
+      "expectedVerdict": "lookup",
+      "accuracy": 1,
+      "overrideCount": 3
     }
   ],
-  "aggregate": 1
+  "aggregate": 1,
+  "failedFixtureIds": []
 }

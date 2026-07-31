@@ -10,7 +10,7 @@
  * are hand-authored instead.
  *
  * Run: pnpm eval:qa  (from the repo root; loads .env, then runs this via tsx)
- * Needs a real CLAUDE_API_KEY. Costs tokens (5 fixtures x 3 samples, judge only).
+ * Needs a real CLAUDE_API_KEY. Costs tokens (8 fixtures x 3 samples, judge only).
  *
  * console.log/error is intentional, this is a standalone script, not app code;
  * the Pino rule applies to apps/ only (same posture as eval-summaries.ts).
@@ -59,7 +59,11 @@ function parseJudge<T>(raw: string, schema: z.ZodType<T>, ctx: string): T {
   } catch {
     throw new Error(`${ctx} judge returned non-JSON: ${raw.slice(0, 200)}`);
   }
-  return schema.parse(parsed);
+  const result = schema.safeParse(parsed);
+  if (!result.success) {
+    throw new Error(`${ctx} judge returned unexpected shape (${result.error.message}): ${raw.slice(0, 200)}`);
+  }
+  return result.data;
 }
 
 function mean(xs: number[]): number {
@@ -69,7 +73,7 @@ function mean(xs: number[]): number {
 async function scoreFixture(provider: LlmProvider, fixture: QaEvalFixture): Promise<FixtureScore> {
   // Guard runs once, the fixture's answer text is fixed across samples; only
   // the judge call is resampled to average out judge variance.
-  const guardAllowsInterpretive = hasNumericFigure(fixture.answer);
+  const guardAllowsInterpretive = hasNumericFigure(fixture.answer, fixture.knownFigures);
 
   let correctCount = 0;
   let overrideCount = 0;
@@ -126,8 +130,14 @@ async function main(): Promise<void> {
 
   console.log(`Running ${QA_FIXTURES.length} fixtures x ${SAMPLES} samples...`);
   const results: FixtureScore[] = [];
+  const failedFixtureIds: string[] = [];
   for (const fixture of QA_FIXTURES) {
-    results.push(await scoreFixture(provider, fixture));
+    try {
+      results.push(await scoreFixture(provider, fixture));
+    } catch (err) {
+      failedFixtureIds.push(fixture.id);
+      console.error(`  ${fixture.id} failed: ${err instanceof Error ? err.message : err}`);
+    }
   }
 
   // mean() of an empty array is NaN, and NaN < FLOOR is false, so an emptied
@@ -145,6 +155,7 @@ async function main(): Promise<void> {
     samplesPerFixture: SAMPLES,
     fixtures: results,
     aggregate,
+    failedFixtureIds,
   };
   mkdirSync(dirname(SNAPSHOT_PATH), { recursive: true });
   writeFileSync(SNAPSHOT_PATH, JSON.stringify(snapshot, null, 2) + '\n');
@@ -153,10 +164,19 @@ async function main(): Promise<void> {
   printScorecardTable(results);
   console.log(`\nAggregate accuracy: ${aggregate.toFixed(2)} (floor ${FLOOR})`);
 
+  let failed = false;
+
   if (aggregate < FLOOR) {
     console.error(`\nFAIL: aggregate accuracy ${aggregate.toFixed(2)} < floor ${FLOOR}`);
-    process.exit(1);
+    failed = true;
   }
+
+  if (failedFixtureIds.length > 0) {
+    console.error(`\nFAIL: ${failedFixtureIds.length} fixture(s) errored: ${failedFixtureIds.join(', ')}`);
+    failed = true;
+  }
+
+  if (failed) process.exit(1);
 
   console.log('\nPASS: aggregate accuracy meets the floor');
 }

@@ -115,7 +115,11 @@ function parseJudge<T>(raw: string, schema: z.ZodType<T>, ctx: string): T {
   } catch {
     throw new Error(`${ctx} judge returned non-JSON: ${raw.slice(0, 200)}`);
   }
-  return schema.parse(parsed);
+  const result = schema.safeParse(parsed);
+  if (!result.success) {
+    throw new Error(`${ctx} judge returned unexpected shape (${result.error.message}): ${raw.slice(0, 200)}`);
+  }
+  return result.data;
 }
 
 async function scoreFaithfulness(
@@ -235,11 +239,22 @@ async function main(): Promise<void> {
 
   console.log(`Running ${FIXTURES.length} fixtures x ${SAMPLES} samples...`);
   const results: FixtureScore[] = [];
+  const failedFixtureIds: string[] = [];
   let promptVersion = DEFAULT_PROMPT_VERSION;
   for (const fixture of FIXTURES) {
-    const { score, promptVersion: version } = await scoreFixture(provider, fixture);
-    promptVersion = version;
-    results.push(score);
+    try {
+      const { score, promptVersion: version } = await scoreFixture(provider, fixture);
+      promptVersion = version;
+      results.push(score);
+    } catch (err) {
+      failedFixtureIds.push(fixture.id);
+      console.error(`  ${fixture.id} failed: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  if (results.length === 0) {
+    console.error('FAIL: no fixtures were scored');
+    process.exit(1);
   }
 
   const aggregate = {
@@ -261,6 +276,7 @@ async function main(): Promise<void> {
     judgeTemperature: 'provider default (temperature 0 requested in-prompt, not enforced at the API)',
     fixtures: results,
     aggregate,
+    failedFixtureIds,
   };
   mkdirSync(dirname(SCORECARD_PATH), { recursive: true });
   writeFileSync(SCORECARD_PATH, JSON.stringify(scorecard, null, 2) + '\n');
@@ -288,6 +304,13 @@ async function main(): Promise<void> {
   if (breaches.length > 0) {
     console.error('\nFAIL: floor breaches');
     for (const b of breaches) console.error(`  ${b}`);
+  }
+
+  if (failedFixtureIds.length > 0) {
+    console.error(`\nFAIL: ${failedFixtureIds.length} fixture(s) errored: ${failedFixtureIds.join(', ')}`);
+  }
+
+  if (breaches.length > 0 || failedFixtureIds.length > 0) {
     process.exit(1);
   }
 

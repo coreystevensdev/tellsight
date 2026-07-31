@@ -58,4 +58,31 @@ export const QA_FIXTURES: QaEvalFixture[] = [
       'Cash flow has been trending in a concerning direction lately, worth keeping an eye on as the pattern continues to develop over the coming months <cite id="5:cash_flow:_:_"/>.',
     expectedVerdict: 'lookup',
   },
+  {
+    id: 'restated-plus-new-figure',
+    label: 'Answer restates the known figure and adds a genuinely new comparison figure',
+    question: 'Was payroll $9,200 last month?',
+    knownFigures: ['$9,200'],
+    answer:
+      'Yes, payroll was $9,200 last month <cite id="3:trend:Payroll:0"/>, up from $8,400 the month before <cite id="6:trend:Payroll:1"/>.',
+    expectedVerdict: 'interpretive',
+  },
+  {
+    id: 'multi-cite-period-comparison',
+    label: 'Two separately cited figures, current period against prior period',
+    question: 'How does this month compare to last month for expenses?',
+    knownFigures: [],
+    answer:
+      'Expenses came in at $6,100 this month <cite id="7:total:Expenses:0"/>, down from $7,350 last month <cite id="8:total:Expenses:1"/>.',
+    expectedVerdict: 'interpretive',
+  },
+  {
+    id: 'adversarial-figure-free-benchmark',
+    label: 'Strong benchmark/trend framing with zero digits and zero spelled-figure words',
+    question: "How does our margin stack up against similar businesses?",
+    knownFigures: [],
+    answer:
+      'Your margin has been climbing steadily and now sits well above where most comparable businesses in your space tend to land, a strong sign your pricing and cost control are working better than typical for a business your size <cite id="9:margin_trend:_:_"/>.',
+    expectedVerdict: 'lookup',
+  },
 ];
