@@ -1,5 +1,23 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+
+const setStateCalls: unknown[] = [];
+
+vi.mock('react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react')>();
+  return {
+    ...actual,
+    useState: (initial: unknown) => {
+      const [value, setValue] = actual.useState(initial);
+      const wrapped = (v: unknown) => {
+        setStateCalls.push(v);
+        return setValue(v as never);
+      };
+      return [value, wrapped];
+    },
+  };
+});
+
 import { UnmuteConfirmCard } from './UnmuteConfirmCard';
 
 const fetchMock = vi.fn();
@@ -7,6 +25,7 @@ const fetchMock = vi.fn();
 beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
   fetchMock.mockReset();
+  setStateCalls.length = 0;
 });
 
 afterEach(() => {
@@ -122,6 +141,12 @@ describe('UnmuteConfirmCard', () => {
     unmount();
 
     expect(signal.aborted).toBe(true);
+    const callCountAfterUnmount = setStateCalls.length;
+    expect(callCountAfterUnmount).toBeGreaterThan(0);
+
     resolveFetch({ ok: true, json: async () => ({ data: { muted: false } }) });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(setStateCalls.length).toBe(callCountAfterUnmount);
   });
 });
