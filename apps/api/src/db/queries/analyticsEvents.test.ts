@@ -45,7 +45,8 @@ vi.mock('drizzle-orm', () => ({
   lte: vi.fn((...args: unknown[]) => ['lte', ...args]),
   count: vi.fn(() => 'count'),
   sql: Object.assign(
-    (strings: TemplateStringsArray, ..._exprs: unknown[]) => strings.join(''),
+    (strings: TemplateStringsArray, ...exprs: unknown[]) =>
+      strings.reduce((acc, str, i) => acc + str + (i < exprs.length ? String(exprs[i]) : ''), ''),
     { raw: (s: string) => s },
   ),
 }));
@@ -92,8 +93,31 @@ describe('analyticsEvents queries', () => {
 
       expect(mockOnConflictDoNothing).toHaveBeenCalledWith({
         target: analyticsEvents.dedupeKey,
-        where: ' IS NOT NULL',
+        where: 'ae.dedupeKey IS NOT NULL',
       });
+      expect(result).toEqual(fakeEvent);
+    });
+
+    it('throws on a dedupeKey over 200 chars without touching insert', async () => {
+      const { recordEvent } = await import('./analyticsEvents.js');
+      const longKey = 'a'.repeat(201);
+
+      await expect(recordEvent(10, 5, 'alert.muted', undefined, undefined, longKey)).rejects.toThrow(
+        /201.*200/,
+      );
+      expect(mockInsert).not.toHaveBeenCalled();
+      expect(mockOnConflictDoNothing).not.toHaveBeenCalled();
+    });
+
+    it('allows a dedupeKey at exactly 200 chars', async () => {
+      const fakeEvent = { id: 2, eventName: 'alert.muted' };
+      mockReturning.mockResolvedValueOnce([fakeEvent]);
+
+      const { recordEvent } = await import('./analyticsEvents.js');
+      const key = 'a'.repeat(200);
+      const result = await recordEvent(10, 5, 'alert.muted', undefined, undefined, key);
+
+      expect(mockOnConflictDoNothing).toHaveBeenCalled();
       expect(result).toEqual(fakeEvent);
     });
 

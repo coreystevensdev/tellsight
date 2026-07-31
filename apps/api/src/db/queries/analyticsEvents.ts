@@ -3,6 +3,9 @@ import { db, dbAdmin, type DbTransaction } from '../../lib/db.js';
 import { analyticsEvents, orgs, users } from '../schema.js';
 import { ANALYTICS_EVENTS, type AnalyticsEventName } from 'shared/constants';
 
+// Must match dedupeKey's varchar(200) column in schema.ts.
+const DEDUPE_KEY_MAX_LENGTH = 200;
+
 export async function recordEvent(
   orgId: number | null,
   userId: number | null,
@@ -15,6 +18,14 @@ export async function recordEvent(
   // treated the same as "no dedupe key" on both the write and the conflict
   // branch below instead of silently sneaking into the unique index.
   const hasDedupeKey = Boolean(dedupeKey);
+  if (dedupeKey) {
+    // Spread to count code points, not UTF-16 units, so surrogate-pair
+    // characters (emoji, some CJK) match how Postgres counts varchar length.
+    const dedupeKeyLength = [...dedupeKey].length;
+    if (dedupeKeyLength > DEDUPE_KEY_MAX_LENGTH) {
+      throw new Error(`dedupeKey is ${dedupeKeyLength} chars, exceeds the ${DEDUPE_KEY_MAX_LENGTH}-char column limit`);
+    }
+  }
   const insert = client
     .insert(analyticsEvents)
     .values({ orgId, userId, eventName, metadata: metadata ?? null, dedupeKey: hasDedupeKey ? dedupeKey : null });
