@@ -942,8 +942,39 @@ export function statInstanceId(stat: ComputedStat, datasetId: number): string {
   // splitting on ':' to read off the statType segment. Both swaps avoid
   // collapsing two categories that differ only by an escaped character onto
   // the same id, or an escaped-only category onto an empty segment.
-  const category = stat.category ? stat.category.replace(/"/g, '”').replace(/:/g, '：') : '_';
+  const category =
+    stat.category == null ? '_' : stat.category.replace(/"/g, '”').replace(/:/g, '：');
   return `${datasetId}:${stat.statType}:${category}:${statDiscriminator(stat)}`;
+}
+
+// digestHistory.ts's isComputedStat calls this on every keyStats entry before
+// casting jsonb to ComputedStat, and statDiscriminator (below) dereferences
+// the same details fields with no guard of its own. Total and Average also
+// dereference details.scope there, but neither is a TrendCarryingStatType so
+// compareToPriorPeriods can never match one -- their case is still checked
+// here so this guard holds even if that changes. Keep the two switches in
+// sync: a stat type added to one and not the other reintroduces the drift
+// DW-119 found.
+export function hasValidDiscriminatorFields(stat: { statType: string; details: unknown }): boolean {
+  const details = stat.details as Record<string, unknown> | null | undefined;
+  switch (stat.statType) {
+    case StatType.Total:
+    case StatType.Average:
+      return typeof details?.scope === 'string';
+    case StatType.YearOverYear:
+      return (
+        typeof details?.currentYear === 'number' &&
+        Number.isFinite(details.currentYear) &&
+        typeof details?.month === 'string' &&
+        (MONTH_NAMES as readonly string[]).includes(details.month)
+      );
+    case StatType.SeasonalProjection:
+      return typeof details?.projectedMonth === 'string';
+    case StatType.CashFlow:
+      return typeof details?.trailingMonths === 'number' && Number.isFinite(details.trailingMonths);
+    default:
+      return true;
+  }
 }
 
 function statDiscriminator(stat: ComputedStat): string {

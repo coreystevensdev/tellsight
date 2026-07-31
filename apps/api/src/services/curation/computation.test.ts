@@ -17,6 +17,7 @@ import {
   assignIds,
   monthKey,
   marginTrendMonths,
+  hasValidDiscriminatorFields,
   type MonthlyBucketMap,
 } from './computation.js';
 import type {
@@ -1566,6 +1567,51 @@ describe('resolveStatByType', () => {
 
     const resolved = resolveStatByType(rows, 1, StatType.YearOverYear, 'Revenue');
     expect(resolved!.value).toBe(1500);
+  });
+});
+
+describe('hasValidDiscriminatorFields', () => {
+  it('requires a string details.scope for total and average', () => {
+    expect(hasValidDiscriminatorFields({ statType: StatType.Total, details: { scope: 'category' } })).toBe(true);
+    expect(hasValidDiscriminatorFields({ statType: StatType.Average, details: { scope: 'overall' } })).toBe(true);
+    expect(hasValidDiscriminatorFields({ statType: StatType.Total, details: { scope: 5 } })).toBe(false);
+    expect(hasValidDiscriminatorFields({ statType: StatType.Total, details: {} })).toBe(false);
+  });
+
+  it('requires a finite currentYear and a MONTH_NAMES month for year_over_year', () => {
+    expect(
+      hasValidDiscriminatorFields({ statType: StatType.YearOverYear, details: { currentYear: 2026, month: 'Mar' } }),
+    ).toBe(true);
+    expect(
+      hasValidDiscriminatorFields({ statType: StatType.YearOverYear, details: { currentYear: 2026, month: 'March' } }),
+    ).toBe(false); // full name, not the 'Mar' MONTH_NAMES stores
+    expect(
+      hasValidDiscriminatorFields({ statType: StatType.YearOverYear, details: { currentYear: NaN, month: 'Mar' } }),
+    ).toBe(false);
+    expect(
+      hasValidDiscriminatorFields({ statType: StatType.YearOverYear, details: { month: 'Mar' } }),
+    ).toBe(false);
+  });
+
+  it('requires a string details.projectedMonth for seasonal_projection', () => {
+    expect(
+      hasValidDiscriminatorFields({ statType: StatType.SeasonalProjection, details: { projectedMonth: 'April' } }),
+    ).toBe(true);
+    expect(hasValidDiscriminatorFields({ statType: StatType.SeasonalProjection, details: {} })).toBe(false);
+  });
+
+  it('requires a finite details.trailingMonths for cash_flow', () => {
+    expect(hasValidDiscriminatorFields({ statType: StatType.CashFlow, details: { trailingMonths: 3 } })).toBe(true);
+    expect(
+      hasValidDiscriminatorFields({ statType: StatType.CashFlow, details: { trailingMonths: Infinity } }),
+    ).toBe(false);
+    expect(hasValidDiscriminatorFields({ statType: StatType.CashFlow, details: {} })).toBe(false);
+  });
+
+  it('defaults to true for stat types with no discriminator to validate', () => {
+    expect(hasValidDiscriminatorFields({ statType: StatType.Trend, details: 'not an object at all' })).toBe(true);
+    expect(hasValidDiscriminatorFields({ statType: StatType.Anomaly, details: null })).toBe(true);
+    expect(hasValidDiscriminatorFields({ statType: 'made_up_stat_type', details: {} })).toBe(true);
   });
 });
 

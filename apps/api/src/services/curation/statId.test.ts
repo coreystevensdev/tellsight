@@ -43,6 +43,44 @@ describe('statInstanceId', () => {
     expect(statInstanceId(totalStat, 1)).toBe('1:total:_:overall');
   });
 
+  it('falls back to _ for an undefined category, matching how a raw jsonb-cast stat without runtime validation could reach this function', () => {
+    // getLastDigest's keyStats cast (row.keyStats as ComputedStat[]) has no runtime
+    // validation, so a legacy row missing `category` entirely could reach here
+    // despite ComputedStat's type saying `string | null`, not `string | null | undefined`.
+    const totalStat = {
+      statType: StatType.Total,
+      value: 7000,
+      details: { scope: 'overall', count: 9 },
+    } as unknown as ComputedStat;
+    expect(statInstanceId(totalStat, 1)).toBe('1:total:_:overall');
+  });
+
+  it('uses an empty segment for an empty-string category, distinct from the _ used for null', () => {
+    const totalStat: ComputedStat = {
+      statType: StatType.Total,
+      category: '',
+      value: 7000,
+      details: { scope: 'category', count: 6 },
+    };
+    expect(statInstanceId(totalStat, 1)).toBe('1:total::category');
+  });
+
+  it('gives category: \'\' and category: null distinct ids', () => {
+    const emptyStringCategory: ComputedStat = {
+      statType: StatType.Total,
+      category: '',
+      value: 7000,
+      details: { scope: 'category', count: 6 },
+    };
+    const nullCategory: ComputedStat = {
+      statType: StatType.Total,
+      category: null,
+      value: 7000,
+      details: { scope: 'category', count: 6 },
+    };
+    expect(statInstanceId(emptyStringCategory, 1)).not.toBe(statInstanceId(nullCategory, 1));
+  });
+
   it('includes datasetId so ids are cross-dataset distinct', () => {
     const stat: ComputedStat = {
       statType: StatType.Total,

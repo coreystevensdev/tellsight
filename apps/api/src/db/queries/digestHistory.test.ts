@@ -152,7 +152,7 @@ describe('getTrailingDigests', () => {
 
     const result = await getTrailingDigests(3, 4);
 
-    expect(result).toEqual(rows.map((row) => ({ ...row, keyStats: [] })));
+    expect(result).toEqual(rows.map((row) => ({ ...row, keyStats: [], milestones: [] })));
     expect(mockFindMany).toHaveBeenCalledWith(
       expect.objectContaining({ limit: 4 }),
     );
@@ -256,6 +256,39 @@ describe('getTrailingDigests', () => {
     const [result] = await getTrailingDigests(3, 4);
 
     expect(result!.keyStats).toEqual([trendWithGarbageDetails]);
+  });
+
+  it('passes each row\'s well-formed milestones entries through', async () => {
+    const milestones = [
+      { kind: 'first_profitable_month', label: 'First profitable month', catalog: 'first_time' },
+    ];
+    mockFindMany.mockResolvedValueOnce([{ id: 17, weekStart: new Date('2026-05-25T00:00:00Z'), milestones }]);
+
+    const [result] = await getTrailingDigests(3, 4);
+
+    expect(result!.milestones).toEqual(milestones);
+  });
+
+  it('keeps well-formed milestones and drops malformed ones', async () => {
+    const milestones = [
+      { kind: 'first_profitable_month', label: 'First profitable month', catalog: 'first_time' },
+      { kind: 'runway_crossed_12mo', label: 'not an object' }, // missing catalog
+      'not an object',
+      { kind: 'x', label: 'y', catalog: 'unknown_catalog' },
+    ];
+    mockFindMany.mockResolvedValueOnce([{ id: 18, weekStart: new Date('2026-05-25T00:00:00Z'), milestones }]);
+
+    const [result] = await getTrailingDigests(3, 4);
+
+    expect(result!.milestones).toEqual([milestones[0]]);
+  });
+
+  it('defaults milestones to an empty array when the stored value is not an array', async () => {
+    mockFindMany.mockResolvedValueOnce([{ id: 19, weekStart: new Date('2026-05-25T00:00:00Z'), milestones: null }]);
+
+    const [result] = await getTrailingDigests(3, 4);
+
+    expect(result!.milestones).toEqual([]);
   });
 });
 

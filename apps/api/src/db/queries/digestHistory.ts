@@ -2,7 +2,7 @@ import { eq, desc, and, lt } from 'drizzle-orm';
 
 import { dbAdmin, type DbTransaction } from '../../lib/db.js';
 import { digestHistory } from '../schema.js';
-import { MONTH_NAMES } from '../../services/curation/computation.js';
+import { hasValidDiscriminatorFields } from '../../services/curation/computation.js';
 import { StatType, type ComputedStat } from '../../services/curation/types.js';
 
 export type DigestValence = 'positive' | 'concerning' | 'watching' | 'neutral';
@@ -40,39 +40,10 @@ type Client = typeof dbAdmin | DbTransaction;
 
 const VALID_STAT_TYPES: ReadonlySet<string> = new Set(Object.values(StatType));
 
-// statDiscriminator (computation.ts) is called on every keyStats match inside
-// compareToPriorPeriods (via statInstanceId, for the excludedStatIds check),
-// and it dereferences these details fields with no guard of its own. Total
-// and Average also dereference details.scope there, but neither is a
-// TrendCarryingStatType so compareToPriorPeriods can never match one -- their
-// case is still checked below so this guard holds even if that changes.
-// Every other stat type's discriminator branch is a fixed placeholder.
-function hasValidDiscriminatorFields(stat: { statType: string; details: unknown }): boolean {
-  const details = stat.details as Record<string, unknown> | null | undefined;
-  switch (stat.statType) {
-    case StatType.Total:
-    case StatType.Average:
-      return typeof details?.scope === 'string';
-    case StatType.YearOverYear:
-      return (
-        typeof details?.currentYear === 'number' &&
-        Number.isFinite(details.currentYear) &&
-        typeof details?.month === 'string' &&
-        (MONTH_NAMES as readonly string[]).includes(details.month)
-      );
-    case StatType.SeasonalProjection:
-      return typeof details?.projectedMonth === 'string';
-    case StatType.CashFlow:
-      return typeof details?.trailingMonths === 'number' && Number.isFinite(details.trailingMonths);
-    default:
-      return true;
-  }
-}
-
 // compareToPriorPeriods (interpretationTools.ts) reads statType, category, and
 // value off a cast keyStats entry, then calls statInstanceId on the same match
-// (see hasValidDiscriminatorFields above) before citing it to the model -- both
-// surfaces are validated here.
+// (hasValidDiscriminatorFields, imported from computation.ts) before citing it
+// to the model -- both surfaces are validated here.
 function isComputedStat(value: unknown): value is ComputedStat {
   if (typeof value !== 'object' || value === null) return false;
   const stat = value as Record<string, unknown>;
@@ -140,6 +111,7 @@ export async function getTrailingDigests(
     // (a model-facing tool), so entries failing the ComputedStat shape check are
     // dropped rather than cast through unchecked like getLastDigest's keyStats.
     keyStats: Array.isArray(row.keyStats) ? row.keyStats.filter(isComputedStat) : [],
+    milestones: Array.isArray(row.milestones) ? row.milestones.filter(isDigestMilestone) : [],
   }));
 }
 
