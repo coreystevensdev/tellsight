@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/coreystevensdev/tellsight/actions/workflows/ci.yml"><img src="https://github.com/coreystevensdev/tellsight/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/tests-1%2C671-brightgreen.svg" alt="1,671 tests">
+  <img src="https://img.shields.io/badge/tests-2%2C766-brightgreen.svg" alt="2,766 tests">
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License">
   <img src="https://img.shields.io/badge/Next.js-16-black.svg" alt="Next.js 16">
   <img src="https://img.shields.io/badge/TypeScript-5.9-3178c6.svg" alt="TypeScript">
@@ -14,7 +14,7 @@
 
 **Deploy:** AWS EC2 t2.micro + RDS PostgreSQL 16 + Redis 7 (Docker Compose, co-located). GitHub Actions OIDC deploys via SSM SendCommand; no SSH key stored. See [infra/README.md](infra/README.md) for the Terraform runbook.
 
-Most analytics tools show numbers. This one explains what they mean, and delivers the interpretation to your inbox every week. Connect QuickBooks or upload a CSV (the only two data sources supported today), get charts, then a plain-English explanation of what the trends actually mean for your business. Multi-tenant Postgres with row-level security, SSE streaming for AI summaries, BullMQ three-queue digest pipeline, Stripe billing. The AI only ever sees computed statistics, never raw rows. 1,671 automated tests (1,664 Vitest plus 7 Playwright E2E), with the curation pipeline's financial math the most heavily covered.
+Most analytics tools show numbers. This one explains what they mean, and delivers the interpretation to your inbox every week. Connect QuickBooks or upload a CSV (the only two data sources supported today), get charts, then a plain-English explanation of what the trends actually mean for your business. Multi-tenant Postgres with row-level security, SSE streaming for AI summaries, BullMQ three-queue digest pipeline, Stripe billing. The AI only ever sees computed statistics, never raw rows. 2,766 automated tests (2,759 Vitest plus 7 Playwright E2E), with the curation pipeline's financial math the most heavily covered.
 
 ## Problem
 
@@ -73,7 +73,7 @@ The browser never talks to Express directly. Everything routes through a Next.js
 
 The Claude integration calls `@anthropic-ai/sdk` directly rather than going through a framework like LangChain, behind a small in-house provider seam that owns retries, a circuit breaker, a cost gate, and prompt caching. The reasoning is written up in [ADR 0001](docs/adr/0001-anthropic-sdk-over-langchain.md).
 
-An offline eval harness grades the summaries that come out: three labeled financial fixtures (healthy-growth, cash-crunch, seasonal-anomaly) run through the full pipeline and are judged for faithfulness (no invented figures), completeness (covers the stats that matter), and legal posture (analytics framing, not financial advice). Faithfulness and completeness use LLM judges via the shared provider; legal posture is a deterministic string scanner with 24 tests in CI. Run with `pnpm eval`.
+An offline eval harness grades the summaries that come out: three labeled financial fixtures (healthy-growth, cash-crunch, seasonal-anomaly) run through the full pipeline and are judged for faithfulness (no invented figures), completeness (covers the stats that matter), and legal posture (analytics framing, not financial advice). Faithfulness and completeness use LLM judges via the shared provider; legal posture is a deterministic string scanner with 27 tests, run via `pnpm test:eval`, separate from CI. Run the full harness with `pnpm eval`. A second track, `pnpm eval:qa`, grades the Q&A tool's lookup-vs-interpretation bias with an LLM judge, backed by a deterministic numeric-figure guard covered by `interpretation-guard.test.ts` (12 tests); the eval:qa track doesn't run in CI either.
 
 A separate agent pass runs on the same computed statistics using dedicated prompt templates, producing structured proposals with severity tiers (`info`, `notice`, `warning`, `critical`) and finding kinds (`reconciliation`, `trend`, `anomaly`, `threshold`). The `validateProposalCandidate` validator filters raw LLM output: schema-invalid proposals are dropped individually, proposals that cite stat IDs outside the allowedStatIds set are rejected, and the rest form a partial result rather than failing the whole call. A pure routing gate in `packages/shared` assigns each surviving proposal to `auto_notify`, `needs_approval`, or `suppress` based on four rules in priority order: confidence below floor suppresses; a mutating action or over-threshold financial impact routes to human approval; a dedupKey seen within the suppression window suppresses; otherwise auto-notify. Advisory posture is enforced at the contract boundary: the DIRECTIVE regex on `explanation` and `recommendation` rejects phrasing like "you should" at schema validation time rather than at content review time. This is the scaffolding for the upcoming alert UI; v1 ships informational findings only.
 
