@@ -1,13 +1,4 @@
 {
-  "DW-101": {
-    "answered_at": "2026-07-30",
-    "bundle_name": "",
-    "effect": "build",
-    "intent": "Write a small reproduction confirming whether req.on('close') actually fires spuriously post-express.json() in this Express version, then apply whichever pattern is correct to both qa.ts and streamHandler.ts consistently.",
-    "key": "1",
-    "label": "Verify empirically, then standardize",
-    "resolution": ""
-  },
   "DW-103": {
     "answered_at": "2026-07-30",
     "bundle_name": "",
@@ -15,15 +6,6 @@
     "intent": "",
     "key": "3",
     "label": "Keep open, no live traffic yet",
-    "resolution": ""
-  },
-  "DW-117": {
-    "answered_at": "2026-07-30",
-    "bundle_name": "",
-    "effect": "build",
-    "intent": "Regardless of the upstream status code, if res.json() throws, always return the 502 UPSTREAM_UNAVAILABLE shape instead of passing the original 2xx status through with an error body.",
-    "key": "1",
-    "label": "Force a 502 on any unparseable body",
     "resolution": ""
   },
   "DW-21": {
