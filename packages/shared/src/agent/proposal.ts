@@ -68,3 +68,28 @@ export type MoneyImpact = z.infer<typeof moneyImpactSchema>;
 export type ProposedAction = z.infer<typeof proposedActionSchema>;
 export type AgentProposal = z.infer<typeof agentProposalSchema>;
 export type FindingKind = (typeof FINDING_KINDS)[number];
+
+// The row shape GET/PATCH /proposals actually returns, dates serialized to
+// ISO strings over JSON. Distinct from AgentProposal (the LLM-authored
+// contract before it's persisted): this is a stored, id'd row the drawer
+// renders and mutates.
+export interface AgentProposalResponse {
+  id: number;
+  orgId: number;
+  kind: string;
+  severity: string;
+  title: string;
+  explanation: string;
+  recommendation: string;
+  confidence: string;
+  evidence: string[];
+  action: ProposedAction | null;
+  dedupKey: string;
+  lane: string;
+  period: string;
+  status: 'pending' | 'approved' | 'rejected' | 'expired' | 'notified';
+  createdAt: string;
+  expiresAt: string;
+  resolvedAt: string | null;
+  resolvedByUserId: number | null;
+}

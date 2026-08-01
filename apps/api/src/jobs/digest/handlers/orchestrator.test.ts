@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockFindEligibleOrgs = vi.fn();
+const mockExpireProposals = vi.fn().mockResolvedValue([]);
 const mockOrgQueueAdd = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('bullmq', () => ({
@@ -11,10 +12,14 @@ vi.mock('../../../config.js', () => ({ env: { REDIS_URL: 'redis://localhost:6379
 vi.mock('../../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
+vi.mock('../../../lib/db.js', () => ({ dbAdmin: {} }));
 
 vi.mock('../../../db/queries/index.js', () => ({
   digestEligibilityQueries: {
     findEligibleOrgs: mockFindEligibleOrgs,
+  },
+  agentProposalsQueries: {
+    expireProposals: mockExpireProposals,
   },
 }));
 
@@ -139,5 +144,25 @@ describe('handleOrchestratorJob', () => {
     mockFindEligibleOrgs.mockRejectedValueOnce(err);
 
     await expect(handleOrchestratorJob({ id: 'orch-6' } as never)).rejects.toBe(err);
+  });
+
+  it('runs the agent proposal expiry sweep before enqueueing org jobs', async () => {
+    mockFindEligibleOrgs.mockResolvedValueOnce([]);
+
+    await handleOrchestratorJob({ id: 'orch-7' } as never);
+
+    expect(mockExpireProposals).toHaveBeenCalledOnce();
+    expect(mockExpireProposals.mock.calls[0]![0]).toBeInstanceOf(Date);
+  });
+
+  it('continues enqueueing org jobs when the expiry sweep throws', async () => {
+    mockExpireProposals.mockRejectedValueOnce(new Error('DB blip'));
+    mockFindEligibleOrgs.mockResolvedValueOnce([
+      { id: 10, name: 'Acme', activeDatasetId: 100, businessProfile: null },
+    ]);
+
+    await expect(handleOrchestratorJob({ id: 'orch-8' } as never)).resolves.toBeUndefined();
+
+    expect(mockOrgQueueAdd).toHaveBeenCalledTimes(1);
   });
 });

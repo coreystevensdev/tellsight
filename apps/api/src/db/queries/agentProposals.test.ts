@@ -10,6 +10,7 @@ const {
   resolveProposal,
   markNotified,
   expireProposals,
+  getExpiredUnfoldedProposals,
 } = await import('./agentProposals.js');
 
 // ── mock client builders ──────────────────────────────────────────────────────
@@ -208,5 +209,25 @@ describe('expireProposals', () => {
     const { client } = updateReturningClient([]);
 
     expect(await expireProposals(new Date(), client)).toEqual([]);
+  });
+});
+
+// ── getExpiredUnfoldedProposals ─────────────────────────────────────────────
+
+describe('getExpiredUnfoldedProposals', () => {
+  it('returns expired proposals resolved at or after the given time', async () => {
+    const rows = [{ id: 10, status: 'expired' }, { id: 11, status: 'expired' }];
+    const { client, mocks } = findManyClient(rows);
+
+    const result = await getExpiredUnfoldedProposals(1, new Date('2026-06-22'), client);
+
+    expect(result).toEqual(rows);
+    expect(mocks.findMany).toHaveBeenCalledOnce();
+  });
+
+  it('returns an empty array when nothing has expired since the boundary', async () => {
+    const { client } = findManyClient([]);
+
+    expect(await getExpiredUnfoldedProposals(1, new Date('2026-06-22'), client)).toEqual([]);
   });
 });

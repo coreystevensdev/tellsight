@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { LogIn, Menu, User } from 'lucide-react';
+import { Inbox, LogIn, Menu, User } from 'lucide-react';
 import { useSidebar } from '@/app/dashboard/SidebarContext';
+import { useActionDrawer } from '@/app/dashboard/ActionDrawerContext';
 import { TellsightLogo } from '@/components/common/TellsightLogo';
 
 interface AppHeaderProps {
@@ -11,6 +12,8 @@ interface AppHeaderProps {
 
 export function AppHeader({ isAuthenticated }: AppHeaderProps) {
   const { setOpen } = useSidebar();
+  const { proposals, setOpen: setActionDrawerOpen } = useActionDrawer();
+  const pendingCount = proposals.length;
 
   return (
     <header className="flex h-14 items-center justify-between border-b border-border bg-background px-4 lg:px-6">
@@ -31,6 +34,18 @@ export function AppHeader({ isAuthenticated }: AppHeaderProps) {
       <div className="hidden lg:block" />
 
       <div className="flex items-center gap-3">
+        {isAuthenticated && pendingCount > 0 && (
+          <button
+            onClick={() => setActionDrawerOpen(true)}
+            className="relative flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label={`${pendingCount} pending ${pendingCount === 1 ? 'proposal' : 'proposals'}`}
+          >
+            <Inbox className="h-5 w-5" />
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">
+              {pendingCount}
+            </span>
+          </button>
+        )}
         {isAuthenticated ? (
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
             <User className="h-4 w-4 text-muted-foreground" />

@@ -5,7 +5,7 @@ export {
   agentProposalSchema,
 } from './proposal.js';
 
-export type { AgentProposal, ProposedAction, MoneyImpact, FindingKind } from './proposal.js';
+export type { AgentProposal, ProposedAction, MoneyImpact, FindingKind, AgentProposalResponse } from './proposal.js';
 
 export { BANNED_IMPERATIVES } from './constants.js';
 

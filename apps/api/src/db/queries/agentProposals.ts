@@ -94,8 +94,8 @@ export async function markNotified(orgId: number, ids: number[], client: Client 
     .where(and(eq(agentProposals.orgId, orgId), inArray(agentProposals.id, ids)));
 }
 
-// Expiry sweep: called by the nightly worker. Returns the ids that were
-// expired so the caller can fold them into the next digest summary.
+// Expiry sweep: called by the digest orchestrator tick. Returns the ids that
+// were expired so the caller can fold them into the next digest summary.
 export async function expireProposals(before: Date, client: Client = dbAdmin): Promise<number[]> {
   const rows = await client
     .update(agentProposals)
@@ -103,4 +103,19 @@ export async function expireProposals(before: Date, client: Client = dbAdmin): P
     .where(and(eq(agentProposals.status, 'pending'), lt(agentProposals.expiresAt, before)))
     .returning({ id: agentProposals.id });
   return rows.map((r) => r.id);
+}
+
+// Expired proposals not yet folded into a digest. Scoped by resolvedAt >=
+// since (the digest week's start) so a proposal expired by this week's sweep
+// only ever matches one week's perOrg run -- next week's call passes a later
+// weekStart the old resolvedAt no longer clears.
+export async function getExpiredUnfoldedProposals(orgId: number, since: Date, client: Client = dbAdmin) {
+  return client.query.agentProposals.findMany({
+    where: and(
+      eq(agentProposals.orgId, orgId),
+      eq(agentProposals.status, 'expired'),
+      gte(agentProposals.resolvedAt, since),
+    ),
+    orderBy: (t, { desc }) => [desc(t.expiresAt)],
+  });
 }

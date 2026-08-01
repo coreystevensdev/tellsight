@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { Job } from 'bullmq';
 
 import { logger } from '../../../lib/logger.js';
-import { digestEligibilityQueries } from '../../../db/queries/index.js';
+import { dbAdmin } from '../../../lib/db.js';
+import { agentProposalsQueries, digestEligibilityQueries } from '../../../db/queries/index.js';
 import {
   getOrgQueue,
   JOB_PREFIX_ORG,
@@ -47,6 +48,17 @@ export async function handleOrchestratorJob(job: Job): Promise<void> {
     { correlationId, weekStart, weekEnd, jobId: job.id },
     'Digest orchestrator started',
   );
+
+  // Global sweep, once per tick, before any org's digest is generated: a
+  // proposal must already read as 'expired' by the time perOrg fetches this
+  // week's fold-in candidates. Isolated in its own try/catch, a sweep failure
+  // shouldn't block the week's digests from going out.
+  try {
+    const expiredIds = await agentProposalsQueries.expireProposals(new Date(), dbAdmin);
+    logger.info({ correlationId, expiredCount: expiredIds.length }, 'Agent proposal expiry sweep complete');
+  } catch (err) {
+    logger.error({ correlationId, err }, 'Agent proposal expiry sweep failed, continuing orchestrator run');
+  }
 
   const queue = getOrgQueue();
   let cursor: number | undefined;

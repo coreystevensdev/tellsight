@@ -100,6 +100,28 @@ export function proxyPut(upstreamPath: string) {
   };
 }
 
+export function proxyPatch(upstreamPath: string) {
+  return async (request: NextRequest) => {
+    let res: Response;
+    try {
+      res = await fetch(`${webEnv.API_INTERNAL_URL}${upstreamPath}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Cookie: cookies(request) },
+        body: await request.text(),
+        signal: upstreamSignal(request),
+      });
+    } catch {
+      return UPSTREAM_ERROR_RESPONSE;
+    }
+
+    try {
+      return NextResponse.json(await res.json(), { status: res.status });
+    } catch {
+      return invalidResponse(res);
+    }
+  };
+}
+
 export function proxyPostWithCookies(upstreamPath: string) {
   return async (request: NextRequest) => {
     let res: Response;

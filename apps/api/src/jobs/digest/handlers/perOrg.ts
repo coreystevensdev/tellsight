@@ -242,14 +242,24 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
   // already-shipped digest send, a transient error here should cost the org
   // its agent bullets for the week, not the whole digest.
   let autoNotifyProposals: Awaited<ReturnType<typeof agentProposalsQueries.getPendingProposals>> = [];
+  let expiredProposals: Awaited<ReturnType<typeof agentProposalsQueries.getExpiredUnfoldedProposals>> = [];
   try {
     const agentEnabled = await subscriptionsQueries.getAgentEnabled(orgId, dbAdmin);
-    const pendingProposals = agentEnabled ? await agentProposalsQueries.getPendingProposals(orgId) : [];
-    autoNotifyProposals = pendingProposals.filter((p) => p.lane === 'auto_notify');
+    if (agentEnabled) {
+      const pendingProposals = await agentProposalsQueries.getPendingProposals(orgId);
+      autoNotifyProposals = pendingProposals.filter((p) => p.lane === 'auto_notify');
+      expiredProposals = await agentProposalsQueries.getExpiredUnfoldedProposals(orgId, weekStart);
+    }
   } catch (err) {
-    logger.error({ correlationId, orgId, err }, 'Failed to fetch agent proposals, sending digest without them');
+    logger.error(
+      { correlationId, orgId, err },
+      'Failed to fetch some agent proposals for the digest, continuing with whatever was already fetched',
+    );
   }
-  const agentBullets = autoNotifyProposals.map((p) => `${p.title}: ${p.recommendation}`);
+  const agentBullets = [
+    ...autoNotifyProposals.map((p) => `${p.title}: ${p.recommendation}`),
+    ...expiredProposals.map((p) => `${p.title} (expired without review): ${p.recommendation}`),
+  ];
 
   const recipients = await digestEligibilityQueries.findOrgRecipients(orgId);
   const queue = getSendQueue();
