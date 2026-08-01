@@ -103,6 +103,29 @@ function breakevenInsight() {
   };
 }
 
+function cashFlowInsight(direction: 'burning' | 'surplus' = 'surplus', monthsBurning = 0) {
+  return {
+    stat: {
+      statType: 'cash_flow',
+      category: null,
+      value: 500,
+      details: {
+        monthlyNet: 500,
+        trailingMonths: 3,
+        direction,
+        monthsBurning,
+        recentMonths: [
+          { month: '2026-05', expenses: 10_000 },
+          { month: '2026-06', expenses: 10_000 },
+          { month: '2026-07', expenses: 15_000 },
+        ],
+      },
+    },
+    score: 0.85,
+    breakdown: { novelty: 0.8, actionability: 0.8, specificity: 0.8 },
+  };
+}
+
 const baseJobData = {
   orgId: 42,
   orgName: 'Acme Coffee',
@@ -421,5 +444,59 @@ describe('handleSendJob: provider failure handling', () => {
     mockSendEmail.mockRejectedValueOnce(err);
 
     await expect(handleSendJob({ id: 'send-11', data: baseJobData } as never)).resolves.toBeUndefined();
+  });
+});
+
+describe('handleSendJob: cash_burn_spikes vs. CashFlowStat direction mismatch (DW-41)', () => {
+  it('adds the spike-vs-trend caveat when the stat reads surplus despite the spike firing', async () => {
+    const data = {
+      ...baseJobData,
+      ruleKind: 'cash_burn_spikes' as const,
+      firedInsight: cashFlowInsight('surplus', 0),
+    };
+
+    await handleSendJob({ id: 'send-16', data } as never);
+
+    const [{ user }] = mockGenerateInterpretation.mock.calls[0]!;
+    expect(user).toContain("this alert fired because of a sharp jump in this month's expenses");
+  });
+
+  it('adds the caveat when monthsBurning is 0 even if direction reads burning', async () => {
+    const data = {
+      ...baseJobData,
+      ruleKind: 'cash_burn_spikes' as const,
+      firedInsight: cashFlowInsight('burning', 0),
+    };
+
+    await handleSendJob({ id: 'send-17', data } as never);
+
+    const [{ user }] = mockGenerateInterpretation.mock.calls[0]!;
+    expect(user).toContain("this alert fired because of a sharp jump in this month's expenses");
+  });
+
+  it('omits the caveat when the stat is genuinely burning', async () => {
+    const data = {
+      ...baseJobData,
+      ruleKind: 'cash_burn_spikes' as const,
+      firedInsight: cashFlowInsight('burning', 2),
+    };
+
+    await handleSendJob({ id: 'send-18', data } as never);
+
+    const [{ user }] = mockGenerateInterpretation.mock.calls[0]!;
+    expect(user).not.toContain('sharp jump in this month');
+  });
+
+  it('omits the caveat for a non-cash_burn_spikes rule even with a surplus CashFlowStat', async () => {
+    const data = {
+      ...baseJobData,
+      ruleKind: 'runway_runs_short' as const,
+      firedInsight: cashFlowInsight('surplus', 0),
+    };
+
+    await handleSendJob({ id: 'send-19', data } as never);
+
+    const [{ user }] = mockGenerateInterpretation.mock.calls[0]!;
+    expect(user).not.toContain('sharp jump in this month');
   });
 });

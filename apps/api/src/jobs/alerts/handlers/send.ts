@@ -69,6 +69,23 @@ function fallbackParagraph(ruleKind: AlertRuleKind, currentValue: number): strin
   return `${RULE_KIND_LABELS[ruleKind]}. Current value: ${currentValue.toFixed(2)}.`;
 }
 
+// evaluateCashBurn's trigger (latest month's expenses vs. the prior average)
+// is a separate calculation from CashFlowStat's own direction/monthsBurning
+// fields (derived from trailing median net), so a spike can fire while those
+// fields still read "surplus"/0 months burning. Left unexplained, the AI
+// paragraph would narrate the contradiction as if it were an error rather
+// than two true, differently-scoped signals -- DW-41.
+function cashBurnSpikeCaveat(ruleKind: AlertRuleKind, insight: SendJobData['firedInsight']): string {
+  if (ruleKind !== 'cash_burn_spikes' || insight.stat.statType !== StatType.CashFlow) return '';
+  const { direction, monthsBurning } = insight.stat.details;
+  if (direction !== 'surplus' && monthsBurning > 0) return '';
+  return (
+    'Context: this alert fired because of a sharp jump in this month\'s expenses specifically, ' +
+    'not a change in the multi-month cash flow trend, which still looks healthy. Frame the ' +
+    "interpretation around this month's spike, not the broader trend."
+  );
+}
+
 /**
  * Cache-first alert paragraph: a hit returns the stored content, a miss
  * calls Claude with the fired insight and caches the result. Any failure
@@ -89,6 +106,8 @@ async function resolveAlertParagraph(data: SendJobData): Promise<string> {
       data.datasetId,
       ALERT_PROMPT_VERSION,
       businessProfile,
+      new Date(),
+      cashBurnSpikeCaveat(data.ruleKind, data.firedInsight),
     );
     const validatedMetadata = transparencyMetadataSchema.parse(metadata);
     const content = await generateInterpretation({ system, user });

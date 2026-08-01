@@ -22,6 +22,8 @@ Today is {{today}}.
 
 **Data lineage:** {{statTypeList}} were computed across {{categoryCount}} categories, producing {{insightCount}} ranked insights.
 
+{{priorContext}}
+
 ## Your task
 
 Write exactly one paragraph, 2-3 sentences, explaining what triggered this alert in plain English. Follow these rules:
