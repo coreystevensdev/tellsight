@@ -53,6 +53,11 @@ export const sendJobDataSchema = z.object({
   userEmail: z.string(),
   orgName: z.string(),
   subjectLine: subjectLineSchema.catch(FALLBACK_SUBJECT_LINE),
+  // Agent-tier auto_notify findings folded in by perOrg.ts, baked into the
+  // job payload so every recipient gets the identical list regardless of
+  // when their own send job runs. .catch(), like subjectLine above: a shape
+  // mismatch here should drop the extra bullets, not the whole digest send.
+  agentBullets: z.array(z.string()).optional().catch(undefined),
   correlationId: z.string().min(1),
 });
 export type SendJobData = z.infer<typeof sendJobDataSchema>;

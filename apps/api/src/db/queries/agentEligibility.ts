@@ -42,9 +42,8 @@ export function buildEligibilityQuery(
 }
 
 /**
- * Single-query enumeration of orgs the (not-yet-built) agent orchestrator
- * would page against. Dormant, same holding pattern as generateProposals()
- * per DW-69: nothing calls this in production yet.
+ * Single-query enumeration of orgs the agent orchestrator cron pages
+ * against.
  *
  * Eligibility rules:
  *   - subscription.status='active' AND subscription.plan='pro' AND agent_enabled=true

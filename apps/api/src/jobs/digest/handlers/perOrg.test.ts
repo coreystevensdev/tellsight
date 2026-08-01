@@ -19,6 +19,9 @@ const mockSaveDigestHistory = vi.fn();
 const mockGetMonthlyBucketsByDataset = vi.fn();
 const mockGetAwardedKinds = vi.fn();
 const mockAwardMilestone = vi.fn();
+const mockGetPendingProposals = vi.fn();
+const mockMarkNotified = vi.fn();
+const mockGetAgentEnabled = vi.fn();
 
 vi.mock('bullmq', () => ({
   Queue: class { constructor(public name: string, public opts: unknown) {} },
@@ -61,6 +64,13 @@ vi.mock('../../../db/queries/index.js', () => ({
   milestoneAwardsQueries: {
     getAwardedKinds: mockGetAwardedKinds,
     awardMilestone: mockAwardMilestone,
+  },
+  agentProposalsQueries: {
+    getPendingProposals: mockGetPendingProposals,
+    markNotified: mockMarkNotified,
+  },
+  subscriptionsQueries: {
+    getAgentEnabled: mockGetAgentEnabled,
   },
   orgsQueries: {
     getActiveDatasetId: mockGetActiveDatasetId,
@@ -152,6 +162,9 @@ beforeEach(() => {
   mockGetMonthlyBucketsByDataset.mockResolvedValue(new Map());
   mockGetAwardedKinds.mockResolvedValue(new Set());
   mockAwardMilestone.mockResolvedValue(undefined);
+  mockGetPendingProposals.mockResolvedValue([]);
+  mockMarkNotified.mockResolvedValue(undefined);
+  mockGetAgentEnabled.mockResolvedValue(true);
 });
 
 describe('cache miss path', () => {
@@ -379,6 +392,148 @@ describe('fan-out', () => {
     await expect(handlePerOrgJob({ id: 'org-5', data: baseJobData } as never)).resolves.toBeUndefined();
 
     expect(mockSendQueueAdd).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('agent proposal fold-in', () => {
+  it('sends the digest without agent bullets when the fold-in lookup throws', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
+    mockGetAgentEnabled.mockRejectedValueOnce(new Error('connection refused'));
+
+    await expect(handlePerOrgJob({ id: 'org-agent-8', data: baseJobData } as never)).resolves.toBeUndefined();
+
+    const payload = mockSendQueueAdd.mock.calls[0]![1] as SendJobData;
+    expect(payload.agentBullets).toEqual([]);
+    expect(mockMarkNotified).toHaveBeenCalledWith(42, [], expect.anything());
+  });
+
+  it('re-verifies Agent-tier entitlement and skips the fold-in entirely when it was revoked', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
+    mockGetAgentEnabled.mockResolvedValueOnce(false);
+
+    await handlePerOrgJob({ id: 'org-agent-5', data: baseJobData } as never);
+
+    expect(mockGetPendingProposals).not.toHaveBeenCalled();
+    const payload = mockSendQueueAdd.mock.calls[0]![1] as SendJobData;
+    expect(payload.agentBullets).toEqual([]);
+    expect(mockMarkNotified).toHaveBeenCalledWith(42, [], expect.anything());
+  });
+
+  it('does not mark proposals notified when every recipient enqueue fails (nothing actually delivered)', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
+    mockGetPendingProposals.mockResolvedValueOnce([
+      { id: 10, lane: 'auto_notify', title: 'A', recommendation: 'rec a' },
+    ]);
+    mockSendQueueAdd.mockRejectedValueOnce(new Error('Redis blip'));
+
+    await handlePerOrgJob({ id: 'org-agent-6', data: baseJobData } as never);
+
+    expect(mockMarkNotified).not.toHaveBeenCalled();
+  });
+
+  it('does not mark proposals notified when there are zero eligible recipients', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([]);
+    mockGetPendingProposals.mockResolvedValueOnce([
+      { id: 10, lane: 'auto_notify', title: 'A', recommendation: 'rec a' },
+    ]);
+
+    await handlePerOrgJob({ id: 'org-agent-7', data: baseJobData } as never);
+
+    expect(mockSendQueueAdd).not.toHaveBeenCalled();
+    expect(mockMarkNotified).not.toHaveBeenCalled();
+  });
+
+  it('folds pending auto_notify proposals into every recipient\'s agentBullets', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([
+      { userId: 1, email: 'a@x.com', name: 'A' },
+      { userId: 2, email: 'b@x.com', name: 'B' },
+    ]);
+    mockGetPendingProposals.mockResolvedValueOnce([
+      { id: 10, lane: 'auto_notify', title: 'Marketing spend up', recommendation: 'Review recent spend.' },
+      { id: 11, lane: 'needs_approval', title: 'Reclassify invoice', recommendation: 'Confirm the category.' },
+    ]);
+
+    await handlePerOrgJob({ id: 'org-agent-1', data: baseJobData } as never);
+
+    expect(mockSendQueueAdd).toHaveBeenCalledTimes(2);
+    for (const call of mockSendQueueAdd.mock.calls) {
+      const payload = call[1] as SendJobData;
+      expect(payload.agentBullets).toEqual(['Marketing spend up: Review recent spend.']);
+    }
+  });
+
+  it('excludes needs_approval proposals from the digest and leaves them unresolved', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
+    mockGetPendingProposals.mockResolvedValueOnce([
+      { id: 11, lane: 'needs_approval', title: 'Reclassify invoice', recommendation: 'Confirm the category.' },
+    ]);
+
+    await handlePerOrgJob({ id: 'org-agent-2', data: baseJobData } as never);
+
+    const payload = mockSendQueueAdd.mock.calls[0]![1] as SendJobData;
+    expect(payload.agentBullets).toEqual([]);
+    expect(mockMarkNotified).toHaveBeenCalledWith(42, [], expect.anything());
+  });
+
+  it('marks only the auto_notify proposal ids notified, inside the same tx as digest history', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
+    mockGetPendingProposals.mockResolvedValueOnce([
+      { id: 10, lane: 'auto_notify', title: 'A', recommendation: 'rec a' },
+      { id: 12, lane: 'auto_notify', title: 'B', recommendation: 'rec b' },
+      { id: 11, lane: 'needs_approval', title: 'C', recommendation: 'rec c' },
+    ]);
+
+    await handlePerOrgJob({ id: 'org-agent-3', data: baseJobData } as never);
+
+    expect(mockMarkNotified).toHaveBeenCalledTimes(1);
+    const [markedOrgId, markedIds, tx] = mockMarkNotified.mock.calls[0]!;
+    expect(markedOrgId).toBe(42);
+    expect(markedIds).toEqual([10, 12]);
+    expect(tx).toBe(TX_MARKER);
+    expect(mockTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves agentBullets empty and markNotified called with no ids when nothing is pending', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
+    mockGetPendingProposals.mockResolvedValueOnce([]);
+
+    await handlePerOrgJob({ id: 'org-agent-4', data: baseJobData } as never);
+
+    const payload = mockSendQueueAdd.mock.calls[0]![1] as SendJobData;
+    expect(payload.agentBullets).toEqual([]);
+    expect(mockMarkNotified).toHaveBeenCalledWith(42, [], expect.anything());
   });
 });
 

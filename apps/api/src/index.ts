@@ -43,6 +43,14 @@ import {
   closeAlertsQueues,
 } from './jobs/alerts/index.js';
 import {
+  initAgentOrchestratorCronJob,
+  initAgentOrchestratorWorker,
+  initAgentEvaluateOrgWorker,
+  shutdownAgentOrchestratorCron,
+  shutdownAgentOrchestratorWorkers,
+  closeAgentOrchestratorQueues,
+} from './jobs/agentOrchestrator/index.js';
+import {
   initStatCorrectionsCronJob,
   initStatCorrectionsExpireWorker,
   shutdownStatCorrectionsCron,
@@ -160,6 +168,13 @@ async function start() {
   initAlertsSendWorker();
   await initAlertsCronJob();
 
+  // Agent pipeline: nightly-only, two-queue shape (orchestrator, evaluate-org).
+  // No send queue -- auto_notify findings persist and fold into the next
+  // weekly digest instead of sending their own email.
+  initAgentOrchestratorWorker();
+  initAgentEvaluateOrgWorker();
+  await initAgentOrchestratorCronJob();
+
   // Stat corrections: daily sweep flips approved Tier 2 corrections to
   // 'expired' once expiresAt passes, without this an approved correction
   // would suppress its stat forever.
@@ -192,6 +207,9 @@ async function start() {
         await shutdownAlertsCron();
         await shutdownAlertsWorkers();
         await closeAlertsQueues();
+        await shutdownAgentOrchestratorCron();
+        await shutdownAgentOrchestratorWorkers();
+        await closeAgentOrchestratorQueues();
         await shutdownStatCorrectionsCron();
         await shutdownStatCorrectionsWorker();
         await closeStatCorrectionsQueue();

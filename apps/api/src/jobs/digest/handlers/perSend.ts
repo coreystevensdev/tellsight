@@ -42,7 +42,8 @@ export async function handlePerSendJob(job: Job): Promise<void> {
     return;
   }
 
-  const { userId, orgId, summaryId, weekStart, userEmail, orgName, subjectLine, correlationId } = parsed.data;
+  const { userId, orgId, summaryId, weekStart, userEmail, orgName, subjectLine, agentBullets, correlationId } =
+    parsed.data;
   const start = Date.now();
   const weekStartIso = weekStart.toISOString();
   const subjectLineFellBack = !subjectLineSchema.safeParse(job.data?.subjectLine).success;
@@ -126,7 +127,7 @@ export async function handlePerSendJob(job: Job): Promise<void> {
       weekStart: weekStartIso,
     });
     const openTrackingUrl = `${env.PUBLIC_API_URL}/track/digest/open?t=${trackingToken}`;
-    const bullets = parseSummaryToBullets(row.content);
+    const bullets = [...parseSummaryToBullets(row.content), ...(agentBullets ?? [])];
     const dashboardUrl = buildDashboardUrl(row.datasetId, trackingToken);
     const unsubscribeUrl = buildUnsubscribeUrl(userId);
     const headers = buildListUnsubscribeHeaders(unsubscribeUrl);

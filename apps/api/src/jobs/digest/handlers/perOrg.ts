@@ -5,11 +5,13 @@ import { logger } from '../../../lib/logger.js';
 import { dbAdmin } from '../../../lib/db.js';
 import {
   aiSummariesQueries,
+  agentProposalsQueries,
   dataRowsQueries,
   digestEligibilityQueries,
   digestHistoryQueries,
   milestoneAwardsQueries,
   orgsQueries,
+  subscriptionsQueries,
 } from '../../../db/queries/index.js';
 import {
   runCurationPipeline,
@@ -227,6 +229,28 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
   const valence = classifyValence(currentStats);
   const subjectLine = generateSubjectLine(valence, firstTimeMilestones, dedupedTransitionMilestones, org.name);
 
+  // Auto-notify agent findings accumulated during the week fold into this
+  // digest as extra bullets. Fetched once, before the recipient loop, so
+  // every recipient's SendJobData carries the identical bullet list --
+  // markNotified below fires once per org, not once per recipient, so a
+  // second recipient's send never re-queries and finds nothing left.
+  // Re-verified here, not just at generation time: an org can downgrade out
+  // of the Agent tier between when a proposal was generated and this week's
+  // digest, and an entitlement gate should never fail open (same posture as
+  // evaluateOrg.ts's own re-check).
+  // Isolated in its own try/catch: this fold-in is additive to an
+  // already-shipped digest send, a transient error here should cost the org
+  // its agent bullets for the week, not the whole digest.
+  let autoNotifyProposals: Awaited<ReturnType<typeof agentProposalsQueries.getPendingProposals>> = [];
+  try {
+    const agentEnabled = await subscriptionsQueries.getAgentEnabled(orgId, dbAdmin);
+    const pendingProposals = agentEnabled ? await agentProposalsQueries.getPendingProposals(orgId) : [];
+    autoNotifyProposals = pendingProposals.filter((p) => p.lane === 'auto_notify');
+  } catch (err) {
+    logger.error({ correlationId, orgId, err }, 'Failed to fetch agent proposals, sending digest without them');
+  }
+  const agentBullets = autoNotifyProposals.map((p) => `${p.title}: ${p.recommendation}`);
+
   const recipients = await digestEligibilityQueries.findOrgRecipients(orgId);
   const queue = getSendQueue();
 
@@ -242,6 +266,7 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
       userEmail: r.email,
       orgName: org.name,
       subjectLine,
+      agentBullets,
       correlationId,
     };
 
@@ -275,7 +300,10 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
   // week's own run); a rolled-back award, in contrast, can still fire next
   // week as long as the org stays in the same calendar month, past month-end
   // it's permanently missed, accepted given the (org_id, kind) unique index
-  // only guarantees at-most-once, not at-least-once.
+  // only guarantees at-most-once, not at-least-once. A rolled-back
+  // markNotified has the same accepted risk: the proposals stay `pending`
+  // even though their bullets already reached an inbox, so they'd fold into
+  // next week's digest too, a duplicate notification rather than a lost one.
   try {
     await dbAdmin.transaction(async (tx) => {
       await digestHistoryQueries.saveDigestHistory(
@@ -307,6 +335,18 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
 
       for (const m of firstTimeMilestones) {
         await milestoneAwardsQueries.awardMilestone({ orgId, kind: m.kind, datasetId }, tx);
+      }
+
+      // Only mark proposals notified if a send actually went out -- an empty
+      // recipient list or every enqueue failing means nobody actually saw
+      // these bullets, and marking them notified anyway would lose the
+      // finding for good (it never surfaces again after this).
+      if (enqueued > 0) {
+        await agentProposalsQueries.markNotified(
+          orgId,
+          autoNotifyProposals.map((p) => p.id),
+          tx,
+        );
       }
     });
   } catch (err) {

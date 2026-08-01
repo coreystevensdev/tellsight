@@ -266,6 +266,36 @@ describe('happy path', () => {
   });
 });
 
+describe('agent bullet fold-in', () => {
+  it('appends agentBullets after the parsed summary bullets', async () => {
+    mockUpsertDefaults.mockResolvedValueOnce({ userId: 7, cadence: 'weekly', lastSentAt: null });
+    mockGetById.mockResolvedValueOnce(okSummary);
+    mockSendEmail.mockResolvedValueOnce({ status: 'sent', providerMessageId: 'msg-agent', durationMs: 10 });
+
+    const jobData = { ...baseJobData, agentBullets: ['Marketing spend up: Review recent spend.'] };
+    await handlePerSendJob({ id: 'send-agent-1', data: jobData } as never);
+
+    const props = mockDigestWeekly.mock.calls[0]![0] as { bullets: string[] };
+    expect(props.bullets).toEqual([
+      'Revenue up',
+      'Payroll spiked',
+      'Runway 8 months',
+      'Marketing spend up: Review recent spend.',
+    ]);
+  });
+
+  it('falls back to the parsed summary bullets alone when agentBullets is absent', async () => {
+    mockUpsertDefaults.mockResolvedValueOnce({ userId: 7, cadence: 'weekly', lastSentAt: null });
+    mockGetById.mockResolvedValueOnce(okSummary);
+    mockSendEmail.mockResolvedValueOnce({ status: 'sent', providerMessageId: 'msg-agent-2', durationMs: 10 });
+
+    await handlePerSendJob({ id: 'send-agent-2', data: baseJobData } as never);
+
+    const props = mockDigestWeekly.mock.calls[0]![0] as { bullets: string[] };
+    expect(props.bullets).toEqual(['Revenue up', 'Payroll spiked', 'Runway 8 months']);
+  });
+});
+
 describe('per-user dedupe race', () => {
   it('skips when last_sent_at is within 6 days', async () => {
     const recent = new Date(Date.now() - 24 * 60 * 60 * 1000); // 1 day ago
