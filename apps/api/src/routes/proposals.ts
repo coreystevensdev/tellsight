@@ -1,35 +1,56 @@
-import { Router, type Request, type Response } from 'express';
+import { Router, type Response } from 'express';
+import { AUDIT_ACTIONS } from 'shared/constants';
+
+import { requireUser } from '../lib/requireUser.js';
+import { withRlsContext } from '../lib/rls.js';
+import { roleGuard } from '../middleware/roleGuard.js';
+import { audit } from '../services/audit/auditService.js';
 import { getPendingProposals, resolveProposal } from '../db/queries/agentProposals.js';
+import { ValidationError, NotFoundError } from '../lib/appError.js';
 
 export const proposalsRouter = Router();
 
-proposalsRouter.get('/', async (req: Request, res: Response) => {
-  const orgId = req.user!.org_id;
-  const proposals = await getPendingProposals(orgId);
-  res.json(proposals);
+proposalsRouter.get('/', async (req, res: Response) => {
+  const user = requireUser(req);
+
+  const proposals = await withRlsContext(user.org_id, user.isAdmin, (tx) =>
+    getPendingProposals(user.org_id, tx),
+  );
+
+  res.json({ data: proposals });
 });
 
-proposalsRouter.patch('/:id', async (req: Request, res: Response) => {
-  const orgId = req.user!.org_id;
-  const userId = parseInt(req.user!.sub, 10);
+// Owner-only: 18.4's AC requires approval to be gated to org Owners, not any
+// authenticated member.
+proposalsRouter.patch('/:id', roleGuard('owner'), async (req, res: Response) => {
+  const user = requireUser(req);
+  const userId = parseInt(user.sub, 10);
   const proposalId = parseInt(req.params.id as string, 10);
 
   if (isNaN(proposalId)) {
-    res.status(400).json({ error: 'invalid proposal id' });
-    return;
+    throw new ValidationError('Invalid proposal id');
   }
 
   const { status } = req.body as { status: unknown };
   if (status !== 'approved' && status !== 'rejected') {
-    res.status(400).json({ error: 'status must be "approved" or "rejected"' });
-    return;
+    throw new ValidationError('status must be "approved" or "rejected"');
   }
 
-  const row = await resolveProposal(proposalId, status, userId, orgId);
+  const row = await withRlsContext(user.org_id, user.isAdmin, (tx) =>
+    resolveProposal(proposalId, status, userId, user.org_id, tx),
+  );
   if (!row) {
-    res.status(404).json({ error: 'Proposal not found or already resolved' });
-    return;
+    throw new NotFoundError('Proposal not found or already resolved');
   }
 
-  res.json({ id: row.id });
+  audit(req, {
+    orgId: user.org_id,
+    userId,
+    action: status === 'approved' ? AUDIT_ACTIONS.PROPOSAL_APPROVED : AUDIT_ACTIONS.PROPOSAL_REJECTED,
+    targetType: 'agent_proposal',
+    targetId: String(proposalId),
+    metadata: { status },
+  });
+
+  res.json({ data: { id: row.id } });
 });

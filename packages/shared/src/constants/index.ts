@@ -257,6 +257,8 @@ export const AUDIT_ACTIONS = {
   SETTINGS_DIGEST_CHANGED: 'settings.digest_changed',
   SHARE_CREATED: 'share.created',
   FINANCIALS_UPDATED: 'financials.updated',
+  PROPOSAL_APPROVED: 'proposal.approved',
+  PROPOSAL_REJECTED: 'proposal.rejected',
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
