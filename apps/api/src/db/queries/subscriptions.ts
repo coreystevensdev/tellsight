@@ -140,6 +140,38 @@ export async function updateSubscriptionStatus(
   return result.length;
 }
 
+// Upsert, not a bare update: most orgs have no subscriptions row at all
+// (one is only created by upsertSubscription on Stripe checkout), and the
+// beta-era manual toggle this backs needs to grant Agent tier to orgs that
+// never went through Pro checkout. On enable, both the insert and the
+// conflict branch force status='active'/plan='pro' -- getAgentEnabled and
+// agentEligibility.ts's buildEligibilityQuery both require an active/pro
+// row, so a pre-existing row stuck at e.g. 'inactive' (a prior disable
+// through this same route, or a lapsed real subscription) would otherwise
+// silently leave the org locked out despite agentEnabled=true. On disable,
+// the conflict branch only ever touches agentEnabled, so an existing paying
+// subscription's status/plan survive untouched -- there's nothing to grant.
+export async function updateAgentEnabled(
+  orgId: number,
+  enabled: boolean,
+  client: typeof db | DbTransaction = db,
+): Promise<void> {
+  await client
+    .insert(subscriptions)
+    .values({
+      orgId,
+      status: enabled ? 'active' : 'inactive',
+      plan: enabled ? 'pro' : 'free',
+      agentEnabled: enabled,
+    })
+    .onConflictDoUpdate({
+      target: subscriptions.orgId,
+      set: enabled
+        ? { agentEnabled: true, status: 'active', plan: 'pro', updatedAt: new Date() }
+        : { agentEnabled: false, updatedAt: new Date() },
+    });
+}
+
 export async function getSubscriptionByStripeId(
   stripeSubscriptionId: string,
   client: typeof db | DbTransaction = db,

@@ -6,11 +6,19 @@ const mockWhere = vi.fn();
 const mockOrderBy = vi.fn();
 const mockLimit = vi.fn() as ReturnType<typeof vi.fn> & { _resultPromise: Promise<unknown[]> };
 
+const mockInsert = vi.fn();
+const mockValues = vi.fn();
+const mockOnConflictDoUpdate = vi.fn() as ReturnType<typeof vi.fn> & { _resultPromise: Promise<unknown> };
+
 vi.mock('../../lib/db.js', () => ({
   db: {
     select: () => {
       mockSelect();
       return { from: (...args: unknown[]) => { mockFrom(...args); return { where: (...wArgs: unknown[]) => { mockWhere(...wArgs); return { orderBy: (...oArgs: unknown[]) => { mockOrderBy(...oArgs); return { limit: (n: number) => { mockLimit(n); return mockLimit._resultPromise; } }; } }; } }; } };
+    },
+    insert: (...args: unknown[]) => {
+      mockInsert(...args);
+      return { values: (...vArgs: unknown[]) => { mockValues(...vArgs); return { onConflictDoUpdate: (...cArgs: unknown[]) => { mockOnConflictDoUpdate(...cArgs); return mockOnConflictDoUpdate._resultPromise; } }; } };
     },
   },
 }));
@@ -21,6 +29,8 @@ vi.mock('../schema.js', () => ({
     orgId: 'org_id',
     status: 'status',
     currentPeriodEnd: 'current_period_end',
+    agentEnabled: 'agent_enabled',
+    updatedAt: 'updated_at',
   },
 }));
 
@@ -168,6 +178,69 @@ describe('getActiveTier', () => {
     await getActiveTier(1);
 
     expect(mockOrderBy).toHaveBeenCalledWith({ desc: 'id' });
+  });
+});
+
+describe('updateAgentEnabled', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockOnConflictDoUpdate._resultPromise = Promise.resolve(undefined);
+  });
+
+  it('on first-time enable, inserts status=active/plan=pro so getAgentEnabled and buildEligibilityQuery both see the grant', async () => {
+    const { updateAgentEnabled } = await import('./subscriptions.js');
+    await updateAgentEnabled(1, true);
+
+    expect(mockValues).toHaveBeenCalledWith({
+      orgId: 1,
+      status: 'active',
+      plan: 'pro',
+      agentEnabled: true,
+    });
+  });
+
+  it('on first-time disable, inserts the inert status=inactive/plan=free defaults -- nothing to grant', async () => {
+    const { updateAgentEnabled } = await import('./subscriptions.js');
+    await updateAgentEnabled(2, false);
+
+    expect(mockValues).toHaveBeenCalledWith({
+      orgId: 2,
+      status: 'inactive',
+      plan: 'free',
+      agentEnabled: false,
+    });
+  });
+
+  it('on conflict-disable, only touches agentEnabled and updatedAt -- never status or plan, so a real paying subscription survives untouched', async () => {
+    const { updateAgentEnabled } = await import('./subscriptions.js');
+    await updateAgentEnabled(42, false);
+
+    expect(mockOnConflictDoUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: 'org_id',
+        set: expect.objectContaining({ agentEnabled: false }),
+      }),
+    );
+    const call = mockOnConflictDoUpdate.mock.calls[0]?.[0] as { set: Record<string, unknown> };
+    expect(call.set).not.toHaveProperty('status');
+    expect(call.set).not.toHaveProperty('plan');
+  });
+
+  it('on conflict-enable, also forces status=active/plan=pro -- a row stuck at a stale status (e.g. a prior disable, or a lapsed subscription) must not silently swallow the grant', async () => {
+    const { updateAgentEnabled } = await import('./subscriptions.js');
+    await updateAgentEnabled(42, true);
+
+    expect(mockOnConflictDoUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: 'org_id',
+        set: expect.objectContaining({ agentEnabled: true, status: 'active', plan: 'pro' }),
+      }),
+    );
+  });
+
+  it('succeeds for an org with no prior subscription row (no throw)', async () => {
+    const { updateAgentEnabled } = await import('./subscriptions.js');
+    await expect(updateAgentEnabled(999, true)).resolves.toBeUndefined();
   });
 });
 

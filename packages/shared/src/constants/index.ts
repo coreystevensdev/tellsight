@@ -111,6 +111,8 @@ export const ANALYTICS_EVENTS = {
   QA_QUESTION_ASKED: 'qa.question_asked',
   QA_QUESTION_COMPLETED: 'qa.question_completed',
   QA_QUESTION_FAILED: 'qa.question_failed',
+  SUBSCRIPTION_AGENT_TIER_ENABLED: 'subscription.agent_tier_enabled',
+  SUBSCRIPTION_AGENT_TIER_DISABLED: 'subscription.agent_tier_disabled',
 } as const;
 
 export type AnalyticsEventName =
@@ -259,6 +261,8 @@ export const AUDIT_ACTIONS = {
   FINANCIALS_UPDATED: 'financials.updated',
   PROPOSAL_APPROVED: 'proposal.approved',
   PROPOSAL_REJECTED: 'proposal.rejected',
+  ADMIN_AGENT_TIER_ENABLED: 'admin.agent_tier_enabled',
+  ADMIN_AGENT_TIER_DISABLED: 'admin.agent_tier_disabled',
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

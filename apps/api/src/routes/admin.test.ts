@@ -16,6 +16,8 @@ const mockGetPendingCorrections = vi.fn();
 const mockFindById = vi.fn();
 const mockMarkStale = vi.fn().mockResolvedValue(undefined);
 const mockAudit = vi.fn();
+const mockUpdateAgentEnabled = vi.fn();
+const mockTrackEvent = vi.fn();
 
 vi.mock('../services/auth/tokenService.js', () => ({
   verifyAccessToken: mockVerifyAccessToken,
@@ -47,10 +49,17 @@ vi.mock('../db/queries/index.js', () => ({
   aiSummariesQueries: {
     markStale: (...args: unknown[]) => mockMarkStale(...args),
   },
+  subscriptionsQueries: {
+    updateAgentEnabled: (...args: unknown[]) => mockUpdateAgentEnabled(...args),
+  },
 }));
 
 vi.mock('../services/audit/auditService.js', () => ({
   audit: (...args: unknown[]) => mockAudit(...args),
+}));
+
+vi.mock('../services/analytics/trackEvent.js', () => ({
+  trackEvent: (...args: unknown[]) => mockTrackEvent(...args),
 }));
 
 vi.mock('../lib/db.js', () => ({
@@ -711,5 +720,128 @@ describe('PATCH /admin/stat-corrections/:orgId/:id', () => {
 
     expect(res.status).toBe(403);
     expect(mockResolveCorrection).not.toHaveBeenCalled();
+  });
+});
+
+describe('PATCH /admin/orgs/:orgId/agent-tier', () => {
+  const fakeOrg = { id: 10, name: 'Acme', members: [], datasets: [], subscription: null };
+
+  it('enables the Agent tier for an org with no prior subscription row, writes an audit row, and tracks the transition', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
+    mockGetOrgDetail.mockResolvedValueOnce(fakeOrg);
+
+    const res = await fetch(`${baseUrl}/admin/orgs/10/agent-tier`, {
+      method: 'PATCH',
+      headers: authHeaders,
+      body: JSON.stringify({ enabled: true }),
+    });
+    const json = (await res.json()) as { data: { orgId: number; agentEnabled: boolean } };
+
+    expect(res.status).toBe(200);
+    expect(json.data).toEqual({ orgId: 10, agentEnabled: true });
+    expect(mockGetOrgDetail).toHaveBeenCalledWith(10);
+    expect(mockUpdateAgentEnabled).toHaveBeenCalledWith(10, true, { __tag: 'dbAdmin' });
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 10,
+        userId: 1,
+        action: 'admin.agent_tier_enabled',
+        targetType: 'subscription',
+        targetId: '10',
+        metadata: { enabled: true },
+      }),
+    );
+    expect(mockTrackEvent).toHaveBeenCalledWith(10, 1, 'subscription.agent_tier_enabled', { enabled: true });
+  });
+
+  it('disables the Agent tier and writes the disabled audit action and event', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
+    mockGetOrgDetail.mockResolvedValueOnce(fakeOrg);
+
+    const res = await fetch(`${baseUrl}/admin/orgs/10/agent-tier`, {
+      method: 'PATCH',
+      headers: authHeaders,
+      body: JSON.stringify({ enabled: false }),
+    });
+    const json = (await res.json()) as { data: { agentEnabled: boolean } };
+
+    expect(res.status).toBe(200);
+    expect(json.data.agentEnabled).toBe(false);
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ action: 'admin.agent_tier_disabled', metadata: { enabled: false } }),
+    );
+    expect(mockTrackEvent).toHaveBeenCalledWith(10, 1, 'subscription.agent_tier_disabled', { enabled: false });
+  });
+
+  it('returns 404 when the org itself does not exist, and never touches the subscription', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
+    const { NotFoundError } = await import('../lib/appError.js');
+    mockGetOrgDetail.mockRejectedValueOnce(new NotFoundError('Org 10 not found'));
+
+    const res = await fetch(`${baseUrl}/admin/orgs/10/agent-tier`, {
+      method: 'PATCH',
+      headers: authHeaders,
+      body: JSON.stringify({ enabled: true }),
+    });
+    const json = (await res.json()) as { error: { code: string } };
+
+    expect(res.status).toBe(404);
+    expect(json.error.code).toBe('NOT_FOUND');
+    expect(mockUpdateAgentEnabled).not.toHaveBeenCalled();
+    expect(mockAudit).not.toHaveBeenCalled();
+    expect(mockTrackEvent).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 for a non-boolean enabled value', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
+
+    const res = await fetch(`${baseUrl}/admin/orgs/10/agent-tier`, {
+      method: 'PATCH',
+      headers: authHeaders,
+      body: JSON.stringify({ enabled: 'yes' }),
+    });
+    const json = (await res.json()) as { error: { code: string } };
+
+    expect(res.status).toBe(400);
+    expect(json.error.code).toBe('VALIDATION_ERROR');
+    expect(mockUpdateAgentEnabled).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 for a non-numeric orgId', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
+
+    const res = await fetch(`${baseUrl}/admin/orgs/abc/agent-tier`, {
+      method: 'PATCH',
+      headers: authHeaders,
+      body: JSON.stringify({ enabled: true }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(mockUpdateAgentEnabled).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 for non-admin user', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(regularPayload());
+
+    const res = await fetch(`${baseUrl}/admin/orgs/10/agent-tier`, {
+      method: 'PATCH',
+      headers: authHeaders,
+      body: JSON.stringify({ enabled: true }),
+    });
+
+    expect(res.status).toBe(403);
+    expect(mockUpdateAgentEnabled).not.toHaveBeenCalled();
+  });
+
+  it('returns 401 without auth', async () => {
+    const res = await fetch(`${baseUrl}/admin/orgs/10/agent-tier`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: true }),
+    });
+
+    expect(res.status).toBe(401);
   });
 });

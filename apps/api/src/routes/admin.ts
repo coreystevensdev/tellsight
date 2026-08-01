@@ -10,10 +10,11 @@ import {
 } from '../services/admin/index.js';
 import { getAllAnalyticsEvents, getAnalyticsEventsTotal, deleteOlderThan } from '../db/queries/analyticsEvents.js';
 import { deleteExpired as deleteExpiredShares } from '../db/queries/shares.js';
-import { auditLogsQueries, statCorrectionsQueries, aiSummariesQueries } from '../db/queries/index.js';
+import { auditLogsQueries, statCorrectionsQueries, aiSummariesQueries, subscriptionsQueries } from '../db/queries/index.js';
 import { dbAdmin } from '../lib/db.js';
 import { resolveStatCorrectionSchema } from 'shared/schemas';
-import { AUDIT_ACTIONS } from 'shared/constants';
+import { AUDIT_ACTIONS, ANALYTICS_EVENTS } from 'shared/constants';
+import { trackEvent } from '../services/analytics/trackEvent.js';
 import { requireUser } from '../lib/requireUser.js';
 import { ValidationError, NotFoundError, ConflictError } from '../lib/appError.js';
 import { audit } from '../services/audit/auditService.js';
@@ -224,4 +225,50 @@ adminRouter.patch('/stat-corrections/:orgId/:id', async (req: Request, res: Resp
     'Stat correction resolved',
   );
   res.json({ data: row });
+});
+
+const agentTierSchema = z.object({ enabled: z.boolean() });
+
+// Manual toggle, per the Epic 18 retro decision: no Stripe-driven Agent-tier
+// checkout at beta, so this is the only write path for subscriptions.agent_enabled.
+// Platform-admin only via roleGuard('admin') at the router mount (protected.ts),
+// same as every other route in this file -- no additional guard needed here.
+adminRouter.patch('/orgs/:orgId/agent-tier', async (req: Request, res: Response) => {
+  const user = requireUser(req);
+  const userId = parseInt(user.sub, 10);
+  // Cast required here (unlike GET /orgs/:orgId above): Express 5's route-param
+  // type inference doesn't narrow to plain `string` on this deeper path pattern.
+  const orgId = parseOrgId(req.params.orgId as string);
+
+  const parsed = agentTierSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Invalid request body', details: parsed.error.flatten() },
+    });
+    return;
+  }
+  const { enabled } = parsed.data;
+
+  // Org existence, not subscription-row existence: updateAgentEnabled upserts,
+  // so the only real 404 case left is an orgId with no matching org at all.
+  await getOrgDetail(orgId);
+  await subscriptionsQueries.updateAgentEnabled(orgId, enabled, dbAdmin);
+
+  audit(req, {
+    orgId,
+    userId,
+    action: enabled ? AUDIT_ACTIONS.ADMIN_AGENT_TIER_ENABLED : AUDIT_ACTIONS.ADMIN_AGENT_TIER_DISABLED,
+    targetType: 'subscription',
+    targetId: String(orgId),
+    metadata: { enabled },
+  });
+  trackEvent(
+    orgId,
+    userId,
+    enabled ? ANALYTICS_EVENTS.SUBSCRIPTION_AGENT_TIER_ENABLED : ANALYTICS_EVENTS.SUBSCRIPTION_AGENT_TIER_DISABLED,
+    { enabled },
+  );
+
+  logger.info({ orgId, userId, enabled }, 'Agent tier entitlement toggled');
+  res.json({ data: { orgId, agentEnabled: enabled } });
 });

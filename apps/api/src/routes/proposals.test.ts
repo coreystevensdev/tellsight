@@ -5,6 +5,7 @@ const mockVerifyAccessToken = vi.fn();
 const mockGetPendingProposals = vi.fn();
 const mockResolveProposal = vi.fn();
 const mockAudit = vi.fn();
+const mockGetAgentEnabled = vi.fn();
 
 vi.mock('../services/auth/tokenService.js', () => ({
   verifyAccessToken: mockVerifyAccessToken,
@@ -13,6 +14,12 @@ vi.mock('../services/auth/tokenService.js', () => ({
 vi.mock('../db/queries/agentProposals.js', () => ({
   getPendingProposals: mockGetPendingProposals,
   resolveProposal: mockResolveProposal,
+}));
+
+vi.mock('../db/queries/index.js', () => ({
+  subscriptionsQueries: {
+    getAgentEnabled: (...args: unknown[]) => mockGetAgentEnabled(...args),
+  },
 }));
 
 vi.mock('../lib/rls.js', () => ({
@@ -39,6 +46,7 @@ vi.mock('../lib/logger.js', () => ({
 const { createTestApp } = await import('../test/helpers/testApp.js');
 const { authMiddleware } = await import('../middleware/authMiddleware.js');
 const { proposalsRouter } = await import('./proposals.js');
+const { withRlsContext } = await import('../lib/rls.js');
 
 let server: http.Server;
 let baseUrl: string;
@@ -53,7 +61,10 @@ beforeAll(async () => {
 });
 
 afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockGetAgentEnabled.mockResolvedValue(true);
+});
 
 function userPayload(overrides: Partial<{ role: string; org_id: number }> = {}) {
   return {
@@ -93,6 +104,36 @@ describe('GET /proposals', () => {
   it('returns 401 without auth cookie', async () => {
     const res = await fetch(`${baseUrl}/proposals`);
     expect(res.status).toBe(401);
+  });
+
+  it('returns 403 AGENT_TIER_REQUIRED without entitlement, no proposals read', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(userPayload({ role: 'member' }));
+    mockGetAgentEnabled.mockResolvedValueOnce(false);
+
+    const res = await fetch(`${baseUrl}/proposals`, {
+      headers: { Cookie: 'access_token=valid-jwt' },
+    });
+    const json = (await res.json()) as { error: { code: string } };
+
+    expect(res.status).toBe(403);
+    expect(json.error.code).toBe('AGENT_TIER_REQUIRED');
+    expect(mockGetPendingProposals).not.toHaveBeenCalled();
+  });
+
+  it('fails closed with 403 (not 500) when the entitlement lookup itself throws', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(userPayload({ role: 'member' }));
+    vi.mocked(withRlsContext).mockImplementationOnce(() => {
+      throw new Error('SET LOCAL failed');
+    });
+
+    const res = await fetch(`${baseUrl}/proposals`, {
+      headers: { Cookie: 'access_token=valid-jwt' },
+    });
+    const json = (await res.json()) as { error: { code: string } };
+
+    expect(res.status).toBe(403);
+    expect(json.error.code).toBe('AGENT_TIER_REQUIRED');
+    expect(mockGetPendingProposals).not.toHaveBeenCalled();
   });
 });
 
@@ -154,6 +195,26 @@ describe('PATCH /proposals/:id', () => {
     expect(mockAudit).not.toHaveBeenCalled();
   });
 
+  it('rejects a non-owner member lacking entitlement with the role error, not AGENT_TIER_REQUIRED -- roleGuard runs first', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(userPayload({ role: 'member' }));
+    // Deliberately not stubbing mockGetAgentEnabled to false here: roleGuard
+    // must reject before the handler ever calls it, so the beforeEach default
+    // (true) proves nothing about this path -- the assertion below is the
+    // actual proof getAgentEnabled was never reached.
+
+    const res = await fetch(`${baseUrl}/proposals/5`, {
+      method: 'PATCH',
+      headers: authHeaders,
+      body: JSON.stringify({ status: 'approved' }),
+    });
+    const json = (await res.json()) as { error: { code: string } };
+
+    expect(res.status).toBe(403);
+    expect(json.error.code).toBe('FORBIDDEN');
+    expect(mockGetAgentEnabled).not.toHaveBeenCalled();
+    expect(mockResolveProposal).not.toHaveBeenCalled();
+  });
+
   it('returns 404 when proposal is not found or already resolved', async () => {
     mockVerifyAccessToken.mockResolvedValueOnce(userPayload());
     mockResolveProposal.mockResolvedValueOnce(null);
@@ -199,5 +260,22 @@ describe('PATCH /proposals/:id', () => {
       body: JSON.stringify({ status: 'approved' }),
     });
     expect(res.status).toBe(401);
+  });
+
+  it('returns 403 AGENT_TIER_REQUIRED for an owner without entitlement, before the resolve call', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(userPayload());
+    mockGetAgentEnabled.mockResolvedValueOnce(false);
+
+    const res = await fetch(`${baseUrl}/proposals/5`, {
+      method: 'PATCH',
+      headers: authHeaders,
+      body: JSON.stringify({ status: 'approved' }),
+    });
+    const json = (await res.json()) as { error: { code: string } };
+
+    expect(res.status).toBe(403);
+    expect(json.error.code).toBe('AGENT_TIER_REQUIRED');
+    expect(mockResolveProposal).not.toHaveBeenCalled();
+    expect(mockAudit).not.toHaveBeenCalled();
   });
 });
