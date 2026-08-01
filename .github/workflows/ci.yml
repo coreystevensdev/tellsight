@@ -101,6 +101,25 @@ jobs:
 
       - run: pnpm -C apps/api exec tsx ../../scripts/validate-seed.ts
 
+  proposal-precision-eval:
+    name: Proposal Precision Eval
+    needs: [test-shared-web]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm -C apps/api exec tsx ../../scripts/eval-proposal-precision.ts
+
   e2e:
     name: E2E Tests
     needs: seed-validation
