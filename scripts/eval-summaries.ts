@@ -15,7 +15,7 @@
  * the Pino rule applies to apps/ only (same posture as validate-seed.ts).
  */
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -34,6 +34,7 @@ import { scoreLegalPosture } from './eval-fixtures/legal-posture.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCORECARD_PATH = resolve(__dirname, 'eval-fixtures', 'scorecard.json');
+const MARKER_PATH = resolve(__dirname, 'eval-fixtures', 'scorecard.zero-results.json');
 
 // Freeze the date so the {{today}} placeholder doesn't drift the prompt between
 // runs, same posture as validate-seed.ts:161.
@@ -88,6 +89,7 @@ interface FixtureScore {
   faithfulness: { mean: number; min: number };
   completeness: { mean: number; min: number };
   legalPosture: { pass: boolean; violations: string[] };
+  sampledCount: number;
 }
 
 function extractStatSummaries(userPrompt: string): string {
@@ -172,7 +174,8 @@ function printScorecardTable(rows: FixtureScore[]): void {
   for (const r of rows) {
     const f = `${r.faithfulness.mean.toFixed(2)} (min ${r.faithfulness.min.toFixed(2)})`;
     const c = `${r.completeness.mean.toFixed(2)} (min ${r.completeness.min.toFixed(2)})`;
-    console.log(`| ${r.id} | ${f} | ${c} | ${r.legalPosture.pass ? 'pass' : 'FAIL'} |`);
+    const degraded = r.sampledCount < SAMPLES ? ` (n=${r.sampledCount}/${SAMPLES})` : '';
+    console.log(`| ${r.id}${degraded} | ${f} | ${c} | ${r.legalPosture.pass ? 'pass' : 'FAIL'} |`);
   }
 }
 
@@ -186,21 +189,31 @@ async function scoreFixture(
 
   const samples: SampleScore[] = [];
   for (let i = 0; i < SAMPLES; i++) {
-    const summary = await provider.generate({ system, user });
-    const [faithfulness, completeness] = await Promise.all([
-      scoreFaithfulness(provider, groundTruth, summary),
-      scoreCompleteness(provider, fixture.answerKey, summary),
-    ]);
-    const legal = scoreLegalPosture(summary);
-    samples.push({
-      faithfulness,
-      completeness,
-      legalPass: legal.pass,
-      legalViolations: legal.violations,
-    });
-    console.log(
-      `  ${fixture.id} sample ${i + 1}/${SAMPLES}: faith ${faithfulness.toFixed(2)}, comp ${completeness.toFixed(2)}, legal ${legal.pass ? 'pass' : 'FAIL'}`,
-    );
+    try {
+      const summary = await provider.generate({ system, user });
+      const [faithfulness, completeness] = await Promise.all([
+        scoreFaithfulness(provider, groundTruth, summary),
+        scoreCompleteness(provider, fixture.answerKey, summary),
+      ]);
+      const legal = scoreLegalPosture(summary);
+      samples.push({
+        faithfulness,
+        completeness,
+        legalPass: legal.pass,
+        legalViolations: legal.violations,
+      });
+      console.log(
+        `  ${fixture.id} sample ${i + 1}/${SAMPLES}: faith ${faithfulness.toFixed(2)}, comp ${completeness.toFixed(2)}, legal ${legal.pass ? 'pass' : 'FAIL'}`,
+      );
+    } catch (err) {
+      console.error(`  ${fixture.id} sample ${i + 1}/${SAMPLES} failed: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  // One bad sample shouldn't discard the fixture's other, already-scored samples.
+  // Bail before Math.min() on an empty array (which is Infinity, not a real score).
+  if (samples.length === 0) {
+    throw new Error(`${fixture.id}: all ${SAMPLES} samples failed`);
   }
 
   const faithVals = samples.map((s) => s.faithfulness);
@@ -215,6 +228,7 @@ async function scoreFixture(
         pass: samples.every((s) => s.legalPass),
         violations: [...new Set(samples.flatMap((s) => s.legalViolations))],
       },
+      sampledCount: samples.length,
     },
     promptVersion: metadata.promptVersion,
   };
@@ -254,7 +268,24 @@ async function main(): Promise<void> {
 
   if (results.length === 0) {
     console.error('FAIL: no fixtures were scored');
+    mkdirSync(dirname(MARKER_PATH), { recursive: true });
+    writeFileSync(
+      MARKER_PATH,
+      JSON.stringify({ zeroResults: true, timestamp: new Date().toISOString(), failedFixtureIds }, null, 2) + '\n',
+    );
     process.exit(1);
+  }
+
+  // Clear a marker left by a prior total-failure run. ENOENT is the common
+  // case (most runs never had one); anything else is logged, not fatal, this
+  // run's real results still need to reach the scorecard.
+  try {
+    rmSync(MARKER_PATH);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT') {
+      console.error(`Failed to clear zero-results marker at ${MARKER_PATH}: ${err instanceof Error ? err.message : err}`);
+    }
   }
 
   const aggregate = {

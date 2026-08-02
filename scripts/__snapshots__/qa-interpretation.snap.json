@@ -7,56 +7,64 @@
       "label": "New answer introduces a prior-period figure and a trend direction",
       "expectedVerdict": "interpretive",
       "accuracy": 1,
-      "overrideCount": 0
+      "overrideCount": 0,
+      "sampledCount": 3
     },
     {
       "id": "benchmark-comparison",
       "label": "New answer ties the figure to an external benchmark",
       "expectedVerdict": "interpretive",
       "accuracy": 1,
-      "overrideCount": 0
+      "overrideCount": 0,
+      "sampledCount": 3
     },
     {
       "id": "bare-lookup",
       "label": "Raw figure only, no comparison",
       "expectedVerdict": "lookup",
       "accuracy": 1,
-      "overrideCount": 0
+      "overrideCount": 0,
+      "sampledCount": 3
     },
     {
       "id": "restated-figure",
       "label": "Answer only affirms a figure already stated in the question",
       "expectedVerdict": "lookup",
       "accuracy": 1,
-      "overrideCount": 0
+      "overrideCount": 0,
+      "sampledCount": 3
     },
     {
       "id": "verbose-padding",
       "label": "Trend language with zero numeric figures outside the cite tag",
       "expectedVerdict": "lookup",
       "accuracy": 1,
-      "overrideCount": 0
+      "overrideCount": 0,
+      "sampledCount": 3
     },
     {
       "id": "restated-plus-new-figure",
       "label": "Answer restates the known figure and adds a genuinely new comparison figure",
       "expectedVerdict": "interpretive",
       "accuracy": 1,
-      "overrideCount": 0
+      "overrideCount": 0,
+      "sampledCount": 3
     },
     {
       "id": "multi-cite-period-comparison",
       "label": "Two separately cited figures, current period against prior period",
       "expectedVerdict": "interpretive",
       "accuracy": 1,
-      "overrideCount": 0
+      "overrideCount": 0,
+      "sampledCount": 3
     },
     {
       "id": "adversarial-figure-free-benchmark",
       "label": "Strong benchmark/trend framing with zero digits and zero spelled-figure words",
       "expectedVerdict": "lookup",
       "accuracy": 1,
-      "overrideCount": 3
+      "overrideCount": 3,
+      "sampledCount": 3
     }
   ],
   "aggregate": 1,

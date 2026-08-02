@@ -16,7 +16,7 @@
  * the Pino rule applies to apps/ only (same posture as eval-summaries.ts).
  */
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -29,6 +29,7 @@ import { hasNumericFigure } from './eval-fixtures/interpretation-guard.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SNAPSHOT_PATH = resolve(__dirname, '__snapshots__', 'qa-interpretation.snap.json');
+const MARKER_PATH = resolve(__dirname, '__snapshots__', 'qa-interpretation.zero-results.json');
 
 const SAMPLES = 3;
 const FLOOR = 0.85;
@@ -44,6 +45,7 @@ interface FixtureScore {
   expectedVerdict: 'interpretive' | 'lookup';
   accuracy: number;
   overrideCount: number;
+  sampledCount: number;
 }
 
 function parseJudge<T>(raw: string, schema: z.ZodType<T>, ctx: string): T {
@@ -77,32 +79,44 @@ async function scoreFixture(provider: LlmProvider, fixture: QaEvalFixture): Prom
 
   let correctCount = 0;
   let overrideCount = 0;
+  let succeeded = 0;
   for (let i = 0; i < SAMPLES; i++) {
-    const raw = await provider.generate(interpretationJudge(fixture.question, fixture.knownFigures, fixture.answer));
-    const { verdict, reason } = parseJudge(raw, verdictSchema, 'interpretation');
+    try {
+      const raw = await provider.generate(interpretationJudge(fixture.question, fixture.knownFigures, fixture.answer));
+      const { verdict, reason } = parseJudge(raw, verdictSchema, 'interpretation');
 
-    const overridden = !guardAllowsInterpretive && verdict === 'interpretive';
-    const finalVerdict = guardAllowsInterpretive ? verdict : 'lookup';
-    const correct = finalVerdict === fixture.expectedVerdict;
-    if (correct) correctCount++;
-    if (overridden) overrideCount++;
+      const overridden = !guardAllowsInterpretive && verdict === 'interpretive';
+      const finalVerdict = guardAllowsInterpretive ? verdict : 'lookup';
+      const correct = finalVerdict === fixture.expectedVerdict;
+      if (correct) correctCount++;
+      if (overridden) overrideCount++;
+      succeeded++;
 
-    console.log(
-      `  ${fixture.id} sample ${i + 1}/${SAMPLES}: judge said ${verdict}` +
-        (overridden ? ' (guard overrode to lookup, no figure outside cite tags)' : '') +
-        `, expected ${fixture.expectedVerdict} (${correct ? 'match' : 'MISS'})`,
-    );
-    // Reason is otherwise paid for and thrown away; a MISS is exactly when a
-    // future maintainer will want to know what the judge was thinking.
-    if (!correct && reason) console.log(`    judge reason: ${reason}`);
+      console.log(
+        `  ${fixture.id} sample ${i + 1}/${SAMPLES}: judge said ${verdict}` +
+          (overridden ? ' (guard overrode to lookup, no figure outside cite tags)' : '') +
+          `, expected ${fixture.expectedVerdict} (${correct ? 'match' : 'MISS'})`,
+      );
+      // Reason is otherwise paid for and thrown away; a MISS is exactly when a
+      // future maintainer will want to know what the judge was thinking.
+      if (!correct && reason) console.log(`    judge reason: ${reason}`);
+    } catch (err) {
+      console.error(`  ${fixture.id} sample ${i + 1}/${SAMPLES} failed: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  // One bad sample shouldn't discard the fixture's other, already-scored samples.
+  if (succeeded === 0) {
+    throw new Error(`${fixture.id}: all ${SAMPLES} samples failed`);
   }
 
   return {
     id: fixture.id,
     label: fixture.label,
     expectedVerdict: fixture.expectedVerdict,
-    accuracy: correctCount / SAMPLES,
+    accuracy: correctCount / succeeded,
     overrideCount,
+    sampledCount: succeeded,
   };
 }
 
@@ -110,7 +124,8 @@ function printScorecardTable(rows: FixtureScore[]): void {
   console.log('\n| Fixture | Expected | Accuracy | Guard overrides |');
   console.log('|---|---|---|---|');
   for (const r of rows) {
-    console.log(`| ${r.id} | ${r.expectedVerdict} | ${r.accuracy.toFixed(2)} | ${r.overrideCount} |`);
+    const degraded = r.sampledCount < SAMPLES ? ` (n=${r.sampledCount}/${SAMPLES})` : '';
+    console.log(`| ${r.id}${degraded} | ${r.expectedVerdict} | ${r.accuracy.toFixed(2)} | ${r.overrideCount} |`);
   }
 }
 
@@ -145,7 +160,24 @@ async function main(): Promise<void> {
   // failing loudly.
   if (results.length === 0) {
     console.error('FAIL: no fixtures were scored');
+    mkdirSync(dirname(MARKER_PATH), { recursive: true });
+    writeFileSync(
+      MARKER_PATH,
+      JSON.stringify({ zeroResults: true, timestamp: new Date().toISOString(), failedFixtureIds }, null, 2) + '\n',
+    );
     process.exit(1);
+  }
+
+  // Clear a marker left by a prior total-failure run. ENOENT is the common
+  // case (most runs never had one); anything else is logged, not fatal, this
+  // run's real results still need to reach the snapshot.
+  try {
+    rmSync(MARKER_PATH);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT') {
+      console.error(`Failed to clear zero-results marker at ${MARKER_PATH}: ${err instanceof Error ? err.message : err}`);
+    }
   }
 
   const aggregate = mean(results.map((r) => r.accuracy));
