@@ -25,7 +25,7 @@ export interface ToolDefinition {
 }
 
 // One invocation the model made against a tool. `input` is unvalidated at
-// this layer, callers must validate before trusting it (see parseProposals.ts
+// this layer, callers must validate before trusting it (see proposalValidation.ts
 // for the record_proposal case). `id` correlates a call to the ToolResultInput
 // answering it in a multi-turn conversation.
 export interface ToolCall {

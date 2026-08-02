@@ -5,7 +5,7 @@ import { logger } from '../../lib/logger.js';
 import { generateWithTools, type ToolDefinition } from '../aiInterpretation/claudeClient.js';
 import { assemblePrompt } from './assembly.js';
 import { statInstanceId } from './computation.js';
-import { validateProposalCandidate } from './parseProposals.js';
+import { validateProposalCandidate } from './proposalValidation.js';
 import type { ScoredInsight } from './types.js';
 
 const PROMPT_VERSION = 'v1-agent';

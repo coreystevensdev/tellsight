@@ -53,7 +53,7 @@ The agent tier landed and did not change this decision. "Adding agents" here mea
 The path is three stages, and only the first touches the model:
 
 1. One call through the existing provider seam produces a JSON array of proposals, prompted by `services/curation/config/prompt-templates/v1-agent-{system,user}.md` and fed the same curated `ComputedStat[]` the interpretation path uses.
-2. `validateProposalCandidate()` (`apps/api/src/services/curation/parseProposals.ts`) validates each item against `agentProposalSchema` and drops any whose `evidence` cites a stat ID outside the allowed set. Pure function, no model call.
+2. `validateProposalCandidate()` (`apps/api/src/services/curation/proposalValidation.ts`) validates each item against `agentProposalSchema` and drops any whose `evidence` cites a stat ID outside the allowed set. Pure function, no model call.
 3. `routeProposal()` (`packages/shared/src/agent/gate.ts`) assigns each proposal a lane, `auto_notify`, `needs_approval`, or `suppress`, by a fixed precedence: confidence floor first, then a mutating or over-threshold action forces a human, then dedup, else auto-notify. Pure and side-effect-free; the caller does the IO and writes the audit row.
 
 No `tools`, no `tool_use` / `tool_choice`, no observe-act loop, no second model call. The model emits data; our code makes every control-flow decision. It is the interpretation pipeline's shape (curated input, one call, structured output, deterministic handling) applied to a different output type.
