@@ -212,16 +212,36 @@ aiSummaryRouter.get('/:datasetId', subscriptionGate, async (req, res: Response) 
     // actual 429 responds via res directly instead of calling next -- this
     // callback never fires on that path. res.once('finish'/'close') below
     // is the fallback that unblocks this promise for the 429 and
-    // client-disconnect branches.
+    // client-disconnect branches. Listeners are registered before
+    // rateLimitAi runs so a synchronous callback can't leave one dangling,
+    // and settled guards against whichever path fires first leaking its sibling.
+    let settled = false;
+    const onFinish = () => {
+      if (settled) return;
+      settled = true;
+      res.off('close', onClose);
+      resolve();
+    };
+    const onClose = () => {
+      if (settled) return;
+      settled = true;
+      res.off('finish', onFinish);
+      resolve();
+    };
+    res.once('finish', onFinish);
+    res.once('close', onClose);
+
     rateLimitAi(req, res, (err?: unknown) => {
+      if (settled) return;
+      settled = true;
+      res.off('finish', onFinish);
+      res.off('close', onClose);
       if (err) reject(err);
       else resolve();
     });
-    res.once('finish', resolve);
-    res.once('close', resolve);
   });
 
-  if (res.headersSent) return;
+  if (res.headersSent || res.destroyed) return;
 
   // streaming runs outside the RLS transaction (holding a tx for 3-15s would starve the pool).
   // dbAdmin bypasses RLS, safe because the route is auth-gated and orgId comes from the JWT.
@@ -232,7 +252,11 @@ aiSummaryRouter.get('/:datasetId', subscriptionGate, async (req, res: Response) 
   ]);
   const outcome = await streamToSSE(res, orgId, rawId, userId, tier, dbAdmin, profile);
 
-  aiSummaryTotal.inc({ tier, cache_hit: 'false', outcome: outcome.ok ? 'ok' : 'error' });
+  aiSummaryTotal.inc({
+    tier,
+    cache_hit: 'false',
+    outcome: outcome.ok ? 'ok' : outcome.clientDisconnected ? 'client_disconnected' : 'error',
+  });
   if (outcome.ok) {
     if (outcome.usage) {
       aiTokensUsed.inc({ tier, direction: 'input' }, outcome.usage.inputTokens);

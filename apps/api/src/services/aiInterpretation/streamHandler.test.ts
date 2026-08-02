@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Response } from 'express';
 import type { StreamResult } from './claudeClient.js';
+import type { StreamOutcome } from './streamHandler.js';
 
 vi.mock('../../config.js', () => ({
   env: {
@@ -10,7 +11,12 @@ vi.mock('../../config.js', () => ({
 }));
 
 vi.mock('../../lib/logger.js', () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    child: vi.fn().mockReturnValue({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+  },
 }));
 
 const mockRunCurationPipeline = vi.fn();
@@ -509,7 +515,7 @@ describe('streamToSSE', () => {
     const { streamToSSE } = await import('./streamHandler.js');
     const result = await streamToSSE(res, 1, 1, 99);
 
-    expect(result).toEqual({ ok: false });
+    expect(result).toEqual({ ok: false, clientDisconnected: true });
     expect(res.setHeader).not.toHaveBeenCalled();
     expect(res.flushHeaders).not.toHaveBeenCalled();
     expect(mockRunCurationPipeline).not.toHaveBeenCalled();
@@ -786,5 +792,54 @@ describe('streamToSSE', () => {
 
       expect(mockStoreSummary).not.toHaveBeenCalled();
     });
+  });
+});
+
+// Real http.Server + real Response, not createMockRes(). Proves the
+// res.destroyed/writableEnded timing claim streamToSSE's early-return
+// guard relies on. Needs real timers, so this is a sibling describe
+// rather than nested under streamToSSE's fake-timer beforeEach.
+describe('streamToSSE disconnect timing against a real server', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('sees res.destroyed true and res.writableEnded false after a real client abort', async () => {
+    const { createTestApp } = await import('../../test/helpers/testApp.js');
+    const { streamToSSE } = await import('./streamHandler.js');
+
+    let captured:
+      | { destroyed: boolean; writableEnded: boolean; outcome: StreamOutcome }
+      | undefined;
+
+    const { server, baseUrl } = await createTestApp((app) => {
+      app.get('/stream-test', async (_req, res) => {
+        // mirrors aiSummary.ts's rate-limit wait: register close before the
+        // async gate so a disconnect during that gate isn't missed, leaving
+        // res.destroyed as the only signal left for streamToSSE to check.
+        await new Promise<void>((resolve) => res.once('close', resolve));
+
+        const outcome = await streamToSSE(res, 1, 1, 99);
+        captured = { destroyed: res.destroyed, writableEnded: res.writableEnded, outcome };
+      });
+    });
+
+    try {
+      const controller = new AbortController();
+      const requestFailed = fetch(`${baseUrl}/stream-test`, { signal: controller.signal }).catch(() => {});
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      controller.abort();
+      await requestFailed;
+
+      await vi.waitFor(() => expect(captured).toBeDefined());
+
+      expect(captured?.destroyed).toBe(true);
+      expect(captured?.writableEnded).toBe(false);
+      expect(captured?.outcome).toEqual({ ok: false, clientDisconnected: true });
+      expect(mockRunCurationPipeline).not.toHaveBeenCalled();
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 });
