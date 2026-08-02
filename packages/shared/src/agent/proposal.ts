@@ -9,20 +9,29 @@ import { BANNED_IMPERATIVES } from './constants.js';
 
 export const FINDING_KINDS = ['reconciliation', 'trend', 'anomaly', 'threshold'] as const;
 
+// Single source of truth for action types: ACTION_TYPES feeds both the Zod
+// enum below and ACTION_MUTATES's key set, so the two can't drift apart.
+// Record<ActionType, boolean> forces every entry here to have a mutates flag
+// at compile time -- adding a type to ACTION_TYPES without registering it
+// below is a type error, not a silent gap.
+export const ACTION_TYPES = ['notify', 'createNote', 'flagInvoice', 'reclassify'] as const;
+export type ActionType = (typeof ACTION_TYPES)[number];
+
 // The gate needs to know which action types touch external state. Keeping the
 // flag next to the type means a new action can't be added without deciding
 // whether it mutates. Unknown types fail safe to mutating, so a forgotten
 // registration routes to human approval rather than running unattended.
 // v1 ships only non-mutating actions; `reclassify` is the v2 write-back path,
 // defined now so the gate already routes it correctly.
-export const ACTION_MUTATES: Record<string, boolean> = {
+export const ACTION_MUTATES: Record<ActionType, boolean> = {
   notify: false,
   createNote: false,
   flagInvoice: false, // internal flag, not a write-back to the source system
   reclassify: true,
 };
 
-export const actionMutates = (type: string): boolean => ACTION_MUTATES[type] ?? true;
+export const actionMutates = (type: string): boolean =>
+  ACTION_MUTATES[type as ActionType] ?? true;
 
 const moneyImpactSchema = z.object({
   amount: z.number().nonnegative(),
@@ -30,7 +39,7 @@ const moneyImpactSchema = z.object({
 });
 
 const proposedActionSchema = z.object({
-  type: z.enum(['notify', 'createNote', 'flagInvoice', 'reclassify']),
+  type: z.enum(ACTION_TYPES),
   targetRef: z.string().min(1), // internal record id, never raw data
   estimatedImpact: moneyImpactSchema.optional(),
 });
