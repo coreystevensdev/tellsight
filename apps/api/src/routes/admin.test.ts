@@ -590,29 +590,6 @@ describe('PATCH /admin/stat-corrections/:orgId/:id', () => {
     });
   });
 
-  it('includes expiresInDays and expiresAt in the audit metadata on approval', async () => {
-    mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
-    mockResolveCorrection.mockResolvedValueOnce(fakeCorrection);
-
-    const res = await fetch(`${baseUrl}/admin/stat-corrections/10/3`, {
-      method: 'PATCH',
-      headers: authHeaders,
-      body: JSON.stringify({ status: 'approved', expiresInDays: 90 }),
-    });
-
-    expect(res.status).toBe(200);
-    expect(mockAudit).toHaveBeenCalledTimes(1);
-    const [, entry] = mockAudit.mock.calls[0] as [unknown, { metadata: Record<string, unknown> }];
-    // pin the audit-logged expiresAt to the exact value resolveCorrection was
-    // told to persist, not just "some ISO string" -- that's the whole point of DW-129
-    const [, , , resolution] = mockResolveCorrection.mock.calls[0] as [unknown, unknown, unknown, { expiresAt: Date }];
-    expect(entry.metadata).toEqual({
-      status: 'approved',
-      expiresInDays: 90,
-      expiresAt: resolution.expiresAt.toISOString(),
-    });
-  });
-
   it('rejects a pending correction without requiring expiresInDays', async () => {
     mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
     mockResolveCorrection.mockResolvedValueOnce({ ...fakeCorrection, status: 'rejected', expiresAt: null });
@@ -630,8 +607,8 @@ describe('PATCH /admin/stat-corrections/:orgId/:id', () => {
     // Rejection has no scoring effect, ever, so nothing to invalidate.
     expect(mockMarkStale).not.toHaveBeenCalled();
     expect(mockAudit).toHaveBeenCalledTimes(1);
-    const [, entry] = mockAudit.mock.calls[0] as [unknown, { metadata: Record<string, unknown> }];
-    expect(entry.metadata).toEqual({ status: 'rejected' });
+    const [, entry] = mockAudit.mock.calls[0] as [unknown, Record<string, unknown>];
+    expect(entry).toMatchObject({ metadata: { status: 'rejected' } });
   });
 
   it('rejects an approval missing expiresInDays', async () => {

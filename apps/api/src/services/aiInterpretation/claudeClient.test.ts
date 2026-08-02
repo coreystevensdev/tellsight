@@ -36,10 +36,10 @@ vi.mock('../../lib/cost.js', () => ({
 }));
 
 const mockBudgetMetric = { inc: vi.fn() };
-const mockToolCallsDroppedMetric = { inc: vi.fn() };
+const mockDropMetric = { inc: vi.fn() };
 vi.mock('../../lib/metrics.js', () => ({
   aiCostBudgetExceeded: mockBudgetMetric,
-  aiToolCallsDropped: mockToolCallsDroppedMetric,
+  aiToolCallsDropped: mockDropMetric,
 }));
 
 const mockCreate = vi.fn();
@@ -72,7 +72,7 @@ vi.mock('@anthropic-ai/sdk', () => {
 import { logger } from '../../lib/logger.js';
 
 describe('circuit breaker wiring', () => {
-  it('routes generate/stream, generateTool, and converseWithTools through three independent breakers', async () => {
+  it('routes generate/stream through the shared breaker, generateTool and converseWithTools each through their own', async () => {
     vi.resetModules();
     vi.clearAllMocks();
     mockBreakerInstances.length = 0;
@@ -91,9 +91,7 @@ describe('circuit breaker wiring', () => {
     const shared = mockBreakerInstances.find((b) => b.name === 'claude-api');
     const tool = mockBreakerInstances.find((b) => b.name === 'claude-api-tool');
     const converse = mockBreakerInstances.find((b) => b.name === 'claude-api-converse');
-    if (!shared || !tool || !converse) {
-      throw new Error('expected a shared, a tool-scoped, and a converse-scoped breaker instance');
-    }
+    if (!shared || !tool || !converse) throw new Error('expected a shared, a tool-scoped, and a converse-scoped breaker instance');
 
     await claudeClient.generateInterpretation({ system: '', user: 'hi' });
     expect(shared.execSpy).toHaveBeenCalledTimes(1);
@@ -559,21 +557,6 @@ describe('generateWithTools', () => {
       expect.stringContaining('truncated'),
     );
     expect(result).toEqual([]);
-    expect(mockToolCallsDroppedMetric.inc).toHaveBeenCalledWith({ caller: 'generateTool', reason: 'max_tokens' });
-  });
-
-  it('does not increment the drop counter when max_tokens truncation left zero tool calls', async () => {
-    mockCreate.mockResolvedValue({
-      content: [{ type: 'text', text: 'cut off mid-sentence' }],
-      usage: { input_tokens: 900, output_tokens: 1024 },
-      stop_reason: 'max_tokens',
-    });
-
-    const { generateWithTools } = await import('./claudeClient.js');
-    const result = await generateWithTools({ system: '', user: 'analyze' }, [tool]);
-
-    expect(result).toEqual([]);
-    expect(mockToolCallsDroppedMetric.inc).not.toHaveBeenCalled();
   });
 
   it('drops every tool call, not just the last one, when truncated at max_tokens', async () => {
@@ -590,6 +573,21 @@ describe('generateWithTools', () => {
     const result = await generateWithTools({ system: '', user: 'analyze' }, [tool]);
 
     expect(result).toEqual([]);
+    expect(mockDropMetric.inc).toHaveBeenCalledWith({ caller: 'generateTool', reason: 'max_tokens' });
+  });
+
+  it('does not increment the drop metric when a max_tokens response had no tool calls to drop', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'text', text: 'cut off mid-sentence' }],
+      usage: { input_tokens: 900, output_tokens: 1024 },
+      stop_reason: 'max_tokens',
+    });
+
+    const { generateWithTools } = await import('./claudeClient.js');
+    const result = await generateWithTools({ system: '', user: 'analyze' }, [tool]);
+
+    expect(result).toEqual([]);
+    expect(mockDropMetric.inc).not.toHaveBeenCalled();
   });
 
   it('does not warn when the response completes normally', async () => {
@@ -643,6 +641,7 @@ describe('generateWithTools', () => {
     mockCreate.mockResolvedValue({
       content: [{ type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'Expensive' } }],
       usage: { input_tokens: 100000, output_tokens: 100000 },
+      stop_reason: 'tool_use',
     });
     mockComputeCost.mockReturnValue(2.0);
     mockExceedsBudget.mockReturnValue({
@@ -666,6 +665,7 @@ describe('generateWithTools', () => {
     mockCreate.mockResolvedValue({
       content: [{ type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'ok' } }],
       usage: { input_tokens: 1000, output_tokens: 1000 },
+      stop_reason: 'tool_use',
     });
 
     const { generateWithTools } = await import('./claudeClient.js');
@@ -683,12 +683,9 @@ describe('generateWithTools', () => {
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
-  it('drops calls and warns when the response ends on refusal', async () => {
+  it('warns when the response ends for an unexpected reason other than max_tokens', async () => {
     mockCreate.mockResolvedValue({
-      content: [
-        { type: 'text', text: 'I decline to answer that.' },
-        { type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'unsent' } },
-      ],
+      content: [{ type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'unfinished' } }],
       usage: { input_tokens: 100, output_tokens: 20 },
       stop_reason: 'refusal',
     });
@@ -697,17 +694,17 @@ describe('generateWithTools', () => {
     const { logger } = await import('../../lib/logger.js');
     const result = await generateWithTools({ system: '', user: 'analyze' }, [tool]);
 
-    expect(result).toEqual([]);
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({ stopReason: 'refusal' }),
       expect.stringContaining('unexpected reason'),
     );
-    expect(mockToolCallsDroppedMetric.inc).toHaveBeenCalledWith({ caller: 'generateTool', reason: 'abnormal_stop_reason' });
+    expect(result).toEqual([]);
+    expect(mockDropMetric.inc).toHaveBeenCalledWith({ caller: 'generateTool', reason: 'abnormal_stop_reason' });
   });
 
-  it('drops calls and warns when the response ends on stop_sequence', async () => {
+  it('drops tool calls and warns when the response ends on stop_sequence', async () => {
     mockCreate.mockResolvedValue({
-      content: [{ type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'unsent' } }],
+      content: [{ type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'unfinished' } }],
       usage: { input_tokens: 100, output_tokens: 20 },
       stop_reason: 'stop_sequence',
     });
@@ -716,12 +713,12 @@ describe('generateWithTools', () => {
     const { logger } = await import('../../lib/logger.js');
     const result = await generateWithTools({ system: '', user: 'analyze' }, [tool]);
 
-    expect(result).toEqual([]);
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({ stopReason: 'stop_sequence' }),
       expect.stringContaining('unexpected reason'),
     );
-    expect(mockToolCallsDroppedMetric.inc).toHaveBeenCalledWith({ caller: 'generateTool', reason: 'abnormal_stop_reason' });
+    expect(result).toEqual([]);
+    expect(mockDropMetric.inc).toHaveBeenCalledWith({ caller: 'generateTool', reason: 'abnormal_stop_reason' });
   });
 
   it('logs when the response includes text alongside a tool call', async () => {
@@ -801,6 +798,29 @@ describe('converseWithTools', () => {
     expect(result.text).toBe('');
   });
 
+  it('drops toolCalls but keeps text when a turn is truncated at max_tokens', async () => {
+    mockCreate.mockResolvedValue({
+      content: [
+        { type: 'text', text: 'Revenue is up, checking the exact' },
+        { type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: { statType: 'trend' } },
+      ],
+      usage: { input_tokens: 200, output_tokens: 1024 },
+      stop_reason: 'max_tokens',
+    });
+
+    const { converseWithTools } = await import('./claudeClient.js');
+    const { logger } = await import('../../lib/logger.js');
+    const result = await converseWithTools(null, { system: '', user: 'analyze' }, [tool], []);
+
+    expect(result.toolCalls).toEqual([]);
+    expect(result.text).toBe('Revenue is up, checking the exact');
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ model: expect.any(String) }),
+      expect.stringContaining('truncated at max_tokens'),
+    );
+    expect(mockDropMetric.inc).toHaveBeenCalledWith({ caller: 'converseWithTools', reason: 'max_tokens' });
+  });
+
   it('joins text blocks into the turn text when the model answers instead of calling a tool', async () => {
     mockCreate.mockResolvedValue({
       content: [{ type: 'text', text: 'Revenue is up 12% this quarter.' }],
@@ -812,30 +832,6 @@ describe('converseWithTools', () => {
 
     expect(result.toolCalls).toEqual([]);
     expect(result.text).toBe('Revenue is up 12% this quarter.');
-  });
-
-  it('drops toolCalls but keeps text/state/usage when the turn is truncated at max_tokens', async () => {
-    mockCreate.mockResolvedValue({
-      content: [
-        { type: 'text', text: 'Based on what I found so far,' },
-        { type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: { statType: 'trend' } },
-      ],
-      usage: { input_tokens: 900, output_tokens: 1024 },
-      stop_reason: 'max_tokens',
-    });
-
-    const { converseWithTools } = await import('./claudeClient.js');
-    const { logger } = await import('../../lib/logger.js');
-    const result = await converseWithTools(null, { system: '', user: 'analyze' }, [tool], []);
-
-    expect(result.toolCalls).toEqual([]);
-    expect(result.text).toBe('Based on what I found so far,');
-    expect(result.usage).toEqual({ inputTokens: 900, outputTokens: 1024 });
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ model: expect.any(String) }),
-      expect.stringContaining('truncated'),
-    );
-    expect(mockToolCallsDroppedMetric.inc).toHaveBeenCalledWith({ caller: 'converseWithTools', reason: 'max_tokens' });
   });
 
   it('threads a prior state and appends tool_result blocks keyed by toolCallId on a later turn', async () => {

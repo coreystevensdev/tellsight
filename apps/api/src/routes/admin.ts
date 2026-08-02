@@ -217,16 +217,7 @@ adminRouter.patch('/stat-corrections/:orgId/:id', async (req: Request, res: Resp
     action: AUDIT_ACTIONS.ADMIN_STAT_CORRECTION_RESOLVED,
     targetType: 'stat_correction',
     targetId: String(correctionId),
-    // both checks narrow the same branch (resolution is derived from parsed.data),
-    // TS just can't see that link across two separately-typed variables
-    metadata:
-      resolution.status === 'approved' && parsed.data.status === 'approved'
-        ? {
-            status: resolution.status,
-            expiresInDays: parsed.data.expiresInDays,
-            expiresAt: resolution.expiresAt.toISOString(),
-          }
-        : { status: resolution.status },
+    metadata: { status: parsed.data.status },
   });
 
   logger.info(

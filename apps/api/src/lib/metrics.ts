@@ -58,12 +58,11 @@ export const aiCostBudgetExceeded = new Counter({
   registers: [registry],
 });
 
-// Counts non-empty tool-call batches dropped for a truncated or otherwise
-// abnormal stop_reason, split by caller (generateTool vs converseWithTools)
-// and reason (max_tokens vs everything else abnormal).
+// Labelled by caller (generateTool vs converseWithTools) and reason
+// (max_tokens vs abnormal_stop_reason) so a spike is queryable instead of grep-only.
 export const aiToolCallsDropped = new Counter({
   name: 'ai_tool_calls_dropped_total',
-  help: 'Times a non-empty tool-call batch was dropped due to a truncated or abnormal stop reason',
+  help: 'Tool calls dropped because the response was truncated or ended abnormally',
   labelNames: ['caller', 'reason'] as const,
   registers: [registry],
 });

@@ -37,10 +37,6 @@ const BREAKER_THRESHOLD = 3;
 const BREAKER_COOLDOWN_MS = 30_000;
 const isIgnored = (err: unknown) => err instanceof AbortedByClient || err instanceof CostBudgetExceededError;
 
-// Three independent breakers: `breaker` guards the customer-facing
-// generate/stream path, `toolBreaker` guards the single-shot generateTool
-// call, `converseBreaker` guards the multi-turn QA-loop path. A burst of
-// failures unique to any one of them can't trip the other two.
 const breaker = new CircuitBreaker({
   name: 'claude-api',
   threshold: BREAKER_THRESHOLD,
@@ -48,6 +44,11 @@ const breaker = new CircuitBreaker({
   isIgnored,
 });
 
+// Three independent instances so a failure burst unique to one call site
+// can't trip the breaker guarding another: `breaker` covers the
+// customer-facing generate/stream path, `toolBreaker` the single-shot
+// generateTool call, `converseBreaker` the multi-turn QA loop. Same
+// threshold/cooldown/isIgnored across all three, they just don't share counts.
 const toolBreaker = new CircuitBreaker({
   name: 'claude-api-tool',
   threshold: BREAKER_THRESHOLD,
@@ -445,16 +446,6 @@ async function anthropicConverseWithTools(
         .filter((block): block is Anthropic.ToolUseBlock => block.type === 'tool_use')
         .map((block) => ({ id: block.id, name: block.name, input: block.input }));
 
-      // same rationale as anthropicGenerateTool: no signal for which tool_use
-      // block a max_tokens cutoff clipped, so drop the whole batch. text and
-      // state are unaffected -- qaLoop.ts falls back to text when toolCalls is empty.
-      if (message.stop_reason === 'max_tokens') {
-        if (toolCalls.length > 0) {
-          aiToolCallsDropped.inc({ caller: 'converseWithTools', reason: 'max_tokens' });
-        }
-        toolCalls = [];
-      }
-
       const text = message.content
         .filter((block): block is Anthropic.TextBlock => block.type === 'text')
         .map((block) => block.text)
@@ -465,6 +456,15 @@ async function anthropicConverseWithTools(
           { model: env.CLAUDE_MODEL, toolCallCount: toolCalls.length },
           'Claude API multi-turn tool conversation turn included text alongside tool calls',
         );
+      }
+
+      // Same rationale as generateTool: no signal for which tool_use block a
+      // max_tokens cutoff actually clipped, so drop the whole batch. text and
+      // usage are untouched, qaLoop.ts falls back to turn.text on an empty
+      // toolCalls array instead of acting on a possibly-truncated call.
+      if (message.stop_reason === 'max_tokens') {
+        if (toolCalls.length > 0) aiToolCallsDropped.inc({ caller: 'converseWithTools', reason: 'max_tokens' });
+        toolCalls = [];
       }
 
       const cost = applyCostGate(message.usage, 'converseWithTools');

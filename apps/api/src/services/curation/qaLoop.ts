@@ -220,7 +220,7 @@ export async function runQaLoop(question: string, ctx: ToolContext, signal?: Abo
       return { answer: turn.text, toolResults, termination: forcedTermination ?? 'answered', turnCount, narration };
     }
 
-    if (turn.text.trim().length > 0) narration.push(turn.text.trim());
+    if (turn.text.trim().length > 0) narration.push(turn.text);
 
     toolResultInputs = [];
     // Every call in a turn is an independent read-only lookup, so they

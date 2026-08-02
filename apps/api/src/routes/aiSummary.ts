@@ -210,24 +210,18 @@ aiSummaryRouter.get('/:datasetId', subscriptionGate, async (req, res: Response) 
   await new Promise<void>((resolve, reject) => {
     // rateLimitAi fails open on unexpected errors (calls next()) and on an
     // actual 429 responds via res directly instead of calling next -- this
-    // callback never fires on that path. The finish/close listeners are the
-    // fallback that unblocks this promise for the 429 and client-disconnect
-    // branches. Each listener deregisters its sibling on fire so the loser
-    // of the race doesn't dangle on res for the rest of the response's life.
-    const onFinish = () => { res.off('close', onClose); resolve(); };
-    const onClose = () => { res.off('finish', onFinish); resolve(); };
-    res.once('finish', onFinish);
-    res.once('close', onClose);
-
+    // callback never fires on that path. res.once('finish'/'close') below
+    // is the fallback that unblocks this promise for the 429 and
+    // client-disconnect branches.
     rateLimitAi(req, res, (err?: unknown) => {
-      res.off('finish', onFinish);
-      res.off('close', onClose);
       if (err) reject(err);
       else resolve();
     });
+    res.once('finish', resolve);
+    res.once('close', resolve);
   });
 
-  if (res.headersSent || res.destroyed) return;
+  if (res.headersSent) return;
 
   // streaming runs outside the RLS transaction (holding a tx for 3-15s would starve the pool).
   // dbAdmin bypasses RLS, safe because the route is auth-gated and orgId comes from the JWT.
@@ -238,10 +232,7 @@ aiSummaryRouter.get('/:datasetId', subscriptionGate, async (req, res: Response) 
   ]);
   const outcome = await streamToSSE(res, orgId, rawId, userId, tier, dbAdmin, profile);
 
-  // 'disconnected' is kept out of the 'error' bucket so alerting on this
-  // metric isn't diluted by ordinary early client disconnects.
-  const outcomeLabel = outcome.ok ? 'ok' : outcome.disconnected ? 'disconnected' : 'error';
-  aiSummaryTotal.inc({ tier, cache_hit: 'false', outcome: outcomeLabel });
+  aiSummaryTotal.inc({ tier, cache_hit: 'false', outcome: outcome.ok ? 'ok' : 'error' });
   if (outcome.ok) {
     if (outcome.usage) {
       aiTokensUsed.inc({ tier, direction: 'input' }, outcome.usage.inputTokens);

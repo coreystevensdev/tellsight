@@ -140,7 +140,7 @@
       "id": 10,
       "title": "Tool Calls Dropped (total)",
       "type": "stat",
-      "gridPos": { "x": 0, "y": 28, "w": 6, "h": 4 },
+      "gridPos": { "x": 0, "y": 28, "w": 24, "h": 4 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
         {
