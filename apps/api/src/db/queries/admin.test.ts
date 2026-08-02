@@ -37,7 +37,8 @@ vi.mock('../../lib/db.js', () => ({
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn((...args: unknown[]) => args),
   sql: Object.assign(
-    (strings: TemplateStringsArray, ..._exprs: unknown[]) => strings.join(''),
+    (strings: TemplateStringsArray, ...exprs: unknown[]) =>
+      strings.reduce((acc, str, i) => acc + str + (i < exprs.length ? String(exprs[i]) : ''), ''),
     { raw: (s: string) => s },
   ),
   count: vi.fn(() => 'count'),

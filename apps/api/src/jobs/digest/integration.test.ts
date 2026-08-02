@@ -27,6 +27,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 //   - Real DB writes / RLS, every query is mocked at the barrel boundary;
 //     the audience-scope filter is covered in aiSummaries.test.ts SQL-shape
 //     tests.
+//   - First-time/transition milestone detection and citation-ref stripping,
+//     dataRowsQueries, milestoneAwardsQueries, and validateCiteRefs are
+//     mocked to no-ops here; see firstTimeMilestones.test.ts, milestones.test.ts,
+//     and validator.test.ts for that logic's own coverage.
 //
 // Task 10.1's "fixture: seed 3 orgs" wording was aspirational. The repo has
 // no in-process Postgres (no pglite, no testcontainers), so this test layer
@@ -44,11 +48,16 @@ const mockUpsertDefaults = vi.fn();
 const mockMarkSent = vi.fn().mockResolvedValue(undefined);
 const mockGetLastDigest = vi.fn();
 const mockSaveDigestHistory = vi.fn();
+const mockGetMonthlyBucketsByDataset = vi.fn();
+const mockGetAwardedKinds = vi.fn();
+const mockAwardMilestone = vi.fn().mockResolvedValue(undefined);
 
 const mockRunCurationPipeline = vi.fn();
 const mockAssemblePrompt = vi.fn();
 const mockGenerateInterpretation = vi.fn();
 const mockValidateStatRefs = vi.fn().mockReturnValue({ invalidRefs: [] });
+const mockValidateCiteRefs = vi.fn().mockReturnValue({ invalidRefs: [] });
+const mockStripInvalidCiteRefs = vi.fn((text: string) => text);
 
 const mockSendEmail = vi.fn();
 const mockTrackEvent = vi.fn();
@@ -121,6 +130,13 @@ vi.mock('../../db/queries/index.js', () => ({
     getLastDigest: mockGetLastDigest,
     saveDigestHistory: mockSaveDigestHistory,
   },
+  dataRowsQueries: {
+    getMonthlyBucketsByDataset: mockGetMonthlyBucketsByDataset,
+  },
+  milestoneAwardsQueries: {
+    getAwardedKinds: mockGetAwardedKinds,
+    awardMilestone: mockAwardMilestone,
+  },
 }));
 
 vi.mock('../../services/curation/index.js', () => ({
@@ -128,6 +144,8 @@ vi.mock('../../services/curation/index.js', () => ({
   assemblePrompt: mockAssemblePrompt,
   validateStatRefs: mockValidateStatRefs,
   stripInvalidStatRefs: (text: string) => text,
+  validateCiteRefs: mockValidateCiteRefs,
+  stripInvalidCiteRefs: mockStripInvalidCiteRefs,
   transparencyMetadataSchema: { parse: (m: unknown) => m },
 }));
 
@@ -170,6 +188,8 @@ beforeEach(() => {
   mockValidateStatRefs.mockReturnValue({ invalidRefs: [] });
   mockGetLastDigest.mockResolvedValue(undefined);
   mockSaveDigestHistory.mockResolvedValue(undefined);
+  mockGetMonthlyBucketsByDataset.mockResolvedValue(new Map());
+  mockGetAwardedKinds.mockResolvedValue(new Set());
 });
 
 describe('orchestrator -> per-org -> per-send choreography', () => {

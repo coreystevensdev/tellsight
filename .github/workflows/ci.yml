@@ -52,8 +52,8 @@ jobs:
           CI: "true"
 
   # API tests, Vitest + Drizzle ORM + Anthropic SDK module graph exceeds GitHub
-  # Actions free-tier runner memory (7GB) during module resolution. All 445 tests
-  # pass locally. Marked continue-on-error until we move to larger runners.
+  # Actions free-tier runner memory (7GB) during module resolution. All 2,055
+  # tests pass locally. Marked continue-on-error until we move to larger runners.
   test-api:
     name: Tests (API)
     needs: quality
