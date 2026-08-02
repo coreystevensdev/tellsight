@@ -1,6 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
+import http from 'node:http';
 import type { Response } from 'express';
 import type { StreamResult } from './claudeClient.js';
+import type { StreamOutcome } from './streamHandler.js';
 
 vi.mock('../../config.js', () => ({
   env: {
@@ -10,7 +12,12 @@ vi.mock('../../config.js', () => ({
 }));
 
 vi.mock('../../lib/logger.js', () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    child: vi.fn().mockReturnValue({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+  },
 }));
 
 const mockRunCurationPipeline = vi.fn();
@@ -453,66 +460,127 @@ describe('streamToSSE', () => {
     expect(mockStoreSummary).not.toHaveBeenCalled();
   });
 
-  it('handles client disconnect gracefully', async () => {
-    let abortSignal: AbortSignal | undefined;
-    mockStreamInterpretation.mockImplementation(
-      async (_prompt: string, _cb: (d: string) => void, signal?: AbortSignal) => {
-        abortSignal = signal;
-        return new Promise((_resolve, reject) => {
-          signal?.addEventListener('abort', () => reject(new Error('aborted')));
+  // These three prove the disconnect-detection guards against a real
+  // http.ServerResponse instead of a hand-rolled mock, so `res.destroyed`
+  // and `res.writableEnded` reflect Node's actual computation rather than
+  // a boolean the test set directly. Client-side teardown uses node:http's
+  // req.destroy() (not fetch/undici's AbortController), which is the only
+  // reliable way to force-close a loopback socket -- same pattern already
+  // proven in qa.test.ts.
+  describe('disconnect detection (real http)', () => {
+    let server: http.Server;
+    let port: number;
+    let captured: { outcome: StreamOutcome; headerCalls: number; flushCalls: number }[];
+    let currentRes: Response | undefined;
+
+    beforeAll(async () => {
+      const { streamToSSE } = await import('./streamHandler.js');
+      const { createTestApp } = await import('../../test/helpers/testApp.js');
+
+      const result = await createTestApp((app) => {
+        app.get('/stream', async (req, res) => {
+          currentRes = res;
+          const setHeaderSpy = vi.spyOn(res, 'setHeader');
+          const flushHeadersSpy = vi.spyOn(res, 'flushHeaders');
+          const delayMs = Number(req.query.delayMs ?? 0);
+          if (delayMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+          }
+          const outcome = await streamToSSE(res, 1, 1, 99, 'free');
+          captured.push({
+            outcome,
+            headerCalls: setHeaderSpy.mock.calls.length,
+            flushCalls: flushHeadersSpy.mock.calls.length,
+          });
         });
-      },
-    );
+      });
+      server = result.server;
+      port = Number(new URL(result.baseUrl).port);
+    });
 
-    const { res } = createMockRes();
+    afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
 
-    const { streamToSSE } = await import('./streamHandler.js');
-    const promise = streamToSSE(res, 1, 1, 99);
+    beforeEach(() => {
+      captured = [];
+      currentRes = undefined;
+      vi.useRealTimers();
+    });
 
-    await vi.advanceTimersByTimeAsync(100);
-    res.triggerClose();
+    it('bails out immediately when the connection is already destroyed before streaming starts', async () => {
+      const clientReq = http.request({ hostname: '127.0.0.1', port, path: '/stream?delayMs=200', method: 'GET' });
+      clientReq.on('error', () => {});
+      clientReq.end();
 
-    await promise;
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      clientReq.destroy();
 
-    expect(res.write).not.toHaveBeenCalledWith(expect.stringContaining('event: error'));
-    expect(abortSignal?.aborted).toBe(true);
-  });
+      await vi.waitFor(() => expect(captured.length).toBe(1), { timeout: 2000 });
+      expect(captured[0]!.outcome).toEqual({ ok: false, disconnected: true });
+      expect(captured[0]!.headerCalls).toBe(0);
+      expect(captured[0]!.flushCalls).toBe(0);
+      expect(mockRunCurationPipeline).not.toHaveBeenCalled();
+    });
 
-  it('does not treat res.on(close) firing after normal completion as a disconnect', async () => {
-    // simulates the real-world race: a 'close' event can land shortly after res.end()
-    // (called inside onText's truncation branch) even on a successful delivery, not
-    // because the client left. Without the res.writableEnded guard, this would flip
-    // clientDisconnected to true and the free-tier success below would incorrectly
-    // report { ok: false }.
-    const longText = Array.from({ length: 200 }, (_, i) => `word${i}`).join(' ');
-    const { res, chunks } = createMockRes();
-    mockStreamInterpretation.mockImplementation(
-      async (_prompt: string, onText: (d: string) => void) => {
-        onText(longText);
-        res.triggerClose();
-        throw new Error('aborted');
-      },
-    );
+    it('aborts the Claude call and reports a disconnect when the client disconnects mid-stream', async () => {
+      let abortSignal: AbortSignal | undefined;
+      mockStreamInterpretation.mockImplementation(
+        async (_prompt: unknown, _onText: unknown, signal?: AbortSignal) => {
+          abortSignal = signal;
+          return new Promise((_resolve, reject) => {
+            signal?.addEventListener('abort', () => reject(new Error('aborted')));
+          });
+        },
+      );
 
-    const { streamToSSE } = await import('./streamHandler.js');
-    const result = await streamToSSE(res, 1, 1, 99, 'free');
+      const receivedChunks: string[] = [];
+      const clientReq = http.request({ hostname: '127.0.0.1', port, path: '/stream', method: 'GET' });
+      clientReq.on('error', () => {});
+      clientReq.on('response', (clientRes: http.IncomingMessage) => {
+        clientRes.on('data', (chunk: Buffer) => receivedChunks.push(chunk.toString()));
+      });
+      clientReq.end();
 
-    expect(result.ok).toBe(true);
-    const doneChunk = chunks.find((c) => c.startsWith('event: done'));
-    expect(doneChunk).toContain('"reason":"free_preview"');
-  });
+      await vi.waitFor(() => expect(mockStreamInterpretation).toHaveBeenCalled());
+      clientReq.destroy();
 
-  it('bails out immediately when res is already destroyed before streaming starts', async () => {
-    const { res } = createMockRes();
-    res.destroyed = true;
+      await vi.waitFor(() => expect(captured.length).toBe(1), { timeout: 2000 });
+      expect(captured[0]!.outcome).toEqual({ ok: false, disconnected: true });
+      expect(abortSignal?.aborted).toBe(true);
+      expect(receivedChunks.some((c) => c.includes('event: error'))).toBe(false);
+    });
 
-    const { streamToSSE } = await import('./streamHandler.js');
-    const result = await streamToSSE(res, 1, 1, 99);
+    it('does not treat a close event firing after normal completion as a disconnect', async () => {
+      // The race this guards: a 'close' event lands right after safeEnd()'s
+      // res.end() (here fired manually via the real res's own EventEmitter,
+      // since forcing this exact window through genuine socket teardown
+      // isn't reliably reproducible) but before the catch block runs.
+      // Without the writableEnded guard, this flips clientDisconnected to
+      // true and the free-tier success path below incorrectly reports
+      // { ok: false } instead of the free-preview success.
+      const longText = Array.from({ length: 200 }, (_, i) => `word${i}`).join(' ');
+      mockStreamInterpretation.mockImplementation(
+        async (_prompt: unknown, onText: (d: string) => void) => {
+          onText(longText);
+          currentRes?.emit('close');
+          throw new Error('aborted');
+        },
+      );
 
-    expect(result).toEqual({ ok: false });
-    expect(res.setHeader).not.toHaveBeenCalled();
-    expect(res.flushHeaders).not.toHaveBeenCalled();
-    expect(mockRunCurationPipeline).not.toHaveBeenCalled();
+      const receivedChunks: string[] = [];
+      const clientReq = http.request({ hostname: '127.0.0.1', port, path: '/stream', method: 'GET' });
+      clientReq.on('error', () => {});
+      clientReq.on('response', (clientRes: http.IncomingMessage) => {
+        clientRes.on('data', (chunk: Buffer) => receivedChunks.push(chunk.toString()));
+      });
+      clientReq.end();
+
+      await vi.waitFor(() => expect(captured.length).toBe(1), { timeout: 2000 });
+      clientReq.destroy();
+
+      expect(captured[0]!.outcome).toEqual({ ok: true });
+      const doneChunk = receivedChunks.find((c) => c.startsWith('event: done'));
+      expect(doneChunk).toContain('"reason":"free_preview"');
+    });
   });
 
   it('sends PIPELINE_ERROR when curation pipeline fails', async () => {

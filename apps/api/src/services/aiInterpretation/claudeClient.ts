@@ -5,7 +5,7 @@ import { logger } from '../../lib/logger.js';
 import { ExternalServiceError, CostBudgetExceededError } from '../../lib/appError.js';
 import { CircuitBreaker } from '../../lib/circuitBreaker.js';
 import { computeCost, exceedsBudget, recordCost, type Usage } from '../../lib/cost.js';
-import { aiCostBudgetExceeded } from '../../lib/metrics.js';
+import { aiCostBudgetExceeded, aiToolCallsDropped } from '../../lib/metrics.js';
 import type {
   LlmProvider,
   PromptInput,
@@ -37,6 +37,10 @@ const BREAKER_THRESHOLD = 3;
 const BREAKER_COOLDOWN_MS = 30_000;
 const isIgnored = (err: unknown) => err instanceof AbortedByClient || err instanceof CostBudgetExceededError;
 
+// Three independent breakers: `breaker` guards the customer-facing
+// generate/stream path, `toolBreaker` guards the single-shot generateTool
+// call, `converseBreaker` guards the multi-turn QA-loop path. A burst of
+// failures unique to any one of them can't trip the other two.
 const breaker = new CircuitBreaker({
   name: 'claude-api',
   threshold: BREAKER_THRESHOLD,
@@ -44,13 +48,15 @@ const breaker = new CircuitBreaker({
   isIgnored,
 });
 
-// Separate instance so a burst of failures unique to the single-shot
-// generateTool call can't trip the breaker guarding the customer-facing
-// generate/stream path, and vice versa. anthropicConverseWithTools (the
-// multi-turn QA loop path) still shares `breaker` with generate/stream --
-// out of scope here, tracked separately since it's its own risk surface.
 const toolBreaker = new CircuitBreaker({
   name: 'claude-api-tool',
+  threshold: BREAKER_THRESHOLD,
+  cooldownMs: BREAKER_COOLDOWN_MS,
+  isIgnored,
+});
+
+const converseBreaker = new CircuitBreaker({
+  name: 'claude-api-converse',
   threshold: BREAKER_THRESHOLD,
   cooldownMs: BREAKER_COOLDOWN_MS,
   isIgnored,
@@ -60,6 +66,7 @@ const toolBreaker = new CircuitBreaker({
 // repo-wide security lint flags as shell-exec even though it's CircuitBreaker.
 const runInBreaker = breaker.exec.bind(breaker);
 const runToolInBreaker = toolBreaker.exec.bind(toolBreaker);
+const runConverseInBreaker = converseBreaker.exec.bind(converseBreaker);
 
 async function anthropicHealth(): Promise<ProviderHealth> {
   const start = Date.now();
@@ -182,7 +189,7 @@ async function anthropicGenerateTool(input: PromptInput, tools: ToolDefinition[]
       } else if (message.stop_reason !== 'end_turn' && message.stop_reason !== 'tool_use') {
         logger.warn(
           { model: env.CLAUDE_MODEL, usage: message.usage, stopReason: message.stop_reason },
-          'Claude API tool-use response ended for an unexpected reason, tool_use input may be incomplete or missing',
+          'Claude API tool-use response ended for an unexpected reason, dropping all tool calls from this response',
         );
       }
 
@@ -205,9 +212,17 @@ async function anthropicGenerateTool(input: PromptInput, tools: ToolDefinition[]
         'Claude API tool-use response received',
       );
 
-      // no signal for which tool_use block a max_tokens cutoff actually clipped,
+      // no signal for which tool_use block an abnormal stop actually clipped,
       // so drop the whole batch rather than gamble one's JSON closed cleanly
-      if (message.stop_reason === 'max_tokens') return [];
+      if (message.stop_reason !== 'end_turn' && message.stop_reason !== 'tool_use') {
+        if (calls.length > 0) {
+          aiToolCallsDropped.inc({
+            caller: 'generateTool',
+            reason: message.stop_reason === 'max_tokens' ? 'max_tokens' : 'abnormal_stop_reason',
+          });
+        }
+        return [];
+      }
 
       return calls;
     } catch (err) {
@@ -394,7 +409,7 @@ async function anthropicConverseWithTools(
   // must not trip the circuit breaker or surface as an ExternalServiceError.
   const messages = buildConversationMessages(state, input, tools, toolResults);
 
-  return runInBreaker(async () => {
+  return runConverseInBreaker(async () => {
     try {
       const message = await client.messages.create(
         {
@@ -426,9 +441,19 @@ async function anthropicConverseWithTools(
         );
       }
 
-      const toolCalls: ToolCall[] = message.content
+      let toolCalls: ToolCall[] = message.content
         .filter((block): block is Anthropic.ToolUseBlock => block.type === 'tool_use')
         .map((block) => ({ id: block.id, name: block.name, input: block.input }));
+
+      // same rationale as anthropicGenerateTool: no signal for which tool_use
+      // block a max_tokens cutoff clipped, so drop the whole batch. text and
+      // state are unaffected -- qaLoop.ts falls back to text when toolCalls is empty.
+      if (message.stop_reason === 'max_tokens') {
+        if (toolCalls.length > 0) {
+          aiToolCallsDropped.inc({ caller: 'converseWithTools', reason: 'max_tokens' });
+        }
+        toolCalls = [];
+      }
 
       const text = message.content
         .filter((block): block is Anthropic.TextBlock => block.type === 'text')

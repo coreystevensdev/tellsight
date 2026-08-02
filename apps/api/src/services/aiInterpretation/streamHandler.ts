@@ -50,6 +50,7 @@ function mapStreamError(err: unknown): SseErrorEvent {
 
 export interface StreamOutcome {
   ok: boolean;
+  disconnected?: boolean;
   usage?: { inputTokens: number; outputTokens: number };
 }
 
@@ -70,7 +71,7 @@ export async function streamToSSE(
   // left to catch that disconnect.
   if (res.destroyed) {
     logger.info({ orgId, datasetId }, 'client disconnected before AI stream started');
-    return { ok: false };
+    return { ok: false, disconnected: true };
   }
 
   res.setHeader('Content-Type', 'text/event-stream');
@@ -123,7 +124,7 @@ export async function streamToSSE(
     promptVersion = metadata.promptVersion;
   } catch (err) {
     clearTimeout(timeout);
-    if (clientDisconnected) { deregister(abortController); return { ok: false }; }
+    if (clientDisconnected) { deregister(abortController); return { ok: false, disconnected: true }; }
     logger.error(
       { orgId, datasetId, err: (err as Error).message },
       'curation pipeline failed',
@@ -166,7 +167,7 @@ export async function streamToSSE(
     );
 
     clearTimeout(timeout);
-    if (clientDisconnected) return { ok: false };
+    if (clientDisconnected) return { ok: false, disconnected: true };
 
     // free-tier truncation already streamed + ended, skip caching so
     // a pro user requesting the same dataset gets a fresh full generation
@@ -286,7 +287,7 @@ export async function streamToSSE(
     if (clientDisconnected) {
       logger.info({ orgId, datasetId }, 'client disconnected during AI stream');
       deregister(abortController);
-      return { ok: false };
+      return { ok: false, disconnected: true };
     }
 
     // free-tier abort triggers a catch, that's expected, not an error

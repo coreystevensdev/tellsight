@@ -135,6 +135,19 @@
           "legendFormat": "budget exceeded"
         }
       ]
+    },
+    {
+      "id": 10,
+      "title": "Tool Calls Dropped (total)",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 28, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "sum(ai_tool_calls_dropped_total) by (caller, reason)",
+          "legendFormat": "{{caller}} / {{reason}}"
+        }
+      ]
     }
   ],
   "schemaVersion": 38,
