@@ -8,15 +8,6 @@
     "label": "Keep open, no live traffic yet",
     "resolution": ""
   },
-  "DW-154": {
-    "answered_at": "2026-08-02",
-    "bundle_name": "",
-    "effect": "build",
-    "intent": "On a total-failure run, write a small marker file (or a snapshot field) noting the run produced zero results and the timestamp, instead of leaving the prior snapshot silently unmarked.",
-    "key": "1",
-    "label": "Write a zero-results marker file",
-    "resolution": ""
-  },
   "DW-165": {
     "answered_at": "2026-08-02",
     "bundle_name": "",
