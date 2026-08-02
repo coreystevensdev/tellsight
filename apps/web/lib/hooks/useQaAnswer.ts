@@ -28,6 +28,7 @@ const initialState: QaAnswerState = {
 export function useQaAnswer(datasetId: number | null) {
   const [state, setState] = useState<QaAnswerState>(initialState);
   const abortRef = useRef<AbortController | null>(null);
+  const abortOwnerRef = useRef<number | null>(null);
 
   const ask = useCallback(async (question: string) => {
     if (datasetId === null) return;
@@ -35,6 +36,7 @@ export function useQaAnswer(datasetId: number | null) {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    abortOwnerRef.current = datasetId;
 
     setState({ ...initialState, status: 'asking' });
 
@@ -84,10 +86,16 @@ export function useQaAnswer(datasetId: number | null) {
 
   // Abort an in-flight request and drop any answer tied to the previous
   // dataset whenever the dataset switches, not only on unmount -- same
-  // intent as streamToSSE's disconnect handling on the server side.
+  // intent as streamToSSE's disconnect handling on the server side. Gated
+  // by abortOwnerRef, not a live abortRef read, because an out-of-order
+  // ask() call for a newer dataset can rebind abortRef.current before this
+  // cleanup runs; without the check it would abort that newer request and
+  // reset state out from under it.
   useEffect(() => {
     return () => {
+      if (abortOwnerRef.current !== datasetId) return;
       abortRef.current?.abort();
+      abortOwnerRef.current = null;
       setState(initialState);
     };
   }, [datasetId]);

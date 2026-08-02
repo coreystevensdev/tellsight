@@ -186,6 +186,39 @@ describe('useQaAnswer', () => {
     expect(result.current.answer).toBeNull();
   });
 
+  // Confirms abortOwnerRef's gate isn't a one-shot latch -- it must keep
+  // aborting on every subsequent switch, not just the first. The exact
+  // cross-dataset clobber the gate exists to prevent needs a commit/passive-
+  // effect-flush gap that testing-library's synchronous act()-wrapped
+  // rerender collapses, so it can't be reproduced here.
+  it('keeps aborting and resetting across a second dataset switch', async () => {
+    const signals: AbortSignal[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
+      signals.push((init as RequestInit).signal!);
+      return new Promise(() => {});
+    });
+
+    const { result, rerender } = renderHook(({ id }) => useQaAnswer(id), { initialProps: { id: 7 } });
+    act(() => {
+      void result.current.ask('How is my runway?');
+    });
+
+    rerender({ id: 8 });
+    expect(signals[0]?.aborted).toBe(true);
+    expect(result.current.status).toBe('idle');
+
+    act(() => {
+      void result.current.ask('How is cash flow?');
+    });
+    expect(result.current.status).toBe('asking');
+
+    rerender({ id: 9 });
+
+    expect(signals[1]?.aborted).toBe(true);
+    expect(result.current.status).toBe('idle');
+    expect(result.current.answer).toBeNull();
+  });
+
   it('ignores a stale response from a superseded ask() call (regression)', async () => {
     let resolveFirst: (value: Response) => void = () => {};
     const firstFetch = new Promise<Response>((resolve) => {
