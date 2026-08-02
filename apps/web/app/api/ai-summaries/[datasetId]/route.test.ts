@@ -94,4 +94,46 @@ describe('GET /api/ai-summaries/[datasetId]', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('text/event-stream');
   });
+
+  it('propagates an upstream stream error to the client after a mid-stream abort', async () => {
+    let streamController!: ReadableStreamDefaultController<Uint8Array>;
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        streamController = c;
+      },
+    });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'text/event-stream' }),
+      body,
+    } as unknown as Response);
+
+    // jsdom's AbortSignal fails NextRequest's constructor-time WebIDL check, so
+    // the signal is swapped in after construction (same workaround as bff-proxy.test.ts).
+    const controller = new AbortController();
+    // The mocked fetch above ignores init.signal entirely, so it never reproduces
+    // the real Fetch API guarantee that an abort tears down an in-flight body read,
+    // not just the initial connection. This listener stands in for that platform
+    // behavior so the abort actually drives the outcome instead of being inert.
+    controller.signal.addEventListener('abort', () => {
+      streamController.error(new DOMException('The operation was aborted.', 'AbortError'));
+    });
+    const abortableReq = req();
+    Object.defineProperty(abortableReq, 'signal', { value: controller.signal });
+    const res = await GET(abortableReq, { params });
+
+    expect(fetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    expect(res.body).toBe(body);
+
+    const reader = res.body!.getReader();
+    const chunk = new Uint8Array([1, 2, 3]);
+    streamController.enqueue(chunk);
+    const first = await reader.read();
+    expect(first.value).toEqual(chunk);
+
+    controller.abort();
+
+    await expect(reader.read()).rejects.toMatchObject({ name: 'AbortError' });
+  });
 });
