@@ -1,19 +1,14 @@
-import { configDefaults, defineConfig } from 'vitest/config';
+import { defineConfig } from 'vitest/config';
 
+// Separate project so the real-Postgres suite never runs under the default
+// `pnpm test` (see vitest.config.ts's exclude), keeping the DB-less test-api
+// CI job green with no service container.
 export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
     fileParallelism: false,
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
-    // rls.integration.test.ts hits a real Postgres role and runs under its
-    // own project (vitest.integration.config.ts) with a CI job that provides
-    // the service container; the default run has no DB to connect to.
-    exclude: [...configDefaults.exclude, 'src/**/*.integration.test.ts'],
-    coverage: {
-      provider: 'v8',
-      reporter: ['text', 'lcov'],
-    },
+    include: ['src/**/*.integration.test.ts'],
     pool: 'forks',
     poolOptions: {
       forks: {

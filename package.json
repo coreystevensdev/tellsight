@@ -16,7 +16,8 @@
     "eval": "if [ -f .env ]; then set -a; . ./.env; set +a; fi; pnpm -C apps/api exec tsx ../../scripts/eval-summaries.ts",
     "eval:qa": "if [ -f .env ]; then set -a; . ./.env; set +a; fi; pnpm -C apps/api exec tsx ../../scripts/eval-qa.ts",
     "eval:proposals": "pnpm -C apps/api exec tsx ../../scripts/eval-proposal-precision.ts",
-    "test:eval": "pnpm -C apps/api exec vitest run -c ../../scripts/vitest.config.ts"
+    "test:eval": "pnpm -C apps/api exec vitest run -c ../../scripts/vitest.config.ts",
+    "test:integration": "if [ -f .env ]; then set -a; . ./.env; set +a; fi; pnpm -C apps/api test:integration"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

@@ -82,6 +82,71 @@ jobs:
           CI: "true"
           NODE_OPTIONS: "--max-old-space-size=4096"
 
+  test-api-rls-integration:
+    name: Tests (API RLS integration)
+    needs: quality
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18.2
+        env:
+          POSTGRES_USER: app_admin
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: analytics
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app_admin -d analytics"
+          --health-interval 3s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # No shared-package build step: vitest.integration.config.ts aliases
+      # shared/* straight to packages/shared/src, same as proposal-precision-eval
+      # and seed-validation, which skip the build for the same reason.
+
+      # app_user only gets privileges on tables created after this runs
+      # (ALTER DEFAULT PRIVILEGES), so it has to happen before migrations,
+      # matching the order the production Docker image boots in.
+      - name: Create app_user role
+        run: PGPASSWORD=app psql -h localhost -U app_admin -d analytics -f docker/init.sql
+
+      - name: Run migrations
+        run: pnpm --filter api db:migrate:run
+        env:
+          DATABASE_ADMIN_URL: postgresql://app_admin:app@localhost:5432/analytics
+
+      - name: Run RLS integration tests
+        run: pnpm --filter api test:integration
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://app_user:app@localhost:5432/analytics
+          DATABASE_ADMIN_URL: postgresql://app_admin:app@localhost:5432/analytics
+          REDIS_URL: redis://localhost:6379
+          CLAUDE_API_KEY: dummy-claude-key
+          STRIPE_SECRET_KEY: sk_test_dummy
+          STRIPE_WEBHOOK_SECRET: whsec_dummy
+          STRIPE_PRICE_ID: price_dummy
+          GOOGLE_CLIENT_ID: dummy-google-client-id
+          GOOGLE_CLIENT_SECRET: dummy-google-client-secret
+          JWT_SECRET: dummy-jwt-secret-at-least-32-characters-long
+          APP_URL: http://localhost:3000
+          EMAIL_FROM_ADDRESS: noreply@example.com
+          EMAIL_MAILING_ADDRESS: 123 CI Test Way
+
   seed-validation:
     name: Seed Data Validation
     needs: [test-shared-web]

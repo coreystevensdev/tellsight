@@ -14,6 +14,7 @@
     "type-check": "tsc --noEmit",
     "test": "NODE_OPTIONS='--max-old-space-size=4096' vitest run",
     "test:watch": "vitest",
+    "test:integration": "vitest run -c vitest.integration.config.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:migrate:run": "tsx src/db/migrate.ts",
