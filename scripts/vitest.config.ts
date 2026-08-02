@@ -8,7 +8,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     root: import.meta.dirname,
-    include: ['eval-fixtures/**/*.test.ts'],
+    include: ['**/*.test.ts'],
     environment: 'node',
   },
 });

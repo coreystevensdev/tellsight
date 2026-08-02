@@ -8,6 +8,42 @@
     "label": "Keep open, no live traffic yet",
     "resolution": ""
   },
+  "DW-154": {
+    "answered_at": "2026-08-02",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "On a total-failure run, write a small marker file (or a snapshot field) noting the run produced zero results and the timestamp, instead of leaving the prior snapshot silently unmarked.",
+    "key": "1",
+    "label": "Write a zero-results marker file",
+    "resolution": ""
+  },
+  "DW-165": {
+    "answered_at": "2026-08-02",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Extend buildEligibilityQuery's conditions to also include the canceled-with-active-grace-period branch getAgentEnabled already checks, so canceled-but-paid orgs still get paged by the nightly cron.",
+    "key": "1",
+    "label": "Match getAgentEnabled's eligibility definition in the cron query",
+    "resolution": ""
+  },
+  "DW-166": {
+    "answered_at": "2026-08-02",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Add a run-level cost accumulator to the agentOrchestrator handler that stops paging further orgs once total spend for the run crosses a configured budget, mirroring the qa-loop's existing per-loop cost ceiling design as a reference pattern.",
+    "key": "1",
+    "label": "Add a per-run dollar budget ceiling",
+    "resolution": ""
+  },
+  "DW-174": {
+    "answered_at": "2026-08-02",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Add a LIMIT (and a 'N more not shown' note in the digest copy) to getExpiredUnfoldedProposals and autoNotifyProposals, sized conservatively for the current no-backfill window.",
+    "key": "1",
+    "label": "Add a shared row-count cap now",
+    "resolution": ""
+  },
   "DW-21": {
     "answered_at": "2026-07-19",
     "bundle_name": "",

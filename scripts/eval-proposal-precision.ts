@@ -45,6 +45,10 @@ interface Snapshot {
   precision: number;
   needsApprovalCount: number;
   correctCount: number;
+  // Which specific fixtures counted as correct, not just how many. Aggregate
+  // counts alone can't catch a same-size swap (fixture A goes wrong while
+  // fixture B goes right) since precision and correctCount stay identical.
+  correctFixtureIds: string[];
 }
 
 function round4(n: number): number {
@@ -100,14 +104,15 @@ function evaluate(): void {
     process.exit(1);
   }
 
-  const correctCount = needsApproval.filter((r) => r.expectedWorthApproval).length;
+  const correctFixtureIds = needsApproval.filter((r) => r.expectedWorthApproval).map((r) => r.id).sort();
+  const correctCount = correctFixtureIds.length;
   const precision = round4(correctCount / needsApproval.length);
 
   console.log(
     `\nPrecision (needs_approval): ${precision} (${correctCount}/${needsApproval.length} fixtures worth approval)`,
   );
 
-  const actual: Snapshot = { precision, needsApprovalCount: needsApproval.length, correctCount };
+  const actual: Snapshot = { precision, needsApprovalCount: needsApproval.length, correctCount, correctFixtureIds };
 
   if (shouldUpdate) {
     writeSnapshot(actual);
@@ -135,9 +140,12 @@ function evaluate(): void {
   if (
     typeof baseline.precision !== 'number' ||
     typeof baseline.needsApprovalCount !== 'number' ||
-    typeof baseline.correctCount !== 'number'
+    typeof baseline.correctCount !== 'number' ||
+    !Array.isArray(baseline.correctFixtureIds)
   ) {
-    console.error(`\nFAIL: ${SNAPSHOT_PATH} is malformed, expected numeric precision/needsApprovalCount/correctCount fields`);
+    console.error(
+      `\nFAIL: ${SNAPSHOT_PATH} is malformed, expected numeric precision/needsApprovalCount/correctCount plus a correctFixtureIds array`,
+    );
     console.error('Run with --update to regenerate it from the current fixture set.');
     process.exit(1);
   }
@@ -158,6 +166,20 @@ function evaluate(): void {
       `\nFAIL: needs_approval sample shrank, ${actual.needsApprovalCount} < baseline ${baseline.needsApprovalCount} fixtures (precision alone can't catch this)`,
     );
     console.error('If this drop is intentional, run with --update to regenerate the snapshot:');
+    console.error('  pnpm -C apps/api exec tsx ../../scripts/eval-proposal-precision.ts --update');
+    process.exit(1);
+  }
+
+  // Precision and needsApprovalCount can hold steady while the gate gets a
+  // different fixture right in exchange for one it used to get right, e.g. a
+  // rule change that swaps which fixture the "false positive" is. Neither
+  // aggregate number moves, so this checks fixture identity directly.
+  const flipped = baseline.correctFixtureIds.filter((id: string) => !actual.correctFixtureIds.includes(id));
+  if (flipped.length > 0) {
+    console.error(
+      `\nFAIL: fixture(s) previously correct in needs_approval no longer are: ${flipped.join(', ')} (aggregate precision/count can mask this if a different fixture became correct)`,
+    );
+    console.error('If this is intentional, run with --update to regenerate the snapshot:');
     console.error('  pnpm -C apps/api exec tsx ../../scripts/eval-proposal-precision.ts --update');
     process.exit(1);
   }

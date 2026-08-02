@@ -1,5 +1,11 @@
 {
   "precision": 0.8,
   "needsApprovalCount": 5,
-  "correctCount": 4
+  "correctCount": 4,
+  "correctFixtureIds": [
+    "consequence-overrides-dedup",
+    "exact-threshold-boundary",
+    "over-threshold-notify",
+    "tp-mutating-reclassify"
+  ]
 }
