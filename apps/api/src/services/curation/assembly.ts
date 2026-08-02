@@ -161,6 +161,18 @@ function formatBusinessContext(profile: BusinessProfile | null | undefined): str
   return `This is a ${type} business (${revenue}, ${team}). The owner's top concern is ${concern}. Tailor your advice to this context.`;
 }
 
+const KNOWN_PLACEHOLDERS = new Set([
+  '{{statSummaries}}',
+  '{{today}}',
+  '{{businessContext}}',
+  '{{industryBenchmarks}}',
+  '{{statTypeList}}',
+  '{{allowedStatTypes}}',
+  '{{categoryCount}}',
+  '{{insightCount}}',
+  '{{priorContext}}',
+]);
+
 // Apply variable substitutions to the user-facing portion of the template.
 // The system portion (v1.7+) has no placeholders and is returned unchanged.
 function renderUser(
@@ -177,16 +189,24 @@ function renderUser(
     priorContext: string;
   },
 ): string {
+  // Scan the raw template, never the substituted values, a CSV-sourced
+  // stat.category containing literal `{{...}}` text must not trip this.
+  const found = template.match(/\{\{[^{}]*\}\}/g) ?? [];
+  const unknown = [...new Set(found.filter((token) => !KNOWN_PLACEHOLDERS.has(token)))];
+  if (unknown.length > 0) {
+    throw new AppError(`Prompt template contains unknown placeholder(s): ${unknown.join(', ')}`, 'CONFIG_ERROR', 500);
+  }
+
   return template
-    .replace('{{statSummaries}}', vars.statSummaries)
-    .replace('{{today}}', vars.today)
-    .replace('{{businessContext}}', vars.businessContext)
-    .replace('{{industryBenchmarks}}', vars.benchmarks)
-    .replace('{{statTypeList}}', vars.statTypeList)
-    .replace('{{allowedStatTypes}}', vars.allowedStatTypes)
-    .replace('{{categoryCount}}', vars.categoryCount)
-    .replace('{{insightCount}}', vars.insightCount)
-    .replace('{{priorContext}}', vars.priorContext);
+    .replaceAll('{{statSummaries}}', vars.statSummaries)
+    .replaceAll('{{today}}', vars.today)
+    .replaceAll('{{businessContext}}', vars.businessContext)
+    .replaceAll('{{industryBenchmarks}}', vars.benchmarks)
+    .replaceAll('{{statTypeList}}', vars.statTypeList)
+    .replaceAll('{{allowedStatTypes}}', vars.allowedStatTypes)
+    .replaceAll('{{categoryCount}}', vars.categoryCount)
+    .replaceAll('{{insightCount}}', vars.insightCount)
+    .replaceAll('{{priorContext}}', vars.priorContext);
 }
 
 export function assemblePrompt(

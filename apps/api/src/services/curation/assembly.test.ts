@@ -383,4 +383,127 @@ describe('assemblePrompt', () => {
     expect(ids).toHaveLength(2);
     expect(ids[0]).not.toBe(ids[1]);
   });
+
+  it('throws CONFIG_ERROR naming an unknown placeholder still left in the template', async () => {
+    const { readFileSync } = await import('node:fs');
+    vi.mocked(readFileSync).mockImplementation((path: unknown) => {
+      const p = String(path);
+      if (p.includes('-system.md') || p.includes('-user.md')) {
+        const err = new Error('ENOENT (test mock)') as Error & { code: string };
+        err.code = 'ENOENT';
+        throw err;
+      }
+      return 'Allow: {{allowedStatIds}}';
+    });
+
+    const { assemblePrompt } = await import('./assembly.js');
+    const { AppError } = await import('../../lib/appError.js');
+
+    try {
+      assemblePrompt(fixtureInsights, 1, 'v2');
+      expect.unreachable('assemblePrompt should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(AppError);
+      const appErr = err as InstanceType<typeof AppError>;
+      expect(appErr.code).toBe('CONFIG_ERROR');
+      expect(appErr.statusCode).toBe(500);
+      expect(appErr.message).toContain('{{allowedStatIds}}');
+    }
+  });
+
+  it('throws CONFIG_ERROR naming both unknown placeholders, deduped, when two are present', async () => {
+    const { readFileSync } = await import('node:fs');
+    vi.mocked(readFileSync).mockImplementation((path: unknown) => {
+      const p = String(path);
+      if (p.includes('-system.md') || p.includes('-user.md')) {
+        const err = new Error('ENOENT (test mock)') as Error & { code: string };
+        err.code = 'ENOENT';
+        throw err;
+      }
+      return 'A: {{oldTokenOne}} B: {{oldTokenTwo}} again: {{oldTokenOne}}';
+    });
+
+    const { assemblePrompt } = await import('./assembly.js');
+    const { AppError } = await import('../../lib/appError.js');
+
+    try {
+      assemblePrompt(fixtureInsights, 1, 'v2');
+      expect.unreachable('assemblePrompt should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(AppError);
+      const appErr = err as InstanceType<typeof AppError>;
+      expect(appErr.code).toBe('CONFIG_ERROR');
+      expect(appErr.statusCode).toBe(500);
+      expect(appErr.message).toContain('{{oldTokenOne}}');
+      expect(appErr.message).toContain('{{oldTokenTwo}}');
+      // deduped: the repeated {{oldTokenOne}} shows up once, not twice
+      expect(appErr.message.split('{{oldTokenOne}}')).toHaveLength(2);
+    }
+  });
+
+  it('does not throw when a substituted value (not the template) contains {{...}}-shaped text', async () => {
+    const brokenCategoryInsights: ScoredInsight[] = [
+      {
+        stat: {
+          statType: StatType.Total,
+          category: '{{fake}}',
+          value: 500,
+          details: { scope: 'category', count: 3 },
+        },
+        score: 0.5,
+        breakdown: { novelty: 0.5, actionability: 0.5, specificity: 0.5 },
+      },
+    ];
+
+    const { assemblePrompt } = await import('./assembly.js');
+    const result = assemblePrompt(brokenCategoryInsights, 1);
+
+    // the CSV-sourced category leaks its literal braces into statSummaries,
+    // but the raw template itself had every placeholder valid, so this must not throw
+    expect(result.user).toContain('[{{fake}}] Total');
+  });
+
+  it('throws only on the stale token when a template mixes it with otherwise-valid known placeholders', async () => {
+    const { readFileSync } = await import('node:fs');
+    vi.mocked(readFileSync).mockImplementation((path: unknown) => {
+      const p = String(path);
+      if (p.includes('-system.md') || p.includes('-user.md')) {
+        const err = new Error('ENOENT (test mock)') as Error & { code: string };
+        err.code = 'ENOENT';
+        throw err;
+      }
+      return 'Today: {{today}} Allow: {{allowedStatIds}} Count: {{insightCount}}';
+    });
+
+    const { assemblePrompt } = await import('./assembly.js');
+    const { AppError } = await import('../../lib/appError.js');
+
+    try {
+      assemblePrompt(fixtureInsights, 1, 'v2');
+      expect.unreachable('assemblePrompt should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(AppError);
+      const appErr = err as InstanceType<typeof AppError>;
+      expect(appErr.message).toBe('Prompt template contains unknown placeholder(s): {{allowedStatIds}}');
+    }
+  });
+
+  it('substitutes every occurrence of a placeholder repeated in the same template', async () => {
+    const { readFileSync } = await import('node:fs');
+    vi.mocked(readFileSync).mockImplementation((path: unknown) => {
+      const p = String(path);
+      if (p.includes('-system.md') || p.includes('-user.md')) {
+        const err = new Error('ENOENT (test mock)') as Error & { code: string };
+        err.code = 'ENOENT';
+        throw err;
+      }
+      return 'Header: {{today}} ... Footer: {{today}}';
+    });
+
+    const { assemblePrompt } = await import('./assembly.js');
+    const fixedNow = new Date('2026-03-05T12:00:00.000Z');
+    const result = assemblePrompt(fixtureInsights, 1, 'v2', null, fixedNow);
+
+    expect(result.user).toBe('Header: Thursday, March 5, 2026 ... Footer: Thursday, March 5, 2026');
+  });
 });
