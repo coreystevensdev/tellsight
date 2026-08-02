@@ -14,7 +14,11 @@ const helpers = [
   { name: 'proxyPostWithCookies', build: () => proxyPostWithCookies('/whatever'), method: 'POST' },
 ];
 
-describe.each(helpers)('$name parse hardening', ({ build, method }) => {
+describe.each(helpers)('$name parse hardening', ({ name, build, method }) => {
+  // Only proxyPostWithCookies forwards Set-Cookie on the invalidResponse fallback path,
+  // so the collapse-case mocks below carry a cookie to prove the other helpers don't pick it up.
+  const expectedCookies = (name === 'proxyPostWithCookies' ? ['session=; Max-Age=0'] : []);
+
   const request = () => new NextRequest('http://localhost/api/whatever', { method, body: method === 'GET' ? undefined : '{}' });
 
   it('returns 502 UPSTREAM_UNAVAILABLE when fetch rejects', async () => {
@@ -22,11 +26,8 @@ describe.each(helpers)('$name parse hardening', ({ build, method }) => {
 
     const res = await build()(request());
 
-    // UPSTREAM_ERROR_RESPONSE is a shared singleton across every helper and
-    // test in this file, so clone() before reading -- a direct .json() call
-    // would permanently consume the body for every later test.
     expect(res.status).toBe(502);
-    expect(await res.clone().json()).toEqual({
+    expect(await res.json()).toEqual({
       error: { code: 'UPSTREAM_UNAVAILABLE', message: 'API server unreachable' },
     });
   });
@@ -36,6 +37,7 @@ describe.each(helpers)('$name parse hardening', ({ build, method }) => {
       ok: false,
       status: 500,
       json: () => Promise.reject(new SyntaxError('Unexpected token < in JSON')),
+      headers: { getSetCookie: () => ['session=; Max-Age=0'] },
     } as unknown as Response);
 
     const res = await build()(request());
@@ -44,6 +46,7 @@ describe.each(helpers)('$name parse hardening', ({ build, method }) => {
     expect(await res.json()).toEqual({
       error: { code: 'UPSTREAM_INVALID_RESPONSE', message: 'API server returned an invalid response' },
     });
+    expect(res.headers.getSetCookie()).toEqual(expectedCookies);
   });
 
   it('collapses to 502 when a 2xx response is unparseable', async () => {
@@ -51,7 +54,7 @@ describe.each(helpers)('$name parse hardening', ({ build, method }) => {
       ok: true,
       status: 200,
       json: () => Promise.reject(new Error('aborted')),
-      headers: { getSetCookie: () => [] },
+      headers: { getSetCookie: () => ['session=; Max-Age=0'] },
     } as unknown as Response);
 
     const res = await build()(request());
@@ -60,6 +63,7 @@ describe.each(helpers)('$name parse hardening', ({ build, method }) => {
     expect(await res.json()).toEqual({
       error: { code: 'UPSTREAM_INVALID_RESPONSE', message: 'API server returned an invalid response' },
     });
+    expect(res.headers.getSetCookie()).toEqual(expectedCookies);
   });
 
   it('collapses to 502 when a null-body status (204) is unparseable', async () => {
@@ -67,6 +71,7 @@ describe.each(helpers)('$name parse hardening', ({ build, method }) => {
       ok: false,
       status: 204,
       json: () => Promise.reject(new SyntaxError('Unexpected end of JSON input')),
+      headers: { getSetCookie: () => ['session=; Max-Age=0'] },
     } as unknown as Response);
 
     const res = await build()(request());
@@ -75,6 +80,7 @@ describe.each(helpers)('$name parse hardening', ({ build, method }) => {
     expect(await res.json()).toEqual({
       error: { code: 'UPSTREAM_INVALID_RESPONSE', message: 'API server returned an invalid response' },
     });
+    expect(res.headers.getSetCookie()).toEqual(expectedCookies);
   });
 
   // 204/205 are already caught by the res.ok branch of the collapse check in
@@ -85,6 +91,7 @@ describe.each(helpers)('$name parse hardening', ({ build, method }) => {
       ok: false,
       status: 304,
       json: () => Promise.reject(new SyntaxError('Unexpected end of JSON input')),
+      headers: { getSetCookie: () => ['session=; Max-Age=0'] },
     } as unknown as Response);
 
     const res = await build()(request());
@@ -93,6 +100,7 @@ describe.each(helpers)('$name parse hardening', ({ build, method }) => {
     expect(await res.json()).toEqual({
       error: { code: 'UPSTREAM_INVALID_RESPONSE', message: 'API server returned an invalid response' },
     });
+    expect(res.headers.getSetCookie()).toEqual(expectedCookies);
   });
 
   it('passes through valid JSON at the real upstream status', async () => {
@@ -128,6 +136,24 @@ describe('proxyPostWithCookies success passthrough', () => {
   });
 });
 
+describe('proxyPostWithCookies invalid-response cookie forwarding', () => {
+  it('forwards Set-Cookie headers when the invalid-response fallback path fires', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      json: () => Promise.reject(new SyntaxError('Unexpected token < in JSON')),
+      headers: { getSetCookie: () => ['session=; Max-Age=0'] },
+    } as unknown as Response);
+
+    const res = await proxyPostWithCookies('/whatever')(
+      new NextRequest('http://localhost/api/whatever', { method: 'POST', body: '{}' }),
+    );
+
+    expect(res.status).toBe(401);
+    expect(res.headers.getSetCookie()).toEqual(['session=; Max-Age=0']);
+  });
+});
+
 describe('upstreamSignal', () => {
   it('aborts on its own once UPSTREAM_TIMEOUT_MS elapses, with no client-side abort', () => {
     vi.useFakeTimers();
@@ -160,11 +186,8 @@ describe('upstreamSignal', () => {
 
     const res = await proxyPost('/whatever')(request);
 
-    // UPSTREAM_ERROR_RESPONSE is a shared singleton across every helper and
-    // test in this file, so clone() before reading -- a direct .json() call
-    // would permanently consume the body for every later test.
     expect(res.status).toBe(502);
-    expect(await res.clone().json()).toEqual({
+    expect(await res.json()).toEqual({
       error: { code: 'UPSTREAM_UNAVAILABLE', message: 'API server unreachable' },
     });
   });

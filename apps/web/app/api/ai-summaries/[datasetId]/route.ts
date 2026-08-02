@@ -19,7 +19,8 @@ export async function GET(
       headers: { cookie },
       signal: upstreamSignal(request),
     });
-  } catch {
+  } catch (err) {
+    console.warn('[ai-summaries-route] upstream unreachable', err);
     return NextResponse.json(
       { error: { code: 'UPSTREAM_UNREACHABLE', message: 'API server unavailable' } },
       { status: 502 },
@@ -31,7 +32,8 @@ export async function GET(
     let data: unknown;
     try {
       data = await upstream.json();
-    } catch {
+    } catch (err) {
+      console.warn('[ai-summaries-route] upstream returned non-JSON body (error status)', err);
       data = { error: { code: 'UPSTREAM_ERROR', message: 'Unexpected response from server' } };
     }
     return NextResponse.json(data, { status });
@@ -55,7 +57,8 @@ export async function GET(
   let bodyReadFailed = false;
   try {
     data = await upstream.json();
-  } catch {
+  } catch (err) {
+    console.warn('[ai-summaries-route] upstream returned non-JSON body (cache hit)', err);
     bodyReadFailed = true;
     data = { error: { code: 'UPSTREAM_ERROR', message: 'Unexpected response from server' } };
   }

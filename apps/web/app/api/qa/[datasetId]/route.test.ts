@@ -28,6 +28,7 @@ describe('POST /api/qa/[datasetId]', () => {
 
   it('returns 502 UPSTREAM_UNREACHABLE when fetch rejects', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('connection refused'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const res = await POST(req(), { params });
 
@@ -35,6 +36,7 @@ describe('POST /api/qa/[datasetId]', () => {
     expect(await res.json()).toEqual({
       error: { code: 'UPSTREAM_UNREACHABLE', message: 'API server unavailable' },
     });
+    expect(warn).toHaveBeenCalledWith('[qa-route] upstream unreachable', expect.any(Error));
   });
 
   it('falls back to 502 instead of a stale 2xx status when the body is not JSON', async () => {
@@ -43,6 +45,7 @@ describe('POST /api/qa/[datasetId]', () => {
       status: 200,
       json: () => Promise.reject(new Error('aborted')),
     } as unknown as Response);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const res = await POST(req(), { params });
 
@@ -50,6 +53,7 @@ describe('POST /api/qa/[datasetId]', () => {
     expect(await res.json()).toEqual({
       error: { code: 'UPSTREAM_ERROR', message: 'Unexpected response from server' },
     });
+    expect(warn).toHaveBeenCalledWith('[qa-route] upstream returned non-JSON body', expect.any(Error));
   });
 
   it('maps a genuine 5xx upstream status to 502', async () => {

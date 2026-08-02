@@ -24,7 +24,8 @@ export async function POST(
       // unreachable) and adds a timeout backstop for a hung Claude call.
       signal: upstreamSignal(request),
     });
-  } catch {
+  } catch (err) {
+    console.warn('[qa-route] upstream unreachable', err);
     return NextResponse.json(
       { error: { code: 'UPSTREAM_UNREACHABLE', message: 'API server unavailable' } },
       { status: 502 },
@@ -35,7 +36,8 @@ export async function POST(
   let bodyReadFailed = false;
   try {
     data = await upstream.json();
-  } catch {
+  } catch (err) {
+    console.warn('[qa-route] upstream returned non-JSON body', err);
     bodyReadFailed = true;
     data = { error: { code: 'UPSTREAM_ERROR', message: 'Unexpected response from server' } };
   }

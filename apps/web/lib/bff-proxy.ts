@@ -1,22 +1,33 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { webEnv } from '@/lib/config';
 
-const UPSTREAM_ERROR_RESPONSE = NextResponse.json(
-  { error: { code: 'UPSTREAM_UNAVAILABLE', message: 'API server unreachable' } },
-  { status: 502 },
-);
+// A fresh Response per call -- a module-level const here would be a single
+// Response instance shared across every catch site, and concurrent requests
+// racing to read its body would hit "body stream already read".
+function upstreamErrorResponse() {
+  return NextResponse.json(
+    { error: { code: 'UPSTREAM_UNAVAILABLE', message: 'API server unreachable' } },
+    { status: 502 },
+  );
+}
 
 const NULL_BODY_STATUSES = new Set([204, 205, 304]);
 
 // A 2xx status paired with an unreadable body is as broken as a null-body
 // status (204/205/304) -- both mean res.status can't be trusted here, so
 // both collapse to 502 instead of passing a stale/invalid status through.
-function invalidResponse(res: Response) {
+function invalidResponse(res: Response, opts?: { forwardCookies?: boolean }) {
   const status = res.ok || NULL_BODY_STATUSES.has(res.status) ? 502 : res.status;
-  return NextResponse.json(
+  const next = NextResponse.json(
     { error: { code: 'UPSTREAM_INVALID_RESPONSE', message: 'API server returned an invalid response' } },
     { status },
   );
+  if (opts?.forwardCookies) {
+    for (const cookie of res.headers.getSetCookie()) {
+      next.headers.append('Set-Cookie', cookie);
+    }
+  }
+  return next;
 }
 
 // The qa route's tool-use loop has no wall-clock cap of its own (only a turn
@@ -45,7 +56,7 @@ export function proxyGet(upstreamPath: string) {
         signal: upstreamSignal(request),
       });
     } catch {
-      return UPSTREAM_ERROR_RESPONSE;
+      return upstreamErrorResponse();
     }
 
     try {
@@ -67,7 +78,7 @@ export function proxyPost(upstreamPath: string) {
         signal: upstreamSignal(request),
       });
     } catch {
-      return UPSTREAM_ERROR_RESPONSE;
+      return upstreamErrorResponse();
     }
 
     try {
@@ -89,7 +100,7 @@ export function proxyPut(upstreamPath: string) {
         signal: upstreamSignal(request),
       });
     } catch {
-      return UPSTREAM_ERROR_RESPONSE;
+      return upstreamErrorResponse();
     }
 
     try {
@@ -111,7 +122,7 @@ export function proxyPatch(upstreamPath: string) {
         signal: upstreamSignal(request),
       });
     } catch {
-      return UPSTREAM_ERROR_RESPONSE;
+      return upstreamErrorResponse();
     }
 
     try {
@@ -133,7 +144,7 @@ export function proxyPostWithCookies(upstreamPath: string) {
         signal: upstreamSignal(request),
       });
     } catch {
-      return UPSTREAM_ERROR_RESPONSE;
+      return upstreamErrorResponse();
     }
 
     try {
@@ -143,7 +154,7 @@ export function proxyPostWithCookies(upstreamPath: string) {
       }
       return next;
     } catch {
-      return invalidResponse(res);
+      return invalidResponse(res, { forwardCookies: true });
     }
   };
 }

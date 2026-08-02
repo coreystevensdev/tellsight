@@ -33,6 +33,7 @@ describe('GET /api/ai-summaries/[datasetId]', () => {
 
   it('returns 502 UPSTREAM_UNREACHABLE when fetch rejects', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('connection refused'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const res = await GET(req(), { params });
 
@@ -40,6 +41,7 @@ describe('GET /api/ai-summaries/[datasetId]', () => {
     expect(await res.json()).toEqual({
       error: { code: 'UPSTREAM_UNREACHABLE', message: 'API server unavailable' },
     });
+    expect(warn).toHaveBeenCalledWith('[ai-summaries-route] upstream unreachable', expect.any(Error));
   });
 
   it('falls back to 502 instead of a stale 2xx status when the cached body is not JSON', async () => {
@@ -49,6 +51,7 @@ describe('GET /api/ai-summaries/[datasetId]', () => {
       headers: jsonHeaders(),
       json: () => Promise.reject(new Error('aborted')),
     } as unknown as Response);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const res = await GET(req(), { params });
 
@@ -56,6 +59,25 @@ describe('GET /api/ai-summaries/[datasetId]', () => {
     expect(await res.json()).toEqual({
       error: { code: 'UPSTREAM_ERROR', message: 'Unexpected response from server' },
     });
+    expect(warn).toHaveBeenCalledWith('[ai-summaries-route] upstream returned non-JSON body (cache hit)', expect.any(Error));
+  });
+
+  it('falls back to a generic error body when a non-ok, non-SSE response is not JSON', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      headers: jsonHeaders(),
+      json: () => Promise.reject(new Error('aborted')),
+    } as unknown as Response);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const res = await GET(req(), { params });
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({
+      error: { code: 'UPSTREAM_ERROR', message: 'Unexpected response from server' },
+    });
+    expect(warn).toHaveBeenCalledWith('[ai-summaries-route] upstream returned non-JSON body (error status)', expect.any(Error));
   });
 
   it('passes an SSE stream straight through', async () => {
