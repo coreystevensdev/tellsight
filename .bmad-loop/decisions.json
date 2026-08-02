@@ -62,33 +62,6 @@
     "label": "Keep open, revisit if a second YoY window is added",
     "resolution": ""
   },
-  "DW-41": {
-    "answered_at": "2026-07-30",
-    "bundle_name": "",
-    "effect": "keep-open",
-    "intent": "",
-    "key": "3",
-    "label": "Keep open pending product/UX decision",
-    "resolution": ""
-  },
-  "DW-87": {
-    "answered_at": "2026-07-30",
-    "bundle_name": "",
-    "effect": "keep-open",
-    "intent": "",
-    "key": "3",
-    "label": "Keep open for a future QA answer-quality story",
-    "resolution": ""
-  },
-  "DW-93": {
-    "answered_at": "2026-07-30",
-    "bundle_name": "",
-    "effect": "keep-open",
-    "intent": "",
-    "key": "3",
-    "label": "Keep open for a future answer-composition story",
-    "resolution": ""
-  },
   "DW-96": {
     "answered_at": "2026-07-30",
     "bundle_name": "",
