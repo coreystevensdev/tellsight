@@ -1114,6 +1114,64 @@ describe('converseWithTools', () => {
     expect(body).not.toHaveProperty('tool_choice');
   });
 
+  it('appends the final-turn notice to the tool_result message on a forced final turn', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'text', text: 'final answer' }],
+      usage: { input_tokens: 50, output_tokens: 10 },
+    });
+    const priorState = [
+      { role: 'user', content: 'analyze' },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: {} }] },
+    ];
+
+    const { converseWithTools } = await import('./claudeClient.js');
+    await converseWithTools(priorState, { system: '', user: 'analyze' }, [], [
+      { toolCallId: 'call_1', output: { value: 42 } },
+    ]);
+
+    const body = mockCreate.mock.calls[0]![0] as { messages: Array<{ content: unknown }> };
+    expect(body.messages[2]!.content).toEqual([
+      { type: 'tool_result', tool_use_id: 'call_1', content: JSON.stringify({ value: 42 }) },
+      { type: 'text', text: 'No further tool calls are available. Answer now using only what has already been gathered.' },
+    ]);
+  });
+
+  it('does not append the final-turn notice when tools is non-empty', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'text', text: 'ok' }],
+      usage: { input_tokens: 50, output_tokens: 10 },
+    });
+    const priorState = [
+      { role: 'user', content: 'analyze' },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: {} }] },
+    ];
+
+    const { converseWithTools } = await import('./claudeClient.js');
+    await converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], [
+      { toolCallId: 'call_1', output: { value: 42 } },
+    ]);
+
+    const body = mockCreate.mock.calls[0]![0] as { messages: Array<{ content: unknown }> };
+    expect(body.messages[2]!.content).toEqual([
+      { type: 'tool_result', tool_use_id: 'call_1', content: JSON.stringify({ value: 42 }) },
+    ]);
+  });
+
+  it('does not append the final-turn notice on the first turn even when tools is empty', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'text', text: 'final answer' }],
+      usage: { input_tokens: 50, output_tokens: 10 },
+    });
+
+    const { converseWithTools } = await import('./claudeClient.js');
+    await converseWithTools(null, { system: '', user: 'analyze' }, [], []);
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ messages: [{ role: 'user', content: 'analyze' }] }),
+      { signal: undefined },
+    );
+  });
+
   it('throws CostBudgetExceededError when a turn costs more than the budget', async () => {
     mockCreate.mockResolvedValue({
       content: [{ type: 'text', text: 'expensive' }],

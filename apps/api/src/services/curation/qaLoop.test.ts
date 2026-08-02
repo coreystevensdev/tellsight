@@ -87,6 +87,7 @@ describe('runQaLoop', () => {
       toolResults: [],
       termination: 'answered',
       turnCount: 1,
+      narration: [],
     });
     expect(mockConverseWithTools).toHaveBeenCalledTimes(1);
     expect(mockExceedsBudget).not.toHaveBeenCalled();
@@ -224,6 +225,31 @@ describe('runQaLoop', () => {
     expect(mockCompareToPriorPeriods).not.toHaveBeenCalled();
     expect(result.termination).toBe('answered');
     expect(logger.warn).toHaveBeenCalledWith({ toolName: 'delete_everything' }, 'Q&A loop received an unrecognized tool call');
+  });
+
+  it('collects narration text from tool-calling turns, in order, without duplicating the terminal answer', async () => {
+    mockConverseWithTools
+      .mockResolvedValueOnce(turn({ text: 'Let me check the trend first.', toolCalls: [toolCall({ id: 'call_1' })] }))
+      .mockResolvedValueOnce(
+        turn({ toolCalls: [toolCall({ id: 'call_2', name: 'compare_to_prior_periods', input: { statType: 'runway' } })] }),
+      )
+      .mockResolvedValueOnce(turn({ text: 'Now comparing to prior periods.', toolCalls: [toolCall({ id: 'call_3' })] }))
+      .mockResolvedValueOnce(turn({ text: 'Revenue is up 12% this quarter.' }));
+
+    const result = await runQaLoop(QUESTION, CTX);
+
+    expect(result.narration).toEqual(['Let me check the trend first.', 'Now comparing to prior periods.']);
+    expect(result.answer).toBe('Revenue is up 12% this quarter.');
+  });
+
+  it('leaves narration empty when every tool-calling turn returns empty text', async () => {
+    mockConverseWithTools
+      .mockResolvedValueOnce(turn({ toolCalls: [toolCall({ id: 'call_1' })] }))
+      .mockResolvedValueOnce(turn({ text: 'Revenue is up 12% this quarter.' }));
+
+    const result = await runQaLoop(QUESTION, CTX);
+
+    expect(result.narration).toEqual([]);
   });
 
   it('forces a no-tools final turn once the turn cap is reached', async () => {

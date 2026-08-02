@@ -278,6 +278,13 @@ const MAX_TOOL_RESULT_CONTENT_LENGTH = 4000;
 const UNSAFE_CODE_POINTS = new RegExp('[\\p{Cc}\\u2028\\u2029[\\p{Cf}--[\\u200c\\u200d]]]', 'gv');
 const TRUNCATION_MARKER = '... [truncated]';
 
+// A forced final turn (tools: [], state non-null -- turn-cap or cost-cap)
+// otherwise looks identical to a normal tool_result turn, and the model has
+// no way to know no further tool calls are coming. Without this, it tends to
+// respond as if still mid-investigation instead of synthesizing an answer
+// from what it already has.
+const FINAL_TURN_NOTICE = 'No further tool calls are available. Answer now using only what has already been gathered.';
+
 // value.slice(0, length) can land inside a UTF-16 surrogate pair (an emoji or
 // other astral character in a category value), leaving a lone unpaired
 // surrogate. Back off one code unit when the cut would split a pair.
@@ -309,10 +316,13 @@ function sanitizeToolResultContent(output: unknown): string {
 // Builds the messages array for one turn. `state === null` means this is the
 // first turn (send the caller's question); otherwise `state` is the prior
 // turn's message history and `toolResults` become this turn's tool_result
-// user message, answering the ToolCalls the prior turn returned.
+// user message, answering the ToolCalls the prior turn returned. An empty
+// `tools` on a non-first turn is a forced final turn, so FINAL_TURN_NOTICE
+// gets appended to that same tool_result message.
 function buildConversationMessages(
   state: unknown,
   input: PromptInput,
+  tools: ToolDefinition[],
   toolResults: ToolResultInput[],
 ): Anthropic.MessageParam[] {
   if (state === null) return [{ role: 'user', content: input.user }];
@@ -353,16 +363,21 @@ function buildConversationMessages(
     }
   }
 
+  const toolResultBlocks = toolResults.map((result) => ({
+    type: 'tool_result' as const,
+    tool_use_id: result.toolCallId,
+    content: sanitizeToolResultContent(result.output),
+    ...(result.isError && { is_error: true }),
+  }));
+
   return [
     ...state,
     {
       role: 'user',
-      content: toolResults.map((result) => ({
-        type: 'tool_result' as const,
-        tool_use_id: result.toolCallId,
-        content: sanitizeToolResultContent(result.output),
-        ...(result.isError && { is_error: true }),
-      })),
+      content:
+        tools.length === 0
+          ? [...toolResultBlocks, { type: 'text' as const, text: FINAL_TURN_NOTICE }]
+          : toolResultBlocks,
     },
   ];
 }
@@ -377,7 +392,7 @@ async function anthropicConverseWithTools(
   // Built outside the breaker: a caller-contract violation (mismatched
   // state/toolResults) is a programmer error, not a Claude API failure, and
   // must not trip the circuit breaker or surface as an ExternalServiceError.
-  const messages = buildConversationMessages(state, input, toolResults);
+  const messages = buildConversationMessages(state, input, tools, toolResults);
 
   return runInBreaker(async () => {
     try {

@@ -23,6 +23,7 @@ function loopResult(over: Partial<QaLoopResult> = {}): QaLoopResult {
     toolResults: [],
     termination: 'answered',
     turnCount: 1,
+    narration: [],
     ...over,
   };
 }

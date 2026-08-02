@@ -70,6 +70,11 @@ export interface QaLoopResult {
   toolResults: QaToolResult[];
   termination: QaTermination;
   turnCount: number;
+  // Text from turns that also returned tool calls -- the model's running
+  // narration of what it's doing, distinct from `answer` (the terminal
+  // no-tool-call turn's text). Not yet stitched into a user-facing string,
+  // that's a later story; this just stops discarding it.
+  narration: string[];
 }
 
 function isTrendCarryingStatType(value: unknown): value is TrendCarryingStatType {
@@ -182,6 +187,7 @@ export async function runQaLoop(question: string, ctx: ToolContext, signal?: Abo
   let turnCount = 0;
   let forcedTermination: QaTermination | null = null;
   const toolResults: QaToolResult[] = [];
+  const narration: string[] = [];
   // Fresh per invocation, never module-level -- a cache that survived past
   // this answer would leak stats across requests and orgs.
   const cache = createToolCallCache();
@@ -211,8 +217,10 @@ export async function runQaLoop(question: string, ctx: ToolContext, signal?: Abo
     if (cost !== null) totalCost += cost;
 
     if (turn.toolCalls.length === 0) {
-      return { answer: turn.text, toolResults, termination: forcedTermination ?? 'answered', turnCount };
+      return { answer: turn.text, toolResults, termination: forcedTermination ?? 'answered', turnCount, narration };
     }
+
+    if (turn.text.trim().length > 0) narration.push(turn.text.trim());
 
     toolResultInputs = [];
     // Every call in a turn is an independent read-only lookup, so they
