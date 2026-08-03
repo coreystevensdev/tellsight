@@ -73,6 +73,7 @@ export function healthyGrowth(): ComputedStat[] {
         runwayMonths: 14,
         cashAsOfDate: '2026-06-01',
         confidence: 'high',
+        trailingMonths: 6,
       },
     },
   ];
@@ -90,6 +91,7 @@ export function cashCrunch(): ComputedStat[] {
         runwayMonths: 2.4,
         cashAsOfDate: '2026-06-01',
         confidence: 'high',
+        trailingMonths: 6,
       },
     },
     {

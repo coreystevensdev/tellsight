@@ -28,7 +28,7 @@ jobs:
 
       - run: pnpm turbo lint
 
-      - run: pnpm turbo type-check
+      - run: pnpm type-check
 
   test-shared-web:
     name: Tests (shared + web)

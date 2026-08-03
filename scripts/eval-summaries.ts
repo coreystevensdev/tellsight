@@ -184,7 +184,7 @@ async function scoreFixture(
   fixture: (typeof FIXTURES)[number],
 ): Promise<{ score: FixtureScore; promptVersion: string }> {
   const scored = scoreInsights(fixture.build());
-  const { system, user, metadata } = assemblePrompt(scored, undefined, undefined, FROZEN_NOW);
+  const { system, user, metadata } = assemblePrompt(scored, 1, undefined, undefined, FROZEN_NOW);
   const groundTruth = extractStatSummaries(user);
 
   const samples: SampleScore[] = [];
