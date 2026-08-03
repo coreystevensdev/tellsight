@@ -26,6 +26,15 @@
     "label": "Add a shared row-count cap now",
     "resolution": ""
   },
+  "DW-177": {
+    "answered_at": "2026-08-02",
+    "bundle_name": "",
+    "effect": "close",
+    "intent": "",
+    "key": "2",
+    "label": "Leave as-is, close",
+    "resolution": "All four real call sites already gate the call on non-empty invalidRefs, so the fast path can never fire in production."
+  },
   "DW-21": {
     "answered_at": "2026-07-19",
     "bundle_name": "",
