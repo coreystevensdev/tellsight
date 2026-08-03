@@ -25,6 +25,7 @@ import { computeStats } from '../apps/api/src/services/curation/computation.js';
 import { scoreInsights } from '../apps/api/src/services/curation/scoring.js';
 import { assemblePrompt } from '../apps/api/src/services/curation/assembly.js';
 import { StatType } from '../apps/api/src/services/curation/types.js';
+import { round4 } from './round4.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SNAPSHOT_PATH = resolve(__dirname, '__snapshots__', 'seed-validation.snap.json');
@@ -87,10 +88,6 @@ function roundWeights(w: { novelty: number; actionability: number; specificity: 
     actionability: round4(w.actionability),
     specificity: round4(w.specificity),
   };
-}
-
-function round4(n: number): number {
-  return Math.round(n * 10_000) / 10_000;
 }
 
 function buildSnapshot(prompt: string, metadata: {

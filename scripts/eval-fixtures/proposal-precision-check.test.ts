@@ -1,27 +1,13 @@
 import { describe, it, expect } from 'vitest';
 
+import { round4 } from '../round4.js';
 import {
   checkAgainstBaseline,
   isPrecisionSnapshot,
-  round4,
   summarizePrecision,
   type PrecisionFixtureVerdict,
   type PrecisionSnapshot,
 } from './proposal-precision-check.js';
-
-describe('round4', () => {
-  it('rounds to 4 decimal places', () => {
-    expect(round4(2 / 3)).toBe(0.6667);
-  });
-
-  it('leaves a value already at 4 decimals unchanged', () => {
-    expect(round4(0.75)).toBe(0.75);
-  });
-
-  it('rounds a negative delta correctly', () => {
-    expect(round4(-0.12345)).toBe(-0.1234);
-  });
-});
 
 describe('summarizePrecision', () => {
   it('returns null when every fixture routes outside needs_approval', () => {
@@ -45,6 +31,21 @@ describe('summarizePrecision', () => {
       correctCount: 2,
       correctFixtureIds: ['tp-1', 'tp-2'],
     });
+  });
+
+  it('dedupes a fixture id that appears twice instead of double-counting it', () => {
+    const results: PrecisionFixtureVerdict[] = [
+      { id: 'dup', expectedWorthApproval: true, countsTowardPrecision: true },
+      { id: 'dup', expectedWorthApproval: true, countsTowardPrecision: true },
+      { id: 'fp-1', expectedWorthApproval: false, countsTowardPrecision: true },
+    ];
+    const snapshot = summarizePrecision(results);
+    expect(snapshot?.correctFixtureIds).toEqual(['dup']);
+    expect(snapshot?.correctCount).toBe(1);
+    // needsApprovalCount stays the raw verdict count (not deduped), so a
+    // duplicate id can only pull precision down, never inflate it.
+    expect(snapshot?.needsApprovalCount).toBe(3);
+    expect(snapshot?.precision).toBe(round4(1 / 3));
   });
 });
 
@@ -79,6 +80,52 @@ describe('isPrecisionSnapshot', () => {
 
   it('rejects a non-array correctFixtureIds', () => {
     expect(isPrecisionSnapshot({ ...valid, correctFixtureIds: 'a,b,c' })).toBe(false);
+  });
+
+  it('rejects a non-string element in correctFixtureIds', () => {
+    expect(isPrecisionSnapshot({ ...valid, correctFixtureIds: ['a', 1, 'c'] })).toBe(false);
+  });
+
+  it('rejects correctCount exceeding needsApprovalCount', () => {
+    expect(isPrecisionSnapshot({ ...valid, needsApprovalCount: 2, correctCount: 3 })).toBe(false);
+  });
+
+  it('rejects precision below 0', () => {
+    expect(isPrecisionSnapshot({ ...valid, precision: -0.1 })).toBe(false);
+  });
+
+  it('rejects precision above 1', () => {
+    expect(isPrecisionSnapshot({ ...valid, precision: 1.2 })).toBe(false);
+  });
+
+  it('rejects correctFixtureIds.length not matching correctCount', () => {
+    expect(isPrecisionSnapshot({ ...valid, correctCount: 2, correctFixtureIds: ['a'] })).toBe(false);
+  });
+
+  it('rejects a duplicate id inside correctFixtureIds', () => {
+    expect(isPrecisionSnapshot({ ...valid, correctCount: 2, correctFixtureIds: ['a', 'a'] })).toBe(false);
+  });
+
+  it('rejects needsApprovalCount of 0', () => {
+    expect(
+      isPrecisionSnapshot({ precision: 0, needsApprovalCount: 0, correctCount: 0, correctFixtureIds: [] }),
+    ).toBe(false);
+  });
+
+  it('rejects a negative needsApprovalCount', () => {
+    expect(isPrecisionSnapshot({ ...valid, needsApprovalCount: -1 })).toBe(false);
+  });
+
+  it('rejects a negative correctCount', () => {
+    expect(isPrecisionSnapshot({ ...valid, correctCount: -1 })).toBe(false);
+  });
+
+  it('rejects a fractional needsApprovalCount', () => {
+    expect(isPrecisionSnapshot({ ...valid, needsApprovalCount: 4.5 })).toBe(false);
+  });
+
+  it('rejects a fractional correctCount', () => {
+    expect(isPrecisionSnapshot({ ...valid, correctCount: 3.5 })).toBe(false);
   });
 });
 
