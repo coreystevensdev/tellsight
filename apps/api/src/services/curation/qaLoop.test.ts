@@ -48,6 +48,7 @@ vi.mock('./interpretationTools.js', () => ({
 
 import { logger } from '../../lib/logger.js';
 import { CostBudgetExceededError } from '../../lib/appError.js';
+import { CircuitOpenError } from '../../lib/circuitBreaker.js';
 import { runQaLoop, MAX_TOOL_TURNS, MAX_LOOP_COST_USD } from './qaLoop.js';
 import type { ToolContext } from './interpretationTools.js';
 
@@ -354,6 +355,70 @@ describe('runQaLoop', () => {
 
     await expect(runQaLoop(QUESTION, CTX)).rejects.toThrow('exceeded safety cap');
     expect(mockConverseWithTools).toHaveBeenCalledTimes(3);
+  });
+
+  it('returns immediately with termination "breaker-open" when the breaker trips after a tool-calling turn, preserving gathered results', async () => {
+    mockConverseWithTools
+      .mockResolvedValueOnce(turn({ toolCalls: [toolCall()] }))
+      .mockRejectedValueOnce(new CircuitOpenError('claude-converse'));
+
+    const result = await runQaLoop(QUESTION, CTX);
+
+    expect(result).toEqual({
+      answer: '',
+      toolResults: [
+        {
+          name: 'get_metric_with_trend',
+          input: { statType: 'trend' },
+          output: { id: '1:trend:Sales:0', statType: 'trend', category: 'Sales', value: 0.1, details: {} },
+        },
+      ],
+      termination: 'breaker-open',
+      turnCount: 2,
+      narration: [],
+    });
+    expect(mockConverseWithTools).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns immediately with termination "breaker-open" and empty toolResults/narration when the breaker trips on the very first turn', async () => {
+    mockConverseWithTools.mockRejectedValueOnce(new CircuitOpenError('claude-converse'));
+
+    const result = await runQaLoop(QUESTION, CTX);
+
+    expect(result).toEqual({
+      answer: '',
+      toolResults: [],
+      termination: 'breaker-open',
+      turnCount: 1,
+      narration: [],
+    });
+    expect(mockConverseWithTools).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports "breaker-open" rather than "cost-exceeded" when the breaker trips on the cost branch\'s forced no-tools retry', async () => {
+    mockConverseWithTools
+      .mockResolvedValueOnce(turn({ toolCalls: [toolCall()] }))
+      .mockRejectedValueOnce(new CostBudgetExceededError(2.0, 1.0))
+      .mockRejectedValueOnce(new CircuitOpenError('claude-converse'));
+
+    const result = await runQaLoop(QUESTION, CTX);
+
+    expect(result.termination).toBe('breaker-open');
+    expect(result.answer).toBe('');
+    expect(mockConverseWithTools).toHaveBeenCalledTimes(3);
+  });
+
+  it('reports "breaker-open" rather than "turn-cap" when the breaker trips on the turn cap\'s forced no-tools retry', async () => {
+    for (let i = 0; i < MAX_TOOL_TURNS; i++) {
+      mockConverseWithTools.mockResolvedValueOnce(turn({ toolCalls: [toolCall({ id: `call_${i}` })] }));
+    }
+    mockConverseWithTools.mockRejectedValueOnce(new CircuitOpenError('claude-converse'));
+
+    const result = await runQaLoop(QUESTION, CTX);
+
+    expect(result.termination).toBe('breaker-open');
+    expect(result.answer).toBe('');
+    expect(mockConverseWithTools).toHaveBeenCalledTimes(MAX_TOOL_TURNS + 1);
   });
 
   it('propagates a provider error (e.g. an abort) without issuing further turns', async () => {

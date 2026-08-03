@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { logger } from '../../lib/logger.js';
 import { AppError, CostBudgetExceededError } from '../../lib/appError.js';
+import { CircuitOpenError } from '../../lib/circuitBreaker.js';
 import { computeCost, exceedsBudget, ABSOLUTE_CEILING_USD } from '../../lib/cost.js';
 import type { PromptInput } from '../aiInterpretation/provider.js';
 import { converseWithTools, type ToolCall, type ToolResultInput } from '../aiInterpretation/claudeClient.js';
@@ -57,7 +58,7 @@ export const MAX_LOOP_COST_USD = ABSOLUTE_CEILING_USD * LOOP_COST_CEILING_MULTIP
 
 const TOOLS = [GET_METRIC_WITH_TREND_TOOL, COMPARE_TO_PRIOR_PERIODS_TOOL];
 
-export type QaTermination = 'answered' | 'turn-cap' | 'cost-exceeded';
+export type QaTermination = 'answered' | 'turn-cap' | 'cost-exceeded' | 'breaker-open';
 
 export interface QaToolResult {
   name: string;
@@ -201,13 +202,23 @@ export async function runQaLoop(question: string, ctx: ToolContext, signal?: Abo
       turn = await converseWithTools(state, input, tools, toolResultInputs, signal);
     } catch (err) {
       // A single anomalously expensive turn trips claudeClient's own
-      // per-call gate before the loop's cumulative check ever runs. Treat it
-      // the same as tripping the cumulative check: one retry with no tools
-      // to force a text answer from what's already been gathered. Only once
-      // -- if the forced retry itself throws, there's nothing left to force.
+      // per-call gate before the loop's cumulative check ever runs -- a
+      // one-off, per-call anomaly worth one retry with no tools to force a
+      // text answer from what's already been gathered. Only once -- if the
+      // forced retry itself throws, there's nothing left to force.
       if (err instanceof CostBudgetExceededError && !forcedTermination) {
         forcedTermination = 'cost-exceeded';
         continue;
+      }
+      // Unlike the cost gate above, CircuitOpenError only fires while the
+      // breaker's cooldown hasn't elapsed -- a same-iteration retry can't
+      // outrun that clock, so retrying buys nothing. Return what's already
+      // gathered instead. No !forcedTermination guard: this branch never
+      // retries, so it still degrades a breaker trip on the cost gate's own
+      // forced retry, rather than letting that propagate raw.
+      if (err instanceof CircuitOpenError) {
+        logger.warn({ orgId: ctx.orgId, datasetId: ctx.datasetId, turnCount }, 'Q&A loop degraded on an open circuit breaker, returning partial results');
+        return { answer: '', toolResults, termination: 'breaker-open', turnCount, narration };
       }
       throw err;
     }

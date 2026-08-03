@@ -249,4 +249,11 @@ describe('assembleQaAnswer', () => {
     expect(result.termination).toBe('turn-cap');
     expect(result.turnCount).toBe(6);
   });
+
+  it('passes through "breaker-open" termination and falls back to the no-answer message', () => {
+    const result = assembleQaAnswer(loopResult({ termination: 'breaker-open', answer: '' }));
+
+    expect(result.termination).toBe('breaker-open');
+    expect(result.answer).toContain(AI_DISCLAIMER);
+  });
 });
