@@ -1,9 +1,9 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 
 import { subscriptionsQueries } from '../db/queries/index.js';
 import { orgs, subscriptions } from '../db/schema.js';
-import { db, dbAdmin } from './db.js';
+import { db, dbAdmin, type DbTransaction } from './db.js';
 import { withRlsContext } from './rls.js';
 
 // Real app_user/app_admin roles (docker/init.sql), no mocks -- proves the RLS
@@ -12,6 +12,16 @@ import { withRlsContext } from './rls.js';
 // Postgres service) never picks it up.
 
 const futurePeriodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+type RlsContextSnapshot = { pid: number; orgId: string | null; isAdmin: string | null };
+
+async function snapshotRlsContext(client: typeof db | DbTransaction): Promise<RlsContextSnapshot> {
+  const [row] = await client.execute<{ pid: number; org_id: string | null; is_admin: string | null }>(
+    sql`SELECT pg_backend_pid() AS pid, current_setting('app.current_org_id', true) AS org_id, current_setting('app.is_admin', true) AS is_admin`,
+  );
+  if (!row) throw new Error('RLS context probe returned no rows');
+  return { pid: row.pid, orgId: row.org_id, isAdmin: row.is_admin };
+}
 
 let orgA: { id: number };
 let orgB: { id: number };
@@ -74,5 +84,23 @@ describe('withRlsContext against real Postgres', () => {
     const rows = await dbAdmin.select().from(subscriptions).where(eq(subscriptions.orgId, orgB.id));
     expect(rows).toHaveLength(1);
     expect(rows[0]?.orgId).toBe(orgB.id);
+  });
+
+  it('does not leak SET LOCAL context past a committed transaction on a reused connection', async () => {
+    const committed = await withRlsContext(orgA.id, true, snapshotRlsContext);
+    const afterCommit = await snapshotRlsContext(db);
+
+    // Same pid proves the bare probe reused the connection withRlsContext just
+    // released back to the pool -- the only case a SET LOCAL leak could surface in.
+    // A second withRlsContext call wouldn't prove anything here: it re-issues its
+    // own SET LOCAL before this probe ever runs, so it'd read back its own fresh
+    // values regardless of whether the prior transaction's context leaked.
+    expect(afterCommit.pid).toBe(committed.pid);
+    expect(committed.orgId).toBe(String(orgA.id));
+    expect(committed.isAdmin).toBe('true');
+    // Postgres resets an already-referenced custom GUC to '' (not NULL) once its
+    // LOCAL scope ends -- confirmed empirically against a real postgres:18.2 instance.
+    expect(afterCommit.orgId).toBe('');
+    expect(afterCommit.isAdmin).toBe('');
   });
 });
