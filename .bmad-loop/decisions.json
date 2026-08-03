@@ -8,15 +8,6 @@
     "label": "Keep open, no live traffic yet",
     "resolution": ""
   },
-  "DW-183": {
-    "answered_at": "2026-08-02",
-    "bundle_name": "",
-    "effect": "build",
-    "intent": "Add a Pino instance (or a pino-compatible logger usable in Next.js's Node runtime route handlers) to apps/web, and migrate the five BFF route.ts files' console.warn calls to it.",
-    "key": "1",
-    "label": "Wire a Pino logger into apps/web",
-    "resolution": ""
-  },
   "DW-21": {
     "answered_at": "2026-07-19",
     "bundle_name": "",
