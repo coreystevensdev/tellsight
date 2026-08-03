@@ -14,8 +14,13 @@ const PAGE_SIZE = 500;
 const EVALUATE_ORG_ATTEMPTS = 3;
 const EVALUATE_ORG_BACKOFF_MS = 30_000;
 
-function evaluateOrgJobName(orgId: number, datasetId: number): string {
-  return `${JOB_PREFIX_EVALUATE_ORG}-${orgId}-${datasetId}`;
+// UTC-dated so a cron org whose active dataset doesn't change night to night
+// still gets a fresh jobId each run; without it the prior night's retained
+// job (removeOnComplete/removeOnFail keep it around) silently dedupes the
+// enqueue away. On-upload jobs get a fresh datasetId most of the time, but
+// the date component costs nothing there and keeps both triggers uniform.
+function evaluateOrgJobName(orgId: number, datasetId: number, runDate: string): string {
+  return `${JOB_PREFIX_EVALUATE_ORG}-${orgId}-${datasetId}-${runDate}`;
 }
 
 async function enqueueEvaluateOrg(
@@ -23,11 +28,12 @@ async function enqueueEvaluateOrg(
   datasetId: number,
   trigger: EvaluateOrgJobData['trigger'],
   correlationId: string,
+  runDate: string,
 ): Promise<void> {
   const data: EvaluateOrgJobData = { orgId, datasetId, trigger, correlationId };
   // BullMQ dedupes on jobId, not name; pass the same deterministic string as
   // both so a retried enqueue for the same org/dataset is genuinely deduped.
-  const jobId = evaluateOrgJobName(orgId, datasetId);
+  const jobId = evaluateOrgJobName(orgId, datasetId, runDate);
   await getEvaluateOrgQueue().add(jobId, data, {
     jobId,
     attempts: EVALUATE_ORG_ATTEMPTS,
@@ -61,6 +67,9 @@ export async function handleOrchestratorJob(job: Job): Promise<void> {
   const { orgId, datasetId, correlationId: incomingCorrelationId } = parsed.data;
   const correlationId = incomingCorrelationId === 'cron-bootstrap' ? randomUUID() : incomingCorrelationId;
   const start = Date.now();
+  // One date stamp for the whole run: both call sites below share it, so a
+  // retried orchestrator job (same day) still dedupes against jobs it already enqueued.
+  const runDate = new Date().toISOString().slice(0, 10);
 
   // Schema allows orgId/datasetId independently since cron jobs carry neither, but a
   // payload with only one set can't be a valid on-upload or cron job -- likely a tampered
@@ -74,7 +83,7 @@ export async function handleOrchestratorJob(job: Job): Promise<void> {
   }
 
   if (orgId !== undefined && datasetId !== undefined) {
-    await enqueueEvaluateOrg(orgId, datasetId, 'on-upload', correlationId);
+    await enqueueEvaluateOrg(orgId, datasetId, 'on-upload', correlationId, runDate);
     logger.info(
       { correlationId, orgId, datasetId, trigger: 'on-upload', jobId: job.id, durationMs: Date.now() - start },
       'Alerts orchestrator complete (on-upload)',
@@ -94,7 +103,7 @@ export async function handleOrchestratorJob(job: Job): Promise<void> {
 
     for (const org of orgs) {
       try {
-        await enqueueEvaluateOrg(org.id, org.activeDatasetId, 'cron', correlationId);
+        await enqueueEvaluateOrg(org.id, org.activeDatasetId, 'cron', correlationId, runDate);
         eligibleOrgCount++;
       } catch (err) {
         enqueueFailures++;

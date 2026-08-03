@@ -32,6 +32,7 @@ const { handleOrchestratorJob } = await import('./orchestrator.js');
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 describe('handleOrchestratorJob: cron trigger', () => {
@@ -40,14 +41,32 @@ describe('handleOrchestratorJob: cron trigger', () => {
       { id: 10, activeDatasetId: 100 },
       { id: 9, activeDatasetId: 200 },
     ]);
+    vi.useFakeTimers().setSystemTime(new Date('2026-08-01T03:00:00Z'));
 
     await handleOrchestratorJob({ id: 'orch-1', data: { correlationId: 'cron-bootstrap' } } as never);
 
     expect(mockEvaluateOrgQueueAdd).toHaveBeenCalledTimes(2);
     const firstCall = mockEvaluateOrgQueueAdd.mock.calls[0]!;
-    expect(firstCall[0]).toBe('alert-evaluate-10-100');
+    expect(firstCall[0]).toBe('alert-evaluate-10-100-2026-08-01');
     expect(firstCall[1]).toMatchObject({ orgId: 10, datasetId: 100, trigger: 'cron' });
     expect(firstCall[2]).toMatchObject({ attempts: 3, backoff: { type: 'exponential', delay: 30_000 } });
+  });
+
+  it('date-stamps the jobId so an org with an unchanged active dataset gets a fresh id on a later night', async () => {
+    mockFindEligibleOrgs.mockResolvedValueOnce([{ id: 10, activeDatasetId: 100 }]);
+    vi.useFakeTimers().setSystemTime(new Date('2026-08-01T03:00:00Z'));
+
+    await handleOrchestratorJob({ id: 'orch-date-1', data: { correlationId: 'cron-bootstrap' } } as never);
+
+    expect(mockEvaluateOrgQueueAdd.mock.calls[0]![0]).toBe('alert-evaluate-10-100-2026-08-01');
+
+    mockFindEligibleOrgs.mockResolvedValueOnce([{ id: 10, activeDatasetId: 100 }]);
+    vi.setSystemTime(new Date('2026-08-02T03:00:00Z'));
+
+    await handleOrchestratorJob({ id: 'orch-date-2', data: { correlationId: 'cron-bootstrap' } } as never);
+
+    expect(mockEvaluateOrgQueueAdd.mock.calls[1]![0]).toBe('alert-evaluate-10-100-2026-08-02');
+    expect(mockEvaluateOrgQueueAdd.mock.calls[0]![0]).not.toBe(mockEvaluateOrgQueueAdd.mock.calls[1]![0]);
   });
 
   it('shares a single correlationId across all fanned-out jobs', async () => {
@@ -109,6 +128,8 @@ describe('handleOrchestratorJob: cron trigger', () => {
 
 describe('handleOrchestratorJob: on-upload trigger', () => {
   it('enqueues exactly one evaluate-org job for the triggering org/dataset, skipping the eligibility page entirely', async () => {
+    vi.useFakeTimers().setSystemTime(new Date('2026-08-01T03:00:00Z'));
+
     await handleOrchestratorJob({
       id: 'orch-7',
       data: { orgId: 42, datasetId: 7, correlationId: 'req-abc' },
@@ -116,11 +137,10 @@ describe('handleOrchestratorJob: on-upload trigger', () => {
 
     expect(mockFindEligibleOrgs).not.toHaveBeenCalled();
     expect(mockEvaluateOrgQueueAdd).toHaveBeenCalledTimes(1);
-    expect(mockEvaluateOrgQueueAdd).toHaveBeenCalledWith(
-      'alert-evaluate-42-7',
-      { orgId: 42, datasetId: 7, trigger: 'on-upload', correlationId: 'req-abc' },
-      expect.objectContaining({ attempts: 3 }),
-    );
+    const call = mockEvaluateOrgQueueAdd.mock.calls[0]!;
+    expect(call[0]).toBe('alert-evaluate-42-7-2026-08-01');
+    expect(call[1]).toMatchObject({ orgId: 42, datasetId: 7, trigger: 'on-upload', correlationId: 'req-abc' });
+    expect(call[2]).toMatchObject({ attempts: 3 });
   });
 });
 
