@@ -55,13 +55,15 @@ export function proxyGet(upstreamPath: string) {
         headers: { Cookie: cookies(request) },
         signal: upstreamSignal(request),
       });
-    } catch {
+    } catch (err) {
+      console.warn('[bff-proxy:get] upstream unreachable', err);
       return upstreamErrorResponse();
     }
 
     try {
       return NextResponse.json(await res.json(), { status: res.status });
-    } catch {
+    } catch (err) {
+      console.warn('[bff-proxy:get] upstream returned non-JSON body', err);
       return invalidResponse(res);
     }
   };
@@ -77,13 +79,15 @@ export function proxyPost(upstreamPath: string) {
         body: await request.text(),
         signal: upstreamSignal(request),
       });
-    } catch {
+    } catch (err) {
+      console.warn('[bff-proxy:post] upstream unreachable', err);
       return upstreamErrorResponse();
     }
 
     try {
       return NextResponse.json(await res.json(), { status: res.status });
-    } catch {
+    } catch (err) {
+      console.warn('[bff-proxy:post] upstream returned non-JSON body', err);
       return invalidResponse(res);
     }
   };
@@ -99,13 +103,15 @@ export function proxyPut(upstreamPath: string) {
         body: await request.text(),
         signal: upstreamSignal(request),
       });
-    } catch {
+    } catch (err) {
+      console.warn('[bff-proxy:put] upstream unreachable', err);
       return upstreamErrorResponse();
     }
 
     try {
       return NextResponse.json(await res.json(), { status: res.status });
-    } catch {
+    } catch (err) {
+      console.warn('[bff-proxy:put] upstream returned non-JSON body', err);
       return invalidResponse(res);
     }
   };
@@ -121,13 +127,15 @@ export function proxyPatch(upstreamPath: string) {
         body: await request.text(),
         signal: upstreamSignal(request),
       });
-    } catch {
+    } catch (err) {
+      console.warn('[bff-proxy:patch] upstream unreachable', err);
       return upstreamErrorResponse();
     }
 
     try {
       return NextResponse.json(await res.json(), { status: res.status });
-    } catch {
+    } catch (err) {
+      console.warn('[bff-proxy:patch] upstream returned non-JSON body', err);
       return invalidResponse(res);
     }
   };
@@ -143,7 +151,8 @@ export function proxyPostWithCookies(upstreamPath: string) {
         body: await request.text(),
         signal: upstreamSignal(request),
       });
-    } catch {
+    } catch (err) {
+      console.warn('[bff-proxy:post-with-cookies] upstream unreachable', err);
       return upstreamErrorResponse();
     }
 
@@ -153,7 +162,8 @@ export function proxyPostWithCookies(upstreamPath: string) {
         next.headers.append('Set-Cookie', cookie);
       }
       return next;
-    } catch {
+    } catch (err) {
+      console.warn('[bff-proxy:post-with-cookies] upstream returned non-JSON body', err);
       return invalidResponse(res, { forwardCookies: true });
     }
   };

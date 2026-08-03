@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
-import { proxyGet, proxyPost, proxyPut, proxyPostWithCookies, upstreamSignal, UPSTREAM_TIMEOUT_MS } from './bff-proxy';
+import { proxyGet, proxyPost, proxyPut, proxyPatch, proxyPostWithCookies, upstreamSignal, UPSTREAM_TIMEOUT_MS } from './bff-proxy';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -8,13 +8,13 @@ afterEach(() => {
 });
 
 const helpers = [
-  { name: 'proxyGet', build: () => proxyGet('/whatever'), method: 'GET' },
-  { name: 'proxyPost', build: () => proxyPost('/whatever'), method: 'POST' },
-  { name: 'proxyPut', build: () => proxyPut('/whatever'), method: 'PUT' },
-  { name: 'proxyPostWithCookies', build: () => proxyPostWithCookies('/whatever'), method: 'POST' },
+  { name: 'proxyGet', tag: '[bff-proxy:get]', build: () => proxyGet('/whatever'), method: 'GET' },
+  { name: 'proxyPost', tag: '[bff-proxy:post]', build: () => proxyPost('/whatever'), method: 'POST' },
+  { name: 'proxyPut', tag: '[bff-proxy:put]', build: () => proxyPut('/whatever'), method: 'PUT' },
+  { name: 'proxyPostWithCookies', tag: '[bff-proxy:post-with-cookies]', build: () => proxyPostWithCookies('/whatever'), method: 'POST' },
 ];
 
-describe.each(helpers)('$name parse hardening', ({ name, build, method }) => {
+describe.each(helpers)('$name parse hardening', ({ name, tag, build, method }) => {
   // Only proxyPostWithCookies forwards Set-Cookie on the invalidResponse fallback path,
   // so the collapse-case mocks below carry a cookie to prove the other helpers don't pick it up.
   const expectedCookies = (name === 'proxyPostWithCookies' ? ['session=; Max-Age=0'] : []);
@@ -22,7 +22,9 @@ describe.each(helpers)('$name parse hardening', ({ name, build, method }) => {
   const request = () => new NextRequest('http://localhost/api/whatever', { method, body: method === 'GET' ? undefined : '{}' });
 
   it('returns 502 UPSTREAM_UNAVAILABLE when fetch rejects', async () => {
-    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('connection refused'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchErr = new Error('connection refused');
+    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(fetchErr);
 
     const res = await build()(request());
 
@@ -30,13 +32,17 @@ describe.each(helpers)('$name parse hardening', ({ name, build, method }) => {
     expect(await res.json()).toEqual({
       error: { code: 'UPSTREAM_UNAVAILABLE', message: 'API server unreachable' },
     });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(`${tag} upstream unreachable`, fetchErr);
   });
 
   it('surfaces the real upstream status when a non-2xx, non-null-body response is unparseable', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const parseErr = new SyntaxError('Unexpected token < in JSON');
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: false,
       status: 500,
-      json: () => Promise.reject(new SyntaxError('Unexpected token < in JSON')),
+      json: () => Promise.reject(parseErr),
       headers: { getSetCookie: () => ['session=; Max-Age=0'] },
     } as unknown as Response);
 
@@ -47,9 +53,12 @@ describe.each(helpers)('$name parse hardening', ({ name, build, method }) => {
       error: { code: 'UPSTREAM_INVALID_RESPONSE', message: 'API server returned an invalid response' },
     });
     expect(res.headers.getSetCookie()).toEqual(expectedCookies);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(`${tag} upstream returned non-JSON body`, parseErr);
   });
 
   it('collapses to 502 when a 2xx response is unparseable', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -67,6 +76,7 @@ describe.each(helpers)('$name parse hardening', ({ name, build, method }) => {
   });
 
   it('collapses to 502 when a null-body status (204) is unparseable', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: false,
       status: 204,
@@ -87,6 +97,7 @@ describe.each(helpers)('$name parse hardening', ({ name, build, method }) => {
   // any real Response (both sit inside the 200-299 range) -- 304 is the only
   // status where NULL_BODY_STATUSES itself is load-bearing.
   it('collapses to 502 when a null-body status (304) is unparseable', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: false,
       status: 304,
@@ -118,6 +129,42 @@ describe.each(helpers)('$name parse hardening', ({ name, build, method }) => {
   });
 });
 
+// proxyPatch backs /api/proposals/[id] but was never added to the describe.each
+// suite above -- a pre-existing gap out of scope for this logging change, so it
+// gets standalone coverage for just the new warn calls instead of full parity.
+describe('proxyPatch error logging', () => {
+  const request = () => new NextRequest('http://localhost/api/whatever', { method: 'PATCH', body: '{}' });
+
+  it('logs [bff-proxy:patch] upstream unreachable when fetch rejects', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchErr = new Error('connection refused');
+    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(fetchErr);
+
+    const res = await proxyPatch('/whatever')(request());
+
+    expect(res.status).toBe(502);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('[bff-proxy:patch] upstream unreachable', fetchErr);
+  });
+
+  it('logs [bff-proxy:patch] upstream returned non-JSON body when the response is unparseable', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const parseErr = new SyntaxError('Unexpected token < in JSON');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: () => Promise.reject(parseErr),
+      headers: { getSetCookie: () => [] },
+    } as unknown as Response);
+
+    const res = await proxyPatch('/whatever')(request());
+
+    expect(res.status).toBe(500);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('[bff-proxy:patch] upstream returned non-JSON body', parseErr);
+  });
+});
+
 describe('proxyPostWithCookies success passthrough', () => {
   it('forwards Set-Cookie headers from the upstream response', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
@@ -138,6 +185,7 @@ describe('proxyPostWithCookies success passthrough', () => {
 
 describe('proxyPostWithCookies invalid-response cookie forwarding', () => {
   it('forwards Set-Cookie headers when the invalid-response fallback path fires', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: false,
       status: 401,
@@ -168,6 +216,7 @@ describe('upstreamSignal', () => {
   });
 
   it('resolves proxyPost to the existing 502 UPSTREAM_UNAVAILABLE shape when the request arrives with an already-aborted signal', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
       return new Promise((_resolve, reject) => {
         const signal = init?.signal;
