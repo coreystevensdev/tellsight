@@ -165,6 +165,21 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - run: pnpm -C apps/api exec tsx ../../scripts/validate-seed.ts
+        env:
+          DATABASE_URL: postgresql://app_user:app@localhost:5432/analytics
+          DATABASE_ADMIN_URL: postgresql://app_admin:app@localhost:5432/analytics
+          REDIS_URL: redis://localhost:6379
+          CLAUDE_API_KEY: dummy-claude-key
+          STRIPE_SECRET_KEY: sk_test_dummy
+          STRIPE_WEBHOOK_SECRET: whsec_dummy
+          STRIPE_PRICE_ID: price_dummy
+          GOOGLE_CLIENT_ID: dummy-google-client-id
+          GOOGLE_CLIENT_SECRET: dummy-google-client-secret
+          JWT_SECRET: dummy-jwt-secret-at-least-32-characters-long
+          APP_URL: http://localhost:3000
+          NODE_ENV: test
+          EMAIL_FROM_ADDRESS: noreply@example.com
+          EMAIL_MAILING_ADDRESS: 123 CI Test Way
 
   proposal-precision-eval:
     name: Proposal Precision Eval
