@@ -129,6 +129,52 @@ describe.each(helpers)('$name parse hardening', ({ name, tag, build, method }) =
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ data: { ok: true } });
   });
+
+  it('sends the expected method, cookie header, and body to fetch', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ data: { ok: true } }),
+      headers: { getSetCookie: () => [] },
+    } as unknown as Response);
+
+    const req = new NextRequest('http://localhost/api/whatever', {
+      method,
+      headers: { Cookie: 'session=abc123' },
+      body: method === 'GET' ? undefined : '{}',
+    });
+    const expectedBody = method === 'GET' ? undefined : await req.clone().text();
+
+    await build()(req);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [, init] = fetchSpy.mock.calls[0]!;
+    expect(init?.body).toBe(expectedBody);
+    // Normalize to 'GET': proxyGet omits the method key entirely rather than
+    // setting it to 'GET', but both mean the same thing to fetch.
+    expect(init?.method ?? 'GET').toBe(method);
+
+    if (method === 'GET') {
+      expect(init?.headers).toEqual({ Cookie: 'session=abc123' });
+    } else {
+      expect(init?.headers).toEqual({ 'Content-Type': 'application/json', Cookie: 'session=abc123' });
+    }
+  });
+
+  it.skipIf(method === 'GET')('forwards an empty request body without defaulting it', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ data: { ok: true } }),
+      headers: { getSetCookie: () => [] },
+    } as unknown as Response);
+
+    await build()(new NextRequest('http://localhost/api/whatever', { method, body: '' }));
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [, init] = fetchSpy.mock.calls[0]!;
+    expect(init?.body).toBe('');
+  });
 });
 
 describe('proxyPostWithCookies success passthrough', () => {
@@ -181,29 +227,35 @@ describe('upstreamSignal', () => {
     expect(signal.aborted).toBe(true);
   });
 
-  it('resolves proxyPost to the existing 502 UPSTREAM_UNAVAILABLE shape when the request arrives with an already-aborted signal', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-    vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
-      return new Promise((_resolve, reject) => {
-        const signal = init?.signal;
-        if (signal?.aborted) {
-          reject(signal.reason);
-          return;
-        }
-        signal?.addEventListener('abort', () => reject(signal.reason));
+  it.each(helpers)(
+    '$name resolves to the existing 502 UPSTREAM_UNAVAILABLE shape when the request arrives with an already-aborted signal',
+    async ({ build, method }) => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
+        return new Promise((_resolve, reject) => {
+          const signal = init?.signal;
+          if (signal?.aborted) {
+            reject(signal.reason);
+            return;
+          }
+          signal?.addEventListener('abort', () => reject(signal.reason));
+        });
       });
-    });
 
-    const request = new NextRequest('http://localhost/api/whatever', { method: 'POST', body: '{}' });
-    const controller = new AbortController();
-    controller.abort();
-    Object.defineProperty(request, 'signal', { value: controller.signal });
+      const request = new NextRequest('http://localhost/api/whatever', {
+        method,
+        body: method === 'GET' ? undefined : '{}',
+      });
+      const controller = new AbortController();
+      controller.abort();
+      Object.defineProperty(request, 'signal', { value: controller.signal });
 
-    const res = await proxyPost('/whatever')(request);
+      const res = await build()(request);
 
-    expect(res.status).toBe(502);
-    expect(await res.json()).toEqual({
-      error: { code: 'UPSTREAM_UNAVAILABLE', message: 'API server unreachable' },
-    });
-  });
+      expect(res.status).toBe(502);
+      expect(await res.json()).toEqual({
+        error: { code: 'UPSTREAM_UNAVAILABLE', message: 'API server unreachable' },
+      });
+    },
+  );
 });
