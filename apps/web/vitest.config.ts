@@ -16,6 +16,8 @@ export default defineConfig({
       'shared/constants': fileURLToPath(new URL('../../packages/shared/src/constants/index.ts', import.meta.url)),
       'shared/types': fileURLToPath(new URL('../../packages/shared/src/types/index.ts', import.meta.url)),
       'shared/schemas': fileURLToPath(new URL('../../packages/shared/src/schemas/index.ts', import.meta.url)),
+      'shared/agent': fileURLToPath(new URL('../../packages/shared/src/agent/index.ts', import.meta.url)),
+      'shared/formatting': fileURLToPath(new URL('../../packages/shared/src/formatting/index.ts', import.meta.url)),
     },
   },
 });
