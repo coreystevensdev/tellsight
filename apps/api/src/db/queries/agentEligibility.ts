@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, lt } from 'drizzle-orm';
+import { and, desc, eq, gt, isNotNull, lt, or } from 'drizzle-orm';
 
 import { dbAdmin } from '../../lib/db.js';
 import { orgs, subscriptions } from '../schema.js';
@@ -20,8 +20,16 @@ export function buildEligibilityQuery(
   cursor?: number,
   pageSize = 500,
 ) {
+  const now = new Date();
   const conditions = [
-    eq(subscriptions.status, 'active'),
+    or(
+      eq(subscriptions.status, 'active'),
+      and(
+        eq(subscriptions.status, 'canceled'),
+        isNotNull(subscriptions.currentPeriodEnd),
+        gt(subscriptions.currentPeriodEnd, now),
+      ),
+    ),
     eq(subscriptions.plan, 'pro'),
     eq(subscriptions.agentEnabled, true),
     isNotNull(orgs.activeDatasetId),
@@ -45,8 +53,12 @@ export function buildEligibilityQuery(
  * Single-query enumeration of orgs the agent orchestrator cron pages
  * against.
  *
- * Eligibility rules:
- *   - subscription.status='active' AND subscription.plan='pro' AND agent_enabled=true
+ * Eligibility rules (all of the following must hold):
+ *   - subscription.status='active', OR status='canceled' with currentPeriodEnd
+ *     still in the future (grace period, same branch getAgentEnabled in
+ *     subscriptions.ts checks -- the active branch here stays a bare status
+ *     check, unlike getAgentEnabled's, since no ticket has asked for that yet)
+ *   - subscription.plan='pro' AND agent_enabled=true
  *   - org has a non-null activeDatasetId
  *
  * Pagination is keyset on orgs.id DESC, same shape as findEligibleOrgs in

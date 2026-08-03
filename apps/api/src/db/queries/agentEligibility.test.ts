@@ -49,6 +49,22 @@ describe('buildEligibilityQuery: SQL shape', () => {
     expect(params).toContain(true);
   });
 
+  it('ORs the active status against a canceled-with-grace-period branch', () => {
+    const { sql, params } = buildEligibilityQuery(inertDb as never).toSQL();
+
+    // both status branches bind separately, active OR (canceled AND currentPeriodEnd > now)
+    const statusBindings = (sql.match(/"subscriptions"\."status"\s*=\s*\$/g) ?? []).length;
+    expect(statusBindings).toBe(2);
+    expect(params).toContain('canceled');
+    expect(sql).toMatch(/"subscriptions"\."current_period_end"\s*>\s*\$/);
+    expect(sql).toMatch(/"subscriptions"\."current_period_end"\s+is not null/i);
+
+    // the two status branches must be OR'd, not AND'd -- flattening them into
+    // the same and(...) would make "status = 'active' and status = 'canceled'"
+    // always false and silently zero out the whole sweep
+    expect(sql).toMatch(/"subscriptions"\."status"\s*=\s*\$\d+\s+or\s+\(/i);
+  });
+
   it('emits a DESC keyset cursor on orgs.id when cursor is supplied', () => {
     const { sql, params } = buildEligibilityQuery(inertDb as never, 100, 50).toSQL();
     expect(sql).toMatch(/order by\s+"orgs"\."id"\s+desc/i);
