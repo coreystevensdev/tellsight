@@ -27,6 +27,7 @@ export function useAgentProposals(enabled: boolean): UseAgentProposalsResult {
   const resolveControllers = useRef<Set<AbortController>>(new Set());
   const pendingIdsRef = useRef<Set<number>>(new Set());
   const enabledRef = useRef(enabled);
+  const mountedRef = useRef(true);
   // Synced during render, not inside the effect below -- a passive effect
   // runs after commit, leaving a window where a settling fetch could still
   // read a stale value.
@@ -67,7 +68,12 @@ export function useAgentProposals(enabled: boolean): UseAgentProposalsResult {
   }, [enabled]);
 
   useEffect(() => {
+    // StrictMode double-invokes this effect on initial mount (setup, cleanup,
+    // setup) without unmounting for real -- reset here so the simulated cycle
+    // doesn't leave mountedRef stuck false for the component's actual life.
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       resolveControllers.current.forEach((controller) => controller.abort());
     };
   }, []);
@@ -93,14 +99,15 @@ export function useAgentProposals(enabled: boolean): UseAgentProposalsResult {
         signal: controller.signal,
       });
 
-      // A response can arrive after enabled has already flipped false --
-      // abort() can't un-deliver it, so this backstop silences it directly.
-      if (!enabledRef.current) return false;
+      // A response can arrive after enabled has already flipped false, or
+      // after true unmount with enabled never flipping -- abort() can't
+      // un-deliver it, so this backstop silences it directly either way.
+      if (!enabledRef.current || !mountedRef.current) return false;
 
       if (res.status === 404) {
         // Already resolved by someone else -- the row is gone from the
         // drawer either way, so this isn't a user-facing error.
-        console.error('[useAgentProposals] proposal already resolved', { id, nextStatus });
+        console.warn('[useAgentProposals] proposal already resolved', { id, nextStatus });
         return true;
       }
       if (res.ok) return true;
@@ -109,7 +116,7 @@ export function useAgentProposals(enabled: boolean): UseAgentProposalsResult {
       throw new Error(body?.error?.message ?? `Request failed (${res.status})`);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return false;
-      if (!enabledRef.current) return false;
+      if (!enabledRef.current || !mountedRef.current) return false;
 
       if (removed) {
         setProposals((cur) => [...cur, removed].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)));

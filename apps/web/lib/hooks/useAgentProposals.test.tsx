@@ -1,6 +1,13 @@
+import { StrictMode } from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { renderHook, waitFor, act } from '@testing-library/react';
-import { useAgentProposals } from './useAgentProposals';
+import { renderHook, render, waitFor, act } from '@testing-library/react';
+import { useAgentProposals, type UseAgentProposalsResult } from './useAgentProposals';
+
+function ProposalsHarness({ onReady }: { onReady: (result: UseAgentProposalsResult) => void }) {
+  const result = useAgentProposals(true);
+  onReady(result);
+  return null;
+}
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -110,6 +117,7 @@ describe('useAgentProposals', () => {
   });
 
   it('resolveProposal treats a 404 (already resolved) as success and keeps the row removed', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ data: [proposalA] }) } as Response)
       .mockResolvedValueOnce({ ok: false, status: 404, json: () => Promise.resolve({ error: { message: 'Not found' } }) } as Response);
@@ -125,6 +133,7 @@ describe('useAgentProposals', () => {
     expect(ok).toBe(true);
     expect(result.current.proposals).toEqual([]);
     expect(result.current.error).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith('[useAgentProposals] proposal already resolved', { id: 10, nextStatus: 'approved' });
   });
 
   it('resolveProposal restores the row and sets an error on a genuine failure', async () => {
@@ -217,6 +226,96 @@ describe('useAgentProposals', () => {
     await act(async () => {
       await expect(resolvePromise).resolves.toBe(false);
     });
+  });
+
+  it('silences a resolveProposal PATCH response that arrives after true unmount, with enabled never flipping', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ data: [proposalA] }),
+    } as Response);
+
+    const { result, unmount } = renderHook(() => useAgentProposals(true));
+    await waitFor(() => expect(result.current.status).toBe('done'));
+
+    let resolvePatch!: (value: Response) => void;
+    vi.spyOn(globalThis, 'fetch').mockImplementationOnce(() => new Promise((resolve) => { resolvePatch = resolve; }));
+
+    let resolvePromise!: Promise<boolean>;
+    act(() => {
+      resolvePromise = result.current.resolveProposal(10, 'approved');
+    });
+
+    expect(() => unmount()).not.toThrow();
+
+    // The fetch settles on its own, independent of the abort signal fired by
+    // unmount -- mirrors a response that was already in flight over the wire.
+    resolvePatch({ ok: true, status: 200, json: () => Promise.resolve({ data: { id: 10 } }) } as Response);
+
+    await act(async () => {
+      await expect(resolvePromise).resolves.toBe(false);
+    });
+  });
+
+  it('silences a genuine (non-abort) fetch rejection that arrives after true unmount, with enabled never flipping', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ data: [proposalA] }),
+    } as Response);
+
+    const { result, unmount } = renderHook(() => useAgentProposals(true));
+    await waitFor(() => expect(result.current.status).toBe('done'));
+
+    let rejectPatch!: (reason: unknown) => void;
+    vi.spyOn(globalThis, 'fetch').mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectPatch = reject; }));
+
+    let resolvePromise!: Promise<boolean>;
+    act(() => {
+      resolvePromise = result.current.resolveProposal(10, 'rejected');
+    });
+
+    expect(() => unmount()).not.toThrow();
+
+    rejectPatch(new TypeError('Failed to fetch'));
+
+    await act(async () => {
+      await expect(resolvePromise).resolves.toBe(false);
+    });
+  });
+
+  it('resets mountedRef on StrictMode\'s dev-only double-invoke, so error handling still works after the simulated remount', async () => {
+    // StrictMode double-invokes the data-fetch effect on initial mount
+    // (setup, cleanup, setup again), firing the GET twice before settling.
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ data: [proposalA] }) } as Response)
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ data: [proposalA] }) } as Response);
+
+    let latest: UseAgentProposalsResult | undefined;
+    render(
+      <StrictMode>
+        <ProposalsHarness onReady={(result) => { latest = result; }} />
+      </StrictMode>,
+    );
+
+    await waitFor(() => expect(latest?.status).toBe('done'));
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: () => Promise.resolve({ error: { message: 'Update failed' } }),
+    } as Response);
+
+    let ok = true;
+    await act(async () => {
+      ok = await latest!.resolveProposal(10, 'rejected');
+    });
+
+    // A stuck-false mountedRef would silence this failure via the backstop
+    // check instead of surfacing it -- both paths return `false` here, so the
+    // discriminator is whether the error actually made it through.
+    expect(ok).toBe(false);
+    expect(latest!.error).toBe('Update failed');
   });
 
   it('dedupes a second resolveProposal call for the same id while the first PATCH is in flight', async () => {
