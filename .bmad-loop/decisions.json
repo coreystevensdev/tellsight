@@ -8,33 +8,6 @@
     "label": "Keep open, no live traffic yet",
     "resolution": ""
   },
-  "DW-166": {
-    "answered_at": "2026-08-02",
-    "bundle_name": "",
-    "effect": "build",
-    "intent": "Add a run-level cost accumulator to the agentOrchestrator handler that stops paging further orgs once total spend for the run crosses a configured budget, mirroring the qa-loop's existing per-loop cost ceiling design as a reference pattern.",
-    "key": "1",
-    "label": "Add a per-run dollar budget ceiling",
-    "resolution": ""
-  },
-  "DW-174": {
-    "answered_at": "2026-08-02",
-    "bundle_name": "",
-    "effect": "build",
-    "intent": "Add a LIMIT (and a 'N more not shown' note in the digest copy) to getExpiredUnfoldedProposals and autoNotifyProposals, sized conservatively for the current no-backfill window.",
-    "key": "1",
-    "label": "Add a shared row-count cap now",
-    "resolution": ""
-  },
-  "DW-177": {
-    "answered_at": "2026-08-02",
-    "bundle_name": "",
-    "effect": "close",
-    "intent": "",
-    "key": "2",
-    "label": "Leave as-is, close",
-    "resolution": "All four real call sites already gate the call on non-empty invalidRefs, so the fast path can never fire in production."
-  },
   "DW-183": {
     "answered_at": "2026-08-02",
     "bundle_name": "",
