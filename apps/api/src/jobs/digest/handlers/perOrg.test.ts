@@ -21,6 +21,7 @@ const mockGetAwardedKinds = vi.fn();
 const mockAwardMilestone = vi.fn();
 const mockGetPendingProposals = vi.fn();
 const mockGetExpiredUnfoldedProposals = vi.fn();
+const mockCountExpiredUnfoldedProposals = vi.fn();
 const mockMarkNotified = vi.fn();
 const mockGetAgentEnabled = vi.fn();
 
@@ -69,6 +70,7 @@ vi.mock('../../../db/queries/index.js', () => ({
   agentProposalsQueries: {
     getPendingProposals: mockGetPendingProposals,
     getExpiredUnfoldedProposals: mockGetExpiredUnfoldedProposals,
+    countExpiredUnfoldedProposals: mockCountExpiredUnfoldedProposals,
     markNotified: mockMarkNotified,
   },
   subscriptionsQueries: {
@@ -166,6 +168,7 @@ beforeEach(() => {
   mockAwardMilestone.mockResolvedValue(undefined);
   mockGetPendingProposals.mockResolvedValue([]);
   mockGetExpiredUnfoldedProposals.mockResolvedValue([]);
+  mockCountExpiredUnfoldedProposals.mockResolvedValue(0);
   mockMarkNotified.mockResolvedValue(undefined);
   mockGetAgentEnabled.mockResolvedValue(true);
 });
@@ -554,7 +557,7 @@ describe('agent proposal fold-in', () => {
 
     await handlePerOrgJob({ id: 'org-agent-9', data: baseJobData } as never);
 
-    expect(mockGetExpiredUnfoldedProposals).toHaveBeenCalledWith(42, baseJobData.weekStart);
+    expect(mockGetExpiredUnfoldedProposals).toHaveBeenCalledWith(42, baseJobData.weekStart, 5);
     const payload = mockSendQueueAdd.mock.calls[0]![1] as SendJobData;
     expect(payload.agentBullets).toEqual([
       'Marketing spend up: Review recent spend.',
@@ -575,6 +578,109 @@ describe('agent proposal fold-in', () => {
 
     const payload = mockSendQueueAdd.mock.calls[0]![1] as SendJobData;
     expect(payload.agentBullets).toEqual([]);
+  });
+
+  it('caps auto_notify proposals at 5 bullets, appends the omitted note, and only marks the shown ones notified', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
+    mockGetPendingProposals.mockResolvedValueOnce(
+      Array.from({ length: 7 }, (_, i) => ({
+        id: i + 1,
+        lane: 'auto_notify',
+        title: `Proposal ${i + 1}`,
+        recommendation: `rec ${i + 1}`,
+      })),
+    );
+
+    await handlePerOrgJob({ id: 'org-agent-11', data: baseJobData } as never);
+
+    const payload = mockSendQueueAdd.mock.calls[0]![1] as SendJobData;
+    expect(payload.agentBullets).toEqual([
+      'Proposal 1: rec 1',
+      'Proposal 2: rec 2',
+      'Proposal 3: rec 3',
+      'Proposal 4: rec 4',
+      'Proposal 5: rec 5',
+      '+2 more agent findings not shown this week',
+    ]);
+    expect(mockMarkNotified).toHaveBeenCalledWith(42, [1, 2, 3, 4, 5], expect.anything());
+  });
+
+  it('appends the omitted note when the expired group is capped, using the true count from countExpiredUnfoldedProposals', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
+    mockGetPendingProposals.mockResolvedValueOnce([]);
+    mockGetExpiredUnfoldedProposals.mockResolvedValueOnce(
+      Array.from({ length: 5 }, (_, i) => ({
+        id: 100 + i,
+        title: `Expired ${i + 1}`,
+        recommendation: `rec ${i + 1}`,
+      })),
+    );
+    mockCountExpiredUnfoldedProposals.mockResolvedValueOnce(9);
+
+    await handlePerOrgJob({ id: 'org-agent-12', data: baseJobData } as never);
+
+    const payload = mockSendQueueAdd.mock.calls[0]![1] as SendJobData;
+    expect(payload.agentBullets?.at(-1)).toBe('+4 more agent findings not shown this week');
+    expect(mockMarkNotified).toHaveBeenCalledWith(42, [100, 101, 102, 103, 104], expect.anything());
+  });
+
+  it('marks ids from both the auto_notify and expired groups in one combined markNotified call', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
+    mockGetPendingProposals.mockResolvedValueOnce([
+      { id: 1, lane: 'auto_notify', title: 'A', recommendation: 'rec a' },
+      { id: 2, lane: 'auto_notify', title: 'B', recommendation: 'rec b' },
+    ]);
+    mockGetExpiredUnfoldedProposals.mockResolvedValueOnce([
+      { id: 3, title: 'C', recommendation: 'rec c' },
+      { id: 4, title: 'D', recommendation: 'rec d' },
+    ]);
+
+    await handlePerOrgJob({ id: 'org-agent-13', data: baseJobData } as never);
+
+    expect(mockMarkNotified).toHaveBeenCalledTimes(1);
+    expect(mockMarkNotified).toHaveBeenCalledWith(42, [1, 2, 3, 4], expect.anything());
+  });
+
+  it('sums the omitted count across both groups when both overflow in the same run', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
+    mockGetPendingProposals.mockResolvedValueOnce(
+      Array.from({ length: 7 }, (_, i) => ({
+        id: i + 1,
+        lane: 'auto_notify',
+        title: `Proposal ${i + 1}`,
+        recommendation: `rec ${i + 1}`,
+      })),
+    );
+    mockGetExpiredUnfoldedProposals.mockResolvedValueOnce(
+      Array.from({ length: 5 }, (_, i) => ({
+        id: 100 + i,
+        title: `Expired ${i + 1}`,
+        recommendation: `rec ${i + 1}`,
+      })),
+    );
+    mockCountExpiredUnfoldedProposals.mockResolvedValueOnce(9);
+
+    await handlePerOrgJob({ id: 'org-agent-14', data: baseJobData } as never);
+
+    const payload = mockSendQueueAdd.mock.calls[0]![1] as SendJobData;
+    // 2 auto_notify omitted (7 - 5) + 4 expired omitted (9 - 5) = 6
+    expect(payload.agentBullets?.at(-1)).toBe('+6 more agent findings not shown this week');
   });
 });
 

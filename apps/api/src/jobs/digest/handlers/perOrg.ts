@@ -42,6 +42,10 @@ const DIGEST_AUDIENCE = 'digest-weekly' as const;
 const SEND_JOB_ATTEMPTS = 3;
 const SEND_JOB_BACKOFF_MS = 30_000;
 
+// Per-group cap on agent findings folded into one digest, so a multi-week
+// outage can't turn a single email into a wall of bullets.
+const AGENT_PROPOSAL_FOLD_IN_CAP = 5;
+
 function sendJobName(userId: number, weekStart: Date): string {
   return `${JOB_PREFIX_SEND}-${userId}-${weekStart.getTime()}`;
 }
@@ -229,11 +233,18 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
   const valence = classifyValence(currentStats);
   const subjectLine = generateSubjectLine(valence, firstTimeMilestones, dedupedTransitionMilestones, org.name);
 
-  // Auto-notify agent findings accumulated during the week fold into this
-  // digest as extra bullets. Fetched once, before the recipient loop, so
-  // every recipient's SendJobData carries the identical bullet list --
-  // markNotified below fires once per org, not once per recipient, so a
-  // second recipient's send never re-queries and finds nothing left.
+  // Auto-notify agent findings accumulated during the week, plus expired
+  // findings nobody reviewed, fold into this digest as extra bullets.
+  // Fetched once, before the recipient loop, so every recipient's
+  // SendJobData carries the identical bullet list -- markNotified below
+  // fires once per org, not once per recipient, so a second recipient's send
+  // never re-queries and finds nothing left. Each group is capped at
+  // AGENT_PROPOSAL_FOLD_IN_CAP so a multi-week outage can't turn one email
+  // into an unbounded list; anything past the cap collapses into a single
+  // "+N more" note instead of vanishing without a trace. Both groups pass
+  // through the same markNotified call, so an expired-and-folded proposal
+  // actually leaves 'expired' this time instead of sitting there forever and
+  // re-folding into every following retry and digest.
   // Re-verified here, not just at generation time: an org can downgrade out
   // of the Agent tier between when a proposal was generated and this week's
   // digest, and an entitlement gate should never fail open (same posture as
@@ -243,12 +254,21 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
   // its agent bullets for the week, not the whole digest.
   let autoNotifyProposals: Awaited<ReturnType<typeof agentProposalsQueries.getPendingProposals>> = [];
   let expiredProposals: Awaited<ReturnType<typeof agentProposalsQueries.getExpiredUnfoldedProposals>> = [];
+  let expiredTotal = 0;
   try {
     const agentEnabled = await subscriptionsQueries.getAgentEnabled(orgId, dbAdmin);
     if (agentEnabled) {
       const pendingProposals = await agentProposalsQueries.getPendingProposals(orgId);
       autoNotifyProposals = pendingProposals.filter((p) => p.lane === 'auto_notify');
-      expiredProposals = await agentProposalsQueries.getExpiredUnfoldedProposals(orgId, weekStart);
+      expiredProposals = await agentProposalsQueries.getExpiredUnfoldedProposals(
+        orgId,
+        weekStart,
+        AGENT_PROPOSAL_FOLD_IN_CAP,
+      );
+      // Conservative fallback if the count query below throws: assume
+      // nothing was omitted rather than reporting a number we can't confirm.
+      expiredTotal = expiredProposals.length;
+      expiredTotal = await agentProposalsQueries.countExpiredUnfoldedProposals(orgId, weekStart);
     }
   } catch (err) {
     logger.error(
@@ -256,10 +276,19 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
       'Failed to fetch some agent proposals for the digest, continuing with whatever was already fetched',
     );
   }
+
+  const autoNotifyToFold = autoNotifyProposals.slice(0, AGENT_PROPOSAL_FOLD_IN_CAP);
+  const autoNotifyOmitted = Math.max(0, autoNotifyProposals.length - AGENT_PROPOSAL_FOLD_IN_CAP);
+  const expiredOmitted = Math.max(0, expiredTotal - expiredProposals.length);
+  const omitted = autoNotifyOmitted + expiredOmitted;
+
   const agentBullets = [
-    ...autoNotifyProposals.map((p) => `${p.title}: ${p.recommendation}`),
+    ...autoNotifyToFold.map((p) => `${p.title}: ${p.recommendation}`),
     ...expiredProposals.map((p) => `${p.title} (expired without review): ${p.recommendation}`),
   ];
+  if (omitted > 0) {
+    agentBullets.push(`+${omitted} more agent finding${omitted === 1 ? '' : 's'} not shown this week`);
+  }
 
   const recipients = await digestEligibilityQueries.findOrgRecipients(orgId);
   const queue = getSendQueue();
@@ -350,11 +379,16 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
       // Only mark proposals notified if a send actually went out -- an empty
       // recipient list or every enqueue failing means nobody actually saw
       // these bullets, and marking them notified anyway would lose the
-      // finding for good (it never surfaces again after this).
+      // finding for good (it never surfaces again after this). Only the ids
+      // actually folded into agentBullets are passed here. Auto_notify ids
+      // the cap omitted stay 'pending' and get reconsidered next week
+      // (getPendingProposals has no time window); expired ids the cap
+      // omitted stay 'expired' but are gone for good once weekStart moves
+      // past their resolvedAt -- no backfill, by design (2026-08-02).
       if (enqueued > 0) {
         await agentProposalsQueries.markNotified(
           orgId,
-          autoNotifyProposals.map((p) => p.id),
+          [...autoNotifyToFold, ...expiredProposals].map((p) => p.id),
           tx,
         );
       }

@@ -1,4 +1,4 @@
-import { and, eq, lt, gte, inArray } from 'drizzle-orm';
+import { and, eq, lt, gte, inArray, count } from 'drizzle-orm';
 
 import { dbAdmin, type DbTransaction } from '../../lib/db.js';
 import { agentProposals } from '../schema.js';
@@ -83,15 +83,21 @@ export async function resolveProposal(
   return row ?? null;
 }
 
-// Mark auto_notify proposals as notified after the digest includes them.
-// orgId is required to ensure a worker processing one org can't accidentally
-// mark proposals belonging to a different org.
+// Mark auto_notify and expired-fold-in proposals as notified once the digest
+// that included them is sent. orgId keeps a worker scoped to its own org; the
+// status guard makes this a compare-and-swap so a proposal a user resolves
+// concurrently (Action Drawer approve/reject) between the fold-in fetch and
+// this commit is never clobbered back to 'notified'.
 export async function markNotified(orgId: number, ids: number[], client: Client = dbAdmin) {
   if (ids.length === 0) return;
   await client
     .update(agentProposals)
     .set({ status: 'notified', resolvedAt: new Date() })
-    .where(and(eq(agentProposals.orgId, orgId), inArray(agentProposals.id, ids)));
+    .where(and(
+      eq(agentProposals.orgId, orgId),
+      inArray(agentProposals.id, ids),
+      inArray(agentProposals.status, ['pending', 'expired']),
+    ));
 }
 
 // Expiry sweep: called by the digest orchestrator tick. Returns the ids that
@@ -108,14 +114,42 @@ export async function expireProposals(before: Date, client: Client = dbAdmin): P
 // Expired proposals not yet folded into a digest. Scoped by resolvedAt >=
 // since (the digest week's start) so a proposal expired by this week's sweep
 // only ever matches one week's perOrg run -- next week's call passes a later
-// weekStart the old resolvedAt no longer clears.
-export async function getExpiredUnfoldedProposals(orgId: number, since: Date, client: Client = dbAdmin) {
+// weekStart the old resolvedAt no longer clears. limit bounds a multi-week
+// outage from feeding an unbounded bullet list into one digest; the caller
+// pairs this with countExpiredUnfoldedProposals to report what got omitted.
+export async function getExpiredUnfoldedProposals(
+  orgId: number,
+  since: Date,
+  limit: number,
+  client: Client = dbAdmin,
+) {
   return client.query.agentProposals.findMany({
     where: and(
       eq(agentProposals.orgId, orgId),
       eq(agentProposals.status, 'expired'),
       gte(agentProposals.resolvedAt, since),
     ),
-    orderBy: (t, { desc }) => [desc(t.expiresAt)],
+    // id tiebreaks expiresAt so a retried job sees the same LIMIT-ed subset,
+    // not a different one every time two proposals expire at the same tick.
+    orderBy: (t, { desc }) => [desc(t.expiresAt), desc(t.id)],
+    limit,
   });
+}
+
+// Exact count behind getExpiredUnfoldedProposals' same predicate, unbounded
+// by limit, so the digest can report precisely how many findings the cap left out.
+export async function countExpiredUnfoldedProposals(
+  orgId: number,
+  since: Date,
+  client: Client = dbAdmin,
+): Promise<number> {
+  const [row] = await client
+    .select({ value: count() })
+    .from(agentProposals)
+    .where(and(
+      eq(agentProposals.orgId, orgId),
+      eq(agentProposals.status, 'expired'),
+      gte(agentProposals.resolvedAt, since),
+    ));
+  return row?.value ?? 0;
 }

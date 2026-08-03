@@ -11,6 +11,7 @@ const {
   markNotified,
   expireProposals,
   getExpiredUnfoldedProposals,
+  countExpiredUnfoldedProposals,
 } = await import('./agentProposals.js');
 
 // ── mock client builders ──────────────────────────────────────────────────────
@@ -215,19 +216,37 @@ describe('expireProposals', () => {
 // ── getExpiredUnfoldedProposals ─────────────────────────────────────────────
 
 describe('getExpiredUnfoldedProposals', () => {
-  it('returns expired proposals resolved at or after the given time', async () => {
+  it('returns expired proposals resolved at or after the given time, passing limit through to findMany', async () => {
     const rows = [{ id: 10, status: 'expired' }, { id: 11, status: 'expired' }];
     const { client, mocks } = findManyClient(rows);
 
-    const result = await getExpiredUnfoldedProposals(1, new Date('2026-06-22'), client);
+    const result = await getExpiredUnfoldedProposals(1, new Date('2026-06-22'), 5, client);
 
     expect(result).toEqual(rows);
-    expect(mocks.findMany).toHaveBeenCalledOnce();
+    expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({ limit: 5 }));
   });
 
   it('returns an empty array when nothing has expired since the boundary', async () => {
     const { client } = findManyClient([]);
 
-    expect(await getExpiredUnfoldedProposals(1, new Date('2026-06-22'), client)).toEqual([]);
+    expect(await getExpiredUnfoldedProposals(1, new Date('2026-06-22'), 5, client)).toEqual([]);
+  });
+});
+
+// ── countExpiredUnfoldedProposals ───────────────────────────────────────────
+
+describe('countExpiredUnfoldedProposals', () => {
+  it('returns the row count for expired proposals resolved at or after the given time', async () => {
+    const { client } = selectClient([{ value: 8 }]);
+
+    const result = await countExpiredUnfoldedProposals(1, new Date('2026-06-22'), client);
+
+    expect(result).toBe(8);
+  });
+
+  it('returns 0 when nothing has expired since the boundary', async () => {
+    const { client } = selectClient([]);
+
+    expect(await countExpiredUnfoldedProposals(1, new Date('2026-06-22'), client)).toBe(0);
   });
 });
