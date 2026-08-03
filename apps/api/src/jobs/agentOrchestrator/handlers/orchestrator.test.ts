@@ -168,6 +168,11 @@ describe('handleOrchestratorJob', () => {
     expect(mockFindEligibleOrgs).toHaveBeenCalledTimes(2);
     expect(mockFindEligibleOrgs.mock.calls[1]![0]).toBe(500);
     expect(mockEvaluateOrgQueueAdd).toHaveBeenCalledTimes(502);
+
+    // asOf (3rd arg) must be the same Date instance across pages -- otherwise a
+    // canceled org's grace-period eligibility could flip mid-sweep as real time
+    // passes between page 1 and page 2.
+    expect(mockFindEligibleOrgs.mock.calls[0]![2]).toBe(mockFindEligibleOrgs.mock.calls[1]![2]);
   });
 
   it('logs budgetExceeded: false on a normal run that never crosses the ceiling', async () => {

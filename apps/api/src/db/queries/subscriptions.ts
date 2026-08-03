@@ -1,9 +1,10 @@
-import { and, desc, eq, gt, isNotNull, isNull, ne, or } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, ne, or } from 'drizzle-orm';
 
 import type { SubscriptionTier } from 'shared/types';
 
 import { db, type DbTransaction } from '../../lib/db.js';
 import { subscriptions } from '../schema.js';
+import { canceledWithGracePeriod } from './subscriptionEligibility.js';
 
 export type { SubscriptionTier };
 
@@ -23,7 +24,7 @@ export async function getActiveTier(
             // active: period still valid OR period not yet populated (just-completed checkout)
             and(eq(subscriptions.status, 'active'), or(gt(subscriptions.currentPeriodEnd, now), isNull(subscriptions.currentPeriodEnd))),
             // canceled but within paid period, access continues until currentPeriodEnd
-            and(eq(subscriptions.status, 'canceled'), isNotNull(subscriptions.currentPeriodEnd), gt(subscriptions.currentPeriodEnd, now)),
+            canceledWithGracePeriod(now),
           ),
         ),
       )
@@ -53,7 +54,7 @@ export async function getAgentEnabled(
           eq(subscriptions.orgId, orgId),
           or(
             and(eq(subscriptions.status, 'active'), or(gt(subscriptions.currentPeriodEnd, now), isNull(subscriptions.currentPeriodEnd))),
-            and(eq(subscriptions.status, 'canceled'), isNotNull(subscriptions.currentPeriodEnd), gt(subscriptions.currentPeriodEnd, now)),
+            canceledWithGracePeriod(now),
           ),
         ),
       )

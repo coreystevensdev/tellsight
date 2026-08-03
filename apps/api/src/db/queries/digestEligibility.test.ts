@@ -122,6 +122,31 @@ describe('buildEligibilityQuery: SQL shape (AC #2, AC #14b)', () => {
     expect(sql).toMatch(/"digest_preferences"\."cadence"\s*(?:<>|!=)\s*\$/);
     expect(params).toContain('off');
   });
+
+  it('ORs the active status against a canceled-with-grace-period branch', () => {
+    const { sql, params } = buildEligibilityQuery(inertDb as never).toSQL();
+
+    // both status branches bind separately, active OR (canceled AND currentPeriodEnd > now)
+    const statusBindings = (sql.match(/"subscriptions"\."status"\s*=\s*\$/g) ?? []).length;
+    expect(statusBindings).toBe(2);
+    expect(params).toContain('canceled');
+    expect(sql).toMatch(/"subscriptions"\."current_period_end"\s*>\s*\$/);
+    expect(sql).toMatch(/"subscriptions"\."current_period_end"\s+is not null/i);
+
+    // the two status branches must be OR'd, not AND'd -- flattening them into
+    // the same and(...) would make "status = 'active' and status = 'canceled'"
+    // always false and silently zero out the whole sweep
+    expect(sql).toMatch(/"subscriptions"\."status"\s*=\s*\$\d+\s+or\s+\(/i);
+  });
+
+  it('threads a pinned asOf into the same predicate binding across pages', () => {
+    const asOf = new Date('2026-08-01T00:00:00Z');
+    const page1 = buildEligibilityQuery(inertDb as never, undefined, 500, asOf).toSQL();
+    const page2 = buildEligibilityQuery(inertDb as never, 10, 500, asOf).toSQL();
+
+    expect(page1.params).toContain(asOf.toISOString());
+    expect(page2.params).toContain(asOf.toISOString());
+  });
 });
 
 describe('findEligibleOrgs: execute path', () => {

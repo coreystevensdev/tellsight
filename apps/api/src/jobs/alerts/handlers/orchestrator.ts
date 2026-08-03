@@ -93,12 +93,16 @@ export async function handleOrchestratorJob(job: Job): Promise<void> {
 
   logger.info({ correlationId, jobId: job.id }, 'Alerts orchestrator started (cron)');
 
+  // Pinned once for the whole run so a canceled org's grace-period
+  // eligibility can't flip between pages as `now()` advances page to page.
+  const asOf = new Date();
+
   let cursor: number | undefined;
   let eligibleOrgCount = 0;
   let enqueueFailures = 0;
 
   for (;;) {
-    const orgs = await alertEligibilityQueries.findEligibleOrgs(cursor, PAGE_SIZE);
+    const orgs = await alertEligibilityQueries.findEligibleOrgs(cursor, PAGE_SIZE, asOf);
     if (orgs.length === 0) break;
 
     for (const org of orgs) {

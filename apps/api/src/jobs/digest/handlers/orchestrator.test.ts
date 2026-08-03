@@ -131,6 +131,25 @@ describe('handleOrchestratorJob', () => {
     expect(mockOrgQueueAdd).toHaveBeenCalledTimes(1);
   });
 
+  it('threads the same pinned asOf into every page of one sweep', async () => {
+    const firstPage = Array.from({ length: 500 }, (_, i) => ({
+      id: i + 1,
+      name: `Org ${i + 1}`,
+      activeDatasetId: i + 1,
+      businessProfile: null,
+    }));
+    const secondPage = [{ id: 501, name: 'Org 501', activeDatasetId: 501, businessProfile: null }];
+    mockFindEligibleOrgs.mockResolvedValueOnce(firstPage).mockResolvedValueOnce(secondPage);
+
+    await handleOrchestratorJob({ id: 'orch-page-1' } as never);
+
+    expect(mockFindEligibleOrgs).toHaveBeenCalledTimes(2);
+    // asOf (3rd arg) must be the same Date instance across pages -- otherwise a
+    // canceled org's grace-period eligibility could flip mid-sweep as real time
+    // passes between page 1 and page 2.
+    expect(mockFindEligibleOrgs.mock.calls[0]![2]).toBe(mockFindEligibleOrgs.mock.calls[1]![2]);
+  });
+
   it('exits cleanly when no eligible orgs exist', async () => {
     mockFindEligibleOrgs.mockResolvedValueOnce([]);
 

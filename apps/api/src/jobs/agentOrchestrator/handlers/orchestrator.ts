@@ -83,13 +83,17 @@ export async function handleOrchestratorJob(job: Job): Promise<void> {
   // dedupes correctly against jobs it already enqueued.
   const runDate = new Date().toISOString().slice(0, 10);
 
+  // Pinned once for the whole run so a canceled org's grace-period
+  // eligibility can't flip between pages as `now()` advances page to page.
+  const asOf = new Date();
+
   let cursor: number | undefined;
   let eligibleOrgCount = 0;
   let enqueueFailures = 0;
   let budgetExceeded = false;
 
   for (;;) {
-    const orgs = await agentEligibilityQueries.findEligibleOrgs(cursor, PAGE_SIZE);
+    const orgs = await agentEligibilityQueries.findEligibleOrgs(cursor, PAGE_SIZE, asOf);
     if (orgs.length === 0) break;
 
     for (const org of orgs) {

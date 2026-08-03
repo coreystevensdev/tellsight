@@ -2,6 +2,7 @@ import { sql, and, eq, lt, isNotNull, gte, exists, or, isNull, ne, desc } from '
 
 import { dbAdmin } from '../../lib/db.js';
 import { orgs, subscriptions, datasets, userOrgs, digestPreferences, users } from '../schema.js';
+import { canceledWithGracePeriod } from './subscriptionEligibility.js';
 
 export interface EligibleOrg {
   id: number;
@@ -18,11 +19,15 @@ type DrizzleClient = typeof dbAdmin;
  * Builds the eligibility query (without executing it). Exposed so tests can
  * inspect the emitted SQL via `.toSQL()` and assert the predicates without
  * needing a real database. Use `findEligibleOrgs` for the executable form.
+ * `asOf` defaults to the current time for direct callers/tests;
+ * `findEligibleOrgs` callers should pin one value per sweep instead (see its
+ * own doc comment).
  */
 export function buildEligibilityQuery(
   client: DrizzleClient,
   cursor?: number,
   pageSize = 500,
+  asOf: Date = new Date(),
 ) {
   const memberOptedIn = exists(
     client
@@ -38,7 +43,7 @@ export function buildEligibilityQuery(
   );
 
   const conditions = [
-    eq(subscriptions.status, 'active'),
+    or(eq(subscriptions.status, 'active'), canceledWithGracePeriod(asOf)),
     eq(subscriptions.plan, 'pro'),
     isNotNull(orgs.activeDatasetId),
     gte(datasets.createdAt, RECENT_DATASET_INTERVAL),
@@ -66,7 +71,12 @@ export function buildEligibilityQuery(
  * Single-query enumeration of orgs that should receive a weekly digest.
  *
  * Eligibility rules:
- *   - subscription.status='active' AND subscription.plan='pro'
+ *   - subscription.status='active', OR status='canceled' with currentPeriodEnd
+ *     still in the future (grace period, same canceled-branch condition
+ *     getAgentEnabled in subscriptions.ts checks -- the active branch here
+ *     stays a bare status check, unlike getAgentEnabled's, since no ticket
+ *     has asked for that nuance here yet)
+ *   - subscription.plan='pro'
  *   - org has an activeDataset that was created within the last 30 days
  *   - at least one org member has digest_preferences.cadence != 'off' (NULL
  *     defaults to 'weekly', so a user with no row counts as opted-in)
@@ -74,13 +84,19 @@ export function buildEligibilityQuery(
  * Pagination is keyset on orgs.id DESC. Pass `cursor=undefined` for the first
  * page; pass the smallest id from the previous page as `cursor` for the next.
  *
+ * `asOf` should be pinned once by the caller and reused across every page of
+ * one sweep -- otherwise a canceled org's grace-period eligibility could flip
+ * mid-sweep as `now()` advances page to page. Defaults to the current time
+ * for callers (e.g. tests) that only ever request a single page.
+ *
  * Bypasses RLS via dbAdmin, this is a platform operation, not a user request.
  */
 export async function findEligibleOrgs(
   cursor?: number,
   pageSize = 500,
+  asOf: Date = new Date(),
 ): Promise<EligibleOrg[]> {
-  const rows = await buildEligibilityQuery(dbAdmin, cursor, pageSize);
+  const rows = await buildEligibilityQuery(dbAdmin, cursor, pageSize, asOf);
   // activeDatasetId is non-null per the WHERE clause; narrow the type.
   return rows.filter((r): r is EligibleOrg => r.activeDatasetId !== null);
 }

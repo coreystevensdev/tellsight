@@ -1,7 +1,8 @@
-import { and, desc, eq, gt, isNotNull, lt, or } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, lt, or } from 'drizzle-orm';
 
 import { dbAdmin } from '../../lib/db.js';
 import { orgs, subscriptions } from '../schema.js';
+import { canceledWithGracePeriod } from './subscriptionEligibility.js';
 
 export interface EligibleOrg {
   id: number;
@@ -13,23 +14,18 @@ type DrizzleClient = typeof dbAdmin;
 /**
  * Builds the eligibility query (without executing it). Exposed for SQL-shape
  * tests, same rig as alertEligibility.test.ts: no fixture database, assert
- * the emitted predicates via `.toSQL()`.
+ * the emitted predicates via `.toSQL()`. `asOf` defaults to the current time
+ * for direct callers/tests; `findEligibleOrgs` callers should pin one value
+ * per sweep instead (see its own doc comment).
  */
 export function buildEligibilityQuery(
   client: DrizzleClient,
   cursor?: number,
   pageSize = 500,
+  asOf: Date = new Date(),
 ) {
-  const now = new Date();
   const conditions = [
-    or(
-      eq(subscriptions.status, 'active'),
-      and(
-        eq(subscriptions.status, 'canceled'),
-        isNotNull(subscriptions.currentPeriodEnd),
-        gt(subscriptions.currentPeriodEnd, now),
-      ),
-    ),
+    or(eq(subscriptions.status, 'active'), canceledWithGracePeriod(asOf)),
     eq(subscriptions.plan, 'pro'),
     eq(subscriptions.agentEnabled, true),
     isNotNull(orgs.activeDatasetId),
@@ -64,12 +60,18 @@ export function buildEligibilityQuery(
  * Pagination is keyset on orgs.id DESC, same shape as findEligibleOrgs in
  * alertEligibility.ts.
  *
+ * `asOf` should be pinned once by the caller and reused across every page of
+ * one sweep -- otherwise a canceled org's grace-period eligibility could flip
+ * mid-sweep as `now()` advances page to page. Defaults to the current time
+ * for callers (e.g. tests) that only ever request a single page.
+ *
  * Bypasses RLS via dbAdmin, this is a platform sweep, not a user request.
  */
 export async function findEligibleOrgs(
   cursor?: number,
   pageSize = 500,
+  asOf: Date = new Date(),
 ): Promise<EligibleOrg[]> {
-  const rows = await buildEligibilityQuery(dbAdmin, cursor, pageSize);
+  const rows = await buildEligibilityQuery(dbAdmin, cursor, pageSize, asOf);
   return rows.filter((r): r is EligibleOrg => r.activeDatasetId !== null);
 }

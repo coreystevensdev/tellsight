@@ -65,6 +65,18 @@ describe('buildEligibilityQuery: SQL shape', () => {
     expect(sql).toMatch(/"subscriptions"\."status"\s*=\s*\$\d+\s+or\s+\(/i);
   });
 
+  it('threads a pinned asOf into the same predicate binding across pages', () => {
+    // Simulates two pages of one sweep sharing the orchestrator's pinned
+    // asOf: both calls must bind the identical Date instance, not two
+    // independent `new Date()`s that could disagree.
+    const asOf = new Date('2026-08-01T00:00:00Z');
+    const page1 = buildEligibilityQuery(inertDb as never, undefined, 500, asOf).toSQL();
+    const page2 = buildEligibilityQuery(inertDb as never, 10, 500, asOf).toSQL();
+
+    expect(page1.params).toContain(asOf.toISOString());
+    expect(page2.params).toContain(asOf.toISOString());
+  });
+
   it('emits a DESC keyset cursor on orgs.id when cursor is supplied', () => {
     const { sql, params } = buildEligibilityQuery(inertDb as never, 100, 50).toSQL();
     expect(sql).toMatch(/order by\s+"orgs"\."id"\s+desc/i);
