@@ -435,12 +435,14 @@ async function anthropicConverseWithTools(
         { signal },
       );
 
+      const isAbnormalStop = message.stop_reason !== 'end_turn' && message.stop_reason !== 'tool_use';
+
       if (message.stop_reason === 'max_tokens') {
         logger.warn(
           { model: env.CLAUDE_MODEL, usage: message.usage },
           'Claude API multi-turn tool conversation truncated at max_tokens, tool_use input or text may be incomplete',
         );
-      } else if (message.stop_reason !== 'end_turn' && message.stop_reason !== 'tool_use') {
+      } else if (isAbnormalStop) {
         logger.warn(
           { model: env.CLAUDE_MODEL, usage: message.usage, stopReason: message.stop_reason },
           'Claude API multi-turn tool conversation ended for an unexpected reason',
@@ -463,12 +465,18 @@ async function anthropicConverseWithTools(
         );
       }
 
-      // Same rationale as generateTool: no signal for which tool_use block a
-      // max_tokens cutoff actually clipped, so drop the whole batch. text and
-      // usage are untouched, qaLoop.ts falls back to turn.text on an empty
+      // Same rationale as generateTool: no signal for which tool_use block an
+      // abnormal stop actually clipped, so drop the whole batch rather than
+      // risk acting on a call whose JSON didn't close cleanly. text and usage
+      // are untouched, qaLoop.ts falls back to turn.text on an empty
       // toolCalls array instead of acting on a possibly-truncated call.
-      if (message.stop_reason === 'max_tokens') {
-        if (toolCalls.length > 0) aiToolCallsDropped.inc({ caller: 'converseWithTools', reason: 'max_tokens' });
+      if (isAbnormalStop) {
+        if (toolCalls.length > 0) {
+          aiToolCallsDropped.inc({
+            caller: 'converseWithTools',
+            reason: message.stop_reason === 'max_tokens' ? 'max_tokens' : 'abnormal_stop_reason',
+          });
+        }
         toolCalls = [];
       }
 

@@ -825,6 +825,7 @@ describe('converseWithTools', () => {
     mockCreate.mockResolvedValue({
       content: [{ type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: { statType: 'trend' } }],
       usage: { input_tokens: 200, output_tokens: 80 },
+      stop_reason: 'tool_use',
     });
 
     const { converseWithTools } = await import('./claudeClient.js');
@@ -856,6 +857,54 @@ describe('converseWithTools', () => {
       expect.stringContaining('truncated at max_tokens'),
     );
     expect(mockDropMetric.inc).toHaveBeenCalledWith({ caller: 'converseWithTools', reason: 'max_tokens' });
+  });
+
+  it.each(['refusal', 'stop_sequence', 'pause_turn'])(
+    'drops toolCalls but keeps text and usage when a turn ends on stop_reason %s',
+    async (stopReason) => {
+      mockCreate.mockResolvedValue({
+        content: [
+          { type: 'text', text: 'Revenue is up, checking the exact' },
+          { type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: { statType: 'trend' } },
+        ],
+        usage: { input_tokens: 200, output_tokens: 40 },
+        stop_reason: stopReason,
+      });
+
+      const { converseWithTools } = await import('./claudeClient.js');
+      const { logger } = await import('../../lib/logger.js');
+      const result = await converseWithTools(null, { system: '', user: 'analyze' }, [tool], []);
+
+      expect(result.toolCalls).toEqual([]);
+      expect(result.text).toBe('Revenue is up, checking the exact');
+      expect(result.usage).toEqual({ inputTokens: 200, outputTokens: 40 });
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ stopReason }),
+        'Claude API multi-turn tool conversation ended for an unexpected reason',
+      );
+      expect(mockDropMetric.inc).toHaveBeenCalledWith({ caller: 'converseWithTools', reason: 'abnormal_stop_reason' });
+    },
+  );
+
+  it('does not increment the drop metric when an abnormal, non-max_tokens turn had no tool calls to drop', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'text', text: 'cut off mid-thought' }],
+      usage: { input_tokens: 200, output_tokens: 40 },
+      stop_reason: 'stop_sequence',
+    });
+
+    const { converseWithTools } = await import('./claudeClient.js');
+    const { logger } = await import('../../lib/logger.js');
+    const result = await converseWithTools(null, { system: '', user: 'analyze' }, [tool], []);
+
+    expect(result.toolCalls).toEqual([]);
+    expect(result.text).toBe('cut off mid-thought');
+    expect(result.usage).toEqual({ inputTokens: 200, outputTokens: 40 });
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ stopReason: 'stop_sequence' }),
+      'Claude API multi-turn tool conversation ended for an unexpected reason',
+    );
+    expect(mockDropMetric.inc).not.toHaveBeenCalled();
   });
 
   it('joins text blocks into the turn text when the model answers instead of calling a tool', async () => {
