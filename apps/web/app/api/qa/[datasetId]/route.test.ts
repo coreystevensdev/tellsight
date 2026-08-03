@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
+
+vi.mock('@/lib/logger', () => ({
+  logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), child: vi.fn() },
+}));
+
+import { logger } from '@/lib/logger';
 import { POST } from './route';
 
 const params = Promise.resolve({ datasetId: 'dataset-1' });
@@ -10,6 +16,9 @@ function req(body = '{}') {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  // vi.restoreAllMocks only resets vi.spyOn spies, not the bare vi.fn() from
+  // the vi.mock factory above, so logger.warn's call history needs clearing too.
+  vi.mocked(logger.warn).mockClear();
 });
 
 describe('POST /api/qa/[datasetId]', () => {
@@ -28,7 +37,7 @@ describe('POST /api/qa/[datasetId]', () => {
 
   it('returns 502 UPSTREAM_UNREACHABLE when fetch rejects', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('connection refused'));
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warn = vi.mocked(logger.warn);
 
     const res = await POST(req(), { params });
 
@@ -36,7 +45,7 @@ describe('POST /api/qa/[datasetId]', () => {
     expect(await res.json()).toEqual({
       error: { code: 'UPSTREAM_UNREACHABLE', message: 'API server unavailable' },
     });
-    expect(warn).toHaveBeenCalledWith('[qa-route] upstream unreachable', expect.any(Error));
+    expect(warn).toHaveBeenCalledWith({ err: expect.any(Error) }, '[qa-route] upstream unreachable');
   });
 
   it('falls back to 502 instead of a stale 2xx status when the body is not JSON', async () => {
@@ -45,7 +54,7 @@ describe('POST /api/qa/[datasetId]', () => {
       status: 200,
       json: () => Promise.reject(new Error('aborted')),
     } as unknown as Response);
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warn = vi.mocked(logger.warn);
 
     const res = await POST(req(), { params });
 
@@ -53,7 +62,7 @@ describe('POST /api/qa/[datasetId]', () => {
     expect(await res.json()).toEqual({
       error: { code: 'UPSTREAM_ERROR', message: 'Unexpected response from server' },
     });
-    expect(warn).toHaveBeenCalledWith('[qa-route] upstream returned non-JSON body', expect.any(Error));
+    expect(warn).toHaveBeenCalledWith({ err: expect.any(Error) }, '[qa-route] upstream returned non-JSON body');
   });
 
   it('maps a genuine 5xx upstream status to 502', async () => {
@@ -77,7 +86,6 @@ describe('POST /api/qa/[datasetId]', () => {
       status: 503,
       json: () => Promise.reject(new SyntaxError('Unexpected end of JSON input')),
     } as unknown as Response);
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const res = await POST(req(), { params });
 
@@ -90,7 +98,6 @@ describe('POST /api/qa/[datasetId]', () => {
       status: 404,
       json: () => Promise.reject(new SyntaxError('Unexpected end of JSON input')),
     } as unknown as Response);
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const res = await POST(req(), { params });
 
@@ -106,7 +113,6 @@ describe('POST /api/qa/[datasetId]', () => {
       status: 304,
       json: () => Promise.reject(new SyntaxError('Unexpected end of JSON input')),
     } as unknown as Response);
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const res = await POST(req(), { params });
 

@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { webEnv } from '@/lib/config';
 import { upstreamSignal } from '@/lib/bff-proxy';
+import { logger } from '@/lib/logger';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -20,7 +21,7 @@ export async function GET(
       signal: upstreamSignal(request),
     });
   } catch (err) {
-    console.warn('[ai-summaries-route] upstream unreachable', err);
+    logger.warn({ err }, '[ai-summaries-route] upstream unreachable');
     return NextResponse.json(
       { error: { code: 'UPSTREAM_UNREACHABLE', message: 'API server unavailable' } },
       { status: 502 },
@@ -33,7 +34,7 @@ export async function GET(
     try {
       data = await upstream.json();
     } catch (err) {
-      console.warn('[ai-summaries-route] upstream returned non-JSON body (error status)', err);
+      logger.warn({ err }, '[ai-summaries-route] upstream returned non-JSON body (error status)');
       data = { error: { code: 'UPSTREAM_ERROR', message: 'Unexpected response from server' } };
     }
     return NextResponse.json(data, { status });
@@ -58,7 +59,7 @@ export async function GET(
   try {
     data = await upstream.json();
   } catch (err) {
-    console.warn('[ai-summaries-route] upstream returned non-JSON body (cache hit)', err);
+    logger.warn({ err }, '[ai-summaries-route] upstream returned non-JSON body (cache hit)');
     bodyReadFailed = true;
     data = { error: { code: 'UPSTREAM_ERROR', message: 'Unexpected response from server' } };
   }

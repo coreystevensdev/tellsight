@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
+
+vi.mock('@/lib/logger', () => ({
+  logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), child: vi.fn() },
+}));
+
+import { logger } from '@/lib/logger';
 import { GET } from './route';
 
 const params = Promise.resolve({ datasetId: 'dataset-1' });
@@ -14,6 +20,9 @@ function jsonHeaders() {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  // vi.restoreAllMocks only resets vi.spyOn spies, not the bare vi.fn() from
+  // the vi.mock factory above, so logger.warn's call history needs clearing too.
+  vi.mocked(logger.warn).mockClear();
 });
 
 describe('GET /api/ai-summaries/[datasetId]', () => {
@@ -33,7 +42,7 @@ describe('GET /api/ai-summaries/[datasetId]', () => {
 
   it('returns 502 UPSTREAM_UNREACHABLE when fetch rejects', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('connection refused'));
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warn = vi.mocked(logger.warn);
 
     const res = await GET(req(), { params });
 
@@ -41,7 +50,7 @@ describe('GET /api/ai-summaries/[datasetId]', () => {
     expect(await res.json()).toEqual({
       error: { code: 'UPSTREAM_UNREACHABLE', message: 'API server unavailable' },
     });
-    expect(warn).toHaveBeenCalledWith('[ai-summaries-route] upstream unreachable', expect.any(Error));
+    expect(warn).toHaveBeenCalledWith({ err: expect.any(Error) }, '[ai-summaries-route] upstream unreachable');
   });
 
   it('falls back to 502 instead of a stale 2xx status when the cached body is not JSON', async () => {
@@ -51,7 +60,7 @@ describe('GET /api/ai-summaries/[datasetId]', () => {
       headers: jsonHeaders(),
       json: () => Promise.reject(new Error('aborted')),
     } as unknown as Response);
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warn = vi.mocked(logger.warn);
 
     const res = await GET(req(), { params });
 
@@ -59,7 +68,7 @@ describe('GET /api/ai-summaries/[datasetId]', () => {
     expect(await res.json()).toEqual({
       error: { code: 'UPSTREAM_ERROR', message: 'Unexpected response from server' },
     });
-    expect(warn).toHaveBeenCalledWith('[ai-summaries-route] upstream returned non-JSON body (cache hit)', expect.any(Error));
+    expect(warn).toHaveBeenCalledWith({ err: expect.any(Error) }, '[ai-summaries-route] upstream returned non-JSON body (cache hit)');
   });
 
   it('falls back to a generic error body when a non-ok, non-SSE response is not JSON', async () => {
@@ -69,7 +78,7 @@ describe('GET /api/ai-summaries/[datasetId]', () => {
       headers: jsonHeaders(),
       json: () => Promise.reject(new Error('aborted')),
     } as unknown as Response);
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warn = vi.mocked(logger.warn);
 
     const res = await GET(req(), { params });
 
@@ -77,7 +86,7 @@ describe('GET /api/ai-summaries/[datasetId]', () => {
     expect(await res.json()).toEqual({
       error: { code: 'UPSTREAM_ERROR', message: 'Unexpected response from server' },
     });
-    expect(warn).toHaveBeenCalledWith('[ai-summaries-route] upstream returned non-JSON body (error status)', expect.any(Error));
+    expect(warn).toHaveBeenCalledWith({ err: expect.any(Error) }, '[ai-summaries-route] upstream returned non-JSON body (error status)');
   });
 
   it('passes an SSE stream straight through', async () => {

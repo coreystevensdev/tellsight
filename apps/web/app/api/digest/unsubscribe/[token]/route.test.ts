@@ -1,16 +1,25 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
+
+vi.mock('@/lib/logger', () => ({
+  logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), child: vi.fn() },
+}));
+
+import { logger } from '@/lib/logger';
 import { POST } from './route';
 
 const params = Promise.resolve({ token: 'sometoken' });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  // vi.restoreAllMocks only resets vi.spyOn spies, not the bare vi.fn() from
+  // the vi.mock factory above, so logger.warn's call history needs clearing too.
+  vi.mocked(logger.warn).mockClear();
 });
 
 describe('POST /api/digest/unsubscribe/[token]', () => {
   it('passes through a successful upstream response', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.mocked(logger.warn);
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       status: 200,
       json: () => Promise.resolve({ data: { unsubscribed: true } }),
@@ -24,7 +33,7 @@ describe('POST /api/digest/unsubscribe/[token]', () => {
   });
 
   it('passes through an invalid-token error response unchanged', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.mocked(logger.warn);
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       status: 400,
       json: () => Promise.resolve({ error: { code: 'INVALID_TOKEN', message: 'bad token' } }),
@@ -38,7 +47,7 @@ describe('POST /api/digest/unsubscribe/[token]', () => {
   });
 
   it('returns 502 UPSTREAM_UNAVAILABLE when fetch rejects', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.mocked(logger.warn);
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('connection refused'));
 
     const res = await POST(new NextRequest('http://localhost/api/digest/unsubscribe/sometoken', { method: 'POST' }), { params });
@@ -47,11 +56,11 @@ describe('POST /api/digest/unsubscribe/[token]', () => {
     expect(await res.json()).toEqual({
       error: { code: 'UPSTREAM_UNAVAILABLE', message: 'API server unreachable' },
     });
-    expect(warnSpy).toHaveBeenCalledWith('[digest-unsubscribe-route] upstream unreachable', expect.any(Error));
+    expect(warnSpy).toHaveBeenCalledWith({ err: expect.any(Error) }, '[digest-unsubscribe-route] upstream unreachable');
   });
 
   it('returns the upstream status with UPSTREAM_INVALID_RESPONSE when the body is not JSON', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.mocked(logger.warn);
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       status: 500,
       json: () => Promise.reject(new SyntaxError('Unexpected token < in JSON')),
@@ -63,11 +72,10 @@ describe('POST /api/digest/unsubscribe/[token]', () => {
     expect(await res.json()).toEqual({
       error: { code: 'UPSTREAM_INVALID_RESPONSE', message: 'API server returned an invalid response' },
     });
-    expect(warnSpy).toHaveBeenCalledWith('[digest-unsubscribe-route] upstream returned non-JSON body', expect.any(SyntaxError));
+    expect(warnSpy).toHaveBeenCalledWith({ err: expect.any(SyntaxError) }, '[digest-unsubscribe-route] upstream returned non-JSON body');
   });
 
   it('falls back to 502 instead of a stale 2xx status when the body is not JSON', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -83,7 +91,6 @@ describe('POST /api/digest/unsubscribe/[token]', () => {
   });
 
   it('falls back to 502 instead of a null-body status when the body is not JSON', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       status: 204,
       json: () => Promise.reject(new SyntaxError('Unexpected end of JSON input')),
@@ -112,7 +119,7 @@ describe('POST /api/digest/unsubscribe/[token]', () => {
   });
 
   it('returns 502 UPSTREAM_UNAVAILABLE when the request arrives with an already-aborted signal', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.mocked(logger.warn);
     vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
       return new Promise((_resolve, reject) => {
         const signal = init?.signal;
@@ -135,6 +142,6 @@ describe('POST /api/digest/unsubscribe/[token]', () => {
     expect(await res.json()).toEqual({
       error: { code: 'UPSTREAM_UNAVAILABLE', message: 'API server unreachable' },
     });
-    expect(warnSpy).toHaveBeenCalledWith('[digest-unsubscribe-route] upstream unreachable', expect.anything());
+    expect(warnSpy).toHaveBeenCalledWith({ err: expect.anything() }, '[digest-unsubscribe-route] upstream unreachable');
   });
 });

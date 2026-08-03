@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { webEnv } from '@/lib/config';
 import { NULL_BODY_STATUSES, upstreamSignal } from '@/lib/bff-proxy';
+import { logger } from '@/lib/logger';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,7 +26,7 @@ export async function POST(
       signal: upstreamSignal(request),
     });
   } catch (err) {
-    console.warn('[qa-route] upstream unreachable', err);
+    logger.warn({ err }, '[qa-route] upstream unreachable');
     return NextResponse.json(
       { error: { code: 'UPSTREAM_UNREACHABLE', message: 'API server unavailable' } },
       { status: 502 },
@@ -37,7 +38,7 @@ export async function POST(
   try {
     data = await upstream.json();
   } catch (err) {
-    console.warn('[qa-route] upstream returned non-JSON body', err);
+    logger.warn({ err }, '[qa-route] upstream returned non-JSON body');
     bodyReadFailed = true;
     data = { error: { code: 'UPSTREAM_ERROR', message: 'Unexpected response from server' } };
   }

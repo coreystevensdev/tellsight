@@ -4,6 +4,7 @@ import { withSentryConfig } from '@sentry/nextjs';
 const nextConfig: NextConfig = {
   output: 'standalone',
   turbopack: {},
+  serverExternalPackages: ['pino-pretty'],
   async headers() {
     return [{
       source: '/(.*)',
