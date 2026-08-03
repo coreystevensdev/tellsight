@@ -11,7 +11,7 @@ function upstreamErrorResponse() {
   );
 }
 
-const NULL_BODY_STATUSES = new Set([204, 205, 304]);
+export const NULL_BODY_STATUSES: ReadonlySet<number> = new Set([204, 205, 304]);
 
 // A 2xx status paired with an unreadable body is as broken as a null-body
 // status (204/205/304) -- both mean res.status can't be trusted here, so

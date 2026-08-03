@@ -67,4 +67,49 @@ describe('POST /api/qa/[datasetId]', () => {
 
     expect(res.status).toBe(502);
   });
+
+  // Matches bff-proxy.test.ts's identical case for invalidResponse -- a body-read
+  // failure only makes the status untrustworthy for 2xx/null-body statuses, so a
+  // genuine 5xx still passes through here too, not just non-5xx statuses.
+  it('preserves a genuine 5xx status when the body fails to parse', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      json: () => Promise.reject(new SyntaxError('Unexpected end of JSON input')),
+    } as unknown as Response);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const res = await POST(req(), { params });
+
+    expect(res.status).toBe(503);
+  });
+
+  it('preserves a genuine non-5xx status when the body fails to parse', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: () => Promise.reject(new SyntaxError('Unexpected end of JSON input')),
+    } as unknown as Response);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const res = await POST(req(), { params });
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({
+      error: { code: 'UPSTREAM_ERROR', message: 'Unexpected response from server' },
+    });
+  });
+
+  it('collapses to 502 when a null-body status (304) is unparseable', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: false,
+      status: 304,
+      json: () => Promise.reject(new SyntaxError('Unexpected end of JSON input')),
+    } as unknown as Response);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const res = await POST(req(), { params });
+
+    expect(res.status).toBe(502);
+  });
 });
