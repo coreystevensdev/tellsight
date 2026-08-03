@@ -24,11 +24,20 @@ export function useAgentProposals(enabled: boolean): UseAgentProposalsResult {
   const [proposals, setProposals] = useState<AgentProposalResponse[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  const resolveControllers = useRef<Set<AbortController>>(new Set());
+  const pendingIdsRef = useRef<Set<number>>(new Set());
+  const enabledRef = useRef(enabled);
+  // Synced during render, not inside the effect below -- a passive effect
+  // runs after commit, leaving a window where a settling fetch could still
+  // read a stale value.
+  enabledRef.current = enabled;
+
   useEffect(() => {
     if (!enabled) {
       setStatus('idle');
       setProposals([]);
       setError(null);
+      resolveControllers.current.forEach((controller) => controller.abort());
       return;
     }
 
@@ -57,8 +66,6 @@ export function useAgentProposals(enabled: boolean): UseAgentProposalsResult {
     return () => controller.abort();
   }, [enabled]);
 
-  const resolveControllers = useRef<Set<AbortController>>(new Set());
-
   useEffect(() => {
     return () => {
       resolveControllers.current.forEach((controller) => controller.abort());
@@ -66,6 +73,10 @@ export function useAgentProposals(enabled: boolean): UseAgentProposalsResult {
   }, []);
 
   const resolveProposal = useCallback(async (id: number, nextStatus: 'approved' | 'rejected') => {
+    // Dedup key is id alone: only one PATCH can ever resolve a proposal, so
+    // a second call for this id is rejected outright, not collapsed by status.
+    if (pendingIdsRef.current.has(id)) return false;
+
     const removed = proposals.find((p) => p.id === id);
     setProposals((cur) => cur.filter((p) => p.id !== id));
 
@@ -73,6 +84,7 @@ export function useAgentProposals(enabled: boolean): UseAgentProposalsResult {
     resolveControllers.current.add(controller);
 
     try {
+      pendingIdsRef.current.add(id);
       const res = await fetch(`/api/proposals/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -80,6 +92,10 @@ export function useAgentProposals(enabled: boolean): UseAgentProposalsResult {
         body: JSON.stringify({ status: nextStatus }),
         signal: controller.signal,
       });
+
+      // A response can arrive after enabled has already flipped false --
+      // abort() can't un-deliver it, so this backstop silences it directly.
+      if (!enabledRef.current) return false;
 
       if (res.status === 404) {
         // Already resolved by someone else -- the row is gone from the
@@ -93,6 +109,7 @@ export function useAgentProposals(enabled: boolean): UseAgentProposalsResult {
       throw new Error(body?.error?.message ?? `Request failed (${res.status})`);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return false;
+      if (!enabledRef.current) return false;
 
       if (removed) {
         setProposals((cur) => [...cur, removed].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)));
@@ -101,6 +118,7 @@ export function useAgentProposals(enabled: boolean): UseAgentProposalsResult {
       return false;
     } finally {
       resolveControllers.current.delete(controller);
+      pendingIdsRef.current.delete(id);
     }
   }, [proposals]);
 

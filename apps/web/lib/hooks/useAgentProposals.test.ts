@@ -218,4 +218,277 @@ describe('useAgentProposals', () => {
       await expect(resolvePromise).resolves.toBe(false);
     });
   });
+
+  it('dedupes a second resolveProposal call for the same id while the first PATCH is in flight', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ data: [proposalA] }),
+    } as Response);
+
+    const { result } = renderHook(() => useAgentProposals(true));
+    await waitFor(() => expect(result.current.status).toBe('done'));
+
+    let resolvePatch!: (value: Response) => void;
+    fetchSpy.mockImplementationOnce(() => new Promise((resolve) => { resolvePatch = resolve; }));
+
+    let firstResult!: Promise<boolean>;
+    let secondResult!: Promise<boolean>;
+    act(() => {
+      firstResult = result.current.resolveProposal(10, 'approved');
+      secondResult = result.current.resolveProposal(10, 'approved');
+    });
+
+    await expect(secondResult).resolves.toBe(false);
+    expect(fetchSpy).toHaveBeenCalledTimes(2); // initial GET + one PATCH, no second PATCH
+
+    resolvePatch({ ok: true, status: 200, json: () => Promise.resolve({ data: { id: 10 } }) } as Response);
+    await act(async () => {
+      await expect(firstResult).resolves.toBe(true);
+    });
+  });
+
+  it('dedupes by id alone, so an approve then a reject on the same id is also rejected outright', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ data: [proposalA] }),
+    } as Response);
+
+    const { result } = renderHook(() => useAgentProposals(true));
+    await waitFor(() => expect(result.current.status).toBe('done'));
+
+    let resolvePatch!: (value: Response) => void;
+    fetchSpy.mockImplementationOnce(() => new Promise((resolve) => { resolvePatch = resolve; }));
+
+    let firstResult!: Promise<boolean>;
+    let secondResult!: Promise<boolean>;
+    act(() => {
+      firstResult = result.current.resolveProposal(10, 'approved');
+      secondResult = result.current.resolveProposal(10, 'rejected');
+    });
+
+    await expect(secondResult).resolves.toBe(false);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    resolvePatch({ ok: true, status: 200, json: () => Promise.resolve({ data: { id: 10 } }) } as Response);
+    await act(async () => {
+      await expect(firstResult).resolves.toBe(true);
+    });
+  });
+
+  it('aborts an in-flight resolveProposal PATCH when enabled flips false, with no state update after', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ data: [proposalA] }),
+    } as Response);
+
+    const { result, rerender } = renderHook(({ enabled }) => useAgentProposals(enabled), {
+      initialProps: { enabled: true },
+    });
+    await waitFor(() => expect(result.current.status).toBe('done'));
+
+    let patchSignal: AbortSignal | undefined;
+    vi.spyOn(globalThis, 'fetch').mockImplementationOnce((_url, init) => {
+      patchSignal = (init as RequestInit).signal ?? undefined;
+      return new Promise((_resolve, reject) => {
+        patchSignal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+      });
+    });
+
+    let resolvePromise!: Promise<boolean>;
+    act(() => {
+      resolvePromise = result.current.resolveProposal(10, 'approved');
+    });
+
+    act(() => {
+      rerender({ enabled: false });
+    });
+
+    expect(patchSignal?.aborted).toBe(true);
+
+    await act(async () => {
+      await expect(resolvePromise).resolves.toBe(false);
+    });
+
+    expect(result.current.error).toBeNull();
+  });
+
+  it('silences a stale non-2xx PATCH response that resolves after enabled has already flipped false', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ data: [proposalA] }),
+    } as Response);
+
+    const { result, rerender } = renderHook(({ enabled }) => useAgentProposals(enabled), {
+      initialProps: { enabled: true },
+    });
+    await waitFor(() => expect(result.current.status).toBe('done'));
+
+    let resolvePatch!: (value: Response) => void;
+    vi.spyOn(globalThis, 'fetch').mockImplementationOnce(() => new Promise((resolve) => { resolvePatch = resolve; }));
+
+    let resolvePromise!: Promise<boolean>;
+    act(() => {
+      resolvePromise = result.current.resolveProposal(10, 'rejected');
+    });
+
+    act(() => {
+      rerender({ enabled: false });
+    });
+
+    // Response arrives after the disable effect has already committed --
+    // enabledRef.current is false by the time resolveProposal reads it.
+    resolvePatch({
+      ok: false,
+      status: 500,
+      json: () => Promise.resolve({ error: { message: 'Update failed' } }),
+    } as Response);
+
+    await act(async () => {
+      await expect(resolvePromise).resolves.toBe(false);
+    });
+
+    expect(result.current.error).toBeNull();
+    expect(result.current.proposals).toEqual([]);
+  });
+
+  it('transiently rejects a same-id call submitted mid-abort, then lets a later call through once cleanup settles', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ data: [proposalA] }),
+    } as Response);
+
+    const { result, rerender } = renderHook(({ enabled }) => useAgentProposals(enabled), {
+      initialProps: { enabled: true },
+    });
+    await waitFor(() => expect(result.current.status).toBe('done'));
+
+    let patchSignal: AbortSignal | undefined;
+    fetchSpy.mockImplementationOnce((_url, init) => {
+      patchSignal = (init as RequestInit).signal ?? undefined;
+      return new Promise((_resolve, reject) => {
+        patchSignal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+      });
+    });
+
+    let firstResult!: Promise<boolean>;
+    act(() => {
+      firstResult = result.current.resolveProposal(10, 'approved');
+    });
+
+    act(() => {
+      rerender({ enabled: false });
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2); // initial GET + the first PATCH, aborted but not yet settled
+
+    // The abort has fired but the first call's own catch/finally hasn't run
+    // yet (that's a pending microtask). A same-id call submitted right now
+    // must not be admitted -- pendingIdsRef still owns id 10 until the first
+    // call's finally releases it. The earlier, twice-reverted clear()-based
+    // fix would have wrongly let this through and fired a second PATCH.
+    let midAbortResult!: Promise<boolean>;
+    act(() => {
+      midAbortResult = result.current.resolveProposal(10, 'approved');
+    });
+
+    await expect(midAbortResult).resolves.toBe(false);
+    expect(fetchSpy).toHaveBeenCalledTimes(2); // still no third fetch call
+
+    await act(async () => {
+      await expect(firstResult).resolves.toBe(false);
+    });
+
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ data: [proposalA] }),
+    } as Response);
+
+    act(() => {
+      rerender({ enabled: true });
+    });
+    await waitFor(() => expect(result.current.status).toBe('done'));
+
+    expect(fetchSpy).toHaveBeenCalledTimes(3); // re-enable GET
+
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ data: { id: 10 } }),
+    } as Response);
+
+    await act(async () => {
+      await expect(result.current.resolveProposal(10, 'approved')).resolves.toBe(true);
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+    expect(fetchSpy).toHaveBeenLastCalledWith('/api/proposals/10', expect.objectContaining({
+      body: JSON.stringify({ status: 'approved' }),
+    }));
+  });
+
+  it('silences a genuine (non-abort) fetch rejection that arrives after enabled has already flipped false', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ data: [proposalA] }),
+    } as Response);
+
+    const { result, rerender } = renderHook(({ enabled }) => useAgentProposals(enabled), {
+      initialProps: { enabled: true },
+    });
+    await waitFor(() => expect(result.current.status).toBe('done'));
+
+    let rejectPatch!: (reason: unknown) => void;
+    vi.spyOn(globalThis, 'fetch').mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectPatch = reject; }));
+
+    let resolvePromise!: Promise<boolean>;
+    act(() => {
+      resolvePromise = result.current.resolveProposal(10, 'rejected');
+    });
+
+    act(() => {
+      rerender({ enabled: false });
+    });
+
+    // A genuine network failure, not the AbortError from cancellation --
+    // exercises the enabledRef backstop inside the catch block specifically.
+    rejectPatch(new TypeError('Failed to fetch'));
+
+    await act(async () => {
+      await expect(resolvePromise).resolves.toBe(false);
+    });
+
+    expect(result.current.error).toBeNull();
+  });
+
+  it('resolves two different ids concurrently without either blocking the other', async () => {
+    const proposalB = { ...proposalA, id: 11 };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ data: [proposalA, proposalB] }),
+    } as Response);
+
+    const { result } = renderHook(() => useAgentProposals(true));
+    await waitFor(() => expect(result.current.status).toBe('done'));
+
+    fetchSpy
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ data: { id: 10 } }) } as Response)
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ data: { id: 11 } }) } as Response);
+
+    await act(async () => {
+      const resultA = result.current.resolveProposal(10, 'approved');
+      const resultB = result.current.resolveProposal(11, 'approved');
+      await expect(resultA).resolves.toBe(true);
+      await expect(resultB).resolves.toBe(true);
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(3); // initial GET + one PATCH per id
+  });
 });
