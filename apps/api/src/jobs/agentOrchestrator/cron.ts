@@ -1,5 +1,5 @@
 import { logger } from '../../lib/logger.js';
-import { getOrchestratorQueue, JOB_ORCHESTRATOR } from './queue.js';
+import { getOrchestratorQueue, JOB_ORCHESTRATOR, CRON_BOOTSTRAP_CORRELATION_ID } from './queue.js';
 
 // 3am, ahead of alerts (6am) and clear of the weekly digest (Sunday 6pm), so
 // the three nightly/weekly schedulers never contend for the same orgs' data.
@@ -18,7 +18,7 @@ export async function initAgentOrchestratorCronJob(): Promise<void> {
 
   await queue.add(
     JOB_ORCHESTRATOR,
-    { correlationId: 'cron-bootstrap' },
+    { correlationId: CRON_BOOTSTRAP_CORRELATION_ID },
     {
       repeat: { pattern: CRON_PATTERN, key: REPEAT_KEY },
       jobId: REPEAT_KEY,

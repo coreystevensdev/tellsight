@@ -15,6 +15,11 @@ export const QUEUE_EVALUATE_ORG = 'agent-evaluate-org';
 export const JOB_ORCHESTRATOR = 'agent-orchestrator';
 export const JOB_PREFIX_EVALUATE_ORG = 'agent-eval';
 
+// Repeatable jobs need static job data, so cron.ts writes this placeholder
+// as the correlationId; handlers/orchestrator.ts compares against it and
+// swaps in a real id for the run.
+export const CRON_BOOTSTRAP_CORRELATION_ID = 'cron-bootstrap';
+
 export const orchestratorJobDataSchema = z.object({
   correlationId: z.string().min(1),
 });

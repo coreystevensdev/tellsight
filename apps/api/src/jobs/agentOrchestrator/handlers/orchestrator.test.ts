@@ -155,6 +155,21 @@ describe('handleOrchestratorJob', () => {
     expect(mockBudgetExceededInc).toHaveBeenCalledWith({ stage: 'orchestrator-paging' });
   });
 
+  it('advances the cursor to the last org id of the prior page on a second page', async () => {
+    const firstPage = Array.from({ length: 500 }, (_, i) => ({ id: i + 1, activeDatasetId: i + 1 }));
+    const secondPage = [
+      { id: 501, activeDatasetId: 501 },
+      { id: 502, activeDatasetId: 502 },
+    ];
+    mockFindEligibleOrgs.mockResolvedValueOnce(firstPage).mockResolvedValueOnce(secondPage);
+
+    await handleOrchestratorJob({ id: 'orch-page-1', data: { correlationId: 'cron-bootstrap' } } as never);
+
+    expect(mockFindEligibleOrgs).toHaveBeenCalledTimes(2);
+    expect(mockFindEligibleOrgs.mock.calls[1]![0]).toBe(500);
+    expect(mockEvaluateOrgQueueAdd).toHaveBeenCalledTimes(502);
+  });
+
   it('logs budgetExceeded: false on a normal run that never crosses the ceiling', async () => {
     const { logger } = await import('../../../lib/logger.js');
     mockFindEligibleOrgs.mockResolvedValueOnce([{ id: 1, activeDatasetId: 1 }]);

@@ -8,6 +8,7 @@ import {
   getEvaluateOrgQueue,
   JOB_PREFIX_EVALUATE_ORG,
   orchestratorJobDataSchema,
+  CRON_BOOTSTRAP_CORRELATION_ID,
   type EvaluateOrgJobData,
 } from '../queue.js';
 import { hasExceededRunBudget } from '../runBudget.js';
@@ -71,7 +72,8 @@ export async function handleOrchestratorJob(job: Job): Promise<void> {
   // Repeatable jobs need static job data, so cron.ts registers this with a
   // placeholder; swap it for a real id here so every log line for this run
   // shares one traceable value, same as alerts' orchestrator.
-  const correlationId = incomingCorrelationId === 'cron-bootstrap' ? randomUUID() : incomingCorrelationId;
+  const correlationId =
+    incomingCorrelationId === CRON_BOOTSTRAP_CORRELATION_ID ? randomUUID() : incomingCorrelationId;
   const start = Date.now();
 
   logger.info({ correlationId, jobId: job.id }, 'Agent orchestrator started');
