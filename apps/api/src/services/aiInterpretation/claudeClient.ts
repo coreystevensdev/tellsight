@@ -161,7 +161,11 @@ async function anthropicGenerate(input: PromptInput): Promise<string> {
   });
 }
 
-async function anthropicGenerateTool(input: PromptInput, tools: ToolDefinition[]): Promise<ToolCall[]> {
+async function anthropicGenerateTool(
+  input: PromptInput,
+  tools: ToolDefinition[],
+  onCost?: (cost: number | null) => void,
+): Promise<ToolCall[]> {
   // No tools to offer means the API call can't return a tool_use block --
   // skip the request entirely rather than spend tokens on a call that can
   // only ever come back empty.
@@ -207,6 +211,7 @@ async function anthropicGenerateTool(input: PromptInput, tools: ToolDefinition[]
       }
 
       const cost = applyCostGate(message.usage, 'generateTool');
+      onCost?.(cost);
 
       logger.info(
         { model: env.CLAUDE_MODEL, usage: message.usage, cost, toolCallCount: calls.length },
@@ -609,8 +614,12 @@ export async function checkClaudeHealth(): Promise<ProviderHealth> {
   return getProvider().checkHealth();
 }
 
-export async function generateWithTools(input: PromptInput, tools: ToolDefinition[]): Promise<ToolCall[]> {
-  return getProvider().generateTool(input, tools);
+export async function generateWithTools(
+  input: PromptInput,
+  tools: ToolDefinition[],
+  onCost?: (cost: number | null) => void,
+): Promise<ToolCall[]> {
+  return getProvider().generateTool(input, tools, onCost);
 }
 
 export async function converseWithTools(

@@ -9,6 +9,9 @@ const mockRunCurationPipeline = vi.fn().mockResolvedValue([]);
 const mockGenerateProposals = vi.fn().mockResolvedValue([]);
 const mockGetRecentDedupKeys = vi.fn().mockResolvedValue([]);
 const mockInsertProposal = vi.fn();
+const mockHasExceededRunBudget = vi.fn().mockResolvedValue(false);
+const mockRecordRunSpend = vi.fn().mockResolvedValue(undefined);
+const mockBudgetExceededInc = vi.fn();
 
 vi.mock('bullmq', () => ({
   Queue: class {
@@ -20,6 +23,13 @@ vi.mock('../../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 vi.mock('../../../lib/db.js', () => ({ dbAdmin: { __tag: 'dbAdmin' } }));
+vi.mock('../../../lib/metrics.js', () => ({
+  agentRunBudgetExceeded: { inc: mockBudgetExceededInc },
+}));
+vi.mock('../runBudget.js', () => ({
+  hasExceededRunBudget: mockHasExceededRunBudget,
+  recordRunSpend: mockRecordRunSpend,
+}));
 
 vi.mock('../../../db/queries/index.js', () => ({
   subscriptionsQueries: { getAgentEnabled: mockGetAgentEnabled },
@@ -66,6 +76,8 @@ beforeEach(() => {
   mockGenerateProposals.mockResolvedValue([]);
   mockGetRecentDedupKeys.mockResolvedValue([]);
   mockInsertProposal.mockResolvedValue({ id: 1 });
+  mockHasExceededRunBudget.mockResolvedValue(false);
+  mockRecordRunSpend.mockResolvedValue(undefined);
 });
 
 describe('handleEvaluateOrgJob: routing', () => {
@@ -166,6 +178,61 @@ describe('handleEvaluateOrgJob: failure propagation', () => {
     mockGenerateProposals.mockRejectedValueOnce(err);
 
     await expect(handleEvaluateOrgJob({ id: 'eval-10', data: jobData } as never)).rejects.toBe(err);
+  });
+});
+
+describe('handleEvaluateOrgJob: run cost ceiling', () => {
+  it('skips generateProposals and logs when the run has exceeded its budget', async () => {
+    mockHasExceededRunBudget.mockResolvedValueOnce(true);
+
+    await handleEvaluateOrgJob({ id: 'eval-budget-1', data: jobData } as never);
+
+    expect(mockGenerateProposals).not.toHaveBeenCalled();
+    expect(mockBudgetExceededInc).toHaveBeenCalledWith({ stage: 'evaluate-org' });
+  });
+
+  it('checks the budget before the entitlement/dataset/org lookups, not after', async () => {
+    mockHasExceededRunBudget.mockResolvedValueOnce(true);
+
+    await handleEvaluateOrgJob({ id: 'eval-budget-5', data: jobData } as never);
+
+    expect(mockGetAgentEnabled).not.toHaveBeenCalled();
+    expect(mockGetActiveDatasetId).not.toHaveBeenCalled();
+    expect(mockFindOrgById).not.toHaveBeenCalled();
+  });
+
+  it('records spend via the onCost callback after a successful generateProposals call', async () => {
+    mockGenerateProposals.mockImplementationOnce(async (_insights, _datasetId, _profile, _now, onCost) => {
+      onCost?.(0.07);
+      return [];
+    });
+
+    await handleEvaluateOrgJob({ id: 'eval-budget-2', data: jobData } as never);
+
+    expect(mockRecordRunSpend).toHaveBeenCalledWith('req-abc', 0.07);
+  });
+
+  it('does not record spend when the cost callback reports null', async () => {
+    mockGenerateProposals.mockImplementationOnce(async (_insights, _datasetId, _profile, _now, onCost) => {
+      onCost?.(null);
+      return [];
+    });
+
+    await handleEvaluateOrgJob({ id: 'eval-budget-3', data: jobData } as never);
+
+    expect(mockRecordRunSpend).not.toHaveBeenCalled();
+  });
+
+  it('still records already-incurred spend when generateProposals throws after onCost fires', async () => {
+    const err = new Error('safety cap exceeded');
+    mockGenerateProposals.mockImplementationOnce(async (_insights, _datasetId, _profile, _now, onCost) => {
+      onCost?.(0.12);
+      throw err;
+    });
+
+    await expect(handleEvaluateOrgJob({ id: 'eval-budget-4', data: jobData } as never)).rejects.toBe(err);
+
+    expect(mockRecordRunSpend).toHaveBeenCalledWith('req-abc', 0.12);
   });
 });
 

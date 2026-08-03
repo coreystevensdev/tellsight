@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockFindEligibleOrgs = vi.fn();
 const mockEvaluateOrgQueueAdd = vi.fn().mockResolvedValue(undefined);
+const mockHasExceededRunBudget = vi.fn().mockResolvedValue(false);
+const mockBudgetExceededInc = vi.fn();
 
 vi.mock('bullmq', () => ({
   Queue: class {
@@ -12,6 +14,12 @@ vi.mock('bullmq', () => ({
 vi.mock('../../../config.js', () => ({ env: { REDIS_URL: 'redis://localhost:6379' } }));
 vi.mock('../../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+vi.mock('../../../lib/metrics.js', () => ({
+  agentRunBudgetExceeded: { inc: mockBudgetExceededInc },
+}));
+vi.mock('../runBudget.js', () => ({
+  hasExceededRunBudget: mockHasExceededRunBudget,
 }));
 
 vi.mock('../../../db/queries/index.js', () => ({
@@ -33,6 +41,7 @@ const { handleOrchestratorJob } = await import('./orchestrator.js');
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useRealTimers();
+  mockHasExceededRunBudget.mockResolvedValue(false);
 });
 
 describe('handleOrchestratorJob', () => {
@@ -132,6 +141,30 @@ describe('handleOrchestratorJob', () => {
     await expect(
       handleOrchestratorJob({ id: 'orch-6', data: { correlationId: 'cron-bootstrap' } } as never),
     ).rejects.toBe(err);
+  });
+
+  it('stops paging once the run has exceeded its cost ceiling, without enqueueing further pages', async () => {
+    const fullPage = Array.from({ length: 500 }, (_, i) => ({ id: i + 1, activeDatasetId: i + 1 }));
+    mockFindEligibleOrgs.mockResolvedValueOnce(fullPage);
+    mockHasExceededRunBudget.mockResolvedValueOnce(true);
+
+    await handleOrchestratorJob({ id: 'orch-budget-1', data: { correlationId: 'cron-bootstrap' } } as never);
+
+    expect(mockFindEligibleOrgs).toHaveBeenCalledTimes(1);
+    expect(mockEvaluateOrgQueueAdd).toHaveBeenCalledTimes(500);
+    expect(mockBudgetExceededInc).toHaveBeenCalledWith({ stage: 'orchestrator-paging' });
+  });
+
+  it('logs budgetExceeded: false on a normal run that never crosses the ceiling', async () => {
+    const { logger } = await import('../../../lib/logger.js');
+    mockFindEligibleOrgs.mockResolvedValueOnce([{ id: 1, activeDatasetId: 1 }]);
+
+    await handleOrchestratorJob({ id: 'orch-budget-2', data: { correlationId: 'cron-bootstrap' } } as never);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({ budgetExceeded: false }),
+      'Agent orchestrator complete',
+    );
   });
 
   it('skips and logs a warning on an invalid job payload', async () => {

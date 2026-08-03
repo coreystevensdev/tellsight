@@ -25,6 +25,10 @@ export const envSchema = z
     PORT: z.coerce.number().default(3001),
     ANALYTICS_RETENTION_DAYS: z.coerce.number().int().positive().default(90),
     METRICS_TOKEN: z.string().min(16).optional(),
+    // Per-run spend ceiling for the nightly agent orchestrator pipeline (all
+    // orgs evaluated by one correlationId), not a per-call cap -- see cost.ts's
+    // ABSOLUTE_CEILING_USD for that.
+    AGENT_RUN_COST_CEILING_USD: z.coerce.number().positive().default(50),
 
     SENTRY_DSN: z.string().url().optional(),
 

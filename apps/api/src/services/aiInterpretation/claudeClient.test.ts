@@ -740,6 +740,43 @@ describe('generateWithTools', () => {
       expect.stringContaining('included text'),
     );
   });
+
+  it('invokes the optional onCost callback with the computed cost on a successful call', async () => {
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'ok' } }],
+      usage: { input_tokens: 1000, output_tokens: 1000 },
+      stop_reason: 'tool_use',
+    });
+
+    const { generateWithTools } = await import('./claudeClient.js');
+    const onCost = vi.fn();
+    await generateWithTools({ system: '', user: 'analyze' }, [tool], onCost);
+
+    expect(onCost).toHaveBeenCalledWith(0.018);
+  });
+
+  it('invokes onCost with null when computeCost cannot price the model', async () => {
+    mockComputeCost.mockReturnValueOnce(null);
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'ok' } }],
+      usage: { input_tokens: 1000, output_tokens: 1000 },
+      stop_reason: 'tool_use',
+    });
+
+    const { generateWithTools } = await import('./claudeClient.js');
+    const onCost = vi.fn();
+    await generateWithTools({ system: '', user: 'analyze' }, [tool], onCost);
+
+    expect(onCost).toHaveBeenCalledWith(null);
+  });
+
+  it('never calls onCost when no tools are offered, since the API call is skipped entirely', async () => {
+    const { generateWithTools } = await import('./claudeClient.js');
+    const onCost = vi.fn();
+    await generateWithTools({ system: '', user: 'analyze' }, [], onCost);
+
+    expect(onCost).not.toHaveBeenCalled();
+  });
 });
 
 describe('converseWithTools', () => {

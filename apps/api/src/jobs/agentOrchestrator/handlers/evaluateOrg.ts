@@ -5,6 +5,7 @@ import type { AgentProposal } from 'shared/agent';
 
 import { logger } from '../../../lib/logger.js';
 import { dbAdmin } from '../../../lib/db.js';
+import { agentRunBudgetExceeded } from '../../../lib/metrics.js';
 import {
   subscriptionsQueries,
   orgsQueries,
@@ -14,6 +15,7 @@ import {
 import { runCurationPipeline } from '../../../services/curation/index.js';
 import { generateProposals } from '../../../services/curation/proposals.js';
 import { evaluateOrgJobDataSchema } from '../queue.js';
+import { hasExceededRunBudget, recordRunSpend } from '../runBudget.js';
 
 const DEDUP_WINDOW_DAYS = 14;
 const EXPIRY_DAYS = 14;
@@ -73,6 +75,18 @@ export async function handleEvaluateOrgJob(job: Job): Promise<void> {
   const start = Date.now();
   const now = new Date();
 
+  // Checked first, ahead of the entitlement/dataset/org lookups below: once a
+  // run's budget is gone, every remaining org in that run skips regardless,
+  // so there's no reason to spend three DB round-trips finding that out.
+  if (await hasExceededRunBudget(correlationId)) {
+    agentRunBudgetExceeded.inc({ stage: 'evaluate-org' });
+    logger.info(
+      { correlationId, orgId, outcome: 'skipped', durationMs: Date.now() - start },
+      'Agent evaluation skipped: run cost ceiling exceeded',
+    );
+    return;
+  }
+
   const agentEnabled = await subscriptionsQueries.getAgentEnabled(orgId, dbAdmin);
   if (!agentEnabled) {
     logger.info(
@@ -116,7 +130,20 @@ export async function handleEvaluateOrgJob(job: Job): Promise<void> {
   const activeCorrectionIds = await statCorrectionsQueries.getActiveCorrectionStatIds(orgId, dbAdmin);
   const insights = await runCurationPipeline(orgId, datasetId, dbAdmin, financials, activeCorrectionIds);
 
-  const proposals = await generateProposals(insights, datasetId, businessProfile, now);
+  // recordRunSpend runs in `finally`, not after a plain await: generateProposals
+  // can still throw after onCost already fired (e.g. its own safety-cap check),
+  // and the LLM spend is real either way -- losing it from the run total would
+  // let the ceiling silently undercount exactly the calls most likely to be
+  // expensive.
+  let cost: number | null = null;
+  let proposals: AgentProposal[];
+  try {
+    proposals = await generateProposals(insights, datasetId, businessProfile, now, (c) => {
+      cost = c;
+    });
+  } finally {
+    if (cost !== null) await recordRunSpend(correlationId, cost);
+  }
 
   const dedupSince = new Date(now.getTime() - DEDUP_WINDOW_DAYS * 86_400_000);
   const recentDedupKeys = await agentProposalsQueries.getRecentDedupKeys(orgId, dedupSince, dbAdmin);

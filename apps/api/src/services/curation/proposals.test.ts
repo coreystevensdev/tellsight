@@ -333,4 +333,13 @@ describe('generateProposals', () => {
 
     await expect(generateProposals(insights, DATASET_ID, null, NOW)).rejects.toThrow('exceeded safety cap');
   });
+
+  it('forwards the onCost callback to generateWithTools', async () => {
+    mockGenerateWithTools.mockResolvedValue([]);
+    const onCost = vi.fn();
+
+    await generateProposals(insights, DATASET_ID, null, NOW, onCost);
+
+    expect(mockGenerateWithTools).toHaveBeenCalledWith(expect.any(Object), expect.any(Array), onCost);
+  });
 });

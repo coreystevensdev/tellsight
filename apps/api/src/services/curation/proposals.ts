@@ -163,6 +163,7 @@ export async function generateProposals(
   datasetId: number,
   businessProfile?: BusinessProfile | null,
   now: Date = new Date(),
+  onCost?: (cost: number | null) => void,
 ): Promise<AgentProposal[]> {
   const { system, user } = assemblePrompt(insights, datasetId, PROMPT_VERSION, businessProfile, now);
   const allowedStatIds = new Set(insights.map((insight) => statInstanceId(insight.stat, datasetId)));
@@ -170,7 +171,7 @@ export async function generateProposals(
 
   logger.info({ datasetId, insightCount: insights.length }, 'agent proposal generation started');
 
-  const calls = await generateWithTools({ system, user }, [RECORD_PROPOSAL_TOOL]);
+  const calls = await generateWithTools({ system, user }, [RECORD_PROPOSAL_TOOL], onCost);
 
   const proposals: AgentProposal[] = [];
   for (const call of calls) {

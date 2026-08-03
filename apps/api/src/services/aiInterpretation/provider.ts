@@ -63,7 +63,10 @@ export interface LlmProvider {
   // Tool choice is always 'auto' internally, zero calls back is a valid result
   // (nothing worth calling the tool for), not an error. No message history,
   // single-turn only, see converseWithTools below for a multi-turn loop.
-  generateTool(input: PromptInput, tools: ToolDefinition[]): Promise<ToolCall[]>;
+  // onCost mirrors stream's onText callback shape: an optional side channel
+  // so callers that need per-call spend (run-level budget tracking) can get
+  // it without widening the return type every existing caller asserts on.
+  generateTool(input: PromptInput, tools: ToolDefinition[], onCost?: (cost: number | null) => void): Promise<ToolCall[]>;
   // Multi-turn tool-calling conversation. Pass state: null to start; thread
   // each turn's returned state into the next call along with ToolResultInputs
   // answering that turn's ToolCalls (an empty array is only valid when state

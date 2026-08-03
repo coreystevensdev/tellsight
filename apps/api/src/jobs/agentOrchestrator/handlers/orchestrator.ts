@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Job } from 'bullmq';
 
 import { logger } from '../../../lib/logger.js';
+import { agentRunBudgetExceeded } from '../../../lib/metrics.js';
 import { agentEligibilityQueries } from '../../../db/queries/index.js';
 import {
   getEvaluateOrgQueue,
@@ -9,6 +10,7 @@ import {
   orchestratorJobDataSchema,
   type EvaluateOrgJobData,
 } from '../queue.js';
+import { hasExceededRunBudget } from '../runBudget.js';
 
 const PAGE_SIZE = 500;
 const EVALUATE_ORG_ATTEMPTS = 3;
@@ -82,6 +84,7 @@ export async function handleOrchestratorJob(job: Job): Promise<void> {
   let cursor: number | undefined;
   let eligibleOrgCount = 0;
   let enqueueFailures = 0;
+  let budgetExceeded = false;
 
   for (;;) {
     const orgs = await agentEligibilityQueries.findEligibleOrgs(cursor, PAGE_SIZE);
@@ -100,12 +103,24 @@ export async function handleOrchestratorJob(job: Job): Promise<void> {
       }
     }
 
+    // Weak safety net compared to evaluateOrg.ts's own check: paging is fast
+    // (Redis adds), evaluation is slow (LLM calls), so a run usually finishes
+    // paging well before spend accumulates. Still worth stopping early on a
+    // large or slow-paging run rather than enqueueing jobs evaluateOrg.ts
+    // will just skip on arrival.
+    if (await hasExceededRunBudget(correlationId)) {
+      agentRunBudgetExceeded.inc({ stage: 'orchestrator-paging' });
+      budgetExceeded = true;
+      logger.info({ correlationId, eligibleOrgCount }, 'Agent orchestrator stopping early: run cost ceiling exceeded');
+      break;
+    }
+
     if (orgs.length < PAGE_SIZE) break;
     cursor = orgs[orgs.length - 1]!.id;
   }
 
   logger.info(
-    { correlationId, eligibleOrgCount, enqueueFailures, durationMs: Date.now() - start },
+    { correlationId, eligibleOrgCount, enqueueFailures, budgetExceeded, durationMs: Date.now() - start },
     'Agent orchestrator complete',
   );
 }

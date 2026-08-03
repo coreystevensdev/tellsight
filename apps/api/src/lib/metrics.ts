@@ -67,6 +67,19 @@ export const aiToolCallsDropped = new Counter({
   registers: [registry],
 });
 
+// Labelled by stage (evaluate-org vs orchestrator-paging) so the two
+// checkpoints in the agent orchestrator's run-level cost ceiling are
+// queryable separately -- evaluate-org is where spend actually stops,
+// orchestrator-paging is a weaker early-exit on the enqueue side. Increments
+// once per check that finds the ceiling already tripped, not once per run --
+// a single over-budget run can add many counts here (one per skipped org).
+export const agentRunBudgetExceeded = new Counter({
+  name: 'agent_run_budget_exceeded_total',
+  help: 'Times a cost-ceiling check found the run budget already exceeded, by checkpoint stage',
+  labelNames: ['stage'] as const,
+  registers: [registry],
+});
+
 new Gauge({
   name: 'sse_active_streams',
   help: 'Number of active SSE streams',
