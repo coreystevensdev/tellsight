@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentProposalResponse } from 'shared/agent';
 
 export type AgentProposalsStatus = 'idle' | 'loading' | 'error' | 'done';
@@ -57,9 +57,20 @@ export function useAgentProposals(enabled: boolean): UseAgentProposalsResult {
     return () => controller.abort();
   }, [enabled]);
 
+  const resolveControllers = useRef<Set<AbortController>>(new Set());
+
+  useEffect(() => {
+    return () => {
+      resolveControllers.current.forEach((controller) => controller.abort());
+    };
+  }, []);
+
   const resolveProposal = useCallback(async (id: number, nextStatus: 'approved' | 'rejected') => {
     const removed = proposals.find((p) => p.id === id);
     setProposals((cur) => cur.filter((p) => p.id !== id));
+
+    const controller = new AbortController();
+    resolveControllers.current.add(controller);
 
     try {
       const res = await fetch(`/api/proposals/${id}`, {
@@ -67,6 +78,7 @@ export function useAgentProposals(enabled: boolean): UseAgentProposalsResult {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
         body: JSON.stringify({ status: nextStatus }),
+        signal: controller.signal,
       });
 
       if (res.status === 404) {
@@ -80,11 +92,15 @@ export function useAgentProposals(enabled: boolean): UseAgentProposalsResult {
       const body = await res.json().catch(() => ({}));
       throw new Error(body?.error?.message ?? `Request failed (${res.status})`);
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return false;
+
       if (removed) {
         setProposals((cur) => [...cur, removed].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)));
       }
       setError(err instanceof Error ? err.message : 'Something went wrong');
       return false;
+    } finally {
+      resolveControllers.current.delete(controller);
     }
   }, [proposals]);
 

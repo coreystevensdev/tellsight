@@ -167,4 +167,55 @@ describe('useAgentProposals', () => {
       body: JSON.stringify({ status: 'rejected' }),
     }));
   });
+
+  it('sends an AbortController signal on the PATCH request', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ data: [proposalA] }) } as Response)
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ data: { id: 10 } }) } as Response);
+
+    const { result } = renderHook(() => useAgentProposals(true));
+    await waitFor(() => expect(result.current.status).toBe('done'));
+
+    await act(async () => {
+      await result.current.resolveProposal(10, 'approved');
+    });
+
+    expect(fetchSpy).toHaveBeenLastCalledWith('/api/proposals/10', expect.objectContaining({
+      signal: expect.any(AbortSignal),
+    }));
+  });
+
+  it('aborts an in-flight resolveProposal PATCH on unmount without a post-unmount state update', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ data: [proposalA] }),
+    } as Response);
+
+    const { result, unmount } = renderHook(() => useAgentProposals(true));
+    await waitFor(() => expect(result.current.status).toBe('done'));
+
+    // Mirrors real fetch's AbortController integration: the pending request
+    // rejects once its signal fires, instead of resolving or hanging forever.
+    let patchSignal: AbortSignal | undefined;
+    vi.spyOn(globalThis, 'fetch').mockImplementationOnce((_url, init) => {
+      patchSignal = (init as RequestInit).signal ?? undefined;
+      return new Promise((_resolve, reject) => {
+        patchSignal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+      });
+    });
+
+    let resolvePromise!: Promise<boolean>;
+    act(() => {
+      resolvePromise = result.current.resolveProposal(10, 'approved');
+    });
+
+    expect(() => unmount()).not.toThrow();
+    expect(patchSignal?.aborted).toBe(true);
+
+    await act(async () => {
+      await expect(resolvePromise).resolves.toBe(false);
+    });
+  });
 });
