@@ -8,15 +8,6 @@
     "label": "Keep open, no live traffic yet",
     "resolution": ""
   },
-  "DW-165": {
-    "answered_at": "2026-08-02",
-    "bundle_name": "",
-    "effect": "build",
-    "intent": "Extend buildEligibilityQuery's conditions to also include the canceled-with-active-grace-period branch getAgentEnabled already checks, so canceled-but-paid orgs still get paged by the nightly cron.",
-    "key": "1",
-    "label": "Match getAgentEnabled's eligibility definition in the cron query",
-    "resolution": ""
-  },
   "DW-166": {
     "answered_at": "2026-08-02",
     "bundle_name": "",
