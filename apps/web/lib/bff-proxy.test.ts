@@ -11,6 +11,8 @@ const helpers = [
   { name: 'proxyGet', tag: '[bff-proxy:get]', build: () => proxyGet('/whatever'), method: 'GET' },
   { name: 'proxyPost', tag: '[bff-proxy:post]', build: () => proxyPost('/whatever'), method: 'POST' },
   { name: 'proxyPut', tag: '[bff-proxy:put]', build: () => proxyPut('/whatever'), method: 'PUT' },
+  // Backs the live PATCH handler at app/api/proposals/[id]/route.ts.
+  { name: 'proxyPatch', tag: '[bff-proxy:patch]', build: () => proxyPatch('/whatever'), method: 'PATCH' },
   { name: 'proxyPostWithCookies', tag: '[bff-proxy:post-with-cookies]', build: () => proxyPostWithCookies('/whatever'), method: 'POST' },
 ];
 
@@ -126,42 +128,6 @@ describe.each(helpers)('$name parse hardening', ({ name, tag, build, method }) =
 
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ data: { ok: true } });
-  });
-});
-
-// proxyPatch backs /api/proposals/[id] but was never added to the describe.each
-// suite above -- a pre-existing gap out of scope for this logging change, so it
-// gets standalone coverage for just the new warn calls instead of full parity.
-describe('proxyPatch error logging', () => {
-  const request = () => new NextRequest('http://localhost/api/whatever', { method: 'PATCH', body: '{}' });
-
-  it('logs [bff-proxy:patch] upstream unreachable when fetch rejects', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const fetchErr = new Error('connection refused');
-    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(fetchErr);
-
-    const res = await proxyPatch('/whatever')(request());
-
-    expect(res.status).toBe(502);
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalledWith('[bff-proxy:patch] upstream unreachable', fetchErr);
-  });
-
-  it('logs [bff-proxy:patch] upstream returned non-JSON body when the response is unparseable', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const parseErr = new SyntaxError('Unexpected token < in JSON');
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
-      ok: false,
-      status: 500,
-      json: () => Promise.reject(parseErr),
-      headers: { getSetCookie: () => [] },
-    } as unknown as Response);
-
-    const res = await proxyPatch('/whatever')(request());
-
-    expect(res.status).toBe(500);
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalledWith('[bff-proxy:patch] upstream returned non-JSON body', parseErr);
   });
 });
 
