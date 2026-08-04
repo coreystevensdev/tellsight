@@ -72,9 +72,13 @@ export function useAgentProposals(enabled: boolean): UseAgentProposalsResult {
     // setup) without unmounting for real -- reset here so the simulated cycle
     // doesn't leave mountedRef stuck false for the component's actual life.
     mountedRef.current = true;
+    // Same Set instance for the component's whole life (useRef(new Set())
+    // never replaces it, only mutates it) -- capturing it here satisfies
+    // exhaustive-deps without changing which controllers get aborted.
+    const controllers = resolveControllers.current;
     return () => {
       mountedRef.current = false;
-      resolveControllers.current.forEach((controller) => controller.abort());
+      controllers.forEach((controller) => controller.abort());
     };
   }, []);
 
