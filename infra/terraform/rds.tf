@@ -31,14 +31,9 @@ resource "aws_db_instance" "main" {
   identifier = "${local.name}-db"
 
   engine = "postgres"
-  # Local dev runs postgres:18.2 (docker-compose.yml). RDS support for major
-  # versions lags the community release; verify before apply:
-  #   aws rds describe-db-engine-versions --engine postgres \
-  #     --query "DBEngineVersions[].EngineVersion"
-  # Bump to "18" if listed. 17 is the newest version confirmed available as of
-  # this write-up -- nothing in the schema/migrations relies on PG18-only
-  # syntax, so 17 is a safe fallback if 18 isn't available in this region yet.
-  engine_version = "17"
+  # Matches local dev's postgres:18.2 (docker-compose.yml). Confirmed
+  # available in us-east-1 as of 2026-08-05 (18.1-18.4 listed).
+  engine_version = "18"
   # Free tier: db.t3.micro 750 hrs/month for the first 12 months.
   instance_class        = "db.t3.micro"
   allocated_storage     = 20
