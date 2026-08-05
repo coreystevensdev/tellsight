@@ -199,6 +199,13 @@ locals {
     # App directory
     mkdir -p /opt/tellsight
 
+    # `docker compose up caddy` still parses and validates the whole compose
+    # file, including the env_file: reference on api/web -- it refuses to
+    # start anything at all if that path doesn't exist yet, even though only
+    # caddy is being started here. Real secrets get written over this by the
+    # deploy workflow before api/web ever actually start.
+    touch /opt/tellsight/.env
+
     # Real domain isn't known until the Elastic IP exists (see outputs.tf
     # eip_public_dns), so this placeholder gets overwritten by deploy-aws.yml
     # via SSM on first deploy, same pattern already used for .env secrets.
