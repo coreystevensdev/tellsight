@@ -261,9 +261,12 @@ locals {
           - /opt/tellsight/Caddyfile:/etc/caddy/Caddyfile
           - caddy_data:/data
           - caddy_config:/config
-        depends_on:
-          - api
-          - web
+        # No depends_on: Caddy proxies to api/web by DNS name at request
+        # time, not at container-start time -- it doesn't need them running
+        # to start, just to successfully proxy once they exist. depends_on
+        # would make `docker compose up -d caddy` at boot also try to pull
+        # api/web images, which don't exist in ECR yet (no deploy has run)
+        # and fail outright with no ECR login configured at boot time.
 
     volumes:
       redis_data:
