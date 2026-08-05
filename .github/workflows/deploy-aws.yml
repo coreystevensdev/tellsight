@@ -149,8 +149,17 @@ jobs:
           env_b64 = base64.b64encode("\n".join(env_lines).encode()).decode()
           ecr_host = os.environ['ECR_API_REPO'].split('/')[0]
 
+          # handle_path strips the matched prefix before proxying -- plain
+          # reverse_proxy /api/* would forward the request to Express with
+          # /api still on the front, but every Express route (including the
+          # Stripe/Resend webhooks) is registered without an /api prefix.
+          # Next.js's own next.config.ts rewrite strips it the same way, but
+          # that only runs in local dev with no Caddy in front; in prod Caddy
+          # intercepts /api/* before Next.js ever sees it.
           caddyfile = f"""{domain} {{
-              reverse_proxy /api/* 127.0.0.1:3001
+              handle_path /api/* {{
+                  reverse_proxy 127.0.0.1:3001
+              }}
               reverse_proxy 127.0.0.1:3000
           }}
           """
