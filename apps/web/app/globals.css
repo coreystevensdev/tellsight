@@ -1,18 +1,20 @@
 @import 'tailwindcss';
 
 @theme {
-  /* Warm Editorial: cream canvas, burnt sienna accent (interactive +
-     editorial number-highlighting -- one accent, two uses, per the
-     restricted-purpose rule, not two competing warm hues). */
+  /* Warm Editorial: cream canvas, teal accent (interactive + editorial
+     number-highlighting -- one accent, two uses, per the restricted-purpose
+     rule, not two competing hues). Teal reads as modern/fintech and lines
+     up with the existing chart-revenue hue, so the brand accent and the
+     "this is money" chart color now speak the same visual language. */
   --color-background: #FAF6EF;
   --color-foreground: oklch(0.24 0.018 55);
-  --color-primary: #C45A2E;
+  --color-primary: #0D9488;
   --color-primary-foreground: oklch(1 0 0);
   --color-muted: oklch(0.94 0.012 60);
   --color-muted-foreground: oklch(0.48 0.02 55);
   --color-border: oklch(0.87 0.016 55);
-  --color-accent: oklch(0.93 0.03 45);
-  --color-accent-warm: #C45A2E;
+  --color-accent: oklch(0.92 0.03 190);
+  --color-accent-warm: #0D9488;
   --color-destructive: oklch(0.55 0.2 25);
   --color-destructive-foreground: oklch(1 0 0);
   --color-success: oklch(0.60 0.15 145);
@@ -20,7 +22,7 @@
   --color-warning: oklch(0.72 0.15 75);
   --color-warning-foreground: oklch(0.2 0 0);
   --color-info: oklch(0.55 0.1 230);
-  --color-ring: #C45A2E;
+  --color-ring: #0D9488;
   --color-card: oklch(0.99 0.008 60);
   --color-card-foreground: oklch(0.24 0.018 55);
   --color-ai-surface: oklch(0.965 0.02 60);
@@ -96,13 +98,13 @@
 .dark {
   --color-background: oklch(0.17 0.016 50);
   --color-foreground: oklch(0.93 0.012 60);
-  --color-primary: oklch(0.64 0.15 40);
+  --color-primary: #2DD4BF;
   --color-primary-foreground: oklch(0.17 0.016 50);
   --color-muted: oklch(0.23 0.016 50);
   --color-muted-foreground: oklch(0.68 0.016 55);
   --color-border: oklch(0.29 0.016 50);
-  --color-accent: oklch(0.25 0.025 45);
-  --color-accent-warm: oklch(0.68 0.15 40);
+  --color-accent: oklch(0.25 0.03 190);
+  --color-accent-warm: #2DD4BF;
   --color-destructive: oklch(0.6 0.2 25);
   --color-destructive-foreground: oklch(1 0 0);
   --color-success: oklch(0.68 0.16 145);
@@ -110,7 +112,7 @@
   --color-warning: oklch(0.78 0.15 80);
   --color-warning-foreground: oklch(0.17 0.016 50);
   --color-info: oklch(0.65 0.1 230);
-  --color-ring: oklch(0.64 0.15 40);
+  --color-ring: #2DD4BF;
   --color-card: oklch(0.20 0.016 50);
   --color-card-foreground: oklch(0.93 0.012 60);
   --color-ai-surface: oklch(0.22 0.022 55);
