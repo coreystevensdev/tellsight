@@ -100,7 +100,7 @@ function highlightNumbers(
     const statIds = citesByNumber?.get(numberIndex) ?? [];
 
     return (
-      <span key={i} className="font-semibold text-accent-warm" style={{ fontFeatureSettings: '"tnum"' }}>
+      <span key={i} className="font-mono font-medium text-accent-warm">
         {part}
         {onOpenCite && statIds.map((statId, citeIndex) => (
           <button
@@ -153,12 +153,19 @@ function SummaryText({ text, bindings, citations, onOpenStat, onOpenCite, cashHi
   }
 
   return (
-    <div className="text-[15px] leading-[1.7] text-card-foreground/85 md:text-base md:leading-[1.75] [&>p+p]:mt-[1.1em]">
+    <div className="font-serif text-[15px] leading-[1.7] text-card-foreground/85 md:text-base md:leading-[1.75] [&>p+p]:mt-[1.1em]">
       {paragraphs.map((p, i) => {
         const statId = bindingByIndex.get(i);
         const paragraphCites = citesByParagraph.get(i);
         return (
-          <p key={i} className={i === 0 ? 'text-card-foreground font-medium' : undefined}>
+          <p
+            key={i}
+            className={
+              i === 0
+                ? 'text-card-foreground font-medium first-letter:float-left first-letter:mr-1 first-letter:font-serif first-letter:text-[2.6em] first-letter:font-medium first-letter:leading-[0.8] first-letter:text-primary'
+                : undefined
+            }
+          >
             {highlightNumbers(p, paragraphCites, onOpenCite)}
             {statId && onOpenStat && (
               <span className="ml-2 inline-flex align-middle">

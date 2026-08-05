@@ -1,26 +1,29 @@
 @import 'tailwindcss';
 
 @theme {
-  --color-background: oklch(1 0 0);
-  --color-foreground: oklch(0.145 0 0);
-  --color-primary: oklch(0.55 0.15 250);
+  /* Warm Editorial: cream canvas, burnt sienna accent (interactive +
+     editorial number-highlighting -- one accent, two uses, per the
+     restricted-purpose rule, not two competing warm hues). */
+  --color-background: #FAF6EF;
+  --color-foreground: oklch(0.24 0.018 55);
+  --color-primary: #C45A2E;
   --color-primary-foreground: oklch(1 0 0);
-  --color-muted: oklch(0.97 0 0);
-  --color-muted-foreground: oklch(0.55 0 0);
-  --color-border: oklch(0.92 0 0);
-  --color-accent: oklch(0.96 0.02 250);
-  --color-accent-warm: oklch(0.7 0.15 60);
+  --color-muted: oklch(0.94 0.012 60);
+  --color-muted-foreground: oklch(0.48 0.02 55);
+  --color-border: oklch(0.87 0.016 55);
+  --color-accent: oklch(0.93 0.03 45);
+  --color-accent-warm: #C45A2E;
   --color-destructive: oklch(0.55 0.2 25);
   --color-destructive-foreground: oklch(1 0 0);
-  --color-success: oklch(0.65 0.18 145);
+  --color-success: oklch(0.60 0.15 145);
   --color-success-foreground: oklch(1 0 0);
-  --color-warning: oklch(0.75 0.15 85);
+  --color-warning: oklch(0.72 0.15 75);
   --color-warning-foreground: oklch(0.2 0 0);
-  --color-info: oklch(0.60 0.12 250);
-  --color-ring: oklch(0.55 0.15 250);
-  --color-card: oklch(1.0 0 0);
-  --color-card-foreground: oklch(0.145 0 0);
-  --color-ai-surface: oklch(0.985 0.012 65);
+  --color-info: oklch(0.55 0.1 230);
+  --color-ring: #C45A2E;
+  --color-card: oklch(0.99 0.008 60);
+  --color-card-foreground: oklch(0.24 0.018 55);
+  --color-ai-surface: oklch(0.965 0.02 60);
 
   --color-chart-revenue: oklch(0.60 0.16 175);
   --color-chart-revenue-dot: oklch(0.55 0.18 175);
@@ -32,6 +35,8 @@
   --color-chart-expense-6: oklch(0.68 0.10 60);
 
   --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-serif: var(--font-newsreader), 'Iowan Old Style', Charter, Georgia, serif;
+  --font-mono: var(--font-jetbrains-mono), 'JetBrains Mono', ui-monospace, monospace;
 
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
@@ -89,26 +94,26 @@
 }
 
 .dark {
-  --color-background: oklch(0.145 0 0);
-  --color-foreground: oklch(0.95 0 0);
-  --color-primary: oklch(0.65 0.15 250);
-  --color-primary-foreground: oklch(0.145 0 0);
-  --color-muted: oklch(0.2 0 0);
-  --color-muted-foreground: oklch(0.7 0 0);
-  --color-border: oklch(0.3 0 0);
-  --color-accent: oklch(0.2 0.02 250);
-  --color-accent-warm: oklch(0.75 0.12 60);
+  --color-background: oklch(0.17 0.016 50);
+  --color-foreground: oklch(0.93 0.012 60);
+  --color-primary: oklch(0.64 0.15 40);
+  --color-primary-foreground: oklch(0.17 0.016 50);
+  --color-muted: oklch(0.23 0.016 50);
+  --color-muted-foreground: oklch(0.68 0.016 55);
+  --color-border: oklch(0.29 0.016 50);
+  --color-accent: oklch(0.25 0.025 45);
+  --color-accent-warm: oklch(0.68 0.15 40);
   --color-destructive: oklch(0.6 0.2 25);
   --color-destructive-foreground: oklch(1 0 0);
-  --color-success: oklch(0.70 0.18 145);
-  --color-success-foreground: oklch(0.145 0 0);
-  --color-warning: oklch(0.80 0.15 85);
-  --color-warning-foreground: oklch(0.145 0 0);
-  --color-info: oklch(0.65 0.12 250);
-  --color-ring: oklch(0.65 0.15 250);
-  --color-card: oklch(0.20 0.01 250);
-  --color-card-foreground: oklch(0.95 0 0);
-  --color-ai-surface: oklch(0.22 0.012 65);
+  --color-success: oklch(0.68 0.16 145);
+  --color-success-foreground: oklch(0.17 0.016 50);
+  --color-warning: oklch(0.78 0.15 80);
+  --color-warning-foreground: oklch(0.17 0.016 50);
+  --color-info: oklch(0.65 0.1 230);
+  --color-ring: oklch(0.64 0.15 40);
+  --color-card: oklch(0.20 0.016 50);
+  --color-card-foreground: oklch(0.93 0.012 60);
+  --color-ai-surface: oklch(0.22 0.022 55);
 
   --color-chart-revenue: oklch(0.70 0.14 175);
   --color-chart-revenue-dot: oklch(0.65 0.16 175);

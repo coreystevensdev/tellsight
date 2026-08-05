@@ -66,6 +66,7 @@ scripts/check-story-status.sh
 infra/terraform/.terraform/
 infra/terraform/*.tfstate
 infra/terraform/*.tfstate.backup
+infra/terraform/tfplan
 
 # BMAD framework + planning artifacts (local-only)
 _bmad/

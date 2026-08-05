@@ -52,25 +52,24 @@ export default function LandingPage() {
       <section className="relative overflow-hidden">
         <GridBg />
         <div className="relative mx-auto max-w-6xl px-4 pt-16 md:px-6 md:pt-28">
-          <div className="flex items-center gap-2 text-sm font-medium text-primary">
-            <span className="inline-flex h-2 w-2 rounded-full bg-success animate-pulse" aria-hidden="true" />
-            Live demo, no signup needed
-          </div>
+          <p className="text-xs font-medium uppercase tracking-[0.15em] text-muted-foreground">
+            Live demo &middot; no signup needed
+          </p>
 
-          <h1 className="mt-5 max-w-4xl text-[2.75rem] font-bold leading-[1.05] tracking-[-0.025em] text-foreground md:text-6xl lg:text-7xl">
+          <h1 className="mt-5 max-w-4xl font-serif text-[2.75rem] font-medium leading-[1.05] tracking-[-0.01em] text-foreground md:text-6xl lg:text-7xl">
             Your spreadsheet,
             <br />
-            <span className="relative inline-block">
+            <span className="relative inline-block italic">
               <span className="relative z-10">actually</span>
               <span
-                className="absolute inset-x-0 bottom-[0.08em] -z-0 h-[0.35em] bg-primary/25 dark:bg-primary/30"
+                className="absolute inset-x-0 bottom-[0.08em] -z-0 h-[0.3em] bg-primary/20 dark:bg-primary/25"
                 aria-hidden="true"
               />
             </span>{' '}
             explained.
           </h1>
 
-          <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground md:text-xl">
+          <p className="mt-6 max-w-xl font-serif text-lg leading-relaxed text-muted-foreground md:text-xl">
             Upload a CSV from Square, QuickBooks, or your bank. Get charts in seconds
             and an AI summary that reads your numbers like a financial analyst.
           </p>
@@ -148,14 +147,13 @@ export default function LandingPage() {
 
               {/* AI insight */}
               <div className="relative rounded-lg border border-border/40 bg-ai-surface p-5 shadow-md">
-                <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-wider text-accent-warm">
-                  <span className="inline-flex h-1.5 w-1.5 rounded-full bg-accent-warm animate-pulse" aria-hidden="true" />
+                <div className="text-[10px] font-medium uppercase tracking-wider text-accent-warm">
                   AI analysis
                 </div>
-                <p className="mt-3 text-sm leading-[1.7] text-card-foreground md:text-[15px]">
-                  Revenue grew <span className="font-semibold text-foreground">18%</span> in March
+                <p className="mt-3 font-serif text-[15px] leading-[1.7] text-card-foreground first-letter:float-left first-letter:mr-1 first-letter:font-serif first-letter:text-[2.6em] first-letter:font-medium first-letter:leading-[0.8] first-letter:text-primary md:text-base">
+                  Revenue grew <span className="font-mono font-medium text-foreground">18%</span> in March
                   driven by a surge in catering orders on weekends. Payroll held steady, so{' '}
-                  <span className="font-semibold text-foreground">margin expanded to 34%</span>.
+                  <span className="font-mono font-medium text-foreground">margin expanded to 34%</span>.
                   If you&apos;re planning April hires, the weekend volume is your signal.
                 </p>
                 <p className="mt-4 text-[11px] text-muted-foreground">
@@ -173,7 +171,7 @@ export default function LandingPage() {
           <div className="grid gap-10 md:grid-cols-[1fr_1.3fr] md:items-start md:gap-16">
             <div>
               <p className="text-sm font-medium text-primary">A longer example</p>
-              <h2 className="mt-2 text-2xl font-bold text-foreground md:text-3xl">
+              <h2 className="mt-2 font-serif text-2xl font-medium text-foreground md:text-3xl">
                 It spots patterns you&apos;d miss at a glance.
               </h2>
               <p className="mt-4 text-muted-foreground">
@@ -189,9 +187,9 @@ export default function LandingPage() {
 
             <div className="rounded-xl border border-border/40 bg-ai-surface p-5 shadow-lg md:p-7">
               <div className="text-sm font-medium text-foreground/60">AI Analysis</div>
-              <div className="mt-3 space-y-3 text-[15px] leading-[1.8] text-card-foreground">
-                <p>
-                  November revenue dropped <span className="font-semibold text-accent-warm">23%</span> compared
+              <div className="mt-3 space-y-3 font-serif text-[15px] leading-[1.8] text-card-foreground">
+                <p className="first-letter:float-left first-letter:mr-1 first-letter:font-serif first-letter:text-[3em] first-letter:font-medium first-letter:leading-[0.75] first-letter:text-primary">
+                  November revenue dropped <span className="font-mono font-medium text-accent-warm">23%</span> compared
                   to October, but this lines up with a seasonal pattern visible in both years of data.
                 </p>
                 <p className="text-card-foreground/70">
@@ -266,21 +264,21 @@ export default function LandingPage() {
       {/* Privacy section, proves the trust strip's "Raw data never reaches AI" tile */}
       <section className="border-t border-border/40">
         <div className="mx-auto max-w-4xl px-4 py-14 md:px-6 md:py-20">
-          <h2 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">
+          <h2 className="font-serif text-2xl font-medium tracking-tight text-foreground md:text-3xl">
             Your raw numbers never reach the AI.
           </h2>
-          <p className="mt-4 text-muted-foreground md:text-lg">
+          <p className="mt-4 font-serif text-muted-foreground md:text-lg">
             Tellsight reads your CSV, computes the stats (totals, trends,
             anomalies, year-over-year), and sends only those summaries to
             Claude. Claude never sees your individual transactions.
           </p>
-          <p className="mt-3 text-muted-foreground md:text-lg">
+          <p className="mt-3 font-serif text-muted-foreground md:text-lg">
             The function that builds the AI prompt has a signature that
             won&apos;t accept raw rows. Try to pass them and TypeScript refuses
             to compile. The privacy boundary is enforced by the type system,
             not by code-review discipline.
           </p>
-          <p className="mt-3 text-muted-foreground md:text-lg">
+          <p className="mt-3 font-serif text-muted-foreground md:text-lg">
             Built on the same principle as{' '}
             <a
               href="https://github.com/coreystevensdev/invoiceflow"
@@ -347,20 +345,20 @@ export default function LandingPage() {
               From the maker
             </p>
             <div className="mt-4 md:mt-0">
-              <p className="text-base leading-relaxed text-foreground md:text-lg">
+              <p className="font-serif text-base leading-relaxed text-foreground md:text-lg">
                 I kept watching small business owners open their dashboards, squint,
                 and close the laptop. The numbers were all there, nobody could tell
                 what any of it meant. Tellsight is the thing I wished existed:
                 interpretation, not just visualization.
               </p>
-              <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+              <p className="mt-4 font-serif text-base leading-relaxed text-muted-foreground">
                 If you try it and the AI gets something wrong, tell me directly.
                 I read every note and use them to tune the prompts. That&apos;s the
                 advantage of a small product, the person who built it is also the
                 person who fixes it.
               </p>
               <p className="mt-6 text-sm text-foreground">
-               , Corey, maker of Tellsight
+                Corey, maker of Tellsight
                 <br />
                 <a
                   href="https://github.com/coreystevensdev/tellsight/issues"
@@ -379,10 +377,10 @@ export default function LandingPage() {
       {/* Bottom CTA, short */}
       <section className="border-t border-border/40">
         <div className="mx-auto max-w-6xl px-4 py-16 text-center md:px-6 md:py-20">
-          <h2 className="text-2xl font-bold text-foreground">
+          <h2 className="font-serif text-2xl font-medium text-foreground">
             The demo is live. Go look at it.
           </h2>
-          <p className="mx-auto mt-3 max-w-md text-muted-foreground">
+          <p className="mx-auto mt-3 max-w-md font-serif text-muted-foreground">
             No signup, no credit card, no &quot;book a call.&quot; It runs on sample data
             from a coffee shop, 12 months of revenue and expenses.
           </p>
