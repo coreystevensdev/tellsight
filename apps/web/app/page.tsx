@@ -288,8 +288,7 @@ export default function LandingPage() {
             >
               InvoiceFlow
             </a>
-            , the invoice tool I made for the same audience: the privacy
-            promise lives in the code, not in a policy.
+            , the invoice tool I made for the same audience.
           </p>
 
           <details className="mt-6 rounded-lg border border-border/60 bg-card p-4 text-sm">
@@ -348,8 +347,7 @@ export default function LandingPage() {
               <p className="font-serif text-base leading-relaxed text-foreground md:text-lg">
                 I kept watching small business owners open their dashboards, squint,
                 and close the laptop. The numbers were all there, nobody could tell
-                what any of it meant. Tellsight is the thing I wished existed:
-                interpretation, not just visualization.
+                what any of it meant. Tellsight is the thing I wished existed.
               </p>
               <p className="mt-4 font-serif text-base leading-relaxed text-muted-foreground">
                 If you try it and the AI gets something wrong, tell me directly.
