@@ -1,6 +1,6 @@
 # AWS Deployment (Free Tier)
 
-Tellsight runs on a single EC2 t3.micro with Docker Compose (redis, api, web). RDS db.t3.micro handles PostgreSQL. Caddy on the host handles TLS automatically, no domain purchase needed, it gets a real Let's Encrypt cert against the instance's own public DNS name.
+Tellsight runs on a single EC2 t3.micro with Docker Compose (redis, api, web, caddy). RDS db.t3.micro handles PostgreSQL. Caddy runs as a container (official image, not a distro package -- the Caddy COPR repo has no Amazon Linux 2023 build) and handles TLS automatically, no domain purchase needed, it gets a real Let's Encrypt cert against whatever domain you point at the instance.
 
 **Cost: $0/month for the first 12 months on a new AWS account.** After free tier expires: ~$22/month (t3.micro ~$8.50 + db.t3.micro ~$13).
 
@@ -12,12 +12,11 @@ Prometheus and Grafana are intentionally **not** deployed here, 1 GB RAM (t3.mic
 Internet
     |
     v (80/443, Let's Encrypt via Caddy)
-Caddy (EC2 t3.micro, 1 vCPU/1 GB RAM + 1 GB swap)
-    |-- /api/*  --> Express API (Docker, 127.0.0.1:3001)
-    |-- /*      --> Next.js web (Docker, 127.0.0.1:3000)
-
-Docker Compose services (all internal, none published beyond 127.0.0.1):
-    redis  (redis:7-alpine)
+EC2 t3.micro (1 vCPU/1 GB RAM + 1 GB swap)
+    caddy  (Docker, official image, only service published beyond 127.0.0.1)
+        |-- /api/*  --> api:3001 (Docker Compose internal DNS)
+        |-- /*      --> web:3000 (Docker Compose internal DNS)
+    redis  (redis:7-alpine, 127.0.0.1 only)
     api    (ECR image, 127.0.0.1:3001)
     web    (ECR image, 127.0.0.1:3000)
 
@@ -133,8 +132,8 @@ QuickBooks is fully optional, the app boots and runs fine with none of the five 
 Push to main, or trigger the deploy workflow manually from the Actions tab. The workflow:
 
 1. Builds and pushes API and web Docker images to ECR
-2. Uses SSM SendCommand to write `/opt/tellsight/.env` and the real `/etc/caddy/Caddyfile` on the EC2 instance (no SSH key needed), then reloads Caddy
-3. Pulls new images and runs `docker compose up -d`
+2. Uses SSM SendCommand to write `/opt/tellsight/.env` and the real `/opt/tellsight/Caddyfile` on the EC2 instance (no SSH key needed)
+3. Pulls new images and runs `docker compose up -d --remove-orphans`, then explicitly reloads the caddy container's config (its image/service definition never changes between deploys, so `up -d` alone won't notice the Caddyfile's contents changed)
 4. Smoke-tests `/api/health/ready` for up to 3 minutes
 
 HTTPS is live immediately after this, Caddy requests the Let's Encrypt cert automatically on first reload once the Caddyfile has the real domain.

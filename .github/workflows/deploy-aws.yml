@@ -156,22 +156,30 @@ jobs:
           # Next.js's own next.config.ts rewrite strips it the same way, but
           # that only runs in local dev with no Caddy in front; in prod Caddy
           # intercepts /api/* before Next.js ever sees it.
+          #
+          # Targets are api:3001/web:3000 (Docker Compose service DNS), not
+          # 127.0.0.1 -- caddy is a sibling container on the same compose
+          # network (ec2.tf), not a process on the host, so 127.0.0.1 inside
+          # the caddy container would mean the caddy container itself.
           caddyfile = f"""{domain} {{
               handle_path /api/* {{
-                  reverse_proxy 127.0.0.1:3001
+                  reverse_proxy api:3001
               }}
-              reverse_proxy 127.0.0.1:3000
+              reverse_proxy web:3000
           }}
           """
           caddy_b64 = base64.b64encode(caddyfile.encode()).decode()
 
           commands = [
               f"printf '%s' '{env_b64}' | base64 -d > /opt/tellsight/.env",
-              f"printf '%s' '{caddy_b64}' | base64 -d > /etc/caddy/Caddyfile",
-              "systemctl reload caddy",
+              f"printf '%s' '{caddy_b64}' | base64 -d > /opt/tellsight/Caddyfile",
               f"aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin {ecr_host}",
               "cd /opt/tellsight && docker compose pull",
               "docker compose up -d --remove-orphans",
+              # caddy's own image/config never change between deploys, so
+              # `up -d` won't recreate it just because the bind-mounted
+              # Caddyfile's contents changed on disk -- reload explicitly.
+              "docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile",
           ]
 
           send = subprocess.run([

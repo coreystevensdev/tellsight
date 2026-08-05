@@ -189,26 +189,28 @@ locals {
       -o /usr/local/lib/docker/cli-plugins/docker-compose
     chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
-    # Caddy (auto-HTTPS via Let's Encrypt, no manual certbot step)
-    yum install -y dnf-plugins-core
-    dnf copr enable -y @caddy/caddy
-    yum install -y caddy
-    systemctl enable caddy
+    # Caddy runs as a Docker container (official image), not a native package --
+    # the @caddy/caddy COPR repo has no amazonlinux-2023-x86_64 build, which
+    # made this a hard boot failure the first time this was tried (dnf copr
+    # enable errored, set -e aborted the whole script before anything below
+    # this point ever ran). Docker sidesteps distro-repo compatibility
+    # entirely and matches this deploy's all-Docker approach anyway.
+
+    # App directory
+    mkdir -p /opt/tellsight
 
     # Real domain isn't known until the Elastic IP exists (see outputs.tf
     # eip_public_dns), so this placeholder gets overwritten by deploy-aws.yml
     # via SSM on first deploy, same pattern already used for .env secrets.
-    mkdir -p /etc/caddy
-    cat > /etc/caddy/Caddyfile << 'CADDY'
+    cat > /opt/tellsight/Caddyfile << 'CADDY'
     :80 {
         respond "tellsight: awaiting first deploy"
     }
     CADDY
 
-    # App directory
-    mkdir -p /opt/tellsight
-
-    # Docker Compose config -- secrets loaded from /opt/tellsight/.env at container start
+    # Docker Compose config -- secrets loaded from /opt/tellsight/.env at container start.
+    # caddy is the only service published beyond 127.0.0.1; it reaches api/web
+    # by Docker Compose's internal service-name DNS, not the host loopback.
     cat > /opt/tellsight/docker-compose.yml << 'COMPOSE'
     services:
       redis:
@@ -242,8 +244,24 @@ locals {
         ports:
           - "127.0.0.1:3000:3000"
 
+      caddy:
+        image: caddy:2-alpine
+        restart: always
+        ports:
+          - "80:80"
+          - "443:443"
+        volumes:
+          - /opt/tellsight/Caddyfile:/etc/caddy/Caddyfile
+          - caddy_data:/data
+          - caddy_config:/config
+        depends_on:
+          - api
+          - web
+
     volumes:
       redis_data:
+      caddy_data:
+      caddy_config:
     COMPOSE
 
     # No Prometheus/Grafana on this instance -- 1 GB RAM (free tier) doesn't
@@ -251,10 +269,10 @@ locals {
     # still runs the full observability stack; this is a demo-cost trade-off,
     # not a claim that observability doesn't exist in the codebase.
 
-    # Caddy: reverse proxy / to web:3000 and /api to api:3001, automatic HTTPS.
-    # This is the placeholder Caddyfile written above at /etc/caddy/Caddyfile;
-    # nothing further to do here -- the real domain + reload happens post-boot.
-    systemctl start caddy
+    # api and web have no image to pull yet (no deploy has run), so only bring
+    # up caddy here -- it'll serve the placeholder response above until the
+    # first real deploy runs `docker compose up -d --remove-orphans`.
+    cd /opt/tellsight && docker compose up -d caddy
   SHELL
 }
 
