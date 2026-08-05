@@ -169,7 +169,7 @@ locals {
     #!/bin/bash
     set -e
 
-    # 1 GB swap prevents OOM on t2.micro (1 GB RAM total, shared with
+    # 1 GB swap prevents OOM on t3.micro (1 GB RAM total, shared with
     # redis + api + web + Caddy on the host)
     fallocate -l 1G /swapfile
     chmod 600 /swapfile
@@ -263,7 +263,7 @@ resource "aws_instance" "main" {
   # Free tier: 750 hrs/month for the first 12 months on a new AWS account.
   # 1 GB RAM fits redis + api + web + Caddy with the swap below; Prometheus
   # and Grafana were dropped from this instance specifically to fit this size.
-  instance_type          = "t2.micro"
+  instance_type          = "t3.micro"
   iam_instance_profile   = aws_iam_instance_profile.ec2.name
   vpc_security_group_ids = [aws_security_group.ec2.id]
   subnet_id              = tolist(data.aws_subnets.default.ids)[0]

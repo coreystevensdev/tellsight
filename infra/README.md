@@ -1,10 +1,10 @@
 # AWS Deployment (Free Tier)
 
-Tellsight runs on a single EC2 t2.micro with Docker Compose (redis, api, web). RDS db.t3.micro handles PostgreSQL. Caddy on the host handles TLS automatically, no domain purchase needed, it gets a real Let's Encrypt cert against the instance's own public DNS name.
+Tellsight runs on a single EC2 t3.micro with Docker Compose (redis, api, web). RDS db.t3.micro handles PostgreSQL. Caddy on the host handles TLS automatically, no domain purchase needed, it gets a real Let's Encrypt cert against the instance's own public DNS name.
 
-**Cost: $0/month for the first 12 months on a new AWS account.** After free tier expires: ~$22/month (t2.micro ~$8.50 + db.t3.micro ~$13).
+**Cost: $0/month for the first 12 months on a new AWS account.** After free tier expires: ~$22/month (t3.micro ~$8.50 + db.t3.micro ~$13).
 
-Prometheus and Grafana are intentionally **not** deployed here, 1 GB RAM (t2.micro) doesn't reliably fit them alongside redis/api/web. Local dev's `docker-compose.yml` still runs the full observability stack; this is a demo-cost trade-off specific to this deploy target, not a claim that observability tooling doesn't exist in the codebase. If you want them on the live instance too, resize to `t3.small` (~$15/month, not free-tier eligible) and re-add the two services, see git history on `infra/terraform/ec2.tf` for the exact block.
+Prometheus and Grafana are intentionally **not** deployed here, 1 GB RAM (t3.micro) doesn't reliably fit them alongside redis/api/web. Local dev's `docker-compose.yml` still runs the full observability stack; this is a demo-cost trade-off specific to this deploy target, not a claim that observability tooling doesn't exist in the codebase. If you want them on the live instance too, resize to `t3.small` (~$15/month, not free-tier eligible) and re-add the two services, see git history on `infra/terraform/ec2.tf` for the exact block.
 
 ## Architecture
 
@@ -12,7 +12,7 @@ Prometheus and Grafana are intentionally **not** deployed here, 1 GB RAM (t2.mic
 Internet
     |
     v (80/443, Let's Encrypt via Caddy)
-Caddy (EC2 t2.micro, 1 vCPU/1 GB RAM + 1 GB swap)
+Caddy (EC2 t3.micro, 1 vCPU/1 GB RAM + 1 GB swap)
     |-- /api/*  --> Express API (Docker, 127.0.0.1:3001)
     |-- /*      --> Next.js web (Docker, 127.0.0.1:3000)
 
@@ -21,7 +21,7 @@ Docker Compose services (all internal, none published beyond 127.0.0.1):
     api    (ECR image, 127.0.0.1:3001)
     web    (ECR image, 127.0.0.1:3000)
 
-EC2 --> RDS db.t3.micro (PostgreSQL 17, private security group)
+EC2 --> RDS db.t3.micro (PostgreSQL 18, private security group)
 ```
 
 No ALB, no NAT Gateway, no ElastiCache, no Prometheus/Grafana on this instance. This is a deliberate trade-off: zero HA and no live observability, for zero infra cost.
@@ -180,7 +180,7 @@ terraform destroy -var db_password=<password>
 
 | Resource | Free Tier |
 |---|---|
-| EC2 t2.micro | 750 hrs/month for 12 months (one always-on instance) |
+| EC2 t3.micro | 750 hrs/month for 12 months (one always-on instance) |
 | RDS db.t3.micro | 750 hrs/month + 20 GB storage for 12 months |
 | ECR | 500 MB/repo/month |
 | EBS gp3 | 30 GB/month total |
