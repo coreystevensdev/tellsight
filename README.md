@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://tellsight.coreystevens.dev"><img src="https://img.shields.io/badge/live%20demo-tellsight.coreystevens.dev-2DD4BF.svg" alt="Live demo"></a>
+  <a href="https://tellsight.coreystevens.dev"><img src="https://img.shields.io/badge/demo-live-2DD4BF.svg" alt="Live demo"></a>
   <a href="https://github.com/coreystevensdev/tellsight/actions/workflows/ci.yml"><img src="https://github.com/coreystevensdev/tellsight/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/tests-2%2C900-brightgreen.svg" alt="2,900 tests">
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License">
