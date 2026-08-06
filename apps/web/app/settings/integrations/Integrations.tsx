@@ -15,18 +15,37 @@ interface QbStatus {
   connectedAt?: string;
 }
 
+interface ShopifyStatus {
+  connected: boolean;
+  provider?: string;
+  shopDomain?: string;
+  syncStatus?: string;
+  lastSyncedAt?: string;
+  syncError?: string;
+  connectedAt?: string;
+}
+
 export default function Integrations() {
   const [qb, setQb] = useState<QbStatus | null>(null);
+  const [shopify, setShopify] = useState<ShopifyStatus | null>(null);
+  const [shopDomain, setShopDomain] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [qbAction, setQbAction] = useState<'connecting' | 'syncing' | 'disconnecting' | null>(null);
+  const [shopifyAction, setShopifyAction] = useState<'connecting' | 'syncing' | 'disconnecting' | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const qbRes = await apiClient<QbStatus>('/integrations/quickbooks/status').catch(() => ({
-        data: { connected: false } as QbStatus,
-      }));
+      const [qbRes, shopifyRes] = await Promise.all([
+        apiClient<QbStatus>('/integrations/quickbooks/status').catch(() => ({
+          data: { connected: false } as QbStatus,
+        })),
+        apiClient<ShopifyStatus>('/integrations/shopify/status').catch(() => ({
+          data: { connected: false } as ShopifyStatus,
+        })),
+      ]);
       setQb(qbRes.data);
+      setShopify(shopifyRes.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load integrations');
     } finally {
@@ -70,6 +89,44 @@ export default function Integrations() {
       setError(err instanceof Error ? err.message : 'Failed to disconnect');
     } finally {
       setQbAction(null);
+    }
+  }
+
+  async function connectShopify() {
+    setShopifyAction('connecting');
+    try {
+      const { data } = await apiClient<{ authUrl: string }>('/integrations/shopify/connect', {
+        method: 'POST',
+        body: JSON.stringify({ shop: shopDomain.trim() }),
+      });
+      window.location.href = data.authUrl;
+    } catch (err) {
+      setShopifyAction(null);
+      setError(err instanceof Error ? err.message : 'Failed to start Shopify connection');
+    }
+  }
+
+  async function syncShopify() {
+    setShopifyAction('syncing');
+    try {
+      await apiClient('/integrations/shopify/sync', { method: 'POST' });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sync failed');
+    } finally {
+      setShopifyAction(null);
+    }
+  }
+
+  async function disconnectShopify() {
+    setShopifyAction('disconnecting');
+    try {
+      await apiClient('/integrations/shopify', { method: 'DELETE' });
+      setShopify({ connected: false });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to disconnect');
+    } finally {
+      setShopifyAction(null);
     }
   }
 
@@ -170,6 +227,85 @@ export default function Integrations() {
               )}
               {qb.syncError && (
                 <span className="text-destructive">Error: {qb.syncError}</span>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* Shopify */}
+        <section className="rounded-lg border border-border bg-card px-5 py-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
+                {shopify?.connected ? (
+                  <Link2 className="h-4.5 w-4.5 text-emerald-600 dark:text-emerald-400" />
+                ) : (
+                  <Link2Off className="h-4.5 w-4.5 text-muted-foreground" />
+                )}
+              </div>
+              <div className="flex-1">
+                <h2 className="text-sm font-semibold text-foreground">Shopify</h2>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  {shopify?.connected
+                    ? `Connected to ${shopify.shopDomain ?? 'your store'}`
+                    : 'Sync orders, refunds, and inventory for automated insights.'}
+                </p>
+                {!shopify?.connected && (
+                  <input
+                    type="text"
+                    value={shopDomain}
+                    onChange={(e) => setShopDomain(e.target.value)}
+                    placeholder="your-store.myshopify.com"
+                    className="mt-2 w-full max-w-xs rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                )}
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {shopify?.connected ? (
+                <>
+                  <button
+                    onClick={syncShopify}
+                    disabled={!!shopifyAction || shopify.syncStatus === 'syncing'}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <RefreshCw className={cn('h-3.5 w-3.5', (shopifyAction === 'syncing' || shopify.syncStatus === 'syncing') && 'animate-spin')} />
+                    {shopifyAction === 'syncing' ? 'Syncing...' : 'Sync now'}
+                  </button>
+                  <button
+                    onClick={disconnectShopify}
+                    disabled={!!shopifyAction}
+                    className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-destructive transition-colors hover:border-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {shopifyAction === 'disconnecting' ? 'Disconnecting...' : 'Disconnect'}
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={connectShopify}
+                  disabled={!!shopifyAction || !shopDomain.trim()}
+                  className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {shopifyAction === 'connecting' ? 'Connecting...' : 'Connect'}
+                </button>
+              )}
+            </div>
+          </div>
+          {shopify?.connected && (
+            <div className="mt-3 ml-12 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              {shopify.lastSyncedAt && (
+                <span>Last synced: {new Date(shopify.lastSyncedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+              )}
+              {shopify.syncStatus && (
+                <span className={cn(
+                  'inline-flex items-center gap-1',
+                  shopify.syncStatus === 'error' && 'text-destructive',
+                )}>
+                  Status: {shopify.syncStatus}
+                </span>
+              )}
+              {shopify.syncError && (
+                <span className="text-destructive">Error: {shopify.syncError}</span>
               )}
             </div>
           )}

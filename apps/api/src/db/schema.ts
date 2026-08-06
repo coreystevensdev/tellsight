@@ -148,6 +148,7 @@ export const sourceTypeEnum = pgEnum('source_type', [
   'xero',
   'stripe',
   'plaid',
+  'shopify',
 ]);
 
 export const digestValenceEnum = pgEnum('digest_valence', [

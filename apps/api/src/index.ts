@@ -4,7 +4,7 @@ import express from 'express';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import pinoHttp from 'pino-http';
-import { env, isQbConfigured } from './config.js';
+import { env, isQbConfigured, isShopifyConfigured } from './config.js';
 import { logger } from './lib/logger.js';
 import { correlationId } from './middleware/correlationId.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -24,6 +24,8 @@ import { resendWebhookRouter } from './routes/resendWebhook.js';
 import { integrationsCallbackRouter } from './routes/integrations.js';
 import { initSyncWorker, shutdownWorker } from './services/integrations/worker.js';
 import { initScheduler } from './services/integrations/scheduler.js';
+import { initSyncWorker as initShopifySyncWorker, shutdownWorker as shutdownShopifyWorker } from './services/integrations/shopify/worker.js';
+import { initScheduler as initShopifyScheduler } from './services/integrations/shopify/scheduler.js';
 import {
   initDigestCronJob,
   initDigestOrchestratorWorker,
@@ -153,6 +155,13 @@ async function start() {
     logger.info({}, 'QuickBooks integration not configured, sync worker disabled');
   }
 
+  if (isShopifyConfigured(env)) {
+    initShopifySyncWorker();
+    await initShopifyScheduler();
+  } else {
+    logger.info({}, 'Shopify integration not configured, sync worker disabled');
+  }
+
   // Email digest pipeline: cron registration is unconditional once the email
   // provider is wired (validated at boot by config.ts refines). Three workers
   // bind to three queues (orchestrator, org, send) with their own concurrency.
@@ -214,6 +223,7 @@ async function start() {
         await shutdownStatCorrectionsWorker();
         await closeStatCorrectionsQueue();
         await shutdownWorker();
+        await shutdownShopifyWorker();
         await redis.quit();
         await queryClient.end({ timeout: 5 });
         await adminClient.end({ timeout: 5 });

@@ -55,7 +55,8 @@ export type ExternalService =
   | 'Claude API'
   | 'Google OAuth'
   | 'Intuit OAuth'
-  | 'Intuit OAuth, token revoked';
+  | 'Intuit OAuth, token revoked'
+  | 'Shopify OAuth';
 
 export class ExternalServiceError extends AppError {
   readonly service: ExternalService;

@@ -6,6 +6,7 @@ export const sourceTypeSchema = z.enum([
   'xero',
   'stripe',
   'plaid',
+  'shopify',
 ]);
 
 export const demoModeStateSchema = z.enum([

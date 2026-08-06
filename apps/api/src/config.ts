@@ -57,6 +57,10 @@ export const envSchema = z
     QUICKBOOKS_ENVIRONMENT: z.enum(['sandbox', 'production']).default('sandbox'),
     ENCRYPTION_KEY: z.string().length(64).optional(),
 
+    SHOPIFY_CLIENT_ID: z.string().min(1).optional(),
+    SHOPIFY_CLIENT_SECRET: z.string().min(1).optional(),
+    SHOPIFY_REDIRECT_URI: z.string().url().optional(),
+
     // Only for CI / E2E, set to 'true' to bypass rate limiters entirely.
     // Parallel Playwright workers blow the 60/min public limit otherwise.
     DISABLE_RATE_LIMIT: z.enum(['true', 'false']).default('false'),
@@ -135,6 +139,15 @@ export function isQbConfigured(cfg: Env): boolean {
     cfg.QUICKBOOKS_CLIENT_ID &&
     cfg.QUICKBOOKS_CLIENT_SECRET &&
     cfg.QUICKBOOKS_REDIRECT_URI &&
+    cfg.ENCRYPTION_KEY
+  );
+}
+
+export function isShopifyConfigured(cfg: Env): boolean {
+  return !!(
+    cfg.SHOPIFY_CLIENT_ID &&
+    cfg.SHOPIFY_CLIENT_SECRET &&
+    cfg.SHOPIFY_REDIRECT_URI &&
     cfg.ENCRYPTION_KEY
   );
 }
