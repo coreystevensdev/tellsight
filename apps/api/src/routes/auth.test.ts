@@ -13,6 +13,11 @@ const mockCreateTokenPair = vi.fn();
 const mockRotateRefreshToken = vi.fn();
 const mockFindByHash = vi.fn();
 const mockRevokeToken = vi.fn();
+const mockSignUpWithPassword = vi.fn();
+const mockLogInWithPassword = vi.fn();
+const mockRequestPasswordReset = vi.fn();
+const mockResetPassword = vi.fn();
+const mockSendEmail = vi.fn();
 
 vi.mock('../services/auth/index.js', () => ({
   generateOAuthState: mockGenerateOAuthState,
@@ -20,6 +25,14 @@ vi.mock('../services/auth/index.js', () => ({
   handleGoogleCallback: mockHandleGoogleCallback,
   createTokenPair: mockCreateTokenPair,
   rotateRefreshToken: mockRotateRefreshToken,
+  signUpWithPassword: mockSignUpWithPassword,
+  logInWithPassword: mockLogInWithPassword,
+  requestPasswordReset: mockRequestPasswordReset,
+  resetPassword: mockResetPassword,
+}));
+
+vi.mock('../services/email/index.js', () => ({
+  sendEmail: mockSendEmail,
 }));
 
 vi.mock('../db/queries/refreshTokens.js', () => ({
@@ -34,6 +47,8 @@ vi.mock('../config.js', () => ({
     GOOGLE_CLIENT_SECRET: 'test-secret',
     JWT_SECRET: 'test-secret-key-that-is-at-least-32-characters',
     APP_URL: 'http://localhost:3000',
+    EMAIL_MAILING_ADDRESS: '123 Test St, Testville, TS 12345',
+    EMAIL_FROM_NAME: 'Tellsight',
   },
 }));
 
@@ -313,6 +328,194 @@ describe('auth routes', () => {
         .map((c) => c.split('=')[0]);
       expect(clearedNames).toContain('access_token');
       expect(clearedNames).toContain('refresh_token');
+    });
+  });
+
+  describe('POST /auth/signup', () => {
+    const mockUser = { id: 2, name: 'Dana', email: 'dana@example.com', avatarUrl: null, isPlatformAdmin: false };
+    const mockOrg = { id: 20, name: "Dana's Organization", slug: 'dana-org' };
+
+    it('creates an account and sets session cookies', async () => {
+      mockSignUpWithPassword.mockResolvedValueOnce({
+        user: mockUser,
+        org: mockOrg,
+        membership: { role: 'owner' },
+        isNewUser: true,
+      });
+      mockCreateTokenPair.mockResolvedValueOnce({ accessToken: 'jwt-access', refreshToken: 'refresh-raw' });
+
+      const res = await fetch(`${baseUrl}/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'dana@example.com', name: 'Dana', password: 'super-secret-1' }),
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body = (await res.json()) as any;
+
+      expect(res.status).toBe(200);
+      expect(body.data.user.email).toBe('dana@example.com');
+      expect(body.data.isNewUser).toBe(true);
+      expect(mockSignUpWithPassword).toHaveBeenCalledWith('dana@example.com', 'Dana', 'super-secret-1', undefined);
+
+      const cookies = parseCookies(res);
+      expect(cookies.access_token).toBe('jwt-access');
+      expect(cookies.refresh_token).toBe('refresh-raw');
+    });
+
+    it('returns 400 when the password is too short', async () => {
+      const res = await fetch(`${baseUrl}/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'dana@example.com', name: 'Dana', password: 'short' }),
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body = (await res.json()) as any;
+
+      expect(res.status).toBe(400);
+      expect(body.error.code).toBe('VALIDATION_ERROR');
+      expect(mockSignUpWithPassword).not.toHaveBeenCalled();
+    });
+
+    it('returns 409 when the email is already registered', async () => {
+      const { ConflictError } = await import('../lib/appError.js');
+      mockSignUpWithPassword.mockRejectedValueOnce(
+        new ConflictError('An account with this email already exists. Try signing in instead.'),
+      );
+
+      const res = await fetch(`${baseUrl}/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'dana@example.com', name: 'Dana', password: 'super-secret-1' }),
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body = (await res.json()) as any;
+
+      expect(res.status).toBe(409);
+      expect(body.error.code).toBe('CONFLICT');
+    });
+  });
+
+  describe('POST /auth/signin', () => {
+    it('authenticates and sets session cookies', async () => {
+      const mockUser = { id: 3, name: 'Sam', email: 'sam@example.com', avatarUrl: null, isPlatformAdmin: false };
+      const mockOrg = { id: 30, name: "Sam's Organization", slug: 'sam-org' };
+
+      mockLogInWithPassword.mockResolvedValueOnce({
+        user: mockUser,
+        org: mockOrg,
+        membership: { role: 'owner' },
+        isNewUser: false,
+      });
+      mockCreateTokenPair.mockResolvedValueOnce({ accessToken: 'jwt-access', refreshToken: 'refresh-raw' });
+
+      const res = await fetch(`${baseUrl}/auth/signin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'sam@example.com', password: 'super-secret-1' }),
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body = (await res.json()) as any;
+
+      expect(res.status).toBe(200);
+      expect(body.data.user.email).toBe('sam@example.com');
+      expect(body.data.isNewUser).toBe(false);
+
+      const cookies = parseCookies(res);
+      expect(cookies.access_token).toBe('jwt-access');
+    });
+
+    it('returns 401 for invalid credentials', async () => {
+      const { AuthenticationError } = await import('../lib/appError.js');
+      mockLogInWithPassword.mockRejectedValueOnce(new AuthenticationError('Invalid email or password'));
+
+      const res = await fetch(`${baseUrl}/auth/signin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'sam@example.com', password: 'wrong-password' }),
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body = (await res.json()) as any;
+
+      expect(res.status).toBe(401);
+      expect(body.error.code).toBe('AUTHENTICATION_REQUIRED');
+    });
+  });
+
+  describe('POST /auth/forgot-password', () => {
+    it('sends a reset email when the account exists', async () => {
+      mockRequestPasswordReset.mockResolvedValueOnce({ token: 'raw-reset-token', userId: 7 });
+      mockSendEmail.mockResolvedValueOnce({ status: 'sent', providerMessageId: 'id-1', durationMs: 5 });
+
+      const res = await fetch(`${baseUrl}/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'known@example.com' }),
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body = (await res.json()) as any;
+
+      expect(res.status).toBe(200);
+      expect(body.data.success).toBe(true);
+      expect(mockSendEmail).toHaveBeenCalledOnce();
+      const sentArgs = mockSendEmail.mock.calls[0]![0];
+      expect(sentArgs.to).toBe('known@example.com');
+      expect(sentArgs.subject).toBe('Reset your password');
+    });
+
+    it('responds identically when the account does not exist, and sends no email', async () => {
+      mockRequestPasswordReset.mockResolvedValueOnce(null);
+
+      const res = await fetch(`${baseUrl}/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'unknown@example.com' }),
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body = (await res.json()) as any;
+
+      expect(res.status).toBe(200);
+      expect(body.data.success).toBe(true);
+      expect(mockSendEmail).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /auth/reset-password', () => {
+    it('resets the password and signs the user in', async () => {
+      const mockUser = { id: 8, name: 'Riley', email: 'riley@example.com', avatarUrl: null, isPlatformAdmin: false };
+      const mockOrg = { id: 40, name: "Riley's Organization", slug: 'riley-org' };
+
+      mockResetPassword.mockResolvedValueOnce({ user: mockUser, org: mockOrg, membership: { role: 'owner' } });
+      mockCreateTokenPair.mockResolvedValueOnce({ accessToken: 'jwt-access', refreshToken: 'refresh-raw' });
+
+      const res = await fetch(`${baseUrl}/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'raw-reset-token', password: 'new-super-secret' }),
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body = (await res.json()) as any;
+
+      expect(res.status).toBe(200);
+      expect(body.data.user.email).toBe('riley@example.com');
+
+      const cookies = parseCookies(res);
+      expect(cookies.access_token).toBe('jwt-access');
+    });
+
+    it('returns 400 when the token has expired', async () => {
+      const { ValidationError } = await import('../lib/appError.js');
+      mockResetPassword.mockRejectedValueOnce(new ValidationError('This reset link has expired, request a new one'));
+
+      const res = await fetch(`${baseUrl}/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'expired-token', password: 'new-super-secret' }),
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body = (await res.json()) as any;
+
+      expect(res.status).toBe(400);
+      expect(body.error.code).toBe('VALIDATION_ERROR');
     });
   });
 });

@@ -26,7 +26,8 @@ export async function findUserById(userId: number) {
 export async function createUser(data: {
   email: string;
   name: string;
-  googleId: string;
+  googleId?: string;
+  passwordHash?: string;
   avatarUrl?: string;
 }) {
   const [user] = await db
@@ -34,7 +35,8 @@ export async function createUser(data: {
     .values({
       email: data.email,
       name: data.name,
-      googleId: data.googleId,
+      googleId: data.googleId ?? null,
+      passwordHash: data.passwordHash ?? null,
       avatarUrl: data.avatarUrl ?? null,
     })
     .returning();
@@ -44,7 +46,7 @@ export async function createUser(data: {
 
 export async function updateUser(
   userId: number,
-  data: Partial<{ name: string; avatarUrl: string }>,
+  data: Partial<{ name: string; avatarUrl: string; passwordHash: string }>,
 ) {
   const [user] = await db
     .update(users)

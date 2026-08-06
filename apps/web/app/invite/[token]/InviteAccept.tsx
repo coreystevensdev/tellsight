@@ -110,7 +110,11 @@ export default function InviteAccept({ token }: { token: string }) {
       </button>
 
       <p className="text-center text-xs text-muted-foreground">
-        Sign in with your Google account to join this organization.
+        Sign in with your Google account, or{' '}
+        <a href={`/signup?invite=${token}`} className="text-foreground hover:underline">
+          join with email
+        </a>
+        .
       </p>
     </div>
   );

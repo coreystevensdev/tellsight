@@ -22,6 +22,7 @@ export const users = pgTable('users', {
   email: varchar({ length: 255 }).notNull().unique(),
   name: varchar({ length: 255 }).notNull(),
   googleId: varchar('google_id', { length: 255 }).unique(),
+  passwordHash: varchar('password_hash', { length: 255 }),
   avatarUrl: text('avatar_url'),
   isPlatformAdmin: boolean('is_platform_admin').default(false).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -96,6 +97,24 @@ export const refreshTokens = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [index('idx_refresh_tokens_user_id').on(table.userId)],
+);
+
+export const passwordResetTokens = pgTable(
+  'password_reset_tokens',
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    tokenHash: varchar('token_hash', { length: 255 }).notNull().unique(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('idx_password_reset_tokens_user_id').on(table.userId),
+    index('idx_password_reset_tokens_token_hash').on(table.tokenHash),
+  ],
 );
 
 export const analyticsEvents = pgTable(
@@ -545,6 +564,13 @@ export const refreshTokensRelations = relations(refreshTokens, ({ one }) => ({
   org: one(orgs, {
     fields: [refreshTokens.orgId],
     references: [orgs.id],
+  }),
+}));
+
+export const passwordResetTokensRelations = relations(passwordResetTokens, ({ one }) => ({
+  user: one(users, {
+    fields: [passwordResetTokens.userId],
+    references: [users.id],
   }),
 }));
 

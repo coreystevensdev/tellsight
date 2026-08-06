@@ -10,6 +10,11 @@ export {
   loginResponseSchema,
   createInviteSchema,
   inviteTokenParamSchema,
+  passwordSchema,
+  signupSchema,
+  passwordLoginSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
 } from './auth.js';
 
 export {

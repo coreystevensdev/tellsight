@@ -1,0 +1,44 @@
+import type { Metadata } from 'next';
+import { TellsightLogo } from '@/components/common/TellsightLogo';
+import ResetPasswordForm from './ResetPasswordForm';
+
+export const metadata: Metadata = {
+  title: 'Reset Password, Tellsight',
+};
+
+export default async function ResetPasswordPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ token?: string }>;
+}) {
+  const params = await searchParams;
+
+  return (
+    <div className="relative flex min-h-screen items-center justify-center bg-background overflow-hidden">
+      <div
+        className="absolute inset-0 opacity-[0.4] dark:opacity-[0.15]"
+        style={{
+          backgroundImage: 'radial-gradient(circle, var(--color-border) 1px, transparent 1px)',
+          backgroundSize: '24px 24px',
+        }}
+        aria-hidden="true"
+      />
+      <div
+        className="absolute inset-0"
+        style={{
+          background: 'radial-gradient(ellipse at center, transparent 30%, var(--color-background) 70%)',
+        }}
+        aria-hidden="true"
+      />
+
+      <div className="relative w-full max-w-sm space-y-8 rounded-xl border border-border/50 bg-card p-8 shadow-lg">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <TellsightLogo size={44} />
+          <h1 className="text-2xl font-semibold text-foreground">Choose a new password</h1>
+        </div>
+
+        <ResetPasswordForm token={params.token} />
+      </div>
+    </div>
+  );
+}

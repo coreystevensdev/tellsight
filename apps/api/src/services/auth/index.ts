@@ -20,3 +20,12 @@ export {
   redeemInvite,
   getActiveInvitesForOrg,
 } from './inviteService.js';
+
+export {
+  signUpWithPassword,
+  logInWithPassword,
+  requestPasswordReset,
+  resetPassword,
+} from './passwordAuth.js';
+
+export { hashPassword, verifyPassword } from './passwordService.js';

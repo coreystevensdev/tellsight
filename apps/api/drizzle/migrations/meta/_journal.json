@@ -260,6 +260,13 @@
       "when": 1782950400000,
       "tag": "0036_analytics-events-dedupe-key",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1783036800000,
+      "tag": "0037_add-password-auth",
+      "breakpoints": true
     }
   ]
 }

@@ -2,7 +2,13 @@
 
 import { useState } from 'react';
 
-export default function LoginButton({ redirectPath }: { redirectPath: string }) {
+export default function LoginButton({
+  redirectPath,
+  label = 'Sign in with Google',
+}: {
+  redirectPath: string;
+  label?: string;
+}) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,7 +59,7 @@ export default function LoginButton({ redirectPath }: { redirectPath: string }) 
             fill="#EA4335"
           />
         </svg>
-        {loading ? 'Redirecting...' : 'Sign in with Google'}
+        {loading ? 'Redirecting...' : label}
       </button>
 
       {error && (

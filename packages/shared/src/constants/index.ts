@@ -54,6 +54,13 @@ export const SHARES = {
   TOKEN_BYTES: 32,
 } as const;
 
+export const PASSWORD_RESET = {
+  EXPIRY_HOURS: 1,
+  TOKEN_BYTES: 32,
+} as const;
+
+export const PASSWORD_MIN_LENGTH = 8;
+
 // dot-notation past-tense, matches the pattern in analytics_events.event_name
 export const ANALYTICS_EVENTS = {
   USER_SIGNED_UP: 'user.signed_up',
@@ -244,6 +251,9 @@ export const AUDIT_ACTIONS = {
   AUTH_LOGIN: 'auth.login',
   AUTH_LOGOUT: 'auth.logout',
   AUTH_TOKEN_REFRESHED: 'auth.token_refreshed',
+  AUTH_SIGNUP: 'auth.signup',
+  AUTH_PASSWORD_RESET_REQUESTED: 'auth.password_reset_requested',
+  AUTH_PASSWORD_RESET_COMPLETED: 'auth.password_reset_completed',
   ORG_INVITE_SENT: 'org.invite_sent',
   ORG_INVITE_ACCEPTED: 'org.invite_accepted',
   ORG_MEMBER_REMOVED: 'org.member_removed',

@@ -4,10 +4,10 @@ import { env } from '../../config.js';
 import { logger } from '../../lib/logger.js';
 import { AuthenticationError, ExternalServiceError } from '../../lib/appError.js';
 import * as usersQueries from '../../db/queries/users.js';
-import * as orgsQueries from '../../db/queries/orgs.js';
 import * as userOrgsQueries from '../../db/queries/userOrgs.js';
 import { dbAdmin } from '../../lib/db.js';
 import { validateInviteToken, redeemInvite } from './inviteService.js';
+import { createOwnerOrgForUser } from './orgOnboarding.js';
 import { AUTH } from 'shared/constants';
 
 interface GoogleTokenResponse {
@@ -95,34 +95,6 @@ export async function verifyGoogleIdToken(idToken: string): Promise<GoogleUserPr
   }
 }
 
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 40);
-}
-
-async function generateUniqueSlug(name: string): Promise<string> {
-  const base = slugify(name) || 'org';
-  const slug = `${base}-org`;
-
-  const existing = await orgsQueries.findOrgBySlug(slug);
-  if (!existing) return slug;
-
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const suffix = randomBytes(2).toString('hex');
-    const candidateSlug = `${base}-org-${suffix}`;
-    const conflict = await orgsQueries.findOrgBySlug(candidateSlug);
-    if (!conflict) return candidateSlug;
-  }
-
-  // Fallback: use full random slug
-  return `org-${randomBytes(4).toString('hex')}`;
-}
-
 export async function handleGoogleCallback(code: string, inviteToken?: string) {
   const tokens = await exchangeCodeForTokens(code);
   const profile = await verifyGoogleIdToken(tokens.id_token);
@@ -193,12 +165,9 @@ export async function handleGoogleCallback(code: string, inviteToken?: string) {
   }
 
   // no invite, default behavior: create org, user becomes owner
-  const orgName = `${profile.name}'s Organization`;
-  const slug = await generateUniqueSlug(profile.name);
-  const org = await orgsQueries.createOrg({ name: orgName, slug });
-  const membership = await userOrgsQueries.addMember(org.id, user.id, 'owner', dbAdmin);
+  const { org, membership } = await createOwnerOrgForUser(user.id, profile.name);
 
-  logger.info({ userId: user.id, orgId: org.id, slug }, 'New user registered via Google OAuth');
+  logger.info({ userId: user.id, orgId: org.id, slug: org.slug }, 'New user registered via Google OAuth');
 
   return { user, org, membership, isNewUser: true };
 }

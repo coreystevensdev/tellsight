@@ -1,6 +1,11 @@
 import { z } from 'zod';
+import { PASSWORD_MIN_LENGTH } from '../constants/index.js';
 
 export const roleSchema = z.enum(['owner', 'member']);
+
+export const passwordSchema = z
+  .string()
+  .min(PASSWORD_MIN_LENGTH, `Password must be at least ${PASSWORD_MIN_LENGTH} characters`);
 
 export const userSchema = z.object({
   id: z.number().int(),
@@ -61,6 +66,27 @@ export const createInviteSchema = z.object({
 
 export const inviteTokenParamSchema = z.object({
   token: z.string().min(1),
+});
+
+export const signupSchema = z.object({
+  email: z.string().email(),
+  name: z.string().min(1).max(255),
+  password: passwordSchema,
+  inviteToken: z.string().min(1).optional(),
+});
+
+export const passwordLoginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1),
+  password: passwordSchema,
 });
 
 export const loginResponseSchema = z.object({
