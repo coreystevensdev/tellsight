@@ -1,6 +1,6 @@
 # Deploy Runbook
 
-Operational guide for the deployed production stack (single free-tier EC2 t2.micro + RDS + ECR + Caddy, see `infra/README.md`). This doc is what you reach for after the stack is live; `infra/README.md` is what you reach for to stand it up the first time.
+Operational guide for the deployed production stack (single free-tier EC2 t3.micro + RDS + ECR + Caddy, see `infra/README.md`). This doc is what you reach for after the stack is live; `infra/README.md` is what you reach for to stand it up the first time.
 
 **Crisis mode cheat sheet:**
 
@@ -37,8 +37,8 @@ STRIPE_PRICE_ID=price_...
 GOOGLE_CLIENT_ID=...                     # add the production redirect URI in Google Console
 GOOGLE_CLIENT_SECRET=...
 JWT_SECRET=<openssl rand -hex 32>
-APP_URL=https://<eip_public_dns>
-PUBLIC_API_URL=https://<eip_public_dns>
+APP_URL=https://<your production domain>
+PUBLIC_API_URL=https://<your production domain>
 NODE_ENV=production
 EMAIL_PROVIDER=resend                    # console is rejected in production
 EMAIL_FROM_ADDRESS=<verified Resend sender>
@@ -208,4 +208,4 @@ Rotate one role at a time. If both fail simultaneously, the API can't acquire an
 - **Single instance, no HA.** One EC2 box, one RDS instance, no ALB/multi-AZ. If the instance or its AZ goes down, the app is down until it's replaced. Multi-AZ RDS and an ALB are a post-launch scaling decision, not a Day 1 requirement, given the cost trade-off (roughly doubles infra spend).
 - **SSM-based deploy has no rollback-on-failure.** `docker compose up -d` runs and the smoke test polls after, but if the new image crash-loops, nothing automatically reverts to the previous image, that's the manual rollback path in section 2A.
 - **Single region.** Everything runs in `us-east-1`. A regional AWS outage takes the whole app down. Not wired for cross-region failover.
-- **No live observability.** Prometheus and Grafana run in local dev only, dropped from this deploy target to fit the free-tier `t2.micro`'s 1 GB RAM. Production visibility is limited to health probes, `/metrics`, and container logs until the instance is resized.
+- **No live observability.** Prometheus and Grafana run in local dev only, dropped from this deploy target to fit the free-tier `t3.micro`'s 1 GB RAM. Production visibility is limited to health probes, `/metrics`, and container logs until the instance is resized.
