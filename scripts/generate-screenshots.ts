@@ -53,58 +53,57 @@ function browserFrameHtml(screenshotBase64: string, url: string, darkMode: boole
 // Hero banner template
 
 function heroBannerHtml(): string {
+  // Matches the live app's Warm Editorial identity (globals.css @theme):
+  // cream canvas, teal accent, serif headline. A hand-authored dark-navy/
+  // blue template lived here for months after the app moved off it --
+  // this banner is generated straight from the same tokens now.
   return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Newsreader:wght@400;500;600&family=Inter:wght@400;500;600&display=swap');
   * { margin: 0; padding: 0; box-sizing: border-box; }
 </style>
 </head>
 <body style="margin:0; padding:0;">
 <div style="
   width:1280px; height:360px;
-  background: linear-gradient(135deg, #0c1222 0%, #162036 35%, #1a1a3e 60%, #0f172a 100%);
+  background:#FAF6EF;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
   position:relative; overflow:hidden; font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
 ">
-  <!-- Grid pattern overlay -->
+  <!-- Dot grid, same treatment as the landing page hero -->
   <div style="
-    position:absolute; inset:0; opacity:0.04;
-    background-image: linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px),
-                      linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px);
-    background-size: 40px 40px;
+    position:absolute; inset:0; opacity:0.35;
+    background-image: radial-gradient(circle, #E5E0D8 1px, transparent 1px);
+    background-size: 24px 24px;
   "></div>
-
-  <!-- Gradient glow -->
   <div style="
-    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-    width:600px; height:300px; border-radius:50%;
-    background:radial-gradient(ellipse, rgba(56,139,253,0.12) 0%, transparent 70%);
+    position:absolute; inset:0;
+    background:radial-gradient(ellipse at 50% 50%, transparent 30%, #FAF6EF 75%);
   "></div>
 
   <!-- Logo mark -->
   <div style="
-    display:flex; align-items:center; gap:14px; margin-bottom:16px; position:relative;
+    display:flex; align-items:center; gap:14px; margin-bottom:18px; position:relative;
   ">
-    <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-      <rect width="40" height="40" rx="10" fill="rgba(56,139,253,0.15)"/>
-      <rect x="8" y="22" width="6" height="12" rx="2" fill="#388bfd"/>
-      <rect x="17" y="14" width="6" height="20" rx="2" fill="#58a6ff"/>
-      <rect x="26" y="8" width="6" height="26" rx="2" fill="#79c0ff"/>
+    <svg width="44" height="44" viewBox="0 0 40 40" fill="none">
+      <rect width="40" height="40" rx="10" fill="#0D948826"/>
+      <path d="M6 20C6 20 12 10 20 10C28 10 34 20 34 20C34 20 28 30 20 30C12 30 6 20 6 20Z" fill="none" stroke="#0D9488" stroke-width="2.4" stroke-linejoin="round"/>
+      <path d="M14 21L18 16L22 20L27 13" stroke="#0D9488" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
     </svg>
-    <span style="font-size:36px; font-weight:800; color:#e6edf3; letter-spacing:-0.5px;">
+    <span style="font-family:'Newsreader',serif; font-size:40px; font-weight:500; color:#24211D; letter-spacing:-0.5px;">
       Tellsight
     </span>
   </div>
 
   <!-- Tagline -->
   <p style="
-    font-size:18px; color:#8b949e; font-weight:400; max-width:560px;
+    font-family:'Newsreader',serif; font-size:19px; color:#6B655C; font-weight:400; max-width:580px;
     text-align:center; line-height:1.5; position:relative;
   ">
-    AI-powered analytics that explains business data in plain English
+    Your spreadsheet, actually explained
   </p>
 
   <!-- Tech badges -->
@@ -112,12 +111,12 @@ function heroBannerHtml(): string {
     display:flex; gap:8px; margin-top:28px; flex-wrap:wrap;
     justify-content:center; position:relative;
   ">
-    <span style="background:rgba(56,139,253,0.12); color:#58a6ff; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:500; border:1px solid rgba(56,139,253,0.2);">Next.js 16</span>
-    <span style="background:rgba(56,139,253,0.12); color:#58a6ff; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:500; border:1px solid rgba(56,139,253,0.2);">Express 5</span>
-    <span style="background:rgba(56,139,253,0.12); color:#58a6ff; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:500; border:1px solid rgba(56,139,253,0.2);">PostgreSQL 18</span>
-    <span style="background:rgba(56,139,253,0.12); color:#58a6ff; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:500; border:1px solid rgba(56,139,253,0.2);">Claude API</span>
-    <span style="background:rgba(56,139,253,0.12); color:#58a6ff; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:500; border:1px solid rgba(56,139,253,0.2);">Stripe</span>
-    <span style="background:rgba(56,139,253,0.12); color:#58a6ff; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:500; border:1px solid rgba(56,139,253,0.2);">SSE Streaming</span>
+    <span style="background:#0D948814; color:#0D7A6F; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:500; border:1px solid #0D948833;">Next.js 16</span>
+    <span style="background:#0D948814; color:#0D7A6F; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:500; border:1px solid #0D948833;">Express 5</span>
+    <span style="background:#0D948814; color:#0D7A6F; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:500; border:1px solid #0D948833;">PostgreSQL 18</span>
+    <span style="background:#0D948814; color:#0D7A6F; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:500; border:1px solid #0D948833;">Claude API</span>
+    <span style="background:#0D948814; color:#0D7A6F; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:500; border:1px solid #0D948833;">Stripe</span>
+    <span style="background:#0D948814; color:#0D7A6F; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:500; border:1px solid #0D948833;">SSE Streaming</span>
   </div>
 </div>
 </body>
@@ -247,6 +246,16 @@ async function main() {
     darkMode: true,
     viewport: { width: 1280, height: 1600 },
     waitFor: waitForAiSummary,
+    // the summary sits below every chart card now; scroll it into view
+    // instead of trusting a fixed viewport height to reach that far down
+    prepare: async (page) => {
+      await page.evaluate(() => {
+        document
+          .querySelector('div[role="region"][aria-label="AI business summary"]')
+          ?.scrollIntoView({ block: 'center' });
+      });
+      await page.waitForTimeout(300);
+    },
   });
   await wrapInFrame(browser, aiRaw, 'localhost:3000/dashboard', 'feature-ai', true);
 

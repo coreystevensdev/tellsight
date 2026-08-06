@@ -30,6 +30,16 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: 'Tellsight',
   description: 'Analytics that explains your business data in plain English. Built on Claude.',
+  openGraph: {
+    title: 'Tellsight',
+    description: 'Analytics that explains your business data in plain English. Built on Claude.',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Tellsight',
+    description: 'Analytics that explains your business data in plain English. Built on Claude.',
+  },
 };
 
 export default function RootLayout({
