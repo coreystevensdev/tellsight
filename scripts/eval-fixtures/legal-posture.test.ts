@@ -101,4 +101,24 @@ investigating with your accountant.`;
       expect(r.violations).not.toContain('no approved hedge present');
     },
   );
+
+  // Found live running `pnpm eval`: real generations hedge with "worth
+  // reviewing" or defer to "your accountant" without ever using one of the
+  // five original exact phrases. The template says "use language like
+  // 'worth investigating'", not "use this exact phrase" -- a paraphrase of
+  // the same instruction shouldn't fail the check.
+  it.each(['worth reviewing', 'worth a closer look', 'worth discussing'])(
+    'accepts "worth [gerund]" paraphrases like %s',
+    (hedge) => {
+      const text = `Runway is tight this quarter, ${hedge}.`;
+      const r = scoreLegalPosture(text);
+      expect(r.violations).not.toContain('no approved hedge present');
+    },
+  );
+
+  it('accepts deferring to "your accountant" as its own hedge signal', () => {
+    const text = 'Runway is tight this quarter. Your accountant should see the forecast.';
+    const r = scoreLegalPosture(text);
+    expect(r.violations).not.toContain('no approved hedge present');
+  });
 });

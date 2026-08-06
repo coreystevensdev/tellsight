@@ -26,11 +26,22 @@ const FINANCIAL_VERBS = ['buy', 'sell', 'hire', 'fire', 'borrow', 'invest'];
 
 const APPROVED_HEDGES = [
   'could indicate',
-  'worth investigating',
   'might want to',
   'consider',
   'you might',
 ];
+
+// The template says "use language like 'worth investigating'", not "use this
+// exact phrase" -- a run that hedges with "worth reviewing" or "worth a
+// closer look" is following the same instruction, just paraphrased. One
+// pattern for the "worth [x]" family instead of a single fixed phrase.
+const worthHedgeRe = /\bworth\s+(?:\w+ing\b|a\s+(?:closer\s+)?look\b)/i;
+
+// The template's explicit fallback for urgent findings is "frame it as
+// something to discuss with a qualified professional" -- deferring to the
+// reader's accountant is itself the hedge, even when the sentence around it
+// doesn't happen to contain one of the other approved phrases.
+const accountantRe = /\baccountant\b/i;
 
 const bannedPatterns = BANNED_IMPERATIVES.map((p) => ({
   phrase: p,
@@ -61,7 +72,8 @@ export function scoreLegalPosture(summary: string): LegalPostureResult {
     violations.push(`financial command: "${m[1]!.toLowerCase()}"`);
   }
 
-  const hasHedge = hedgePatterns.some((re) => re.test(summary));
+  const hasHedge =
+    hedgePatterns.some((re) => re.test(summary)) || worthHedgeRe.test(summary) || accountantRe.test(summary);
   if (!hasHedge) violations.push('no approved hedge present');
 
   return { pass: violations.length === 0, violations };

@@ -76,13 +76,13 @@ The browser never talks to Express directly. Everything routes through a Next.js
 
 The Claude integration calls `@anthropic-ai/sdk` directly rather than going through a framework like LangChain, behind a small in-house provider seam that owns retries, a circuit breaker, a cost gate, and prompt caching. The reasoning is written up in [ADR 0001](docs/adr/0001-anthropic-sdk-over-langchain.md).
 
-An offline eval harness grades the summaries that come out: three labeled financial fixtures (healthy-growth, cash-crunch, seasonal-anomaly) run through the full pipeline and are judged for faithfulness (no invented figures), completeness (covers the stats that matter), and legal posture (analytics framing, not financial advice). Faithfulness and completeness use LLM judges via the shared provider; legal posture is a deterministic string scanner with 27 tests, run via `pnpm test:eval`, separate from CI. Run the full harness with `pnpm eval`. A second track, `pnpm eval:qa`, grades the Q&A tool's lookup-vs-interpretation bias with an LLM judge, backed by a deterministic numeric-figure guard covered by `interpretation-guard.test.ts` (12 tests); the eval:qa track doesn't run in CI either.
+An offline eval harness grades the summaries that come out: three labeled financial fixtures (healthy-growth, cash-crunch, seasonal-anomaly) run through the full pipeline and are judged for faithfulness (no invented figures), completeness (covers the stats that matter), and legal posture (analytics framing, not financial advice). Faithfulness and completeness use LLM judges via the shared provider; legal posture is a deterministic string scanner with 31 tests, run via `pnpm test:eval`, separate from CI. Run the full harness with `pnpm eval`. Last measured run (2026-08-06, 3 samples per fixture): faithfulness 0.99 aggregate, completeness 1.00 aggregate, both above their floors. Legal posture caught a real finding: one of nine samples for the cash-crunch fixture generated the literal banned phrase "you need to," a genuine occasional slip past the system prompt's instruction, not a false positive in the checker. That check is deterministic and only runs offline in this eval, the live SSE summary stream has no equivalent runtime filter on its output, unlike the agent-proposal pipeline's `DIRECTIVE` schema-level rejection described above. A second track, `pnpm eval:qa`, grades the Q&A tool's lookup-vs-interpretation bias with an LLM judge, backed by a deterministic numeric-figure guard covered by `interpretation-guard.test.ts` (12 tests); last measured run: 1.00 aggregate accuracy across all 8 fixtures, floor 0.85. The eval:qa track doesn't run in CI either.
 
 A separate agent pass runs on the same computed statistics using dedicated prompt templates, producing structured proposals with severity tiers (`info`, `notice`, `warning`, `critical`) and finding kinds (`reconciliation`, `trend`, `anomaly`, `threshold`). The `validateProposalCandidate` validator filters raw LLM output: schema-invalid proposals are dropped individually, proposals that cite stat IDs outside the allowedStatIds set are rejected, and the rest form a partial result rather than failing the whole call. A pure routing gate in `packages/shared` assigns each surviving proposal to `auto_notify`, `needs_approval`, or `suppress` based on four rules in priority order: confidence below floor suppresses; a mutating action or over-threshold financial impact routes to human approval; a dedupKey seen within the suppression window suppresses; otherwise auto-notify. Advisory posture is enforced at the contract boundary: the DIRECTIVE regex on `explanation` and `recommendation` rejects phrasing like "you should" at schema validation time rather than at content review time. A nightly BullMQ job runs the pass per Agent-tier org, and `needs_approval` findings land in an in-app Action drawer where only org Owners can approve or reject; approving writes an audit row, and pending items expire after 14 days rather than accumulating into an ignorable inbox.
 
 A third eval track, `pnpm eval:proposals`, measures the gate itself: a hand-labeled set of `AgentProposal` fixtures runs through the real `routeProposal()` with no LLM call, and precision is computed over the fixtures the gate routes to `needs_approval` (of those, what share were labeled worth a human's time). The current measured precision is 0.8 (4 of 5 needs_approval fixtures). Unlike the other two eval tracks, this one is CI-gated: the `proposal-precision-eval` job fails the build if a change drops precision below the committed snapshot baseline.
 
-## Tech Stack
+## Tech stack
 
 | Layer | Technology | Why |
 |-------|-----------|-----|
@@ -98,13 +98,13 @@ A third eval track, `pnpm eval:proposals`, measures the gate itself: a hand-labe
 | Infrastructure | AWS EC2 t3.micro, RDS PostgreSQL 18, Redis 7 (co-located container) | Free-tier eligible ($0/month for 12 months); Docker Compose on EC2 trades HA for zero infra cost |
 | IaC | Terraform 1.9, GitHub OIDC (no long-lived keys) | Reproducible infra, scoped IAM roles for CI |
 
-## Getting Started
+## Getting started
 
 ### Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) and Docker Compose
 
-### Quick Start
+### Quick start
 
 ```bash
 # 1. Clone the repo
@@ -126,7 +126,7 @@ Observability stack starts alongside the app:
 - Prometheus scrapes the API at `:9090`
 - Grafana dashboard (HTTP latency percentiles, AI token rate, SSE streams) at `:3002` (login: admin/admin)
 
-### Local Development
+### Local development
 
 ```bash
 pnpm install
@@ -143,7 +143,7 @@ The app ships with seed data: 12 months of synthetic business data across 6 cate
 
 The AI summary highlights the December revenue spike, Q3 marketing dip, October payroll anomaly, and steady rent baseline. That's the kind of thing the curation pipeline surfaces from real-ish data.
 
-## Project Structure
+## Project structure
 
 ```
 apps/web/          Next.js 16 frontend (port 3000)
@@ -185,6 +185,7 @@ A few honest gaps:
 - **Two data sources today: QuickBooks OAuth and CSV upload.** There are no connectors for Shopify, Stripe, bank feeds, or other accounting platforms yet. If your data isn't already in QuickBooks, a CSV export is the only way in.
 - **Chart rendering serializes to concurrency 1 per process.** `renderChart.ts` queues every render through one module-level queue: `react-dom/client` reads `window`, `document`, and `navigator` off `globalThis`, so the module installs a jsdom shim there per render and two renders can't safely overlap. That's well below the `alerts-send` worker's declared concurrency of 10, and each render also builds a fresh, uncached `Resvg` instance with `loadSystemFonts: true`, adding real per-render font-loading cost on top.
 - **A fully-failed digest week loses that week's expired-proposal fold-in permanently.** The fold-in matches on a `resolvedAt >= weekStart` time window with no persisted watermark; if an entire weekly run fails outright (not just runs late), the next successful run's window has already moved past it, and those proposals never surface in any digest. A run that's merely late is fine (accepted up to 6 extra days); a run that never completes is not recoverable. Accepted rather than adding a backfill mechanism, since a fully-failed digest week already requires operator attention for other reasons.
+- **The live AI summary has no runtime check against directive language, only the system prompt's instructions.** Running the eval harness surfaced this directly: one of nine sampled summaries generated the literal banned phrase "you need to," an occasional slip past the prompt, not a hypothetical. The agent-proposal pipeline validates this at the schema boundary (the `DIRECTIVE` regex rejects the field before it can reach a user); the summary pipeline has no equivalent, it only gets checked offline by `pnpm eval`, after the fact. Closing that gap means adding the same validation to the SSE stream path, not yet done.
 
 ## Related project
 
