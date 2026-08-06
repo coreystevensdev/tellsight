@@ -166,48 +166,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Deeper insight example, longer, more specific */}
-      <section className="relative">
-        <div className="mx-auto max-w-6xl px-4 py-16 md:px-6 md:py-24">
-          <div className="grid gap-10 md:grid-cols-[1fr_1.3fr] md:items-start md:gap-16">
-            <div>
-              <p className="text-sm font-medium text-primary">A longer example</p>
-              <h2 className="mt-2 font-serif text-2xl font-medium text-foreground md:text-3xl">
-                It spots patterns you&apos;d miss at a glance.
-              </h2>
-              <p className="mt-4 text-muted-foreground">
-                Real output from a landscaping company&apos;s 12 months of Square data.
-                The AI flagged the seasonal dip and connected it to their snow
-                removal revenue gap, something a chart alone wouldn&apos;t tell you.
-              </p>
-              <p className="mt-3 text-sm text-muted-foreground">
-                Every insight links back to the exact numbers. Click
-                &quot;How I reached this conclusion&quot; to see the statistical basis.
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-border/40 bg-ai-surface p-5 shadow-lg md:p-7">
-              <div className="text-sm font-medium text-foreground/60">AI Analysis</div>
-              <div className="mt-3 space-y-3 font-serif text-[15px] leading-[1.8] text-card-foreground">
-                <p className="first-letter:float-left first-letter:mr-1 first-letter:font-serif first-letter:text-[3em] first-letter:font-medium first-letter:leading-[0.75] first-letter:text-primary">
-                  November revenue dropped <span className="font-mono font-medium text-accent-warm">23%</span> compared
-                  to October, but this lines up with a seasonal pattern visible in both years of data.
-                </p>
-                <p className="text-card-foreground/70">
-                  The dip comes from residential landscaping jobs declining as temperatures drop.
-                  Snow removal revenue typically starts in the second half of December. If you&apos;re
-                  planning crew schedules, the gap between late November and mid-December is
-                  where you&apos;ll feel the squeeze.
-                </p>
-              </div>
-              <div className="mt-4 flex items-center gap-2 border-t border-border/30 pt-3">
-                <span className="text-xs text-muted-foreground">Based on 847 transactions across 5 expense categories</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* How it works, 3 steps, not 4 features */}
       <section className="border-t border-border/40">
         <div className="mx-auto max-w-6xl px-4 py-16 md:px-6 md:py-24">
@@ -246,24 +204,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Trust strip, concrete details, not marketing */}
-      <section className="border-t border-border/40 bg-muted/30">
-        <div className="mx-auto grid max-w-6xl grid-cols-2 gap-px md:grid-cols-4">
-          {[
-            { label: 'Setup time', value: 'Under 5 minutes' },
-            { label: 'Sign in', value: 'Google account' },
-            { label: 'Privacy', value: 'Raw data never reaches AI' },
-            { label: 'Charts', value: 'Free forever' },
-          ].map((stat) => (
-            <div key={stat.label} className="bg-background px-6 py-5 text-center">
-              <div className="text-sm font-semibold text-foreground">{stat.value}</div>
-              <div className="mt-0.5 text-xs text-muted-foreground">{stat.label}</div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Privacy section, proves the trust strip's "Raw data never reaches AI" tile */}
+      {/* Privacy section */}
       <section className="border-t border-border/40">
         <div className="mx-auto max-w-4xl px-4 py-14 md:px-6 md:py-20">
           <h2 className="font-serif text-2xl font-medium tracking-tight text-foreground md:text-3xl">
@@ -348,14 +289,8 @@ export default function LandingPage() {
             <div className="mt-4 md:mt-0">
               <p className="font-serif text-base leading-relaxed text-foreground md:text-lg">
                 I kept watching small business owners open their dashboards, squint,
-                and close the laptop. The numbers were all there, nobody could tell
-                what any of it meant. Tellsight is the thing I wished existed.
-              </p>
-              <p className="mt-4 font-serif text-base leading-relaxed text-muted-foreground">
-                If you try it and the AI gets something wrong, tell me directly.
-                I read every note and use them to tune the prompts. That&apos;s the
-                advantage of a small product, the person who built it is also the
-                person who fixes it.
+                and close the laptop. Tellsight is the thing I wished existed. If the
+                AI gets something wrong, tell me directly, I read every note myself.
               </p>
               <p className="mt-6 text-sm text-foreground">
                 Corey, maker of Tellsight
@@ -373,7 +308,6 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
-
 
       {/* Footer */}
       <footer className="border-t border-border/50">
