@@ -70,8 +70,9 @@ export default function LandingPage() {
           </h1>
 
           <p className="mt-6 max-w-xl font-serif text-lg leading-relaxed text-muted-foreground md:text-xl">
-            Upload a CSV from Square, QuickBooks, or your bank. Get charts in seconds
-            and an AI summary that reads your numbers like a financial analyst.
+            Connect QuickBooks directly, or upload a CSV from Square, your bank,
+            or anywhere else. Get charts in seconds and an AI summary that reads
+            your numbers like a financial analyst.
           </p>
 
           <div className="mt-9 flex flex-wrap items-center gap-3">
@@ -213,11 +214,12 @@ export default function LandingPage() {
           <div className="grid gap-8 md:grid-cols-3 md:gap-12">
             <div>
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">1</div>
-              <h3 className="mt-3 text-base font-semibold text-foreground">Upload your CSV</h3>
+              <h3 className="mt-3 text-base font-semibold text-foreground">Connect or upload</h3>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                Export from Square, QuickBooks, Wave, or any tool.
-                We need date, amount, and category columns, that&apos;s it.
-                Bad rows get flagged, not silently dropped.
+                Connect QuickBooks and it syncs automatically, or export a CSV
+                from Square, Wave, or any tool. For CSVs we need date, amount,
+                and category columns, that&apos;s it. Bad rows get flagged, not
+                silently dropped.
               </p>
             </div>
 
