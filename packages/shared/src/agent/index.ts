@@ -7,7 +7,7 @@ export {
 
 export type { AgentProposal, ProposedAction, MoneyImpact, FindingKind, AgentProposalResponse } from './proposal.js';
 
-export { BANNED_IMPERATIVES } from './constants.js';
+export { BANNED_IMPERATIVES, hasDirectiveLanguage, findDirectiveLanguage } from './constants.js';
 
 export { routeProposal, DEFAULT_MIN_CONFIDENCE } from './gate.js';
 

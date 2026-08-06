@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { BANNED_IMPERATIVES } from './constants.js';
+import { hasDirectiveLanguage } from './constants.js';
 
 // The cross-boundary contract for the agent tier. The API produces proposals
 // (LLM output, schema-validated on return); the web Action drawer renders them
@@ -47,13 +47,6 @@ const proposedActionSchema = z.object({
 // Advisory posture is a legal boundary, not a style preference: insights are
 // fine, financial directives need RIA registration. Reject the directive voice
 // at the contract so a stray "you should" fails validation instead of shipping.
-// Built from the shared BANNED_IMPERATIVES so this and legal-posture.ts stay in
-// lockstep; interior spaces become \s+ so "you   should" or a line break still trips.
-const DIRECTIVE = new RegExp(
-  `\\b(?:${BANNED_IMPERATIVES.map((p) => p.replace(/ /g, '\\s+')).join('|')})\\b`,
-  'i',
-);
-
 export const agentProposalSchema = z.object({
   kind: z.enum(FINDING_KINDS),
   severity: z.enum(['info', 'notice', 'warning', 'critical']),
@@ -61,11 +54,11 @@ export const agentProposalSchema = z.object({
   explanation: z
     .string()
     .min(1)
-    .refine((s) => !DIRECTIVE.test(s), 'explanation must be advisory, not directive'),
+    .refine((s) => !hasDirectiveLanguage(s), 'explanation must be advisory, not directive'),
   recommendation: z
     .string()
     .min(1)
-    .refine((s) => !DIRECTIVE.test(s), 'recommendation must be advisory, not directive'),
+    .refine((s) => !hasDirectiveLanguage(s), 'recommendation must be advisory, not directive'),
   confidence: z.number().min(0).max(1),
   evidence: z.array(z.string().min(1)).min(1), // ComputedStat ids, a subset of the prompt's allowedStatIds
   action: proposedActionSchema.optional(), // absent means informational finding, nothing to approve

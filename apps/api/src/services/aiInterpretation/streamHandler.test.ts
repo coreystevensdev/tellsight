@@ -242,6 +242,61 @@ describe('streamToSSE', () => {
     );
   });
 
+  it('emits ai.summary_directive_language_flagged when the summary contains banned directive language', async () => {
+    mockStreamInterpretation.mockImplementation(
+      async (_prompt: string, onText: (d: string) => void) => {
+        onText('Margins slipped. You need to cut payroll next month.');
+        return {
+          fullText: 'Margins slipped. You need to cut payroll next month.',
+          usage: { inputTokens: 100, outputTokens: 20 },
+        };
+      },
+    );
+
+    const { res } = createMockRes();
+
+    const { streamToSSE } = await import('./streamHandler.js');
+    await streamToSSE(res, 1, 42, 99, 'pro');
+
+    expect(mockTrackEvent).toHaveBeenCalledWith(
+      1,
+      99,
+      'ai.summary_directive_language_flagged',
+      expect.objectContaining({
+        datasetId: 42,
+        tier: 'pro',
+        promptVersion: 'v1',
+        phrases: ['You need to'],
+      }),
+    );
+    // still delivered and cached, this check flags, it never blocks
+    expect(mockStoreSummary).toHaveBeenCalled();
+  });
+
+  it('does not emit ai.summary_directive_language_flagged for advisory phrasing', async () => {
+    mockStreamInterpretation.mockImplementation(
+      async (_prompt: string, onText: (d: string) => void) => {
+        onText('Margins slipped, worth investigating with your accountant.');
+        return {
+          fullText: 'Margins slipped, worth investigating with your accountant.',
+          usage: { inputTokens: 100, outputTokens: 20 },
+        };
+      },
+    );
+
+    const { res } = createMockRes();
+
+    const { streamToSSE } = await import('./streamHandler.js');
+    await streamToSSE(res, 1, 42, 99, 'pro');
+
+    expect(mockTrackEvent).not.toHaveBeenCalledWith(
+      1,
+      99,
+      'ai.summary_directive_language_flagged',
+      expect.anything(),
+    );
+  });
+
   it('strips invalid stat-refs before cache write and emits ai.chart_ref_invalid', async () => {
     mockStreamInterpretation.mockImplementation(
       async (_prompt: string, onText: (d: string) => void) => {

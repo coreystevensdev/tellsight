@@ -4,6 +4,7 @@ import type { SseTextEvent, SseDoneEvent, SseErrorEvent, SsePartialEvent, SseUpg
 import type { SubscriptionTier } from '../../db/queries/subscriptions.js';
 
 import { AI_TIMEOUT_MS, FREE_PREVIEW_WORD_LIMIT, ANALYTICS_EVENTS } from 'shared/constants';
+import { findDirectiveLanguage } from 'shared/agent';
 import { logger } from '../../lib/logger.js';
 import type { db, DbTransaction } from '../../lib/db.js';
 import { register, deregister } from '../../lib/activeStreams.js';
@@ -260,6 +261,29 @@ export async function streamToSSE(
         numbersChecked: report.numbersChecked,
         unmatchedCount: report.unmatchedNumbers.length,
         unmatchedSample: report.unmatchedNumbers.slice(0, 3),
+      });
+    }
+
+    // Legal-posture check, same after-the-fact shape as the checks above.
+    // The agent-proposal pipeline rejects directive language at the schema
+    // boundary because a proposal is a complete object before it's ever used;
+    // a summary is streamed token by token as it's generated, so by the time
+    // "you need to" is fully assembled here it has already reached the
+    // browser. Flag it so it's visible (analytics event, admin dashboard,
+    // an occasional real slip past the prompt, not hypothetical, the eval
+    // harness caught one in nine sampled generations), but don't try to
+    // surgically edit prose out of already-delivered text.
+    const directivePhrases = findDirectiveLanguage(result.fullText);
+    if (directivePhrases.length > 0) {
+      logger.warn(
+        { orgId, datasetId, phrases: directivePhrases, promptVersion },
+        'AI summary contained banned directive language',
+      );
+      trackEvent(orgId, userId, ANALYTICS_EVENTS.AI_SUMMARY_DIRECTIVE_LANGUAGE_FLAGGED, {
+        datasetId,
+        tier,
+        promptVersion,
+        phrases: directivePhrases,
       });
     }
 

@@ -1,6 +1,6 @@
 import { logger } from '../../lib/logger.js';
 import { AI_DISCLAIMER, citeTagGlobal, citeTagCapture, citeClosingTagGlobal, citeTagEnclosedGlobal } from 'shared/constants';
-import { BANNED_IMPERATIVES } from 'shared/agent';
+import { findDirectiveLanguage } from 'shared/agent';
 import { GET_METRIC_WITH_TREND_TOOL, COMPARE_TO_PRIOR_PERIODS_TOOL } from './interpretationTools.js';
 import type { QaLoopResult, QaTermination } from './qaLoop.js';
 import type { IdentifiedStat } from './types.js';
@@ -17,19 +17,6 @@ export interface QaAnswer {
 // Without this, cite-stripping plus the disclaimer alone would ship a
 // content-free answer with no signal to the caller that anything went wrong.
 const NO_ANSWER_TEXT = "I wasn't able to put together an answer from your data for this question.";
-
-// Mirrors proposal.ts's DIRECTIVE construction: word-boundary, case-insensitive,
-// interior spaces tolerant so "you   should" or a line break still trips it.
-// Unlike proposal.ts, escapes metacharacters first (legal-posture.ts's escapeRe
-// pattern) -- today's BANNED_IMPERATIVES has none, but a future phrase might.
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-const DIRECTIVE = new RegExp(
-  `\\b(?:${BANNED_IMPERATIVES.map((p) => escapeRegExp(p).replace(/ /g, '\\s+')).join('|')})\\b`,
-  'gi',
-);
 
 function isIdentifiedStat(value: unknown): value is IdentifiedStat {
   return typeof value === 'object' && value !== null && typeof (value as { id?: unknown }).id === 'string';
@@ -92,7 +79,7 @@ export function assembleQaAnswer(loopResult: QaLoopResult): QaAnswer {
   const allowedIds = citableIds(loopResult.toolResults);
   const { text, citedStatIds } = stripInvalidCites(loopResult.answer, allowedIds);
 
-  const phrases = [...new Set([...text.matchAll(DIRECTIVE)].map((m) => m[0]))];
+  const phrases = findDirectiveLanguage(text);
   if (phrases.length > 0) {
     logger.warn({ phrases }, 'Q&A answer contained banned imperative language');
   }

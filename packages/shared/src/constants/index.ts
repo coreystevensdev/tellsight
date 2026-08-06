@@ -77,6 +77,7 @@ export const ANALYTICS_EVENTS = {
   AI_SUMMARY_VALIDATION_FLAGGED: 'ai.summary_validation_flagged',
   AI_CHART_REF_INVALID: 'ai.chart_ref_invalid',
   AI_CITE_REF_INVALID: 'ai.cite_ref_invalid',
+  AI_SUMMARY_DIRECTIVE_LANGUAGE_FLAGGED: 'ai.summary_directive_language_flagged',
   INSIGHT_CHART_OPENED: 'insight.chart_opened',
   SHARE_LINK_CREATED: 'share_link.created',
   INSIGHT_EXPORTED: 'insight.exported',

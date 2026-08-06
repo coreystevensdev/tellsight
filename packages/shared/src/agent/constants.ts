@@ -18,3 +18,21 @@ export const BANNED_IMPERATIVES = [
   "i'd recommend",
   'i suggest you',
 ] as const;
+
+// Metacharacters escaped first (today's BANNED_IMPERATIVES has none, but a
+// future phrase might), then interior spaces become \s+ so "you   should" or
+// a line break still trips it.
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+const DIRECTIVE_SOURCE = `\\b(?:${BANNED_IMPERATIVES.map((p) => escapeRegExp(p).replace(/ /g, '\\s+')).join('|')})\\b`;
+
+export function hasDirectiveLanguage(text: string): boolean {
+  return new RegExp(DIRECTIVE_SOURCE, 'i').test(text);
+}
+
+// Every distinct matched phrase, for logging which one actually tripped.
+export function findDirectiveLanguage(text: string): string[] {
+  return [...new Set([...text.matchAll(new RegExp(DIRECTIVE_SOURCE, 'gi'))].map((m) => m[0]))];
+}
