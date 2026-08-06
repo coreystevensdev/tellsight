@@ -211,27 +211,16 @@ export default function LandingPage() {
             Your raw numbers never reach the AI.
           </h2>
           <p className="mt-4 font-serif text-muted-foreground md:text-lg">
-            Tellsight reads your CSV, computes the stats (totals, trends,
-            anomalies, year-over-year), and sends only those summaries to
-            Claude. Claude never sees your individual transactions.
+            Whether your data comes from a CSV upload or a QuickBooks sync,
+            Tellsight computes the stats (totals, trends, anomalies,
+            year-over-year) and sends only those summaries to Claude. Claude
+            never sees your individual transactions.
           </p>
           <p className="mt-3 font-serif text-muted-foreground md:text-lg">
             The function that builds the AI prompt has a signature that
             won&apos;t accept raw rows. Try to pass them and TypeScript refuses
             to compile. The privacy boundary is enforced by the type system,
             not by code-review discipline.
-          </p>
-          <p className="mt-3 font-serif text-muted-foreground md:text-lg">
-            Built on the same principle as{' '}
-            <a
-              href="https://github.com/coreystevensdev/invoiceflow"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-medium text-foreground underline underline-offset-4 transition-colors hover:text-primary"
-            >
-              InvoiceFlow
-            </a>
-            , the invoice tool I made for the same audience.
           </p>
 
           <details className="mt-6 rounded-lg border border-border/60 bg-card p-4 text-sm">
@@ -276,36 +265,6 @@ export default function LandingPage() {
               </p>
             </div>
           </details>
-        </div>
-      </section>
-
-      {/* A note from the maker, deliberately off-rhythm (narrower, left-aligned) to break the centered sections around it */}
-      <section className="border-t border-border/40 bg-muted/20">
-        <div className="mx-auto max-w-4xl px-4 py-14 md:px-6 md:py-20">
-          <div className="md:grid md:grid-cols-[140px_1fr] md:gap-10">
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              From the maker
-            </p>
-            <div className="mt-4 md:mt-0">
-              <p className="font-serif text-base leading-relaxed text-foreground md:text-lg">
-                I kept watching small business owners open their dashboards, squint,
-                and close the laptop. Tellsight is the thing I wished existed. If the
-                AI gets something wrong, tell me directly, I read every note myself.
-              </p>
-              <p className="mt-6 text-sm text-foreground">
-                Corey, maker of Tellsight
-                <br />
-                <a
-                  href="https://github.com/coreystevensdev/tellsight/issues"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary underline-offset-4 transition-colors hover:underline"
-                >
-                  Send feedback on GitHub
-                </a>
-              </p>
-            </div>
-          </div>
         </div>
       </section>
 
