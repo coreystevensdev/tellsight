@@ -133,25 +133,30 @@ router.post('/auth/forgot-password', rateLimitAuth, async (req: Request, res: Re
 
   const result = await requestPasswordReset(parsed.data.email);
 
-  // sends only on a real match, but the response is identical either way so
-  // this endpoint can't be used to check which emails have an account
+  // sends only on a real match, but the response is identical either way,
+  // including on a provider failure, so this endpoint can't be used to
+  // check which emails have an account
   if (result) {
     const resetUrl = `${env.APP_URL}/reset-password?token=${result.token}`;
-    await sendEmail({
-      to: parsed.data.email,
-      subject: 'Reset your password',
-      react: PasswordResetEmail({
-        resetUrl,
-        expiryHours: PASSWORD_RESET.EXPIRY_HOURS,
-        mailingAddress: env.EMAIL_MAILING_ADDRESS,
-        companyName: env.EMAIL_FROM_NAME,
-      }),
-    });
-    audit(req, {
-      orgId: null,
-      userId: result.userId,
-      action: AUDIT_ACTIONS.AUTH_PASSWORD_RESET_REQUESTED,
-    });
+    try {
+      await sendEmail({
+        to: parsed.data.email,
+        subject: 'Reset your password',
+        react: PasswordResetEmail({
+          resetUrl,
+          expiryHours: PASSWORD_RESET.EXPIRY_HOURS,
+          mailingAddress: env.EMAIL_MAILING_ADDRESS,
+          companyName: env.EMAIL_FROM_NAME,
+        }),
+      });
+      audit(req, {
+        orgId: null,
+        userId: result.userId,
+        action: AUDIT_ACTIONS.AUTH_PASSWORD_RESET_REQUESTED,
+      });
+    } catch (err) {
+      logger.error({ err, userId: result.userId }, 'Failed to send password reset email');
+    }
   }
 
   res.json({ data: { success: true } });

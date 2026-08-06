@@ -477,6 +477,22 @@ describe('auth routes', () => {
       expect(body.data.success).toBe(true);
       expect(mockSendEmail).not.toHaveBeenCalled();
     });
+
+    it('still responds with success when the email provider fails, instead of leaking a 500', async () => {
+      mockRequestPasswordReset.mockResolvedValueOnce({ token: 'raw-reset-token', userId: 7 });
+      mockSendEmail.mockRejectedValueOnce(new Error('provider rejected recipient'));
+
+      const res = await fetch(`${baseUrl}/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'known@example.com' }),
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body = (await res.json()) as any;
+
+      expect(res.status).toBe(200);
+      expect(body.data.success).toBe(true);
+    });
   });
 
   describe('POST /auth/reset-password', () => {
