@@ -374,24 +374,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Bottom CTA, short */}
-      <section className="border-t border-border/40">
-        <div className="mx-auto max-w-6xl px-4 py-16 text-center md:px-6 md:py-20">
-          <h2 className="font-serif text-2xl font-medium text-foreground">
-            The demo is live. Go look at it.
-          </h2>
-          <p className="mx-auto mt-3 max-w-md font-serif text-muted-foreground">
-            No signup, no credit card, no &quot;book a call.&quot; It runs on sample data
-            from a coffee shop, 12 months of revenue and expenses.
-          </p>
-          <Link
-            href="/dashboard"
-            className="mt-7 inline-block rounded-lg bg-primary px-6 py-3 text-sm font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary/90 hover:shadow-md"
-          >
-            Explore the demo
-          </Link>
-        </div>
-      </section>
 
       {/* Footer */}
       <footer className="border-t border-border/50">
