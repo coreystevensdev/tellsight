@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/coreystevensdev/tellsight/actions/workflows/ci.yml"><img src="https://github.com/coreystevensdev/tellsight/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/tests-2%2C816-brightgreen.svg" alt="2,816 tests">
+  <img src="https://img.shields.io/badge/tests-2%2C900-brightgreen.svg" alt="2,900 tests">
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License">
   <img src="https://img.shields.io/badge/Next.js-16-black.svg" alt="Next.js 16">
   <img src="https://img.shields.io/badge/TypeScript-5.9-3178c6.svg" alt="TypeScript">
@@ -12,9 +12,9 @@
 
 ## Overview
 
-**Deploy:** AWS EC2 t2.micro + RDS PostgreSQL 16 + Redis 7 (Docker Compose, co-located). GitHub Actions OIDC deploys via SSM SendCommand; no SSH key stored. See [infra/README.md](infra/README.md) for the Terraform runbook.
+**Deploy:** AWS EC2 t3.micro + RDS PostgreSQL 18 + Redis 7 (Docker Compose, co-located). GitHub Actions OIDC deploys via SSM SendCommand; no SSH key stored. See [infra/README.md](infra/README.md) for the Terraform runbook.
 
-Most analytics tools show numbers. This one explains what they mean, and delivers the interpretation to your inbox every week. Connect QuickBooks or upload a CSV (the only two data sources supported today), get charts, then a plain-English explanation of what the trends actually mean for your business. Multi-tenant Postgres with row-level security, SSE streaming for AI summaries, BullMQ three-queue digest pipeline, Stripe billing. The AI only ever sees computed statistics, never raw rows. 2,816 automated tests (2,809 Vitest plus 7 Playwright E2E), with the curation pipeline's financial math the most heavily covered.
+Most analytics tools show numbers. This one explains what they mean, and delivers the interpretation to your inbox every week. Connect QuickBooks or upload a CSV (the only two data sources supported today), get charts, then a plain-English explanation of what the trends actually mean for your business. Sign in with Google or email and password. Multi-tenant Postgres with row-level security, SSE streaming for AI summaries, BullMQ three-queue digest pipeline, Stripe billing. The AI only ever sees computed statistics, never raw rows. 2,900 automated tests (2,893 Vitest plus 7 Playwright E2E), with the curation pipeline's financial math the most heavily covered.
 
 ## Problem
 
@@ -90,11 +90,11 @@ A third eval track, `pnpm eval:proposals`, measures the gate itself: a hand-labe
 | Database | PostgreSQL 18, Drizzle ORM 0.45.x | RLS for multi-tenancy, Drizzle for type-safe queries |
 | Cache | Redis 7 | Rate limiting + AI summary cache |
 | AI | Claude API with SSE streaming | Structured prompt engineering, streaming delivery |
-| Auth | JWT + refresh rotation, Google OAuth (jose 6.x) | Secure token lifecycle, social login for onboarding |
+| Auth | JWT + refresh rotation, Google OAuth or email/password (jose 6.x, scrypt) | Secure token lifecycle, social login and password-based signup both onboard into the same session |
 | Monorepo | pnpm workspaces, Turborepo | Shared schemas between frontend/backend |
 | Testing | Vitest, Playwright | Fast unit tests, browser-based E2E and screenshots |
 | CI/CD | GitHub Actions (5-stage pipeline) | Lint, test, seed validation, E2E, Docker smoke |
-| Infrastructure | AWS EC2 t2.micro, RDS PostgreSQL 16, Redis 7 (co-located container) | Free-tier eligible ($0/month for 12 months); Docker Compose on EC2 trades HA for zero infra cost |
+| Infrastructure | AWS EC2 t3.micro, RDS PostgreSQL 18, Redis 7 (co-located container) | Free-tier eligible ($0/month for 12 months); Docker Compose on EC2 trades HA for zero infra cost |
 | IaC | Terraform 1.9, GitHub OIDC (no long-lived keys) | Reproducible infra, scoped IAM roles for CI |
 
 ## Getting Started
