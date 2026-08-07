@@ -9,6 +9,12 @@ export const validCsvWithOptionals = `date,amount,category,label,parent_category
 2025-01-15,1200.00,Revenue,Monthly sales,Income
 2025-01-16,450.50,Office Supplies,Printer paper,Expenses`;
 
+/** No parent_category column, but negative amounts prove the expense convention */
+export const signedAmountsNoParentCategory = `date,amount,category
+2025-01-15,1200.00,Revenue
+2025-01-16,-450.50,Office Supplies
+2025-01-17,800.00,Consulting`;
+
 /** Day-first (European) dates, unambiguous because day 23 can't be a month */
 export const dayFirstDates = `date,amount,category
 23/03/1976,120.00,Revenue

@@ -1,5 +1,5 @@
 import type { ParsedRow } from '../adapters/index.js';
-import { buildHeaderMap, detectDayFirst, parseDate } from './csvAdapter.js';
+import { buildHeaderMap, detectDayFirst, parseDate, hasClassificationSignal } from './csvAdapter.js';
 
 /**
  * Shape that matches data_rows insert requirements. The normalizer
@@ -25,19 +25,38 @@ export function normalizeRows(rows: ParsedRow[], rawHeaders: string[]): Normaliz
   const labelKey = headerMap.get('label');
   const parentCatKey = headerMap.get('parent_category');
   const dayFirst = detectDayFirst(rows.map((r) => r[dateKey] ?? ''));
+  // No parent_category column: fall back to amount sign (negative = expense,
+  // a common bank/ledger export convention), but only once the file proves
+  // it uses that convention somewhere, otherwise leave rows unclassified
+  // rather than guessing every row is Income.
+  const useSignConvention = !parentCatKey && hasClassificationSignal(false, rows, amountKey);
 
   return rows.map((row) => {
     const dateStr = row[dateKey] ?? '';
     const amountStr = row[amountKey] ?? '';
     const categoryStr = row[categoryKey] ?? '';
+    const numericAmount = Number(amountStr.trim().replace(/,/g, ''));
+
+    let parentCategory: string | null;
+    let amount: string;
+    if (parentCatKey) {
+      parentCategory = row[parentCatKey]?.trim() || null;
+      amount = amountStr.trim().replace(/,/g, '');
+    } else if (useSignConvention) {
+      parentCategory = numericAmount < 0 ? 'Expenses' : 'Income';
+      amount = Math.abs(numericAmount).toFixed(2);
+    } else {
+      parentCategory = null;
+      amount = amountStr.trim().replace(/,/g, '');
+    }
 
     return {
       category: categoryStr.trim(),
-      parentCategory: parentCatKey ? (row[parentCatKey]?.trim() || null) : null,
+      parentCategory,
       // rows reaching here already passed isValidDate() with the same
       // dayFirst interpretation, so this can't be null
       date: parseDate(dateStr, dayFirst)!,
-      amount: amountStr.trim().replace(/,/g, ''),
+      amount,
       label: labelKey ? (row[labelKey]?.trim() || null) : null,
       metadata: null,
     };

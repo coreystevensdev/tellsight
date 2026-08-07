@@ -90,6 +90,16 @@ function isValidAmount(value: string): boolean {
   return !isNaN(Number(cleaned));
 }
 
+// A row only shows up in revenue/expense charts once its parentCategory is
+// exactly 'Income' or 'Expenses' (see charts.ts). Without a parent_category
+// column, a negative amount is the only other signal we have, common in
+// bank/ledger exports where expenses are negative. If neither exists, every
+// row silently vanishes from every chart, so callers should warn loudly.
+function hasClassificationSignal(hasParentCategoryColumn: boolean, rows: ParsedRow[], amountKey: string): boolean {
+  if (hasParentCategoryColumn) return true;
+  return rows.some((r) => Number((r[amountKey] ?? '').trim().replace(/,/g, '')) < 0);
+}
+
 function validateHeaders(headers: string[]): ValidationResult {
   const normalized = headers.map(normalizeHeader);
   const errors: ColumnValidationError[] = [];
@@ -256,6 +266,13 @@ export const csvAdapter = {
     const skippedSet = new Set(skippedRows);
     const validRows = records.filter((_, i) => !skippedSet.has(i + 2));
 
+    const amountKey = headerMap.get('amount')!;
+    if (!hasClassificationSignal(headerMap.has('parent_category'), validRows, amountKey)) {
+      warnings.push(
+        "We couldn't tell which rows are income vs. expenses, so this data won't appear in your charts. Add a 'parent_category' column with 'Income'/'Expenses' values, or use negative amounts for expenses.",
+      );
+    }
+
     return {
       headers: rawHeaders,
       rows: validRows,
@@ -271,4 +288,4 @@ export const csvAdapter = {
 
 // Re-export helpers for testing and reuse in normalizer.ts (same date
 // interpretation must be used for both validation and actual storage)
-export { stripBom, normalizeHeader, isValidDate, isValidAmount, buildHeaderMap, detectDayFirst, parseDate };
+export { stripBom, normalizeHeader, isValidDate, isValidAmount, buildHeaderMap, detectDayFirst, parseDate, hasClassificationSignal };

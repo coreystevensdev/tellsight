@@ -71,6 +71,32 @@ describe('normalizeRows', () => {
     expect(result[1]!.date.toISOString().slice(0, 10)).toBe('1982-09-10');
   });
 
+  it('classifies parentCategory by amount sign when parent_category is absent but proven', () => {
+    const rows: ParsedRow[] = [
+      { date: '2025-01-15', amount: '1200.00', category: 'Revenue' },
+      { date: '2025-01-16', amount: '-450.50', category: 'Office Supplies' },
+    ];
+    const minHeaders = ['date', 'amount', 'category'];
+
+    const result = normalizeRows(rows, minHeaders);
+    expect(result[0]!.parentCategory).toBe('Income');
+    expect(result[0]!.amount).toBe('1200.00');
+    expect(result[1]!.parentCategory).toBe('Expenses');
+    expect(result[1]!.amount).toBe('450.50'); // stored as positive magnitude
+  });
+
+  it('leaves parentCategory null when there is no signal to classify by at all', () => {
+    const rows: ParsedRow[] = [
+      { date: '2025-01-15', amount: '1200.00', category: 'Revenue' },
+      { date: '2025-01-16', amount: '450.50', category: 'Office Supplies' },
+    ];
+    const minHeaders = ['date', 'amount', 'category'];
+
+    const result = normalizeRows(rows, minHeaders);
+    expect(result[0]!.parentCategory).toBeNull();
+    expect(result[1]!.parentCategory).toBeNull();
+  });
+
   it('handles messy headers by normalizing', () => {
     const messyHeaders = ['Date', ' AMOUNT ', 'category'];
     const rows: ParsedRow[] = [

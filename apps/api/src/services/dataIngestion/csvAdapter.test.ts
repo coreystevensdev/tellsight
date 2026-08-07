@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { csvAdapter, stripBom, normalizeHeader, isValidDate, isValidAmount, detectDayFirst, parseDate } from './csvAdapter.js';
+import { csvAdapter, stripBom, normalizeHeader, isValidDate, isValidAmount, detectDayFirst, parseDate, hasClassificationSignal } from './csvAdapter.js';
 import {
   validCsv,
   validCsvWithOptionals,
   aliasedColumns,
+  signedAmountsNoParentCategory,
   dayFirstDates,
   missingColumn,
   invalidDates,
@@ -28,7 +29,8 @@ describe('csvAdapter.parse', () => {
     expect(result.rows).toHaveLength(3);
     expect(result.rowCount).toBe(3);
     expect(result.headers).toEqual(['date', 'amount', 'category']);
-    expect(result.warnings).toHaveLength(0);
+    // no parent_category and no negative amounts, can't classify Income vs Expenses
+    expect(result.warnings[0]).toContain("couldn't tell which rows are income vs. expenses");
     expect(result.rows[0]).toMatchObject({ date: '2025-01-15', amount: '1200.00', category: 'Revenue' });
   });
 
@@ -41,13 +43,17 @@ describe('csvAdapter.parse', () => {
 
   it('accepts aliased column names from other tools (invoice_date, total, product)', () => {
     const result = csvAdapter.parse(toBuffer(aliasedColumns));
-    expect(result.warnings).toHaveLength(0);
     expect(result.rows).toHaveLength(2);
     expect(result.rows[0]).toMatchObject({ invoice_date: '2025-01-15', total: '1200.00', product: 'Widget' });
   });
 
   it('accepts day-first (European) dates instead of rejecting most of the file', () => {
     const result = csvAdapter.parse(toBuffer(dayFirstDates));
+    expect(result.rows).toHaveLength(3);
+  });
+
+  it('does not warn when a negative amount proves the expense-sign convention', () => {
+    const result = csvAdapter.parse(toBuffer(signedAmountsNoParentCategory));
     expect(result.warnings).toHaveLength(0);
     expect(result.rows).toHaveLength(3);
   });
@@ -207,6 +213,20 @@ describe('helper functions', () => {
   it('parseDate returns null for garbage regardless of dayFirst', () => {
     expect(parseDate('not-a-date', true)).toBeNull();
     expect(parseDate('', false)).toBeNull();
+  });
+
+  it('hasClassificationSignal is true when parent_category column is present', () => {
+    expect(hasClassificationSignal(true, [], 'amount')).toBe(true);
+  });
+
+  it('hasClassificationSignal is true when any amount is negative', () => {
+    const rows = [{ amount: '100.00' }, { amount: '-50.00' }];
+    expect(hasClassificationSignal(false, rows, 'amount')).toBe(true);
+  });
+
+  it('hasClassificationSignal is false when all amounts are non-negative and no parent_category', () => {
+    const rows = [{ amount: '100.00' }, { amount: '50.00' }];
+    expect(hasClassificationSignal(false, rows, 'amount')).toBe(false);
   });
 
   it('isValidAmount handles numbers with commas', () => {
