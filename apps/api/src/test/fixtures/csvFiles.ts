@@ -9,6 +9,18 @@ export const validCsvWithOptionals = `date,amount,category,label,parent_category
 2025-01-15,1200.00,Revenue,Monthly sales,Income
 2025-01-16,450.50,Office Supplies,Printer paper,Expenses`;
 
+/** parent_category present but using synonyms instead of exact Income/Expenses */
+export const parentCategorySynonyms = `date,amount,category,parent_category
+2025-01-15,1200.00,Consulting,Revenue
+2025-01-16,450.50,Office Supplies,Cost
+2025-01-17,300.00,Rent,cost`;
+
+/** parent_category present, mix of a recognized value and ones we can't map */
+export const partiallyUnrecognizedParentCategory = `date,amount,category,parent_category
+2025-01-15,1200.00,Consulting,Income
+2025-01-16,450.50,Office Supplies,Both
+2025-01-17,300.00,Rent,N/A`;
+
 /** No parent_category column, but negative amounts prove the expense convention */
 export const signedAmountsNoParentCategory = `date,amount,category
 2025-01-15,1200.00,Revenue

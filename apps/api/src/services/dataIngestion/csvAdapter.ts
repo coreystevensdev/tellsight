@@ -90,13 +90,33 @@ function isValidAmount(value: string): boolean {
   return !isNaN(Number(cleaned));
 }
 
+// charts.ts only counts a row once parentCategory is exactly 'Income' or
+// 'Expenses'. A parent_category column full of case variants or plain-
+// English synonyms ('revenue', 'sales', 'cost') would otherwise hit the
+// same silent-vanish bug as not having the column at all.
+const PARENT_CATEGORY_VALUES: Record<'Income' | 'Expenses', readonly string[]> = {
+  Income: ['income', 'revenue', 'sales'],
+  Expenses: ['expenses', 'expense', 'cost', 'costs'],
+};
+
+function normalizeParentCategory(value: string): 'Income' | 'Expenses' | null {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return null;
+  if (PARENT_CATEGORY_VALUES.Income.includes(normalized)) return 'Income';
+  if (PARENT_CATEGORY_VALUES.Expenses.includes(normalized)) return 'Expenses';
+  return null;
+}
+
 // A row only shows up in revenue/expense charts once its parentCategory is
-// exactly 'Income' or 'Expenses' (see charts.ts). Without a parent_category
-// column, a negative amount is the only other signal we have, common in
-// bank/ledger exports where expenses are negative. If neither exists, every
-// row silently vanishes from every chart, so callers should warn loudly.
-function hasClassificationSignal(hasParentCategoryColumn: boolean, rows: ParsedRow[], amountKey: string): boolean {
-  if (hasParentCategoryColumn) return true;
+// exactly 'Income' or 'Expenses' (see charts.ts). Without a recognizable
+// parent_category value, a negative amount is the only other signal we
+// have, common in bank/ledger exports where expenses are negative. If
+// neither exists, every row silently vanishes from every chart, so callers
+// should warn loudly.
+function hasClassificationSignal(rows: ParsedRow[], amountKey: string, parentCategoryKey?: string): boolean {
+  if (parentCategoryKey) {
+    return rows.some((r) => normalizeParentCategory(r[parentCategoryKey] ?? '') !== null);
+  }
   return rows.some((r) => Number((r[amountKey] ?? '').trim().replace(/,/g, '')) < 0);
 }
 
@@ -267,10 +287,19 @@ export const csvAdapter = {
     const validRows = records.filter((_, i) => !skippedSet.has(i + 2));
 
     const amountKey = headerMap.get('amount')!;
-    if (!hasClassificationSignal(headerMap.has('parent_category'), validRows, amountKey)) {
+    const parentCategoryKey = headerMap.get('parent_category');
+
+    if (!hasClassificationSignal(validRows, amountKey, parentCategoryKey)) {
       warnings.push(
         "We couldn't tell which rows are income vs. expenses, so this data won't appear in your charts. Add a 'parent_category' column with 'Income'/'Expenses' values, or use negative amounts for expenses.",
       );
+    } else if (parentCategoryKey) {
+      const unrecognized = validRows.filter((r) => normalizeParentCategory(r[parentCategoryKey] ?? '') === null).length;
+      if (unrecognized > 0) {
+        warnings.push(
+          `${unrecognized} rows have a parent_category value we didn't recognize (only 'Income' and 'Expenses' variants count) and won't appear in your charts.`,
+        );
+      }
     }
 
     return {
@@ -288,4 +317,4 @@ export const csvAdapter = {
 
 // Re-export helpers for testing and reuse in normalizer.ts (same date
 // interpretation must be used for both validation and actual storage)
-export { stripBom, normalizeHeader, isValidDate, isValidAmount, buildHeaderMap, detectDayFirst, parseDate, hasClassificationSignal };
+export { stripBom, normalizeHeader, isValidDate, isValidAmount, buildHeaderMap, detectDayFirst, parseDate, hasClassificationSignal, normalizeParentCategory };

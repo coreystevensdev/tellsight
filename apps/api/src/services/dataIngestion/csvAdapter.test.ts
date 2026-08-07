@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { csvAdapter, stripBom, normalizeHeader, isValidDate, isValidAmount, detectDayFirst, parseDate, hasClassificationSignal } from './csvAdapter.js';
+import { csvAdapter, stripBom, normalizeHeader, isValidDate, isValidAmount, detectDayFirst, parseDate, hasClassificationSignal, normalizeParentCategory } from './csvAdapter.js';
 import {
   validCsv,
   validCsvWithOptionals,
   aliasedColumns,
   signedAmountsNoParentCategory,
+  parentCategorySynonyms,
+  partiallyUnrecognizedParentCategory,
   dayFirstDates,
   missingColumn,
   invalidDates,
@@ -56,6 +58,18 @@ describe('csvAdapter.parse', () => {
     const result = csvAdapter.parse(toBuffer(signedAmountsNoParentCategory));
     expect(result.warnings).toHaveLength(0);
     expect(result.rows).toHaveLength(3);
+  });
+
+  it('does not warn when parent_category uses recognized synonyms (Revenue/Cost)', () => {
+    const result = csvAdapter.parse(toBuffer(parentCategorySynonyms));
+    expect(result.warnings).toHaveLength(0);
+    expect(result.rows).toHaveLength(3);
+  });
+
+  it('warns about the specific rows with an unrecognized parent_category value', () => {
+    const result = csvAdapter.parse(toBuffer(partiallyUnrecognizedParentCategory));
+    expect(result.rows).toHaveLength(3); // still uploads, just flags the 2 that won't chart
+    expect(result.warnings[0]).toContain('2 rows have a parent_category value');
   });
 
   it('returns validation errors for missing required columns', () => {
@@ -215,18 +229,34 @@ describe('helper functions', () => {
     expect(parseDate('', false)).toBeNull();
   });
 
-  it('hasClassificationSignal is true when parent_category column is present', () => {
-    expect(hasClassificationSignal(true, [], 'amount')).toBe(true);
+  it('hasClassificationSignal is true when a parent_category value is recognized', () => {
+    const rows = [{ amount: '100.00', parent_category: 'Income' }];
+    expect(hasClassificationSignal(rows, 'amount', 'parent_category')).toBe(true);
   });
 
-  it('hasClassificationSignal is true when any amount is negative', () => {
+  it('hasClassificationSignal is false when parent_category exists but no value is recognized', () => {
+    const rows = [{ amount: '100.00', parent_category: 'N/A' }];
+    expect(hasClassificationSignal(rows, 'amount', 'parent_category')).toBe(false);
+  });
+
+  it('hasClassificationSignal is true when any amount is negative and no parent_category', () => {
     const rows = [{ amount: '100.00' }, { amount: '-50.00' }];
-    expect(hasClassificationSignal(false, rows, 'amount')).toBe(true);
+    expect(hasClassificationSignal(rows, 'amount')).toBe(true);
   });
 
   it('hasClassificationSignal is false when all amounts are non-negative and no parent_category', () => {
     const rows = [{ amount: '100.00' }, { amount: '50.00' }];
-    expect(hasClassificationSignal(false, rows, 'amount')).toBe(false);
+    expect(hasClassificationSignal(rows, 'amount')).toBe(false);
+  });
+
+  it('normalizeParentCategory maps case-insensitive synonyms to canonical values', () => {
+    expect(normalizeParentCategory('income')).toBe('Income');
+    expect(normalizeParentCategory('Revenue')).toBe('Income');
+    expect(normalizeParentCategory('SALES')).toBe('Income');
+    expect(normalizeParentCategory('expenses')).toBe('Expenses');
+    expect(normalizeParentCategory('Cost')).toBe('Expenses');
+    expect(normalizeParentCategory('N/A')).toBeNull();
+    expect(normalizeParentCategory('')).toBeNull();
   });
 
   it('isValidAmount handles numbers with commas', () => {

@@ -85,6 +85,20 @@ describe('normalizeRows', () => {
     expect(result[1]!.amount).toBe('450.50'); // stored as positive magnitude
   });
 
+  it('normalizes parent_category synonyms and case variants to canonical values', () => {
+    const rows: ParsedRow[] = [
+      { date: '2025-01-15', amount: '1200.00', category: 'Consulting', parent_category: 'Revenue' },
+      { date: '2025-01-16', amount: '450.50', category: 'Office Supplies', parent_category: 'cost' },
+      { date: '2025-01-17', amount: '300.00', category: 'Rent', parent_category: 'N/A' },
+    ];
+    const headers = ['date', 'amount', 'category', 'parent_category'];
+
+    const result = normalizeRows(rows, headers);
+    expect(result[0]!.parentCategory).toBe('Income');
+    expect(result[1]!.parentCategory).toBe('Expenses');
+    expect(result[2]!.parentCategory).toBeNull(); // 'N/A' isn't a recognized value
+  });
+
   it('leaves parentCategory null when there is no signal to classify by at all', () => {
     const rows: ParsedRow[] = [
       { date: '2025-01-15', amount: '1200.00', category: 'Revenue' },

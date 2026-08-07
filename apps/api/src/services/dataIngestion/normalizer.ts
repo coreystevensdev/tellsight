@@ -1,5 +1,5 @@
 import type { ParsedRow } from '../adapters/index.js';
-import { buildHeaderMap, detectDayFirst, parseDate, hasClassificationSignal } from './csvAdapter.js';
+import { buildHeaderMap, detectDayFirst, parseDate, hasClassificationSignal, normalizeParentCategory } from './csvAdapter.js';
 
 /**
  * Shape that matches data_rows insert requirements. The normalizer
@@ -29,7 +29,7 @@ export function normalizeRows(rows: ParsedRow[], rawHeaders: string[]): Normaliz
   // a common bank/ledger export convention), but only once the file proves
   // it uses that convention somewhere, otherwise leave rows unclassified
   // rather than guessing every row is Income.
-  const useSignConvention = !parentCatKey && hasClassificationSignal(false, rows, amountKey);
+  const useSignConvention = !parentCatKey && hasClassificationSignal(rows, amountKey);
 
   return rows.map((row) => {
     const dateStr = row[dateKey] ?? '';
@@ -40,7 +40,7 @@ export function normalizeRows(rows: ParsedRow[], rawHeaders: string[]): Normaliz
     let parentCategory: string | null;
     let amount: string;
     if (parentCatKey) {
-      parentCategory = row[parentCatKey]?.trim() || null;
+      parentCategory = normalizeParentCategory(row[parentCatKey] ?? '');
       amount = amountStr.trim().replace(/,/g, '');
     } else if (useSignConvention) {
       parentCategory = numericAmount < 0 ? 'Expenses' : 'Income';
