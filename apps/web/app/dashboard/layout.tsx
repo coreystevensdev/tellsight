@@ -31,7 +31,10 @@ export default async function DashboardLayout({
           <Sidebar />
           <div className="flex flex-1 flex-col overflow-hidden">
             <AppHeader isAuthenticated={isAuthenticated} />
-            <main id="main-content" className="flex-1 overflow-y-auto">
+            {/* overflow-x-hidden: FilterBar's sticky header bleeds past its container
+                with negative margins, which inflates scrollWidth without anything
+                actually rendering outside the viewport. */}
+            <main id="main-content" className="flex-1 overflow-x-hidden overflow-y-auto">
               {children}
             </main>
           </div>

@@ -450,7 +450,7 @@ export function AiSummaryCard({
     return (
       <div
         className={cn(
-          'rounded-xl border border-border/50 bg-ai-surface p-5 shadow-sm md:p-8',
+          'min-w-0 rounded-xl border border-border/50 bg-ai-surface p-5 shadow-sm md:p-8',
           className,
         )}
         role="region"
@@ -502,7 +502,7 @@ export function AiSummaryCard({
     return (
       <div
         className={cn(
-          'rounded-xl border border-border/50 bg-ai-surface p-5 shadow-sm md:p-8',
+          'min-w-0 rounded-xl border border-border/50 bg-ai-surface p-5 shadow-sm md:p-8',
           className,
         )}
         role="region"
@@ -528,7 +528,7 @@ export function AiSummaryCard({
     return (
       <div
         className={cn(
-          'rounded-xl border border-border/50 bg-ai-surface p-5 shadow-sm md:p-8',
+          'min-w-0 rounded-xl border border-border/50 bg-ai-surface p-5 shadow-sm md:p-8',
           className,
         )}
         role="region"
@@ -573,7 +573,7 @@ export function AiSummaryCard({
     return (
       <div
         className={cn(
-          'rounded-xl border border-destructive/30 bg-destructive/[0.03] p-5 shadow-sm md:p-8',
+          'min-w-0 rounded-xl border border-destructive/30 bg-destructive/[0.03] p-5 shadow-sm md:p-8',
           className,
         )}
         role="region"
@@ -613,7 +613,7 @@ export function AiSummaryCard({
   return (
     <div
       className={cn(
-        'rounded-xl border border-border/50 bg-ai-surface p-5 shadow-sm md:p-8',
+        'min-w-0 rounded-xl border border-border/50 bg-ai-surface p-5 shadow-sm md:p-8',
         isDone && 'animate-settle motion-reduce:animate-none',
         className,
       )}
