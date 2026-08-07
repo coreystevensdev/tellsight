@@ -376,7 +376,7 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
         />
       ) : null}
 
-      <section className="mx-auto max-w-7xl px-4 py-6 md:px-6 lg:px-8" aria-labelledby="dashboard-heading">
+      <section className="mx-auto max-w-7xl px-4 pt-6 pb-16 md:px-6 lg:px-8" aria-labelledby="dashboard-heading">
         {hasData && (
           <div className="mb-6">
             <h1 id="dashboard-heading" className="text-2xl font-semibold text-foreground">{data.orgName}</h1>
