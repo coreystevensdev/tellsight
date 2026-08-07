@@ -129,7 +129,7 @@ function EmptyStateIllustration() {
 
 function EmptyState() {
   return (
-    <div className="col-span-full flex min-h-[240px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border/60 bg-muted/30 p-8 text-center">
+    <div className="col-span-full mt-6 flex min-h-[240px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border/60 bg-muted/30 p-8 text-center">
       <EmptyStateIllustration />
       <p className="text-sm font-medium text-foreground">Your data is waiting</p>
       <p className="max-w-[260px] text-sm text-muted-foreground">
@@ -147,7 +147,7 @@ function EmptyState() {
 
 function FilteredEmptyState({ onReset }: { onReset: () => void }) {
   return (
-    <div className="col-span-full flex min-h-[240px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border/60 bg-muted/30 p-8 text-center">
+    <div className="col-span-full mt-6 flex min-h-[240px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border/60 bg-muted/30 p-8 text-center">
       <Filter className="mb-1 h-8 w-8 text-muted-foreground/50" />
       <p className="text-sm font-medium text-foreground">Nothing here for those filters</p>
       <p className="max-w-[260px] text-sm text-muted-foreground">
@@ -399,9 +399,55 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
             />
           )}
 
+          <AiSummaryErrorBoundary>
+            {isMobile ? (
+              <div>
+                {aiSummaryCard}
+                <Sheet open={transparencyOpen} onOpenChange={(open) => !open && handleCloseTransparency()}>
+                  <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto rounded-t-xl">
+                    <SheetTitle className="sr-only">How I reached this conclusion</SheetTitle>
+                    <TransparencyPanel
+                      metadata={metadata}
+                      isOpen={transparencyOpen}
+                      onClose={handleCloseTransparency}
+                    />
+                  </SheetContent>
+                </Sheet>
+              </div>
+            ) : (
+              <div>
+                <div
+                  className={cn(
+                    'grid transition-[grid-template-columns] duration-200 ease-in-out motion-reduce:duration-0',
+                    transparencyOpen ? 'grid-cols-[1fr_320px] gap-6' : 'grid-cols-[1fr_0fr]',
+                  )}
+                >
+                  {aiSummaryCard}
+                  <TransparencyPanel
+                    metadata={metadata}
+                    isOpen={transparencyOpen}
+                    onClose={handleCloseTransparency}
+                    className="overflow-hidden min-w-0"
+                  />
+                </div>
+              </div>
+            )}
+            {/* Single mount point, lifted above the mobile/desktop branch so a
+                useIsMobile flip after hydration doesn't double-fire the indicator's
+                fetch. SWR dedupe inside the component handles repeated mounts
+                across navigations. */}
+            <div className="mt-2 px-1">
+              <LastDigestIndicator />
+            </div>
+          </AiSummaryErrorBoundary>
+
+          <AiSummaryErrorBoundary className="mt-6">
+            <QaAskBox datasetId={data.datasetId} metadata={metadata} />
+          </AiSummaryErrorBoundary>
+
           <ChartErrorBoundary onRetry={() => mutate()}>
             {isLoading && !hasData ? (
-              <div className="grid gap-4 md:grid-cols-2 md:gap-6">
+              <div className="mt-6 grid gap-4 md:grid-cols-2 md:gap-6">
                 <ChartSkeleton variant="line" />
                 <ChartSkeleton variant="bar" />
               </div>
@@ -411,7 +457,7 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
               <EmptyState />
             ) : (
               <>
-                <div className="grid gap-4 md:grid-cols-2 md:gap-6">
+                <div className="mt-6 grid gap-4 md:grid-cols-2 md:gap-6">
                   {hasRevenue && (
                     <LazyChart skeletonVariant="line">
                       <RevenueChart data={data.revenueTrend} />
@@ -483,52 +529,6 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
               className="mt-6"
             />
           )}
-
-          <AiSummaryErrorBoundary className="mt-6">
-            {isMobile ? (
-              <div className="mt-6">
-                {aiSummaryCard}
-                <Sheet open={transparencyOpen} onOpenChange={(open) => !open && handleCloseTransparency()}>
-                  <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto rounded-t-xl">
-                    <SheetTitle className="sr-only">How I reached this conclusion</SheetTitle>
-                    <TransparencyPanel
-                      metadata={metadata}
-                      isOpen={transparencyOpen}
-                      onClose={handleCloseTransparency}
-                    />
-                  </SheetContent>
-                </Sheet>
-              </div>
-            ) : (
-              <div className="mt-6">
-                <div
-                  className={cn(
-                    'grid transition-[grid-template-columns] duration-200 ease-in-out motion-reduce:duration-0',
-                    transparencyOpen ? 'grid-cols-[1fr_320px] gap-6' : 'grid-cols-[1fr_0fr]',
-                  )}
-                >
-                  {aiSummaryCard}
-                  <TransparencyPanel
-                    metadata={metadata}
-                    isOpen={transparencyOpen}
-                    onClose={handleCloseTransparency}
-                    className="overflow-hidden min-w-0"
-                  />
-                </div>
-              </div>
-            )}
-            {/* Single mount point, lifted above the mobile/desktop branch so a
-                useIsMobile flip after hydration doesn't double-fire the indicator's
-                fetch. SWR dedupe inside the component handles repeated mounts
-                across navigations. */}
-            <div className="mt-2 px-1">
-              <LastDigestIndicator />
-            </div>
-          </AiSummaryErrorBoundary>
-
-          <AiSummaryErrorBoundary className="mt-6">
-            <QaAskBox datasetId={data.datasetId} />
-          </AiSummaryErrorBoundary>
         </div>
 
         <ShareFab
