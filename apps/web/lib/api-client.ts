@@ -24,7 +24,10 @@ export class ApiClientError extends Error {
 
 let refreshPromise: Promise<boolean> | null = null;
 
-async function attemptRefresh(): Promise<boolean> {
+// Exported so non-JSON requests (multipart uploads via XHR) can trigger the
+// same silent-refresh flow, they can't go through apiClient() directly since
+// XHR is needed for upload progress events.
+export async function attemptRefresh(): Promise<boolean> {
   try {
     const response = await fetch(`${API_BASE}/auth/refresh`, {
       method: 'POST',

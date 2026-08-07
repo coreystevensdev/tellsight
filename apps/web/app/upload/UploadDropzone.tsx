@@ -8,6 +8,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import type { CsvPreviewData, ColumnValidationError } from 'shared/types';
+import { attemptRefresh } from '@/lib/api-client';
 import { CsvPreview } from './CsvPreview';
 
 type DropzoneState = 'default' | 'dragHover' | 'processing' | 'preview' | 'success' | 'error';
@@ -89,34 +90,44 @@ export function UploadDropzone() {
     }
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
+      const sendUpload = () =>
+        new Promise<{ ok: boolean; status: number; data: unknown }>((resolve, reject) => {
+          const formData = new FormData();
+          formData.append('file', file);
 
-      const response = await new Promise<{ ok: boolean; status: number; data: unknown }>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
+          const xhr = new XMLHttpRequest();
 
-        xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable) {
-            setUploadProgress(Math.round((e.loaded / e.total) * 100));
-          }
+          xhr.upload.addEventListener('progress', (e) => {
+            if (e.lengthComputable) {
+              setUploadProgress(Math.round((e.loaded / e.total) * 100));
+            }
+          });
+
+          xhr.addEventListener('load', () => {
+            try {
+              const data = JSON.parse(xhr.responseText);
+              resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, data });
+            } catch {
+              reject(new Error('Failed to parse server response'));
+            }
+          });
+
+          xhr.addEventListener('error', () => reject(new Error('Network error during upload')));
+          xhr.addEventListener('abort', () => reject(new Error('Upload cancelled')));
+
+          xhr.open('POST', '/api/datasets');
+          xhr.withCredentials = true;
+          xhr.send(formData);
         });
 
-        xhr.addEventListener('load', () => {
-          try {
-            const data = JSON.parse(xhr.responseText);
-            resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, data });
-          } catch {
-            reject(new Error('Failed to parse server response'));
-          }
-        });
+      let response = await sendUpload();
 
-        xhr.addEventListener('error', () => reject(new Error('Network error during upload')));
-        xhr.addEventListener('abort', () => reject(new Error('Upload cancelled')));
-
-        xhr.open('POST', '/api/datasets');
-        xhr.withCredentials = true;
-        xhr.send(formData);
-      });
+      // Access tokens expire after 15 minutes; a user can easily sit on this
+      // page longer than that before picking a file. XHR uploads don't go
+      // through apiClient()'s automatic refresh, so retry once here.
+      if (response.status === 401 && (await attemptRefresh())) {
+        response = await sendUpload();
+      }
 
       if (!response.ok) {
         const errData = (response.data as { error?: { message?: string; details?: { errors?: ColumnValidationError[]; fileName?: string } } }).error;
@@ -149,15 +160,21 @@ export function UploadDropzone() {
     setIsConfirming(true);
 
     try {
-      const formData = new FormData();
-      formData.append('file', lastFile);
-      formData.append('previewToken', previewData.previewToken);
+      const sendConfirm = () => {
+        const formData = new FormData();
+        formData.append('file', lastFile);
+        formData.append('previewToken', previewData.previewToken);
+        return fetch('/api/datasets/confirm', {
+          method: 'POST',
+          body: formData,
+          credentials: 'include',
+        });
+      };
 
-      const response = await fetch('/api/datasets/confirm', {
-        method: 'POST',
-        body: formData,
-        credentials: 'include',
-      });
+      let response = await sendConfirm();
+      if (response.status === 401 && (await attemptRefresh())) {
+        response = await sendConfirm();
+      }
 
       const result = await response.json();
 

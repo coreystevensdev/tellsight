@@ -230,6 +230,65 @@ describe('UploadDropzone', () => {
     expect(screen.getByText('Cancel')).toBeInTheDocument();
   });
 
+  it('retries the upload once after a silent refresh when the access token expired', async () => {
+    let xhrCallCount = 0;
+    vi.stubGlobal('XMLHttpRequest', vi.fn(() => {
+      const inst = new MockXHR();
+      xhrCallCount++;
+      const isFirstCall = xhrCallCount === 1;
+      inst.addEventListener = vi.fn((event: string, handler: () => void) => {
+        if (event === 'load') {
+          setTimeout(() => {
+            inst.status = isFirstCall ? 401 : 200;
+            inst.responseText = JSON.stringify(
+              isFirstCall
+                ? { error: { code: 'UNAUTHENTICATED', message: 'Missing access token' } }
+                : previewResponse,
+            );
+            handler();
+          }, 0);
+        }
+      });
+      return inst;
+    }));
+
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal('fetch', mockFetch);
+
+    render(<UploadDropzone />);
+
+    const validCsv = new File(['date,amount,category\n2024-01-01,100,Food'], 'test.csv', { type: 'text/csv' });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    simulateUpload(input, validCsv);
+
+    await act(() => vi.advanceTimersByTimeAsync(10));
+    await act(() => vi.advanceTimersByTimeAsync(10));
+
+    await waitFor(() => {
+      expect(screen.getByText(/40 rows detected/i)).toBeInTheDocument();
+    });
+
+    expect(xhrCallCount).toBe(2);
+    expect(mockFetch).toHaveBeenCalledWith('/api/auth/refresh', expect.objectContaining({ method: 'POST' }));
+  });
+
+  it('surfaces the original error when the silent refresh itself fails', async () => {
+    mockXhrResponse(401, { error: { code: 'UNAUTHENTICATED', message: 'Missing access token' } });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
+
+    render(<UploadDropzone />);
+
+    const validCsv = new File(['date,amount,category\n2024-01-01,100,Food'], 'test.csv', { type: 'text/csv' });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    simulateUpload(input, validCsv);
+
+    await act(() => vi.advanceTimersByTimeAsync(10));
+
+    await waitFor(() => {
+      expect(screen.getByText(/missing access token/i)).toBeInTheDocument();
+    });
+  });
+
   it('opens file picker on Enter key', () => {
     render(<UploadDropzone />);
 
@@ -363,6 +422,25 @@ describe('UploadDropzone', () => {
       await waitFor(() => {
         expect(screen.getByText(/network error/i)).toBeInTheDocument();
       });
+    });
+
+    it('retries the confirm request once after a silent refresh on 401', async () => {
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: false, status: 401, json: () => Promise.resolve({ error: { message: 'Missing access token' } }) })
+        .mockResolvedValueOnce({ ok: true, status: 200 })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ data: { datasetId: 1, rowCount: 40 } }) });
+      vi.stubGlobal('fetch', mockFetch);
+
+      await uploadAndWaitForPreview();
+
+      fireEvent.click(screen.getByRole('button', { name: /upload 40 rows/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/40 transactions uploaded/i)).toBeInTheDocument();
+      });
+
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(mockFetch).toHaveBeenNthCalledWith(2, '/api/auth/refresh', expect.objectContaining({ method: 'POST' }));
     });
 
     it('sends file and previewToken as FormData to /api/datasets/confirm', async () => {
