@@ -13,6 +13,22 @@ import type {
 
 const ALL_KNOWN_COLUMNS = [...CSV_REQUIRED_COLUMNS, ...CSV_OPTIONAL_COLUMNS];
 
+// Common column names from other tools' exports (QuickBooks, Shopify, generic
+// e-commerce dumps) that map onto our canonical schema. Checked only when the
+// canonical name itself isn't present.
+const COLUMN_ALIASES: Record<string, readonly string[]> = {
+  date: ['invoice_date', 'order_date', 'transaction_date', 'txn_date', 'posted_date'],
+  amount: ['total', 'total_amount', 'price', 'cost', 'value', 'line_amount'],
+  category: ['product', 'product_name', 'item', 'sku', 'stock_code', 'expense_category'],
+  label: ['description', 'memo', 'notes', 'name'],
+  parent_category: ['group', 'account_type'],
+};
+
+function resolveColumn(canonical: string, normalizedHeaders: string[]): string | undefined {
+  if (normalizedHeaders.includes(canonical)) return canonical;
+  return (COLUMN_ALIASES[canonical] ?? []).find((alias) => normalizedHeaders.includes(alias));
+}
+
 function stripBom(content: string): string {
   return content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
 }
@@ -43,7 +59,7 @@ function validateHeaders(headers: string[]): ValidationResult {
   const errors: ColumnValidationError[] = [];
 
   for (const required of CSV_REQUIRED_COLUMNS) {
-    if (!normalized.includes(required)) {
+    if (!resolveColumn(required, normalized)) {
       errors.push({
         column: required,
         message: `We expected a column named '${required}'. Your file has columns: ${headers.join(', ')}`,
@@ -112,12 +128,16 @@ function validateRowValues(
  * need this mapping to look up values by normalized name.
  */
 function buildHeaderMap(rawHeaders: string[]): Map<string, string> {
-  const map = new Map<string, string>();
+  const normalizedToRaw = new Map<string, string>();
   for (const h of rawHeaders) {
-    const normalized = normalizeHeader(h);
-    if (ALL_KNOWN_COLUMNS.includes(normalized as (typeof ALL_KNOWN_COLUMNS)[number])) {
-      map.set(normalized, h);
-    }
+    normalizedToRaw.set(normalizeHeader(h), h);
+  }
+  const normalizedHeaders = [...normalizedToRaw.keys()];
+
+  const map = new Map<string, string>();
+  for (const canonical of ALL_KNOWN_COLUMNS) {
+    const matched = resolveColumn(canonical, normalizedHeaders);
+    if (matched) map.set(canonical, normalizedToRaw.get(matched)!);
   }
   return map;
 }

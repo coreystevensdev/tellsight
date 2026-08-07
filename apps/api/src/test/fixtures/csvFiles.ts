@@ -9,6 +9,11 @@ export const validCsvWithOptionals = `date,amount,category,label,parent_category
 2025-01-15,1200.00,Revenue,Monthly sales,Income
 2025-01-16,450.50,Office Supplies,Printer paper,Expenses`;
 
+/** Required columns present only as aliases from another tool's export */
+export const aliasedColumns = `invoice_date,total,product
+2025-01-15,1200.00,Widget
+2025-01-16,450.50,Gadget`;
+
 /** Missing required column (no 'amount') */
 export const missingColumn = `date,category
 2025-01-15,Revenue

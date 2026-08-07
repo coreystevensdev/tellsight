@@ -44,6 +44,19 @@ describe('normalizeRows', () => {
     expect(result[0]!.parentCategory).toBeNull(); // empty string → null
   });
 
+  it('resolves aliased column names end-to-end (invoice_date, total, product)', () => {
+    const aliasedHeaders = ['invoice_date', 'total', 'product'];
+    const rows: ParsedRow[] = [
+      { invoice_date: '2025-01-15', total: '1200.00', product: 'Widget' },
+    ];
+
+    const result = normalizeRows(rows, aliasedHeaders);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.category).toBe('Widget');
+    expect(result[0]!.amount).toBe('1200.00');
+    expect(result[0]!.date).toBeInstanceOf(Date);
+  });
+
   it('handles messy headers by normalizing', () => {
     const messyHeaders = ['Date', ' AMOUNT ', 'category'];
     const rows: ParsedRow[] = [

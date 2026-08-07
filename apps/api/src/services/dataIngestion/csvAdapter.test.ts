@@ -3,6 +3,7 @@ import { csvAdapter, stripBom, normalizeHeader, isValidDate, isValidAmount } fro
 import {
   validCsv,
   validCsvWithOptionals,
+  aliasedColumns,
   missingColumn,
   invalidDates,
   invalidAmounts,
@@ -35,6 +36,13 @@ describe('csvAdapter.parse', () => {
     expect(result.rows).toHaveLength(2);
     expect(result.rows[0]).toHaveProperty('label', 'Monthly sales');
     expect(result.rows[0]).toHaveProperty('parent_category', 'Income');
+  });
+
+  it('accepts aliased column names from other tools (invoice_date, total, product)', () => {
+    const result = csvAdapter.parse(toBuffer(aliasedColumns));
+    expect(result.warnings).toHaveLength(0);
+    expect(result.rows).toHaveLength(2);
+    expect(result.rows[0]).toMatchObject({ invoice_date: '2025-01-15', total: '1200.00', product: 'Widget' });
   });
 
   it('returns validation errors for missing required columns', () => {
@@ -135,6 +143,18 @@ describe('csvAdapter.validate', () => {
   it('accepts with extra columns', () => {
     const result = csvAdapter.validate(['date', 'amount', 'category', 'extra_col']);
     expect(result.valid).toBe(true);
+  });
+
+  it('accepts aliased column names in place of canonical ones', () => {
+    const result = csvAdapter.validate(['invoice_date', 'total', 'product']);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('still reports the canonical column name when no alias matches either', () => {
+    const result = csvAdapter.validate(['date', 'amount']);
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]!.column).toBe('category');
   });
 });
 
