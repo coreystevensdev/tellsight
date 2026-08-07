@@ -57,6 +57,20 @@ describe('normalizeRows', () => {
     expect(result[0]!.date).toBeInstanceOf(Date);
   });
 
+  it('stores day-first dates correctly instead of swapping day and month', () => {
+    const rows: ParsedRow[] = [
+      { date: '23/03/1976', amount: '120.00', category: 'Revenue' },
+      { date: '10/09/1982', amount: '65.48', category: 'Expenses' },
+    ];
+    const minHeaders = ['date', 'amount', 'category'];
+
+    const result = normalizeRows(rows, minHeaders);
+    expect(result[0]!.date.toISOString().slice(0, 10)).toBe('1976-03-23');
+    // Proven day-first by the first row (day 23), so 10/09 must also be
+    // read as 10 September, not swapped to October 9th
+    expect(result[1]!.date.toISOString().slice(0, 10)).toBe('1982-09-10');
+  });
+
   it('handles messy headers by normalizing', () => {
     const messyHeaders = ['Date', ' AMOUNT ', 'category'];
     const rows: ParsedRow[] = [

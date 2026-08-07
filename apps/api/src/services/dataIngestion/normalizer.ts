@@ -1,5 +1,5 @@
 import type { ParsedRow } from '../adapters/index.js';
-import { buildHeaderMap } from './csvAdapter.js';
+import { buildHeaderMap, detectDayFirst, parseDate } from './csvAdapter.js';
 
 /**
  * Shape that matches data_rows insert requirements. The normalizer
@@ -24,6 +24,7 @@ export function normalizeRows(rows: ParsedRow[], rawHeaders: string[]): Normaliz
   const categoryKey = headerMap.get('category')!;
   const labelKey = headerMap.get('label');
   const parentCatKey = headerMap.get('parent_category');
+  const dayFirst = detectDayFirst(rows.map((r) => r[dateKey] ?? ''));
 
   return rows.map((row) => {
     const dateStr = row[dateKey] ?? '';
@@ -33,7 +34,9 @@ export function normalizeRows(rows: ParsedRow[], rawHeaders: string[]): Normaliz
     return {
       category: categoryStr.trim(),
       parentCategory: parentCatKey ? (row[parentCatKey]?.trim() || null) : null,
-      date: new Date(dateStr.trim()),
+      // rows reaching here already passed isValidDate() with the same
+      // dayFirst interpretation, so this can't be null
+      date: parseDate(dateStr, dayFirst)!,
       amount: amountStr.trim().replace(/,/g, ''),
       label: labelKey ? (row[labelKey]?.trim() || null) : null,
       metadata: null,

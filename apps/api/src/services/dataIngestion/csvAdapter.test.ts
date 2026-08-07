@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { csvAdapter, stripBom, normalizeHeader, isValidDate, isValidAmount } from './csvAdapter.js';
+import { csvAdapter, stripBom, normalizeHeader, isValidDate, isValidAmount, detectDayFirst, parseDate } from './csvAdapter.js';
 import {
   validCsv,
   validCsvWithOptionals,
   aliasedColumns,
+  dayFirstDates,
   missingColumn,
   invalidDates,
   invalidAmounts,
@@ -43,6 +44,12 @@ describe('csvAdapter.parse', () => {
     expect(result.warnings).toHaveLength(0);
     expect(result.rows).toHaveLength(2);
     expect(result.rows[0]).toMatchObject({ invoice_date: '2025-01-15', total: '1200.00', product: 'Widget' });
+  });
+
+  it('accepts day-first (European) dates instead of rejecting most of the file', () => {
+    const result = csvAdapter.parse(toBuffer(dayFirstDates));
+    expect(result.warnings).toHaveLength(0);
+    expect(result.rows).toHaveLength(3);
   });
 
   it('returns validation errors for missing required columns', () => {
@@ -173,6 +180,33 @@ describe('helper functions', () => {
     expect(isValidDate('2025-01-15')).toBe(true);
     expect(isValidDate('not-a-date')).toBe(false);
     expect(isValidDate('')).toBe(false);
+  });
+
+  it('detectDayFirst proves day-first when a segment exceeds 12', () => {
+    expect(detectDayFirst(['23/03/1976', '10/09/1982'])).toBe(true);
+  });
+
+  it('detectDayFirst proves month-first when the second segment exceeds 12', () => {
+    expect(detectDayFirst(['03/23/1976', '09/10/1982'])).toBe(false);
+  });
+
+  it('detectDayFirst defaults to month-first when genuinely ambiguous', () => {
+    expect(detectDayFirst(['03/10/2012', '01/05/2020'])).toBe(false);
+  });
+
+  it('parseDate reinterprets D/M/Y as day-first without silently swapping', () => {
+    const parsed = parseDate('23/03/1976', true);
+    expect(parsed?.toISOString().slice(0, 10)).toBe('1976-03-23');
+  });
+
+  it('parseDate keeps M/D/Y interpretation when dayFirst is false', () => {
+    const parsed = parseDate('03/10/2012', false);
+    expect(parsed?.toISOString().slice(0, 10)).toBe('2012-03-10');
+  });
+
+  it('parseDate returns null for garbage regardless of dayFirst', () => {
+    expect(parseDate('not-a-date', true)).toBeNull();
+    expect(parseDate('', false)).toBeNull();
   });
 
   it('isValidAmount handles numbers with commas', () => {

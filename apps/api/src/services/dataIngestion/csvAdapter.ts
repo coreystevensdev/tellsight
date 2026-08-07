@@ -40,12 +40,48 @@ function normalizeHeader(header: string): string {
 // Reject garbage that V8's Date constructor would accept (e.g. "hello 1", "true")
 const DATE_SHAPE = /\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4}/;
 
-function isValidDate(value: string): boolean {
-  const trimmed = value.trim();
-  if (!trimmed || !DATE_SHAPE.test(trimmed)) return false;
+// D/M/Y-shaped dates (year last) are ambiguous, "03/10/2012" is March 10 in
+// the US and 3 October everywhere else. JS's Date constructor always assumes
+// US month-first, so a European export gets silently misread whenever the
+// day is 12 or under, and rejected outright whenever it's over 12.
+const AMBIGUOUS_DATE = /^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/;
 
-  const d = new Date(trimmed);
-  return !isNaN(d.getTime());
+/**
+ * Scans a date column for a value where one segment can only be a day
+ * (>12), which proves the file's ordering. Genuinely ambiguous columns
+ * (every value ≤12/≤12) keep the existing US month-first assumption rather
+ * than guessing, so already-working uploads don't change behavior.
+ */
+function detectDayFirst(values: string[]): boolean {
+  for (const value of values) {
+    const match = AMBIGUOUS_DATE.exec(value.trim());
+    if (!match) continue;
+    const first = Number(match[1]);
+    const second = Number(match[2]);
+    if (first > 12) return true;
+    if (second > 12) return false;
+  }
+  return false;
+}
+
+function parseDate(value: string, dayFirst: boolean): Date | null {
+  const trimmed = value.trim();
+  if (!trimmed || !DATE_SHAPE.test(trimmed)) return null;
+
+  const ambiguous = AMBIGUOUS_DATE.exec(trimmed);
+  if (ambiguous && dayFirst) {
+    const [, day, month, year] = ambiguous as unknown as [string, string, string, string];
+    const fullYear = year.length === 2 ? `20${year}` : year;
+    const parsed = new Date(`${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
+    return isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const parsed = new Date(trimmed);
+  return isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function isValidDate(value: string, dayFirst = false): boolean {
+  return parseDate(value, dayFirst) !== null;
 }
 
 function isValidAmount(value: string): boolean {
@@ -80,6 +116,7 @@ function validateRowValues(
   const dateKey = headerMap.get('date')!;
   const amountKey = headerMap.get('amount')!;
   const categoryKey = headerMap.get('category')!;
+  const dayFirst = detectDayFirst(rows.map((r) => r[dateKey] ?? ''));
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]!;
@@ -90,7 +127,7 @@ function validateRowValues(
     const amountVal = row[amountKey] ?? '';
     const catValue = (row[categoryKey] ?? '').trim();
 
-    if (!isValidDate(dateVal)) {
+    if (!isValidDate(dateVal, dayFirst)) {
       errors.push({
         column: 'date',
         row: rowNum,
@@ -232,5 +269,6 @@ export const csvAdapter = {
   },
 };
 
-// Re-export helpers for testing
-export { stripBom, normalizeHeader, isValidDate, isValidAmount, buildHeaderMap };
+// Re-export helpers for testing and reuse in normalizer.ts (same date
+// interpretation must be used for both validation and actual storage)
+export { stripBom, normalizeHeader, isValidDate, isValidAmount, buildHeaderMap, detectDayFirst, parseDate };
