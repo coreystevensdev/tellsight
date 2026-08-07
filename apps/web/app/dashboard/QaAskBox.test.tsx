@@ -264,4 +264,54 @@ describe('QaAskBox', () => {
 
     expect(screen.queryByText(/<cite/)).toBeNull();
   });
+
+  describe('suggested question chips', () => {
+    it('renders fallback chips when idle with no metadata', () => {
+      mockUseQaAnswer.mockReturnValue(defaultHookReturn());
+
+      render(<QaAskBox datasetId={7} />);
+
+      expect(screen.getByRole('button', { name: 'How did revenue trend this quarter?' })).toBeTruthy();
+    });
+
+    it('renders stat-type-derived chips when metadata is provided', () => {
+      mockUseQaAnswer.mockReturnValue(defaultHookReturn());
+
+      render(<QaAskBox datasetId={7} metadata={{ statTypes: ['anomaly'] } as never} />);
+
+      expect(screen.getByRole('button', { name: "What's driving the biggest anomaly in my data?" })).toBeTruthy();
+    });
+
+    it('populates the input and asks immediately when a chip is clicked', () => {
+      mockUseQaAnswer.mockReturnValue(defaultHookReturn());
+
+      render(<QaAskBox datasetId={7} />);
+      fireEvent.click(screen.getByRole('button', { name: 'How did revenue trend this quarter?' }));
+
+      expect(mockAsk).toHaveBeenCalledWith('How did revenue trend this quarter?');
+      const input = screen.getByPlaceholderText(/how did revenue trend/i) as HTMLInputElement;
+      expect(input.value).toBe('How did revenue trend this quarter?');
+    });
+
+    it('does not render chips once a question has been asked', () => {
+      mockUseQaAnswer.mockReturnValue(defaultHookReturn({ status: 'answered', answer: {
+        answer: 'Revenue is up.',
+        citedStatIds: [],
+        termination: 'answered',
+        turnCount: 1,
+      } }));
+
+      render(<QaAskBox datasetId={7} />);
+
+      expect(screen.queryByRole('button', { name: 'How did revenue trend this quarter?' })).toBeNull();
+    });
+
+    it('hides chips while a question is in flight', () => {
+      mockUseQaAnswer.mockReturnValue(defaultHookReturn({ status: 'asking' }));
+
+      render(<QaAskBox datasetId={7} />);
+
+      expect(screen.queryByRole('button', { name: 'How did revenue trend this quarter?' })).toBeNull();
+    });
+  });
 });

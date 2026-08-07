@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Info } from 'lucide-react';
 
 import { AI_DISCLAIMER, stripAllCiteTags } from 'shared/constants';
+import type { TransparencyMetadata } from 'shared/types';
 import { cn } from '@/lib/utils';
 import { useQaAnswer, type QaAnswerState } from '@/lib/hooks/useQaAnswer';
 import { UpgradeCta } from '@/components/common/UpgradeCta';
@@ -12,9 +13,11 @@ import { Spinner } from '@/components/ui/spinner';
 import { StatDetailSheet } from './StatDetailSheet';
 import { parseCiteBindings } from './parseCiteBindings';
 import { NUMBER_PATTERN } from './numberPattern';
+import { getSuggestedQuestions } from './suggestedQuestions';
 
 interface QaAskBoxProps {
   datasetId: number | null;
+  metadata?: TransparencyMetadata | null;
   className?: string;
 }
 
@@ -116,7 +119,7 @@ function AnswerText({ rawText, onOpenCite }: { rawText: string; onOpenCite: (sta
   );
 }
 
-export function QaAskBox({ datasetId, className }: QaAskBoxProps) {
+export function QaAskBox({ datasetId, metadata, className }: QaAskBoxProps) {
   const [question, setQuestion] = useState('');
   const [openCiteId, setOpenCiteId] = useState<string | null>(null);
   const [priorDatasetId, setPriorDatasetId] = useState(datasetId);
@@ -152,14 +155,24 @@ export function QaAskBox({ datasetId, className }: QaAskBoxProps) {
   const isAsking = status === 'asking';
   const canSubmit = question.trim().length > 0 && !isAsking && status !== 'locked' && datasetId !== null;
 
-  function submit() {
-    if (!canSubmit) return;
+  function askQuestion(text: string) {
     // A fresh ask on the current dataset is unambiguous proof we're past
     // the masking window -- clear it here instead of waiting on the
     // qaAnswer comparison above, which can get stuck if the new ask's
     // 'asking' state happens to match the stale snapshot field-for-field.
     setStaleAnswer(null);
-    ask(question.trim());
+    ask(text);
+  }
+
+  function submit() {
+    if (!canSubmit) return;
+    askQuestion(question.trim());
+  }
+
+  function askSuggested(text: string) {
+    if (isAsking || status === 'locked' || datasetId === null) return;
+    setQuestion(text);
+    askQuestion(text);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -182,6 +195,27 @@ export function QaAskBox({ datasetId, className }: QaAskBoxProps) {
       aria-label="Ask a question about your data"
     >
       <h3 className="mb-4 text-base font-semibold text-card-foreground">Ask a question</h3>
+
+      {status === 'idle' && (
+        <div className="mb-3 flex flex-wrap gap-2">
+          {getSuggestedQuestions(metadata?.statTypes).map((suggestion) => (
+            <button
+              key={suggestion}
+              type="button"
+              onClick={() => askSuggested(suggestion)}
+              disabled={isAsking || datasetId === null}
+              className={cn(
+                'inline-flex items-center rounded-full border border-border bg-card px-3 py-2 text-xs font-medium text-card-foreground',
+                'transition-colors duration-200 ease-out hover:border-primary/40',
+                'focus:outline-none focus:ring-2 focus:ring-primary/40',
+                'disabled:cursor-not-allowed disabled:opacity-50',
+              )}
+            >
+              {suggestion}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="flex gap-2">
         <label htmlFor={inputId} className="sr-only">
