@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
 import {
   AreaChart,
   Area,
@@ -66,6 +67,23 @@ function TrendTooltip({ active, payload, label }: {
 
 export function ExpenseTrendChart({ data, categories }: ExpenseTrendChartProps) {
   const reducedMotion = useReducedMotion();
+  const containerRef = useRef<HTMLDivElement>(null);
+  // With 5+ categories the tooltip listing every one is taller than the chart
+  // on narrow screens, following the touch point would bury the plot under
+  // it. Pinning the y-coordinate to the container's own height docks the
+  // tooltip below the chart instead, x still tracks the touch/cursor.
+  const [tooltipY, setTooltipY] = useState<number>();
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setTooltipY(entry.contentRect.height);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   if (data.length === 0) return null;
 
@@ -85,6 +103,7 @@ export function ExpenseTrendChart({ data, categories }: ExpenseTrendChartProps) 
       </figcaption>
 
       <div
+        ref={containerRef}
         className="aspect-[2.5/1]"
         role="img"
         aria-label={`Stacked area chart showing monthly expense trends across ${categories.length} categories`}
@@ -112,7 +131,11 @@ export function ExpenseTrendChart({ data, categories }: ExpenseTrendChartProps) 
               axisLine={false}
               width={55}
             />
-            <Tooltip content={<TrendTooltip />} />
+            <Tooltip
+              content={<TrendTooltip />}
+              position={tooltipY ? { y: tooltipY } : undefined}
+              wrapperStyle={{ zIndex: 10 }}
+            />
             {sorted.map((cat, i) => (
               <Area
                 key={cat}
