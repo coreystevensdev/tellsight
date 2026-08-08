@@ -194,7 +194,8 @@ export function QaAskBox({ datasetId, metadata, className }: QaAskBoxProps) {
       role="region"
       aria-label="Ask a question about your data"
     >
-      <h3 className="mb-4 text-base font-semibold text-card-foreground">Ask a question</h3>
+      <h3 className="text-base font-semibold text-card-foreground">Ask a question</h3>
+      <p className="mb-4 text-xs text-muted-foreground">Limited to the data behind this dashboard.</p>
 
       {status === 'idle' && (
         <div className="mb-3 flex flex-wrap gap-2">
