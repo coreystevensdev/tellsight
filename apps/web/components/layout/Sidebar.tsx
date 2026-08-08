@@ -54,7 +54,7 @@ function SidebarNav({ orgName, isAdmin, onNavigate }: { orgName?: string; isAdmi
         </div>
       )}
 
-      <nav className="flex-1 space-y-1 px-3 py-4" aria-label="Main navigation">
+      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4" aria-label="Main navigation">
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           const isActive = pathname === href || pathname.startsWith(`${href}/`);
           return (
