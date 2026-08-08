@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { useRouter } from 'next/navigation';
 import { Upload, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { MAX_FILE_SIZE, ACCEPTED_FILE_TYPES } from 'shared/constants';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -30,7 +29,6 @@ function useIsTouchDevice() {
 const REDIRECT_DELAY_S = 3;
 
 export function UploadDropzone() {
-  const router = useRouter();
   const isTouchDevice = useIsTouchDevice();
   const [state, setState] = useState<DropzoneState>('default');
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -50,17 +48,16 @@ export function UploadDropzone() {
     if (state !== 'success') return;
 
     if (countdown <= 0) {
-      // push() alone can serve the client Router Cache's stale copy of
-      // /dashboard from before the upload (the empty state), refresh()
-      // forces a real server refetch on this navigation.
-      router.push('/dashboard');
-      router.refresh();
+      // A hard navigation, not router.push(). The client Router Cache can
+      // serve /dashboard's pre-upload (empty-state) RSC payload regardless
+      // of push()+refresh() ordering, this guarantees a real server fetch.
+      window.location.assign('/dashboard');
       return;
     }
 
     const timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
     return () => clearTimeout(timer);
-  }, [state, countdown, router]);
+  }, [state, countdown]);
 
   const validateClientSide = useCallback((file: File): string | null => {
     if (file.size > MAX_FILE_SIZE) {

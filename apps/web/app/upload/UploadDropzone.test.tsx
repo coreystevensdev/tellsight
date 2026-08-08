@@ -2,12 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, cleanup, act } from '@testing-library/react';
 import { UploadDropzone } from './UploadDropzone';
 
-const mockPush = vi.fn();
-const mockRefresh = vi.fn();
-
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: mockPush, refresh: mockRefresh }),
-}));
+const mockLocationAssign = vi.fn();
 
 // Mock XMLHttpRequest, the component uses it instead of fetch for progress tracking
 class MockXHR {
@@ -40,7 +35,9 @@ const previewResponse = {
 
 beforeEach(() => {
   xhrInstance = new MockXHR();
+  mockLocationAssign.mockClear();
   vi.stubGlobal('XMLHttpRequest', vi.fn(() => xhrInstance));
+  vi.stubGlobal('location', { ...window.location, assign: mockLocationAssign });
   vi.useFakeTimers({ shouldAdvanceTime: true });
 });
 
@@ -48,6 +45,7 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 /**
@@ -390,14 +388,13 @@ describe('UploadDropzone', () => {
         expect(screen.getByText(/40 transactions uploaded/i)).toBeInTheDocument();
       });
 
-      // shouldAdvanceTime auto-ticks, so just wait for the redirect to fire
+      // shouldAdvanceTime auto-ticks, so just wait for the redirect to fire.
+      // A hard navigation, not router.push()+refresh(), the Router Cache can
+      // still serve /dashboard's pre-upload payload regardless of push/refresh
+      // ordering, so this bypasses it entirely.
       await waitFor(() => {
-        expect(mockPush).toHaveBeenCalledWith('/dashboard');
+        expect(mockLocationAssign).toHaveBeenCalledWith('/dashboard');
       }, { timeout: 5000 });
-
-      // refresh() busts the client Router Cache's pre-upload (empty-state)
-      // copy of /dashboard, otherwise a prefetched stale payload can win.
-      expect(mockRefresh).toHaveBeenCalled();
     });
 
     it('shows error state when confirm fails', async () => {
