@@ -154,10 +154,10 @@ function SummaryText({ text, bindings, citations, onOpenStat, onOpenCite, cashHi
 
   return (
     <div className="font-serif text-[15px] leading-[1.7] text-card-foreground/85 md:text-base md:leading-[1.75] [&>p+p]:mt-[1.1em]">
-      {paragraphs.map((p, i) => {
+      {paragraphs.flatMap((p, i) => {
         const statId = bindingByIndex.get(i);
         const paragraphCites = citesByParagraph.get(i);
-        return (
+        const elements = [
           <p
             key={i}
             className={
@@ -167,22 +167,30 @@ function SummaryText({ text, bindings, citations, onOpenStat, onOpenCite, cashHi
             }
           >
             {highlightNumbers(p, paragraphCites, onOpenCite)}
-            {statId && onOpenStat && (
-              <span className="ml-2 inline-flex align-middle">
-                {isMobile ? (
-                  <InsightChartChip statId={statId} onOpen={() => onOpenStat(statId, i)} />
-                ) : (
-                  <InsightChartThumbnail
-                    statId={statId}
-                    cashHistory={cashHistory}
-                    cashForecast={cashForecast}
-                    onOpen={() => onOpenStat(statId, i)}
-                  />
-                )}
-              </span>
-            )}
-          </p>
-        );
+          </p>,
+        ];
+
+        // Rendered as its own paragraph rather than inline at the tail of the
+        // text: a 180x120px thumbnail dropped inline mid-prose forces the
+        // browser to wrap surrounding text around it unpredictably.
+        if (statId && onOpenStat) {
+          elements.push(
+            <p key={`${i}-chart`}>
+              {isMobile ? (
+                <InsightChartChip statId={statId} onOpen={() => onOpenStat(statId, i)} />
+              ) : (
+                <InsightChartThumbnail
+                  statId={statId}
+                  cashHistory={cashHistory}
+                  cashForecast={cashForecast}
+                  onOpen={() => onOpenStat(statId, i)}
+                />
+              )}
+            </p>,
+          );
+        }
+
+        return elements;
       })}
     </div>
   );
