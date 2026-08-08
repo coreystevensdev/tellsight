@@ -50,7 +50,11 @@ export function UploadDropzone() {
     if (state !== 'success') return;
 
     if (countdown <= 0) {
+      // push() alone can serve the client Router Cache's stale copy of
+      // /dashboard from before the upload (the empty state), refresh()
+      // forces a real server refetch on this navigation.
       router.push('/dashboard');
+      router.refresh();
       return;
     }
 

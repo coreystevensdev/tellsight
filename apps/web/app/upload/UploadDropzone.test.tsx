@@ -3,9 +3,10 @@ import { render, screen, waitFor, fireEvent, cleanup, act } from '@testing-libra
 import { UploadDropzone } from './UploadDropzone';
 
 const mockPush = vi.fn();
+const mockRefresh = vi.fn();
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => ({ push: mockPush, refresh: mockRefresh }),
 }));
 
 // Mock XMLHttpRequest, the component uses it instead of fetch for progress tracking
@@ -393,6 +394,10 @@ describe('UploadDropzone', () => {
       await waitFor(() => {
         expect(mockPush).toHaveBeenCalledWith('/dashboard');
       }, { timeout: 5000 });
+
+      // refresh() busts the client Router Cache's pre-upload (empty-state)
+      // copy of /dashboard, otherwise a prefetched stale payload can win.
+      expect(mockRefresh).toHaveBeenCalled();
     });
 
     it('shows error state when confirm fails', async () => {
