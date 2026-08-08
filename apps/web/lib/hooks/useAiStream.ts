@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 
 import type { TransparencyMetadata } from 'shared/types';
+import { attemptRefresh } from '@/lib/api-client';
 
 export type StreamStatus =
   | 'idle'
@@ -194,10 +195,21 @@ export function useAiStream(datasetId: number | null) {
     abortRef.current = controller;
 
     try {
-      const res = await fetch(`/api/ai-summaries/${datasetId}`, {
-        signal: controller.signal,
-        credentials: 'same-origin',
-      });
+      const doFetch = () =>
+        fetch(`/api/ai-summaries/${datasetId}`, {
+          signal: controller.signal,
+          credentials: 'same-origin',
+        });
+
+      let res = await doFetch();
+
+      // The access token cookie is short-lived and the dashboard can sit open
+      // for a while before this fires, silently refresh and retry once rather
+      // than surfacing a raw "missing access token" error, same recovery
+      // apiClient() already does for every other fetch.
+      if (res.status === 401 && (await attemptRefresh())) {
+        res = await doFetch();
+      }
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));

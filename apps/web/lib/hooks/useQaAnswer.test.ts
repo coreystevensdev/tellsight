@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useQaAnswer } from './useQaAnswer';
+import { attemptRefresh } from '@/lib/api-client';
+
+vi.mock('@/lib/api-client', () => ({
+  attemptRefresh: vi.fn(),
+}));
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -92,6 +97,49 @@ describe('useQaAnswer', () => {
     expect(result.current.status).toBe('error');
     expect(result.current.code).toBe('QA_LOOP_FAILED');
     expect(result.current.error).toBe('Failed to answer the question');
+  });
+
+  it('silently refreshes and retries once on a 401, instead of surfacing it', async () => {
+    vi.mocked(attemptRefresh).mockResolvedValueOnce(true);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        json: () => Promise.resolve({ error: { code: 'AUTHENTICATION_REQUIRED', message: 'Missing access token' } }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ data: mockAnswer }),
+      } as Response);
+
+    const { result } = renderHook(() => useQaAnswer(7));
+    await act(async () => {
+      await result.current.ask('How is my runway?');
+    });
+
+    expect(attemptRefresh).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(result.current.status).toBe('answered');
+    expect(result.current.answer).toEqual(mockAnswer);
+  });
+
+  it('surfaces the original 401 error when the refresh attempt itself fails', async () => {
+    vi.mocked(attemptRefresh).mockResolvedValueOnce(false);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      json: () => Promise.resolve({ error: { code: 'AUTHENTICATION_REQUIRED', message: 'Missing access token' } }),
+    } as Response);
+
+    const { result } = renderHook(() => useQaAnswer(7));
+    await act(async () => {
+      await result.current.ask('How is my runway?');
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(result.current.status).toBe('error');
+    expect(result.current.error).toBe('Missing access token');
   });
 
   it('transitions to error when the fetch itself rejects', async () => {

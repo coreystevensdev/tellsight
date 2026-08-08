@@ -1,5 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { streamReducer, stripStatTags, stripCiteTags, stripDisplayTags, type StreamState } from './useAiStream';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { streamReducer, stripStatTags, stripCiteTags, stripDisplayTags, useAiStream, type StreamState } from './useAiStream';
+import { attemptRefresh } from '@/lib/api-client';
+
+vi.mock('@/lib/api-client', () => ({
+  attemptRefresh: vi.fn(),
+}));
 
 const idle: StreamState = {
   status: 'idle',
@@ -393,5 +399,55 @@ describe('streamReducer tag handling', () => {
     const next = streamReducer(done, { type: 'START' });
     expect(next.rawText).toBe('');
     expect(next.text).toBe('');
+  });
+});
+
+describe('useAiStream fetch behavior', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('silently refreshes and retries once on a 401, instead of surfacing it', async () => {
+    vi.mocked(attemptRefresh).mockResolvedValueOnce(true);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        json: () => Promise.resolve({ error: { code: 'AUTHENTICATION_REQUIRED', message: 'Missing access token' } }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: () => Promise.resolve({ data: { content: 'cached prose', metadata: null } }),
+      } as Response);
+
+    const { result } = renderHook(() => useAiStream(7));
+    await act(async () => {
+      await result.current.start();
+    });
+
+    expect(attemptRefresh).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(result.current.status).toBe('done'));
+    expect(result.current.text).toBe('cached prose');
+  });
+
+  it('surfaces the original 401 error when the refresh attempt itself fails', async () => {
+    vi.mocked(attemptRefresh).mockResolvedValueOnce(false);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      json: () => Promise.resolve({ error: { code: 'AUTHENTICATION_REQUIRED', message: 'Missing access token' } }),
+    } as Response);
+
+    const { result } = renderHook(() => useAiStream(7));
+    await act(async () => {
+      await result.current.start();
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(result.current.status).toBe('error');
+    expect(result.current.error).toBe('Missing access token');
   });
 });

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { QaAnswer } from 'shared/types';
+import { attemptRefresh } from '@/lib/api-client';
 
 export type QaAnswerStatus = 'idle' | 'asking' | 'answered' | 'locked' | 'error';
 
@@ -41,13 +42,24 @@ export function useQaAnswer(datasetId: number | null) {
     setState({ ...initialState, status: 'asking' });
 
     try {
-      const res = await fetch(`/api/qa/${datasetId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question }),
-        signal: controller.signal,
-        credentials: 'same-origin',
-      });
+      const doFetch = () =>
+        fetch(`/api/qa/${datasetId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question }),
+          signal: controller.signal,
+          credentials: 'same-origin',
+        });
+
+      let res = await doFetch();
+
+      // The access token cookie is short-lived and this box can sit open for
+      // a while before someone submits a question, silently refresh and
+      // retry once rather than surfacing a raw "missing access token" error,
+      // same recovery apiClient() already does for every other fetch.
+      if (res.status === 401 && (await attemptRefresh())) {
+        res = await doFetch();
+      }
 
       const body = await res.json().catch(() => ({}));
       // A newer ask() call may have superseded this one (aborted this
