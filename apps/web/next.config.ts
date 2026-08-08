@@ -16,12 +16,21 @@ const nextConfig: NextConfig = {
     }];
   },
   async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: `${process.env.API_INTERNAL_URL ?? 'http://api:3001'}/:path*`,
-      },
-    ];
+    // fallback, not the plain-array default (afterFiles): afterFiles rewrites
+    // are checked before dynamic App Router route handlers, so this generic
+    // /api/:path* passthrough was silently winning over dynamic route.ts
+    // files (e.g. /api/mute/alert-rule/[token]) whenever the Express path
+    // doesn't happen to match the Next.js path 1:1 after stripping /api.
+    // fallback only runs once no page or route handler, static or dynamic,
+    // has already matched.
+    return {
+      fallback: [
+        {
+          source: '/api/:path*',
+          destination: `${process.env.API_INTERNAL_URL ?? 'http://api:3001'}/:path*`,
+        },
+      ],
+    };
   },
 };
 
