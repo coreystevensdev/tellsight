@@ -190,11 +190,11 @@ export function QaAskBox({ datasetId, metadata, className }: QaAskBoxProps) {
 
   return (
     <div
-      className={cn('rounded-xl border border-border/50 bg-ai-surface p-5 shadow-sm md:p-8', className)}
+      className={cn('border-t-2 border-accent-warm bg-ai-surface p-5 md:p-8', className)}
       role="region"
       aria-label="Ask a question about your data"
     >
-      <h3 className="text-base font-semibold text-card-foreground">Ask a question</h3>
+      <h3 className="font-serif text-lg font-medium text-card-foreground">Ask a question</h3>
       <p className="mb-4 text-xs text-muted-foreground">Limited to the data behind this dashboard.</p>
 
       {status === 'idle' && (

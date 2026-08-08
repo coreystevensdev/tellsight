@@ -51,7 +51,7 @@ describe('AiSummarySkeleton', () => {
     render(<AiSummarySkeleton />);
 
     const container = screen.getByRole('status');
-    expect(container.className).toContain('rounded-xl');
+    expect(container.className).toContain('border-t-2');
     expect(container.className).toContain('bg-ai-surface');
   });
 

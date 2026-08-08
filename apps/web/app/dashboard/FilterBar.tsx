@@ -324,23 +324,27 @@ export function FilterBar({
 
         <div className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
 
-        <FilterDropdown
-          label="Date range"
-          icon={Calendar}
-          value={filters.datePreset}
-          options={dateOptions}
-          onChange={handleDateChange}
-          disabled={disabled}
-        />
+        {/* Grouped so the pair wraps together on narrow screens, Date range
+            and Category, never Category alone onto its own line. */}
+        <div className="flex flex-nowrap items-center gap-2">
+          <FilterDropdown
+            label="Date range"
+            icon={Calendar}
+            value={filters.datePreset}
+            options={dateOptions}
+            onChange={handleDateChange}
+            disabled={disabled}
+          />
 
-        <FilterDropdown
-          label="Category"
-          icon={Tag}
-          value={filters.category}
-          options={categoryOptions}
-          onChange={handleCategoryChange}
-          disabled={disabled}
-        />
+          <FilterDropdown
+            label="Category"
+            icon={Tag}
+            value={filters.category}
+            options={categoryOptions}
+            onChange={handleCategoryChange}
+            disabled={disabled}
+          />
+        </div>
 
         {hasActiveFilters && (
           <>

@@ -458,7 +458,7 @@ export function AiSummaryCard({
     return (
       <div
         className={cn(
-          'min-w-0 rounded-xl border border-border/50 bg-ai-surface p-5 shadow-sm md:p-8',
+          'min-w-0 border-t-2 border-accent-warm bg-ai-surface p-5 md:p-8',
           className,
         )}
         role="region"
@@ -467,7 +467,7 @@ export function AiSummaryCard({
         {isStale && (
           <StaleBanner onRefresh={handleRefreshInsights} disabled={datasetId === null} />
         )}
-        <h3 className="mb-4 text-base font-semibold text-card-foreground">Analysis</h3>
+        <h3 className="mb-4 font-serif text-lg font-medium text-card-foreground">Analysis</h3>
         {wasTruncated ? (
           <FreePreviewOverlay previewText={stripDisplayTags(preview)} onUpgrade={handleUpgrade} />
         ) : (
@@ -510,7 +510,7 @@ export function AiSummaryCard({
     return (
       <div
         className={cn(
-          'min-w-0 rounded-xl border border-border/50 bg-ai-surface p-5 shadow-sm md:p-8',
+          'min-w-0 border-t-2 border-accent-warm bg-ai-surface p-5 md:p-8',
           className,
         )}
         role="region"
@@ -536,7 +536,7 @@ export function AiSummaryCard({
     return (
       <div
         className={cn(
-          'min-w-0 rounded-xl border border-border/50 bg-ai-surface p-5 shadow-sm md:p-8',
+          'min-w-0 border-t-2 border-accent-warm bg-ai-surface p-5 md:p-8',
           className,
         )}
         role="region"
@@ -581,7 +581,7 @@ export function AiSummaryCard({
     return (
       <div
         className={cn(
-          'min-w-0 rounded-xl border border-destructive/30 bg-destructive/[0.03] p-5 shadow-sm md:p-8',
+          'min-w-0 border-t-2 border-destructive bg-destructive/[0.03] p-5 md:p-8',
           className,
         )}
         role="region"
@@ -621,14 +621,14 @@ export function AiSummaryCard({
   return (
     <div
       className={cn(
-        'min-w-0 rounded-xl border border-border/50 bg-ai-surface p-5 shadow-sm md:p-8',
+        'min-w-0 border-t-2 border-accent-warm bg-ai-surface p-5 md:p-8',
         isDone && 'animate-settle motion-reduce:animate-none',
         className,
       )}
       role="region"
       aria-label="AI business summary"
     >
-      <h3 className="mb-4 text-base font-semibold text-card-foreground">Analysis</h3>
+      <h3 className="mb-4 font-serif text-lg font-medium text-card-foreground">Analysis</h3>
       <div
         aria-live="polite"
         aria-busy={isActive}

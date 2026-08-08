@@ -23,18 +23,15 @@ function KpiCard({ label, value, icon: Icon, trend, iconColor }: {
   iconColor: string;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-4 shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md hover:border-primary/30 motion-reduce:transition-none motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-sm">
+    <div className="border-t-2 border-border bg-card px-4 py-4 transition-colors duration-200 ease-out hover:border-primary motion-reduce:transition-none">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
+        <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</span>
         <Icon className={cn('h-4 w-4', iconColor)} />
       </div>
-      <p
-        className="mt-2 text-2xl font-bold text-card-foreground"
-        style={{ fontFeatureSettings: '"tnum"' }}
-      >
+      <p className="mt-2 font-mono text-2xl font-semibold tabular-nums text-card-foreground">
         {value}
       </p>
-      {trend && trend.value !== 0 && (
+      {trend && trend.value !== 0 ? (
         <div className="mt-1 flex items-center gap-1">
           {trend.value > 0 ? (
             <TrendingUp className="h-3 w-3 text-success" />
@@ -50,6 +47,15 @@ function KpiCard({ label, value, icon: Icon, trend, iconColor }: {
             {trend.value > 0 ? '+' : ''}{Math.round(trend.value)}%
           </span>
           <span className="text-xs text-muted-foreground">{trend.label}</span>
+        </div>
+      ) : (
+        // Reserves the trend row's height even when there's no trend to show,
+        // otherwise cards with and without one produce mismatched row heights
+        // in the grid.
+        <div className="invisible mt-1 flex items-center gap-1" aria-hidden="true">
+          <TrendingUp className="h-3 w-3" />
+          <span className="text-xs font-medium">+0%</span>
+          <span className="text-xs">placeholder</span>
         </div>
       )}
     </div>

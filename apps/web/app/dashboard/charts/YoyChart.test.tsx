@@ -42,7 +42,7 @@ describe('YoyChart', () => {
   it('uses chart hover style without lift', () => {
     render(<YoyChart data={sampleData} />);
     const figure = screen.getByRole('figure');
-    expect(figure.className).toContain('hover:border-primary/20');
+    expect(figure.className).toContain('hover:border-primary');
     expect(figure.className).not.toContain('hover:-translate-y');
   });
 });
