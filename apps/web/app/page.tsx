@@ -187,7 +187,8 @@ export default function LandingPage() {
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                 Revenue trend, expense breakdown, profit margin,
                 year-over-year comparison. Filter by date or category.
-                Charts are free forever.
+                Export a snapshot as PNG or PDF, or share a link. Charts
+                are free forever.
               </p>
             </div>
 
@@ -197,10 +198,53 @@ export default function LandingPage() {
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                 AI reads your trends, spots anomalies, and writes a summary
                 your business partner would understand. Free tier gets a preview;
-                Pro gets the full analysis.
+                Pro gets the full analysis, plus a weekly email digest so you
+                don&apos;t have to remember to check.
               </p>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Ask a question, natural-language Q&A over the same computed stats */}
+      <section className="border-t border-border/40">
+        <div className="mx-auto max-w-4xl px-4 py-14 md:px-6 md:py-20">
+          <h2 className="font-serif text-2xl font-medium tracking-tight text-foreground md:text-3xl">
+            Ask it directly, instead of hunting through charts.
+          </h2>
+          <p className="mt-4 font-serif text-muted-foreground md:text-lg">
+            &quot;Why did payroll jump in March&quot; gets a real answer, not a
+            chatbot doing free association. The model has exactly two tools,
+            both scoped to your own computed statistics, nothing else it can
+            call. Every number in the answer carries a citation back to the
+            row it came from, click it and the source data is right there.
+          </p>
+          <p className="mt-3 font-serif text-muted-foreground md:text-lg">
+            Ask something outside that, general knowledge, write me a poem,
+            and it says so plainly instead of trying.
+          </p>
+        </div>
+      </section>
+
+      {/* Proactive alerts, agentic pass with a human-approval gate */}
+      <section className="border-t border-border/40">
+        <div className="mx-auto max-w-4xl px-4 py-14 md:px-6 md:py-20">
+          <h2 className="font-serif text-2xl font-medium tracking-tight text-foreground md:text-3xl">
+            It also watches for what you&apos;d otherwise miss.
+          </h2>
+          <p className="mt-4 font-serif text-muted-foreground md:text-lg">
+            A nightly pass reads the same computed statistics and flags what
+            changed: a cost that broke its normal range, a reconciliation
+            gap, a trend that crossed a threshold. Findings get a severity
+            tier, info up to critical.
+          </p>
+          <p className="mt-3 font-serif text-muted-foreground md:text-lg">
+            Anything that would touch data or cross a dollar threshold waits
+            for a person. Only an org owner can approve or reject it from an
+            in-app drawer, and nothing sits there forever, unreviewed
+            findings expire after 14 days instead of piling into an inbox
+            nobody clears.
+          </p>
         </div>
       </section>
 
@@ -262,6 +306,16 @@ export default function LandingPage() {
                 </a>{' '}
                 catches anomalously expensive AI calls before they pollute the
                 rolling-median baseline.
+              </p>
+              <p>
+                The summaries themselves are graded, not just trusted. An
+                offline eval harness runs three labeled fixtures (healthy
+                growth, cash crunch, seasonal anomaly) through the real
+                pipeline and scores faithfulness and completeness. Last
+                measured run: 0.99 faithfulness, 1.00 completeness. It has
+                caught a real slip, one sampled summary generated the literal
+                banned phrase &quot;you need to,&quot; which the legal-posture
+                checker flagged.
               </p>
             </div>
           </details>
