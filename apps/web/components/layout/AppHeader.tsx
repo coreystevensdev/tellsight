@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { Inbox, LogIn, Menu, User } from 'lucide-react';
+import { Inbox, LogIn, Menu } from 'lucide-react';
 import { useSidebar } from '@/app/dashboard/SidebarContext';
 import { useActionDrawer } from '@/app/dashboard/ActionDrawerContext';
 import { TellsightLogo } from '@/components/common/TellsightLogo';
+import { AccountMenu } from './AccountMenu';
 
 interface AppHeaderProps {
   isAuthenticated: boolean;
@@ -47,9 +48,7 @@ export function AppHeader({ isAuthenticated }: AppHeaderProps) {
           </button>
         )}
         {isAuthenticated ? (
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
-            <User className="h-4 w-4 text-muted-foreground" />
-          </div>
+          <AccountMenu />
         ) : (
           <Link
             href="/login"
