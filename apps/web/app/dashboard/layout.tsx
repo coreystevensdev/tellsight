@@ -33,8 +33,10 @@ export default async function DashboardLayout({
             <AppHeader isAuthenticated={isAuthenticated} />
             {/* overflow-x-hidden: FilterBar's sticky header bleeds past its container
                 with negative margins, which inflates scrollWidth without anything
-                actually rendering outside the viewport. */}
-            <main id="main-content" className="flex-1 overflow-x-hidden overflow-y-auto">
+                actually rendering outside the viewport.
+                overscroll-contain: stops scroll from chaining to the body and tightens
+                the trackpad rubber-band bounce at the top/bottom edges. */}
+            <main id="main-content" className="flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
               {children}
             </main>
           </div>
