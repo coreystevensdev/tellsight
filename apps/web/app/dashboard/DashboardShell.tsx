@@ -376,7 +376,10 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
         />
       ) : null}
 
-      <section className="mx-auto max-w-7xl px-4 pt-6 pb-16 md:px-6 lg:px-8" aria-labelledby="dashboard-heading">
+      {/* pb-24 on mobile: clears the fixed ShareFab (bottom-4, 48px tall) so it
+          doesn't sit on top of the page's last interactive element. Desktop
+          has no FAB, so pb-16 is enough there. */}
+      <section className="mx-auto max-w-7xl px-4 pt-6 pb-24 md:px-6 md:pb-16 lg:px-8" aria-labelledby="dashboard-heading">
         {hasData && (
           <div className="mb-6">
             <h1 id="dashboard-heading" className="text-2xl font-semibold text-foreground">{data.orgName}</h1>
