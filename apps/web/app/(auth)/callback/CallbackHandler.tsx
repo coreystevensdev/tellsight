@@ -63,7 +63,7 @@ export default function CallbackHandler({
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="w-full max-w-sm space-y-4 rounded-lg bg-card p-8 text-center shadow-sm">
-          <h1 className="text-lg font-semibold text-foreground">Sign In Failed</h1>
+          <h1 className="font-serif text-lg font-medium text-foreground">Sign In Failed</h1>
           <p className="text-sm text-destructive">{error}</p>
           <a
             href="/login"

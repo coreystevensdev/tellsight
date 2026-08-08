@@ -34,7 +34,7 @@ export default async function ResetPasswordPage({
       <div className="relative w-full max-w-sm space-y-8 rounded-xl border border-border/50 bg-card p-8 shadow-lg">
         <div className="flex flex-col items-center gap-3 text-center">
           <TellsightLogo size={44} />
-          <h1 className="text-2xl font-semibold text-foreground">Choose a new password</h1>
+          <h1 className="font-serif text-2xl font-medium text-foreground">Choose a new password</h1>
         </div>
 
         <ResetPasswordForm token={params.token} />

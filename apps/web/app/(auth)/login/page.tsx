@@ -38,7 +38,7 @@ export default async function LoginPage({
       <div className="relative w-full max-w-sm space-y-8 rounded-xl border border-border/50 bg-card p-8 shadow-lg">
         <div className="flex flex-col items-center gap-3 text-center">
           <TellsightLogo size={44} />
-          <h1 className="text-2xl font-semibold text-foreground">Tellsight</h1>
+          <h1 className="font-serif text-2xl font-medium text-foreground">Tellsight</h1>
           <p className="text-sm text-muted-foreground">
             Your data, explained in plain English
           </p>
