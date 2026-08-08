@@ -70,7 +70,14 @@ export default function ResetPasswordForm({ token }: { token?: string }) {
         />
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && (
+        <div className="space-y-1">
+          <p className="text-sm text-destructive">{error}</p>
+          <a href="/forgot-password" className="text-sm text-muted-foreground hover:text-foreground">
+            Request a new link
+          </a>
+        </div>
+      )}
 
       <button
         type="submit"
