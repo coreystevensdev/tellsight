@@ -1,3 +1,4 @@
+import { TellsightLogo } from '@/components/common/TellsightLogo';
 import { DigestUnsubscribeConfirmCard } from './DigestUnsubscribeConfirmCard';
 
 export const dynamic = 'force-dynamic';
@@ -10,10 +11,14 @@ export default async function DigestUnsubscribeConfirmPage({
   const { token } = await params;
 
   return (
-    <div className="min-h-screen bg-muted/30">
-      <div className="mx-auto max-w-md px-6 py-20">
-        <div className="rounded-lg border border-border bg-background p-10 shadow-sm">
-          <h1 className="mb-3 text-xl font-semibold text-foreground">Unsubscribe from weekly digests?</h1>
+    <div className="min-h-screen bg-background">
+      <div className="mx-auto max-w-md px-6 pt-16 pb-20">
+        <div className="mb-8 flex items-center justify-center gap-2">
+          <TellsightLogo size={24} />
+          <span className="font-serif text-lg font-medium text-foreground">Tellsight</span>
+        </div>
+        <div className="rounded-lg border border-border bg-card p-10 shadow-sm">
+          <h1 className="mb-3 font-serif text-2xl font-medium tracking-tight text-foreground">Unsubscribe from weekly digests?</h1>
           <DigestUnsubscribeConfirmCard token={token} />
         </div>
       </div>

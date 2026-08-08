@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { stripAllDisplayTags } from 'shared/constants';
 import { webEnv } from '@/lib/config';
+import { TellsightLogo } from '@/components/common/TellsightLogo';
 import SharedInsightCard from './SharedInsightCard';
 import ShareError from './ShareError';
 
@@ -85,8 +86,9 @@ export default async function SharePage({
     const variant = result.status === 410 ? 'expired' : 'not-found';
     return (
       <div className="flex min-h-screen flex-col bg-background">
-        <div className="px-4 py-4 text-sm font-medium text-muted-foreground">
-          Tellsight
+        <div className="flex items-center gap-2 px-4 py-4">
+          <TellsightLogo size={20} />
+          <span className="font-serif text-sm font-medium text-foreground">Tellsight</span>
         </div>
         <div className="flex flex-1 items-center justify-center">
           <ShareError variant={variant} />

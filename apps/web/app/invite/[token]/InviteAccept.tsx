@@ -65,7 +65,7 @@ export default function InviteAccept({ token }: { token: string }) {
   if (error) {
     return (
       <div className="w-full max-w-sm space-y-4 rounded-lg bg-card p-8 text-center shadow-sm">
-        <h1 className="text-lg font-semibold text-foreground">Invite Link Invalid</h1>
+        <h1 className="font-serif text-lg font-medium text-foreground">Invite Link Invalid</h1>
         <p className="text-sm text-destructive">{error}</p>
         <p className="text-xs text-muted-foreground">
           Ask the organization owner to send you a new invite link.
@@ -77,7 +77,7 @@ export default function InviteAccept({ token }: { token: string }) {
   return (
     <div className="w-full max-w-sm space-y-6 rounded-lg bg-card p-8 shadow-sm">
       <div className="text-center">
-        <h1 className="text-2xl font-semibold text-foreground">Join {invite?.orgName}</h1>
+        <h1 className="font-serif text-2xl font-medium tracking-tight text-foreground">Join {invite?.orgName}</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           You&apos;ve been invited to collaborate on this organization&apos;s analytics.
         </p>

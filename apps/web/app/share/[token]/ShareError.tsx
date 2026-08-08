@@ -16,7 +16,7 @@ export default function ShareError({ variant }: { variant: keyof typeof VARIANTS
 
   return (
     <div className="w-full max-w-sm space-y-4 rounded-lg bg-card p-8 text-center shadow-sm">
-      <h1 className="text-lg font-semibold text-foreground">{title}</h1>
+      <h1 className="font-serif text-lg font-medium text-foreground">{title}</h1>
       <p className="text-sm text-muted-foreground">{message}</p>
       <Link
         href="/"
