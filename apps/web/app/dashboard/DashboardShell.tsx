@@ -343,15 +343,18 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
 
   return (
     <>
-      {/* useSearchParams is request-time data, keep it in a leaf under Suspense so
-          the rest of the shell stays statically renderable under Next.js 16. */}
+      {/* useSearchParams is request-time data, keep these leaves under Suspense
+          so the rest of the shell stays statically renderable under Next.js
+          16. One shared boundary, not one per leaf, three independently-
+          resolving Suspense boundaries can resolve in a different order
+          during SSR streaming than during client hydration, and React's
+          useId() numbering depends on that order, three separate boundaries
+          around always-return-null leaves caused a real id mismatch
+          downstream (QaAskBox's label/input pair) even though none of these
+          three ever render visible DOM themselves. */}
       <Suspense fallback={null}>
         <QbReturnToast />
-      </Suspense>
-      <Suspense fallback={null}>
         <DigestClickTracker />
-      </Suspense>
-      <Suspense fallback={null}>
         <AlertClickTracker />
       </Suspense>
       {showOnboarding && <OnboardingModal onComplete={() => setShowOnboarding(false)} />}

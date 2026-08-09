@@ -364,20 +364,29 @@ export function AiSummaryCard({
   className,
 }: AiSummaryCardProps) {
   const [refreshing, setRefreshing] = useState(false);
-  // Snapshot staleness at mount via lazy init.
+  // Snapshot staleness at mount, not via a useState lazy initializer.
   //
-  // Why: cachedStaleAt is a server-rendered prop and Date.now() in render
-  // violates React's "pure render" rule. useState's initializer runs once per
-  // mount, so the snapshot is consistent across re-renders of this instance.
+  // A lazy initializer still runs once during the server's render pass and
+  // once more during the client's hydration render, Date.now() differs
+  // between those two moments, so it doesn't actually avoid the SSR/client
+  // divergence, it just avoids recomputing on every re-render of an already-
+  // mounted instance, a different problem. Starting at false and setting it
+  // from a mount-only effect keeps both the server render and the client's
+  // first hydration render at false, deterministically, the real value lands
+  // a tick later here, client-only, same as the original lazy-init's
+  // snapshot-once-at-mount intent.
   //
   // Tradeoff: if a background QB sync marks the summary stale while the user
   // is sitting on the dashboard, the banner won't appear until the next nav.
   // Acceptable for MVP, the sync takes minutes, and the user will reload
   // eventually. If real-time staleness becomes important, either re-derive on
   // cachedStaleAt changes or subscribe to a WebSocket event.
-  const [isStale] = useState(
-    () => !!(cachedStaleAt && new Date(cachedStaleAt).getTime() < Date.now()),
-  );
+  const [isStale, setIsStale] = useState(false);
+  useEffect(() => {
+    if (cachedStaleAt && new Date(cachedStaleAt).getTime() < Date.now()) setIsStale(true);
+    // deliberately mount-only, see the snapshot-once note above
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const hasCached = !!cachedContent && !refreshing;
   const { status, text, rawText, metadata: streamMetadata, error, code, retryable, maxRetriesReached, retry } =
     useAiStream(hasCached ? null : datasetId);

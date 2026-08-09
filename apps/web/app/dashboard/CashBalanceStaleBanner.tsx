@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -17,18 +17,22 @@ function ageInDays(asOf: Date, now: Date): number {
   return Math.floor((now.getTime() - asOf.getTime()) / (24 * 60 * 60 * 1000));
 }
 
-function initialDismissed(): boolean {
-  if (typeof window === 'undefined') return false;
-  return window.sessionStorage.getItem(DISMISS_KEY) === '1';
-}
-
 export function CashBalanceStaleBanner({
   cashAsOfDate,
   now = new Date(),
   onUpdate,
   className,
 }: CashBalanceStaleBannerProps) {
-  const [dismissed, setDismissed] = useState(initialDismissed);
+  // Starts false on both server and client's first render, sessionStorage
+  // isn't available server-side, so reading it during render (even lazily)
+  // makes the first client render diverge from the server's whenever the
+  // banner was dismissed earlier in the session, a real hydration mismatch,
+  // not just a flash. Corrected here, after hydration, client-only.
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    if (window.sessionStorage.getItem(DISMISS_KEY) === '1') setDismissed(true);
+  }, []);
   const [inlineOpen, setInlineOpen] = useState(false);
   const [raw, setRaw] = useState('');
   const [submitting, setSubmitting] = useState(false);
