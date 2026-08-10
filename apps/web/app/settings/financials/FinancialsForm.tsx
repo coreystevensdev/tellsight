@@ -98,7 +98,7 @@ export default function FinancialsForm() {
   return (
     <div className="mx-auto max-w-2xl px-6 py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-foreground">Financial baseline</h1>
+        <h1 className="font-serif text-2xl font-medium text-foreground">Financial baseline</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           These values power runway and break-even analysis. Only organization owners can update them.
         </p>
@@ -128,7 +128,7 @@ export default function FinancialsForm() {
             }}
             disabled={submitting}
             placeholder="$0"
-            className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
+            className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
           />
           {asOf && (
             <p className="mt-1.5 text-xs text-muted-foreground">Last updated {asOf}</p>
@@ -159,7 +159,7 @@ export default function FinancialsForm() {
             disabled={submitting}
             placeholder="$0"
             aria-invalid={parsedFixedCosts != null && parsedFixedCosts > 9_999_999 ? 'true' : undefined}
-            className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
+            className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
           />
           {parsedFixedCosts != null && parsedFixedCosts > 9_999_999 && (
             <p role="alert" className="mt-1.5 text-xs text-destructive">

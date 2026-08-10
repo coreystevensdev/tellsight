@@ -169,7 +169,7 @@ export default function Datasets() {
     <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-3xl px-6 py-8">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-foreground">Datasets</h1>
+          <h1 className="font-serif text-2xl font-medium text-foreground">Datasets</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {datasets.length} dataset{datasets.length !== 1 ? 's' : ''}
           </p>
@@ -283,7 +283,7 @@ function DatasetCard({
   return (
     <div
       className={cn(
-        'rounded-lg border px-5 py-4 transition-colors',
+        'border-t-2 px-5 py-4 transition-colors',
         ds.isActive ? 'border-primary bg-primary/5' : 'border-border bg-card',
       )}
     >
@@ -309,7 +309,7 @@ function DatasetCard({
               <p className="truncate text-sm font-medium text-foreground">{ds.name}</p>
             )}
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {ds.rowCount.toLocaleString()} rows &middot; uploaded {formatDate(ds.createdAt)}
+              <span className="font-mono tabular-nums">{ds.rowCount.toLocaleString()}</span> rows &middot; uploaded {formatDate(ds.createdAt)}
               {ds.uploadedBy && ` by ${ds.uploadedBy.name}`}
             </p>
           </div>
@@ -360,9 +360,9 @@ function DatasetCard({
             <>
               <p className="text-sm text-foreground">
                 This will permanently remove{' '}
-                <span className="font-medium">{state.deleteDetail.rowCount.toLocaleString()} data rows</span>,{' '}
-                <span className="font-medium">{state.deleteDetail.summaryCount} AI summaries</span>, and{' '}
-                <span className="font-medium">{state.deleteDetail.shareCount} share links</span>.
+                <span className="font-medium"><span className="font-mono tabular-nums">{state.deleteDetail.rowCount.toLocaleString()}</span> data rows</span>,{' '}
+                <span className="font-medium"><span className="font-mono tabular-nums">{state.deleteDetail.summaryCount}</span> AI summaries</span>, and{' '}
+                <span className="font-medium"><span className="font-mono tabular-nums">{state.deleteDetail.shareCount}</span> share links</span>.
               </p>
               <div className="mt-3 flex gap-2">
                 <button

@@ -27,7 +27,7 @@ export default function Preferences() {
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-foreground">Preferences</h1>
+        <h1 className="font-serif text-2xl font-medium text-foreground">Preferences</h1>
         <p className="mt-1 text-sm text-muted-foreground">Customize your experience.</p>
       </div>
 

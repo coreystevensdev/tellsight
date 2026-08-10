@@ -66,7 +66,7 @@ export default function EmailSettings({ initial }: Props) {
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-foreground">Email</h1>
+        <h1 className="font-serif text-2xl font-medium text-foreground">Email</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Control digest cadence and the timezone we use for date formatting.
         </p>

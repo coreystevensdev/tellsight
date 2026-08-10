@@ -86,8 +86,8 @@ export default function Invites() {
 
   if (forbidden) {
     return (
-      <div className="w-full max-w-md space-y-4 rounded-lg bg-card p-8 shadow-sm">
-        <h1 className="text-xl font-semibold text-foreground">Invite Team Members</h1>
+      <div className="w-full max-w-md space-y-4 border-t-2 border-border bg-card p-8">
+        <h1 className="font-serif text-xl font-medium text-foreground">Invite Team Members</h1>
         <p className="text-sm text-muted-foreground">
           Only organization owners can generate invite links. Ask your org owner if you need to invite someone.
         </p>
@@ -102,9 +102,9 @@ export default function Invites() {
   }
 
   return (
-    <div className="w-full max-w-md space-y-6 rounded-lg bg-card p-8 shadow-sm">
+    <div className="w-full max-w-md space-y-6 border-t-2 border-border bg-card p-8">
       <div>
-        <h1 className="text-xl font-semibold text-foreground">Invite Team Members</h1>
+        <h1 className="font-serif text-xl font-medium text-foreground">Invite Team Members</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Generate a link to invite someone to your organization.
         </p>
@@ -162,8 +162,8 @@ export default function Invites() {
           <ul className="divide-y divide-border rounded-md border border-border">
             {activeInvites.map((inv) => (
               <li key={inv.id} className="flex items-center justify-between px-4 py-3">
-                <span className="text-xs text-muted-foreground">Invite #{inv.id}</span>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground">Invite #<span className="font-mono">{inv.id}</span></span>
+                <span className="font-mono text-xs text-muted-foreground">
                   {daysUntil(inv.expiresAt)}d left
                 </span>
               </li>

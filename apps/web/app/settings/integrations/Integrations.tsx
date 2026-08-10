@@ -141,7 +141,7 @@ export default function Integrations() {
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-foreground">Integrations</h1>
+        <h1 className="font-serif text-2xl font-medium text-foreground">Integrations</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Connect services and manage how Tellsight works with your data.
         </p>
@@ -163,7 +163,7 @@ export default function Integrations() {
 
       <div className="flex flex-col gap-4">
         {/* QuickBooks */}
-        <section className="rounded-lg border border-border bg-card px-5 py-5">
+        <section className="border-t-2 border-border bg-card px-5 py-5">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-start gap-3">
               <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
@@ -174,7 +174,7 @@ export default function Integrations() {
                 )}
               </div>
               <div>
-                <h2 className="text-sm font-semibold text-foreground">QuickBooks Online</h2>
+                <h2 className="font-serif text-sm font-medium text-foreground">QuickBooks Online</h2>
                 <p className="mt-0.5 text-sm text-muted-foreground">
                   {qb?.connected
                     ? `Connected to ${qb.companyName ?? 'your company'}`
@@ -233,7 +233,7 @@ export default function Integrations() {
         </section>
 
         {/* Shopify */}
-        <section className="rounded-lg border border-border bg-card px-5 py-5">
+        <section className="border-t-2 border-border bg-card px-5 py-5">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-start gap-3">
               <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
@@ -244,7 +244,7 @@ export default function Integrations() {
                 )}
               </div>
               <div className="flex-1">
-                <h2 className="text-sm font-semibold text-foreground">Shopify</h2>
+                <h2 className="font-serif text-sm font-medium text-foreground">Shopify</h2>
                 <p className="mt-0.5 text-sm text-muted-foreground">
                   {shopify?.connected
                     ? `Connected to ${shopify.shopDomain ?? 'your store'}`

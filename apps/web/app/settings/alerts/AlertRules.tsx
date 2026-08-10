@@ -230,7 +230,7 @@ export default function AlertRules({ initial }: Props) {
       <div className="mx-auto max-w-3xl px-6 py-8">
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-foreground">Alerts</h1>
+            <h1 className="font-serif text-2xl font-medium text-foreground">Alerts</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               Get notified between weekly digests when a number crosses a threshold you care about.
             </p>
@@ -264,7 +264,7 @@ export default function AlertRules({ initial }: Props) {
           <form
             onSubmit={submitForm}
             noValidate
-            className="mb-6 space-y-4 rounded-lg border border-border bg-card p-5"
+            className="mb-6 space-y-4 border-t-2 border-border bg-card p-5"
           >
             <div>
               <label htmlFor="rule-kind" className="block text-sm font-medium text-foreground">
@@ -370,7 +370,7 @@ export default function AlertRules({ initial }: Props) {
               <li
                 key={rule.id}
                 className={cn(
-                  'flex items-center justify-between gap-4 rounded-lg border px-5 py-4',
+                  'flex items-center justify-between gap-4 border-t-2 px-5 py-4',
                   rule.enabled ? 'border-border bg-card' : 'border-border/60 bg-muted/30',
                 )}
               >
