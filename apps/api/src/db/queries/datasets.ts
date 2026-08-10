@@ -1,7 +1,7 @@
 import { eq, and, desc, ne, sql, count } from 'drizzle-orm';
 import type { DemoModeState } from 'shared/types';
 import { db, type DbTransaction } from '../../lib/db.js';
-import { datasets, dataRows, aiSummaries, shares } from '../schema.js';
+import { datasets, dataRows, aiSummaries, shares, users } from '../schema.js';
 import type { NormalizedRow } from '../../services/dataIngestion/normalizer.js';
 // Deliberate cross-query imports, persistUpload orchestrates both query modules.
 // Do NOT add imports from datasets.ts into dataRows.ts (circular dependency risk).
@@ -162,18 +162,23 @@ export async function getDatasetListWithCounts(
       name: datasets.name,
       sourceType: datasets.sourceType,
       isSeedData: datasets.isSeedData,
-      uploadedBy: datasets.uploadedBy,
+      uploadedById: users.id,
+      uploadedByName: users.name,
       createdAt: datasets.createdAt,
       rowCount: sql<number>`coalesce(count(${dataRows.id}), 0)::int`,
     })
     .from(datasets)
     .leftJoin(dataRows, eq(dataRows.datasetId, datasets.id))
+    .leftJoin(users, eq(users.id, datasets.uploadedBy))
     .where(and(eq(datasets.orgId, orgId), eq(datasets.isSeedData, false)))
-    .groupBy(datasets.id)
+    .groupBy(datasets.id, users.id, users.name)
     .orderBy(desc(datasets.createdAt));
 
-  return rows.map((ds) => ({
+  return rows.map(({ uploadedById, uploadedByName, ...ds }) => ({
     ...ds,
+    uploadedBy: uploadedById != null && uploadedByName != null
+      ? { id: uploadedById, name: uploadedByName }
+      : null,
     isActive: ds.id === activeDatasetId,
   }));
 }
