@@ -103,6 +103,7 @@ jobs:
       - name: Deploy via SSM
         env:
           EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_ADMIN_URL: ${{ secrets.DATABASE_ADMIN_URL }}
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
@@ -175,6 +176,28 @@ jobs:
           env_b64 = base64.b64encode("\n".join(env_lines).encode()).decode()
           ecr_host = os.environ['ECR_API_REPO'].split('/')[0]
 
+          # The base compose on the instance pins both services to :latest, a
+          # moving tag. That is what let a failed pull leave the previous image
+          # runnable, so `up -d` restarted stale code and every check passed.
+          #
+          # An override file is compose's own merge mechanism, so this pins the
+          # exact build without restating the base. If the pull fails, the sha
+          # tag simply is not present locally and `up -d` fails instead of
+          # quietly serving whatever was there before.
+          #
+          # Written here rather than in terraform user_data because user_data
+          # only runs on first boot and carries ignore_changes. Same reason the
+          # Caddyfile is written from here.
+          short = os.environ['HEAD_SHA'][:7]
+          override = (
+              "services:\n"
+              "  api:\n"
+              f"    image: {os.environ['ECR_API_REPO']}:sha-{short}\n"
+              "  web:\n"
+              f"    image: {os.environ['ECR_WEB_REPO']}:sha-{short}\n"
+          )
+          override_b64 = base64.b64encode(override.encode()).decode()
+
           # /api/* must NOT be intercepted here -- Next.js owns that prefix.
           # Its own route.ts files (auth/login, datasets, etc.) hold real BFF
           # logic (cookie handling, session translation), and next.config.ts's
@@ -218,6 +241,7 @@ jobs:
               "set -e",
               f"printf '%s' '{env_b64}' | base64 -d > /opt/tellsight/.env",
               f"printf '%s' '{caddy_b64}' | base64 -d > /opt/tellsight/Caddyfile",
+              f"printf '%s' '{override_b64}' | base64 -d > /opt/tellsight/docker-compose.override.yml",
               f"aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin {ecr_host}",
               # Every deploy leaves the previous image dangling. 20GB fills up,
               # and a full disk is exactly how the pull started failing.
