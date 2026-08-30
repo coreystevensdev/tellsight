@@ -216,9 +216,17 @@ jobs:
               "set -e",
               f"printf '%s' '{env_b64}' | base64 -d > /opt/tellsight/.env",
               f"printf '%s' '{caddy_b64}' | base64 -d > /opt/tellsight/Caddyfile",
-              # Keep the outgoing pin so the rollback step can restore it. This is
-              # what was actually running, which beats reconstructing it from ECR.
-              "cp /opt/tellsight/docker-compose.override.yml /opt/tellsight/docker-compose.override.prev.yml 2>/dev/null || true",
+              # deploy-history is a newest-first list of deployed sha tags, and it
+              # is what makes rollback a stack instead of one deep. The previous
+              # single .prev.yml converged with the live file after one rollback,
+              # so a second one restored the same build it had just rejected.
+              #
+              # Seeded from the live override the first time, so an instance that
+              # predates this still has somewhere to roll back to. Capped at 10
+              # because ECR's lifecycle policy keeps 10 tagged images: recording
+              # more would promise a rollback the registry cannot serve.
+              "cd /opt/tellsight && ([ -f deploy-history ] || grep -o 'sha-[0-9a-f]*' docker-compose.override.yml | head -1 > deploy-history || true)",
+              f"cd /opt/tellsight && printf '%s\\n' 'sha-{short}' | cat - deploy-history 2>/dev/null | awk 'NF && !seen[$0]++' | head -10 > .deploy-history.new && mv .deploy-history.new deploy-history",
               f"printf '%s' '{override_b64}' | base64 -d > /opt/tellsight/docker-compose.override.yml",
               f"aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin {ecr_host}",
               # -a with an age filter, not plain prune: pinning to sha tags means
@@ -312,24 +320,31 @@ jobs:
         if: steps.smoke.outcome == 'failure'
         env:
           ECR_API: ${{ secrets.ECR_API_REPO }}
+          ECR_WEB: ${{ secrets.ECR_WEB_REPO }}
           EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
           PROD_URL: ${{ secrets.PRODUCTION_URL }}
         run: |
           set -euo pipefail
 
-          # Restore the override the deploy just replaced. That file is what was
-          # actually running, so it beats reconstructing the previous build from
-          # ECR digests. Re-tagging :latest, which is what this used to do, no
-          # longer rolls anything back: compose reads the pinned sha tags now and
-          # ignores :latest entirely.
+          # Pop the failed build off deploy-history and pin to whatever is next.
+          # Popping is what makes this a stack: a second consecutive rollback
+          # steps further back rather than restoring the build it just rejected,
+          # which is what the old single .prev.yml did.
+          #
+          # Exhaustion is a hard failure, not a silent no-op. If nothing older is
+          # recorded, production stays on the bad build and this says so.
           ecr_host="${ECR_API%%/*}"
-          cmds="$(jq -nc --arg host "$ecr_host" '[
+          cmds="$(jq -nc --arg host "$ecr_host" --arg api "$ECR_API" --arg web "$ECR_WEB" '[
             "set -e",
             "cd /opt/tellsight",
-            "test -f docker-compose.override.prev.yml",
-            "cp docker-compose.override.prev.yml docker-compose.override.yml",
+            "test -s deploy-history || { echo ROLLBACK_EXHAUSTED_no_history >&2; exit 1; }",
+            "tail -n +2 deploy-history > .h && mv .h deploy-history",
+            "target=$(head -1 deploy-history)",
+            "[ -n \"$target\" ] || { echo ROLLBACK_EXHAUSTED_nothing_older >&2; exit 1; }",
+            "echo Rolling back to $target",
+            "printf \"services:\\n  api:\\n    image: %s:%s\\n  web:\\n    image: %s:%s\\n\" \($api|@sh) \"$target\" \($web|@sh) \"$target\" > docker-compose.override.yml",
             "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin \($host)",
-            "docker compose pull --quiet",
+            "docker compose pull --quiet || { echo ROLLBACK_IMAGE_GONE_from_ecr_retention_is_10 >&2; exit 1; }",
             "docker compose up -d --remove-orphans"
           ]')"
           cmd_id="$(aws ssm send-command \
