@@ -35,6 +35,32 @@ jobs:
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
 
+      # The instance's compose tracks :latest, so the only thing that identifies
+      # "what was running before" is the digest :latest points at right now.
+      # Capture it before the build overwrites the tag. Blank on a first deploy.
+      - name: Capture rollback target
+        id: rollback
+        env:
+          ECR_API: ${{ secrets.ECR_API_REPO }}
+          ECR_WEB: ${{ secrets.ECR_WEB_REPO }}
+        run: |
+          api_repo="${ECR_API##*/}"
+          web_repo="${ECR_WEB##*/}"
+          prev_digest() {
+            aws ecr describe-images --repository-name "$1" --image-ids imageTag=latest \
+              --query 'imageDetails[0].imageDigest' --output text 2>/dev/null \
+              | grep -v '^None$' || true
+          }
+          api_digest="$(prev_digest "$api_repo")"
+          web_digest="$(prev_digest "$web_repo")"
+          {
+            echo "api_repo=$api_repo"
+            echo "web_repo=$web_repo"
+            echo "api_digest=$api_digest"
+            echo "web_digest=$web_digest"
+          } >> "$GITHUB_OUTPUT"
+          echo "Rollback target: api=${api_digest:-none} web=${web_digest:-none}"
+
       - name: Set image tags
         id: tags
         env:
@@ -236,7 +262,11 @@ jobs:
           sys.exit(1)
           PY
 
+      # continue-on-error so a failure reaches the rollback step below. The
+      # final step re-fails the job, so a bad deploy is still red.
       - name: Smoke test
+        id: smoke
+        continue-on-error: true
         env:
           PROD_URL: ${{ secrets.PRODUCTION_URL }}
         run: |
@@ -250,4 +280,73 @@ jobs:
             sleep 10
           done
           echo "Production did not become healthy within 3 minutes"
+          exit 1
+
+      - name: Roll back to previous images
+        if: steps.smoke.outcome == 'failure' && steps.rollback.outputs.api_digest != '' && steps.rollback.outputs.web_digest != ''
+        env:
+          ECR_API: ${{ secrets.ECR_API_REPO }}
+          API_REPO: ${{ steps.rollback.outputs.api_repo }}
+          WEB_REPO: ${{ steps.rollback.outputs.web_repo }}
+          API_DIGEST: ${{ steps.rollback.outputs.api_digest }}
+          WEB_DIGEST: ${{ steps.rollback.outputs.web_digest }}
+          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+          PROD_URL: ${{ secrets.PRODUCTION_URL }}
+        run: |
+          set -euo pipefail
+
+          # The previous image is still in ECR under its sha- tag, so moving
+          # :latest back is a manifest write, not a rebuild.
+          retag() {
+            manifest="$(aws ecr batch-get-image --repository-name "$1" \
+              --image-ids imageDigest="$2" --query 'images[0].imageManifest' --output text)"
+            aws ecr put-image --repository-name "$1" --image-tag latest \
+              --image-manifest "$manifest" > /dev/null
+            echo "Re-tagged $1:latest -> $2"
+          }
+          retag "$API_REPO" "$API_DIGEST"
+          retag "$WEB_REPO" "$WEB_DIGEST"
+
+          # .env and Caddyfile on the instance are unchanged by a rollback, so
+          # this only needs to re-pull and restart. Re-authenticating because an
+          # ECR token is good for 12 hours and this path can run long after the
+          # deploy that logged in.
+          ecr_host="${ECR_API%%/*}"
+          cmds="$(jq -nc --arg host "$ecr_host" '[
+            "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin \($host)",
+            "cd /opt/tellsight && docker compose pull",
+            "docker compose up -d --remove-orphans"
+          ]')"
+          cmd_id="$(aws ssm send-command \
+            --instance-ids "$EC2_INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --parameters "commands=$cmds" \
+            --query 'Command.CommandId' --output text)"
+          echo "Rollback SSM command: $cmd_id"
+
+          aws ssm wait command-executed --command-id "$cmd_id" --instance-id "$EC2_INSTANCE_ID" || true
+          status="$(aws ssm get-command-invocation --command-id "$cmd_id" \
+            --instance-id "$EC2_INSTANCE_ID" --query 'Status' --output text)"
+          if [ "$status" != "Success" ]; then
+            aws ssm get-command-invocation --command-id "$cmd_id" \
+              --instance-id "$EC2_INSTANCE_ID" --query 'StandardErrorContent' --output text >&2
+            echo "ROLLBACK FAILED: SSM status $status. Production is on the bad build." >&2
+            exit 1
+          fi
+
+          for i in $(seq 1 18); do
+            if curl -fsS "$PROD_URL/api/health/ready" 2>/dev/null | grep -q '"status":"ok"'; then
+              echo "Rolled back and healthy after $((i * 10))s"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "ROLLBACK FAILED: not healthy on the previous build either." >&2
+          exit 1
+
+      # Rollback restores service; it does not make the deploy a success.
+      - name: Fail the run if the deploy was rolled back
+        if: steps.smoke.outcome == 'failure'
+        run: |
+          echo "Smoke test failed. See the rollback step for whether production recovered." >&2
           exit 1
