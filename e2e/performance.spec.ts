@@ -101,9 +101,15 @@ test.describe('Performance NFRs', () => {
     const authed = await browser.newContext();
     await authenticateAs(authed, { ...testUser, role: 'owner', isAdmin: true });
 
-    const listed = await authed.request.get('/api/datasets');
-    const datasetId = listed.ok() ? (await listed.json())?.data?.[0]?.id : undefined;
+    // /api/datasets is the upload endpoint. The list lives at
+    // /api/datasets/manage, and getting that wrong made this skip with "no
+    // dataset" instead of failing, which hid the mistake for two CI runs.
+    const listed = await authed.request.get('/api/datasets/manage');
+    expect(listed.ok(), 'dataset list endpoint should respond').toBeTruthy();
+
+    const datasetId = (await listed.json())?.data?.[0]?.id;
     if (!datasetId) {
+      // Genuinely environmental: an org with nothing uploaded.
       test.skip(true, 'no dataset in the seed org to share');
       await authed.close();
       return;
@@ -112,10 +118,15 @@ test.describe('Performance NFRs', () => {
     const created = await authed.request.post('/api/shares', { data: { datasetId } });
     if (created.status() !== 201) {
       const body = await created.text();
-      test.skip(true, `share not creatable: ${created.status()} ${body.slice(0, 120)}`);
+      // Also environmental: seed ships a fallback summary only when the API key
+      // is absent, so a half-configured env can legitimately have none.
+      const noSummary = body.includes('Generate an AI summary first');
+      expect(noSummary, `unexpected share failure: ${created.status()} ${body.slice(0, 160)}`).toBeTruthy();
+      test.skip(true, 'dataset has no cached AI summary to share');
       await authed.close();
       return;
     }
+
     const token = (await created.json()).data.token;
     await authed.close();
 
