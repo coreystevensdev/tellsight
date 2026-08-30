@@ -48,11 +48,16 @@ resource "aws_db_instance" "main" {
   vpc_security_group_ids = [aws_security_group.rds.id]
   publicly_accessible    = false
 
-  # backup_retention_period is Computed, not defaulted, so leaving it unset
-  # silently meant AWS's 1-day default on an instance holding real user data.
+  # 1, not 7: this account is on the AWS free plan, which rejects anything
+  # higher with FreeTierRestrictionError. Verified 2026-08-30, 3 and 5 are
+  # refused too. Leaving it unset is not the same as 1 either, the instance sat
+  # at 0 with no automated backups and no snapshot of any kind since launch.
+  # One day of PITR is the ceiling here, so anything longer needs a scheduled
+  # manual snapshot or an account upgrade.
+  #
   # deletion_protection makes `terraform destroy` fail until someone flips it
   # back by hand, which is the point.
-  backup_retention_period   = 7
+  backup_retention_period   = 1
   deletion_protection       = true
   skip_final_snapshot       = false
   final_snapshot_identifier = "${local.name}-db-final"
