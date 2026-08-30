@@ -41,6 +41,10 @@ const TX_MARKER = { __brand: 'tx' };
 
 vi.mock('../../../lib/db.js', () => ({
   dbAdmin: {
+    // Branded for the same reason TX_MARKER is: ai_summaries has RLS and this
+    // job has no request context, so a call that quietly uses the default
+    // client instead of dbAdmin has to be visible to a test.
+    __brand: 'dbAdmin',
     transaction: (cb: (tx: unknown) => unknown) => {
       mockTransaction(cb);
       return cb(TX_MARKER);
@@ -203,6 +207,7 @@ describe('cache miss path', () => {
         promptVersion: 'v1-digest',
         audience: 'digest-weekly',
         weekStart: baseJobData.weekStart,
+        client: expect.objectContaining({ __brand: 'dbAdmin' }),
       }),
     );
     expect(logger.warn).not.toHaveBeenCalledWith(
