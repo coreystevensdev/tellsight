@@ -20,6 +20,25 @@ export const aiSummaryTotal = new Counter({
   registers: [registry],
 });
 
+// NFR2 (first token < 2s) and NFR3 (full summary < 15s) are the two performance
+// targets CI cannot check, since the runner streams against a dummy Claude key.
+// Buckets straddle each threshold so the SLO is one histogram_quantile away.
+export const aiFirstTokenDuration = new Histogram({
+  name: 'ai_summary_first_token_seconds',
+  help: 'Seconds from stream start to the first streamed token',
+  labelNames: ['tier'] as const,
+  buckets: [0.25, 0.5, 1, 1.5, 2, 3, 5, 10],
+  registers: [registry],
+});
+
+export const aiSummaryDuration = new Histogram({
+  name: 'ai_summary_complete_seconds',
+  help: 'Seconds from stream start to the done event',
+  labelNames: ['tier', 'outcome'] as const,
+  buckets: [1, 2.5, 5, 7.5, 10, 15, 20, 30],
+  registers: [registry],
+});
+
 export const aiTokensUsed = new Counter({
   name: 'ai_tokens_used_total',
   help: 'Total Claude API tokens consumed',
