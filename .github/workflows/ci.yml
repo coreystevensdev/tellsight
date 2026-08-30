@@ -30,6 +30,22 @@ jobs:
 
       - run: pnpm type-check
 
+  # Deliberately not gated on `quality`: a leaked credential is worth knowing
+  # about even when the build is broken for unrelated reasons.
+  secret-scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # gitleaks needs history to scan past commits, not just the tip.
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   test-shared-web:
     name: Tests (shared + web)
     needs: quality
@@ -47,7 +63,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm -C packages/shared test && pnpm -C apps/web test
+      # Coverage thresholds live in each package's vitest.config.ts and are set
+      # as a ratchet just under measured coverage, so this fails on a real drop
+      # rather than on noise.
+      - run: pnpm -C packages/shared test:coverage && pnpm -C apps/web test:coverage
         env:
           CI: "true"
 
@@ -295,8 +314,17 @@ jobs:
       - name: Copy CI env file
         run: cp .env.ci .env
 
-      - name: Run smoke test
-        run: bash scripts/smoke-test.sh --ci
+      - name: Install k6
+        run: |
+          curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update && sudo apt-get install -y k6
+
+      # --load runs k6/load-test.js against the stack the smoke test just
+      # proved healthy, so the SLO thresholds in that script gate the build
+      # instead of only being checked by hand.
+      - name: Run smoke test and load test
+        run: bash scripts/smoke-test.sh --ci --load
 
   # Deployment itself lives in deploy-aws.yml, triggered via workflow_run once
   # this workflow succeeds on main. No deploy job here, ECR build/push + SSM
