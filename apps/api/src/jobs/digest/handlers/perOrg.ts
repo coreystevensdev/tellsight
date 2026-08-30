@@ -65,6 +65,8 @@ function extractStateSentence(content: string): string {
  * skipped and the cached content is reused. Either way, fan out per-send jobs
  * for eligible org members, then persist the week's history record.
  */
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
 export async function handlePerOrgJob(job: Job): Promise<void> {
   const parsed = orgJobDataSchema.safeParse(job.data);
   if (!parsed.success) {
@@ -118,6 +120,21 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
   const insights = await runCurationPipeline(orgId, datasetId, undefined, financials);
   const currentStats = insights.map((i) => i.stat);
 
+  // Nothing computable means nothing to interpret, and interpretation is the
+  // entire premise of this email. Bail before the Claude call rather than
+  // paying for a summary whose content is "I don't have any data this week".
+  //
+  // A dataset that stopped receiving rows is a real signal, but it belongs to
+  // the alerts pipeline. Sending it weekly here trains people to ignore the
+  // digest, which is the one thing it cannot afford.
+  if (insights.length === 0) {
+    logger.info(
+      { correlationId, orgId, datasetId, weekStart, jobId: job.id, outcome: 'skipped', durationMs: Date.now() - start },
+      'Per-org digest skipped: no computable stats for this week',
+    );
+    return;
+  }
+
   const lastDigest = await digestHistoryQueries.getLastDigest(orgId, weekStart);
 
   // keyStats is cast, not validated, at the query-helper layer, so a
@@ -158,7 +175,18 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
     : transitionMilestones;
 
   const milestones = [...firstTimeMilestones, ...dedupedTransitionMilestones];
-  const priorContext = composePriorContext(lastDigest?.stateSentence, deltaEntries, milestones);
+  // getLastDigest returns the most recent digest, not the adjacent week, and
+  // skipped weeks now make gaps ordinary. Pass the real distance so the lead-in
+  // cannot call a three-week-old snapshot "last week".
+  const weeksSincePrior = lastDigest?.weekStart
+    ? Math.max(1, Math.round((weekStart.getTime() - lastDigest.weekStart.getTime()) / WEEK_MS))
+    : 1;
+  const priorContext = composePriorContext(
+    lastDigest?.stateSentence,
+    deltaEntries,
+    milestones,
+    weeksSincePrior,
+  );
   const promptVersion = priorContext.length > 0 ? 'v2-digest' : 'v1-digest';
 
   // dbAdmin, like the other platform-level reads in this handler. ai_summaries

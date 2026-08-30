@@ -68,4 +68,27 @@ describe('composePriorContext', () => {
     const result = composePriorContext(undefined, [runwayDelta], []);
     expect(result).not.toContain('Last week:');
   });
+
+  // getLastDigest returns the most recent digest, not the adjacent week, and
+  // weeks with no computable stats are now skipped outright, so gaps are
+  // ordinary rather than exceptional.
+  describe('gap in the weekly sequence', () => {
+    const delta = [{ statType: 'runway', kind: 'delta', text: 'Runway improved' }] as never;
+
+    it('says "Last week" when the prior digest is the adjacent week', () => {
+      const out = composePriorContext('cash was tight', delta, [], 1);
+      expect(out).toContain('Last week: cash was tight');
+    });
+
+    it('names the real distance when weeks were skipped', () => {
+      const out = composePriorContext('cash was tight', delta, [], 3);
+      expect(out).toContain('3 weeks ago: cash was tight');
+      expect(out).not.toContain('Last week');
+    });
+
+    it('defaults to "Last week" when no distance is supplied', () => {
+      const out = composePriorContext('cash was tight', delta, []);
+      expect(out).toContain('Last week: cash was tight');
+    });
+  });
 });
