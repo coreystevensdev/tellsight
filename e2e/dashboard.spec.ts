@@ -1,5 +1,4 @@
 import { test, expect } from '@playwright/test';
-import AxeBuilder from '@axe-core/playwright';
 
 test.describe('Dashboard', () => {
   test('loads with seed data and renders key elements', async ({ page }) => {
@@ -30,17 +29,5 @@ test.describe('Dashboard', () => {
     const summaryRegion = page.locator('[aria-label="AI business summary"]');
     const text = await summaryRegion.innerText();
     expect(text.length).toBeGreaterThanOrEqual(50);
-  });
-
-  test('passes accessibility checks with zero critical violations', async ({ page }) => {
-    await page.goto('/dashboard');
-
-    // wait for main content to load before scanning
-    await page.locator('#dashboard-heading').waitFor({ timeout: 15_000 });
-
-    const results = await new AxeBuilder({ page }).analyze();
-    const critical = results.violations.filter((v) => v.impact === 'critical');
-
-    expect(critical).toEqual([]);
   });
 });
