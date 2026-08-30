@@ -35,32 +35,6 @@ jobs:
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
 
-      # The instance's compose tracks :latest, so the only thing that identifies
-      # "what was running before" is the digest :latest points at right now.
-      # Capture it before the build overwrites the tag. Blank on a first deploy.
-      - name: Capture rollback target
-        id: rollback
-        env:
-          ECR_API: ${{ secrets.ECR_API_REPO }}
-          ECR_WEB: ${{ secrets.ECR_WEB_REPO }}
-        run: |
-          api_repo="${ECR_API##*/}"
-          web_repo="${ECR_WEB##*/}"
-          prev_digest() {
-            aws ecr describe-images --repository-name "$1" --image-ids imageTag=latest \
-              --query 'imageDetails[0].imageDigest' --output text 2>/dev/null \
-              | grep -v '^None$' || true
-          }
-          api_digest="$(prev_digest "$api_repo")"
-          web_digest="$(prev_digest "$web_repo")"
-          {
-            echo "api_repo=$api_repo"
-            echo "web_repo=$web_repo"
-            echo "api_digest=$api_digest"
-            echo "web_digest=$web_digest"
-          } >> "$GITHUB_OUTPUT"
-          echo "Rollback target: api=${api_digest:-none} web=${web_digest:-none}"
-
       - name: Set image tags
         id: tags
         env:
@@ -242,11 +216,17 @@ jobs:
               "set -e",
               f"printf '%s' '{env_b64}' | base64 -d > /opt/tellsight/.env",
               f"printf '%s' '{caddy_b64}' | base64 -d > /opt/tellsight/Caddyfile",
+              # Keep the outgoing pin so the rollback step can restore it. This is
+              # what was actually running, which beats reconstructing it from ECR.
+              "cp /opt/tellsight/docker-compose.override.yml /opt/tellsight/docker-compose.override.prev.yml 2>/dev/null || true",
               f"printf '%s' '{override_b64}' | base64 -d > /opt/tellsight/docker-compose.override.yml",
               f"aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin {ecr_host}",
-              # Every deploy leaves the previous image dangling. 20GB fills up,
-              # and a full disk is exactly how the pull started failing.
-              "docker image prune -f",
+              # -a with an age filter, not plain prune: pinning to sha tags means
+              # superseded images stay tagged and never become dangling, so
+              # `prune -f` reclaims nothing and the disk refills at ~1.4GB per
+              # deploy. 48h keeps the last day or so of builds for a rollback
+              # while still clearing the backlog. Images in use are never removed.
+              "docker image prune -af --filter until=48h",
               # --quiet: pull progress goes to stderr and floods SSM's output
               # buffer, which truncated the actual failure message last time.
               "cd /opt/tellsight && docker compose pull --quiet",
@@ -329,38 +309,27 @@ jobs:
           exit 1
 
       - name: Roll back to previous images
-        if: steps.smoke.outcome == 'failure' && steps.rollback.outputs.api_digest != '' && steps.rollback.outputs.web_digest != ''
+        if: steps.smoke.outcome == 'failure'
         env:
           ECR_API: ${{ secrets.ECR_API_REPO }}
-          API_REPO: ${{ steps.rollback.outputs.api_repo }}
-          WEB_REPO: ${{ steps.rollback.outputs.web_repo }}
-          API_DIGEST: ${{ steps.rollback.outputs.api_digest }}
-          WEB_DIGEST: ${{ steps.rollback.outputs.web_digest }}
           EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
           PROD_URL: ${{ secrets.PRODUCTION_URL }}
         run: |
           set -euo pipefail
 
-          # The previous image is still in ECR under its sha- tag, so moving
-          # :latest back is a manifest write, not a rebuild.
-          retag() {
-            manifest="$(aws ecr batch-get-image --repository-name "$1" \
-              --image-ids imageDigest="$2" --query 'images[0].imageManifest' --output text)"
-            aws ecr put-image --repository-name "$1" --image-tag latest \
-              --image-manifest "$manifest" > /dev/null
-            echo "Re-tagged $1:latest -> $2"
-          }
-          retag "$API_REPO" "$API_DIGEST"
-          retag "$WEB_REPO" "$WEB_DIGEST"
-
-          # .env and Caddyfile on the instance are unchanged by a rollback, so
-          # this only needs to re-pull and restart. Re-authenticating because an
-          # ECR token is good for 12 hours and this path can run long after the
-          # deploy that logged in.
+          # Restore the override the deploy just replaced. That file is what was
+          # actually running, so it beats reconstructing the previous build from
+          # ECR digests. Re-tagging :latest, which is what this used to do, no
+          # longer rolls anything back: compose reads the pinned sha tags now and
+          # ignores :latest entirely.
           ecr_host="${ECR_API%%/*}"
           cmds="$(jq -nc --arg host "$ecr_host" '[
+            "set -e",
+            "cd /opt/tellsight",
+            "test -f docker-compose.override.prev.yml",
+            "cp docker-compose.override.prev.yml docker-compose.override.yml",
             "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin \($host)",
-            "cd /opt/tellsight && docker compose pull",
+            "docker compose pull --quiet",
             "docker compose up -d --remove-orphans"
           ]')"
           cmd_id="$(aws ssm send-command \
