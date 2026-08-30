@@ -15,3 +15,14 @@ variable "db_password" {
   type        = string
   sensitive   = true
 }
+
+variable "domain_name" {
+  description = "Public hostname Caddy serves, used as the health check's Host header and SNI"
+  type        = string
+  default     = "tellsight.coreystevens.dev"
+}
+
+variable "alert_email" {
+  description = "Where health-check alarms are delivered. AWS emails a confirmation link that must be clicked before anything is sent."
+  type        = string
+}
