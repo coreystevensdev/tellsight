@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 import { authenticateAs } from './helpers/auth';
-import { ensureTestUser, cleanupFixtureConnection, TEST_USER } from './helpers/fixtures';
+import { ensureTestUser, cleanupFixtureConnection, getSeedDatasetId, TEST_USER } from './helpers/fixtures';
 
 // PRD targets. These are the product commitments, measured on real hardware.
 const NFR = {
@@ -101,16 +101,12 @@ test.describe('Performance NFRs', () => {
     const authed = await browser.newContext();
     await authenticateAs(authed, { ...testUser, role: 'owner', isAdmin: true });
 
-    // /api/datasets is the upload endpoint. The list lives at
-    // /api/datasets/manage, and getting that wrong made this skip with "no
-    // dataset" instead of failing, which hid the mistake for two CI runs.
-    const listed = await authed.request.get('/api/datasets/manage');
-    expect(listed.ok(), 'dataset list endpoint should respond').toBeTruthy();
-
-    const datasetId = (await listed.json())?.data?.[0]?.id;
+    // Read the id straight from the DB rather than /datasets/manage, which
+    // filters isSeedData = false. A fresh CI org has only the seed dataset, so
+    // the API list is legitimately empty and this used to skip every run.
+    const datasetId = await getSeedDatasetId();
     if (!datasetId) {
-      // Genuinely environmental: an org with nothing uploaded.
-      test.skip(true, 'no dataset in the seed org to share');
+      test.skip(true, 'no seed dataset present');
       await authed.close();
       return;
     }
