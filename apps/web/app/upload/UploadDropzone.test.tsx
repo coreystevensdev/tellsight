@@ -221,6 +221,66 @@ describe('UploadDropzone', () => {
     expect(screen.getByText(/validation failed/i)).toBeInTheDocument();
   });
 
+  // FR12: the flow has to survive a rejected file. Every other test here drives
+  // a single upload to one terminal state; this is the round trip, which is the
+  // thing the requirement actually promises.
+  describe('correct-and-resubmit round trip (FR12)', () => {
+    it('recovers in place when a rejected file is followed by a good one', async () => {
+      mockXhrResponse(400, {
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'We expected a "date" column but could not find one.',
+          details: { errors: [{ column: 'date', message: 'We expected a "date" column.' }] },
+        },
+      });
+
+      render(<UploadDropzone />);
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+
+      simulateUpload(input, new File(['amount,category\n100,Food'], 'broken.csv', { type: 'text/csv' }));
+      await act(() => vi.advanceTimersByTimeAsync(10));
+
+      await waitFor(() => {
+        expect(screen.getByText(/could not find one/i)).toBeInTheDocument();
+      });
+      expect(screen.getByText(/last attempt: broken\.csv/i)).toBeInTheDocument();
+
+      // Same mounted component, no reload: the user fixes the file and picks again.
+      mockXhrResponse(200, previewResponse);
+      simulateUpload(input, new File(['date,amount,category\n2024-01-01,100,Food'], 'fixed.csv', { type: 'text/csv' }));
+      await act(() => vi.advanceTimersByTimeAsync(10));
+
+      await waitFor(() => {
+        expect(screen.getByText(/40 rows detected/i)).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText(/could not find one/i)).not.toBeInTheDocument();
+      expect(mockLocationAssign).not.toHaveBeenCalled();
+    });
+
+    it('accepts another file after cancelling a preview', async () => {
+      await uploadAndWaitForPreview();
+
+      fireEvent.click(screen.getByText('Cancel'));
+      await waitFor(() => {
+        expect(screen.queryByRole('table')).not.toBeInTheDocument();
+      });
+
+      // Backing out of a preview must not end the flow. "Last attempt" only
+      // renders in the error state, so the observable promise here is that the
+      // dropzone still takes a file rather than needing a reload.
+      mockXhrResponse(200, previewResponse);
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      simulateUpload(input, new File(['date,amount,category\n2024-02-01,200,Rent'], 'second.csv', { type: 'text/csv' }));
+      await act(() => vi.advanceTimersByTimeAsync(10));
+
+      await waitFor(() => {
+        expect(screen.getByText(/40 rows detected/i)).toBeInTheDocument();
+      });
+      expect(mockLocationAssign).not.toHaveBeenCalled();
+    });
+  });
+
   it('shows preview with CsvPreview on successful upload', async () => {
     await uploadAndWaitForPreview();
 
