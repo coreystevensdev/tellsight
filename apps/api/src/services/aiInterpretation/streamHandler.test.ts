@@ -898,3 +898,80 @@ describe('streamToSSE disconnect timing against a real server', () => {
     }
   });
 });
+
+// NFR2 and NFR3 have no CI-measurable assertion, because the runner streams
+// against a dummy Claude key. Production observability is the only place those
+// thresholds can be checked, so these guard that the metric still records at
+// all rather than checking a wall-clock number.
+describe('AI latency instrumentation (NFR2, NFR3)', () => {
+  // prom-client reports a histogram under its base name; the _count and _sum
+  // samples live inside values[] under metricName, not as separate metrics.
+  async function observationCount(metric: string, labels: Record<string, string>) {
+    const { registry } = await import('../../lib/metrics.js');
+    const json = await registry.getMetricsAsJSON();
+    const found = json.find((m) => m.name === metric);
+    if (!found) return 0;
+    const samples = found.values as {
+      labels: Record<string, string>;
+      value: number;
+      metricName?: string;
+    }[];
+    const count = samples.find(
+      (v) =>
+        v.metricName === `${metric}_count` &&
+        Object.entries(labels).every(([k, val]) => v.labels[k] === val),
+    );
+    return count?.value ?? 0;
+  }
+
+  it('records first-token and completion latency on a successful stream', async () => {
+    const before = {
+      firstToken: await observationCount('ai_summary_first_token_seconds', { tier: 'pro' }),
+      complete: await observationCount('ai_summary_complete_seconds', {
+        tier: 'pro',
+        outcome: 'complete',
+      }),
+    };
+
+    mockStreamInterpretation.mockImplementation(
+      async (_prompt: string, onText: (d: string) => void) => {
+        onText('Revenue ');
+        onText('is up.');
+        return { fullText: 'Revenue is up.', usage: { inputTokens: 10, outputTokens: 5 } };
+      },
+    );
+
+    const { res } = createMockRes();
+    const { streamToSSE } = await import('./streamHandler.js');
+    await streamToSSE(res, 1, 42, 99, 'pro');
+
+    expect(
+      await observationCount('ai_summary_first_token_seconds', { tier: 'pro' }),
+    ).toBe(before.firstToken + 1);
+    expect(
+      await observationCount('ai_summary_complete_seconds', {
+        tier: 'pro',
+        outcome: 'complete',
+      }),
+    ).toBe(before.complete + 1);
+  });
+
+  it('records first-token latency once, not once per delta', async () => {
+    const before = await observationCount('ai_summary_first_token_seconds', { tier: 'pro' });
+
+    mockStreamInterpretation.mockImplementation(
+      async (_prompt: string, onText: (d: string) => void) => {
+        for (const word of ['a ', 'b ', 'c ', 'd ']) onText(word);
+        return { fullText: 'a b c d ', usage: { inputTokens: 10, outputTokens: 5 } };
+      },
+    );
+
+    const { res } = createMockRes();
+    const { streamToSSE } = await import('./streamHandler.js');
+    await streamToSSE(res, 1, 42, 99, 'pro');
+
+    expect(
+      await observationCount('ai_summary_first_token_seconds', { tier: 'pro' }),
+    ).toBe(before + 1);
+  });
+});

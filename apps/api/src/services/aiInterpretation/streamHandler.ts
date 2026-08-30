@@ -8,6 +8,7 @@ import { findDirectiveLanguage } from 'shared/agent';
 import { logger } from '../../lib/logger.js';
 import type { db, DbTransaction } from '../../lib/db.js';
 import { register, deregister } from '../../lib/activeStreams.js';
+import { aiFirstTokenDuration, aiSummaryDuration } from '../../lib/metrics.js';
 import { CircuitOpenError } from '../../lib/circuitBreaker.js';
 import { aiSummariesQueries } from '../../db/queries/index.js';
 import { runCurationPipeline, assemblePrompt, transparencyMetadataSchema, validateSummary, validateStatRefs, stripInvalidStatRefs, validateCiteRefs, stripInvalidCiteRefs } from '../curation/index.js';
@@ -139,6 +140,9 @@ export async function streamToSSE(
     return { ok: false };
   }
 
+  const streamStart = Date.now();
+  let firstTokenSeen = false;
+
   try {
     logger.info({ orgId, datasetId, promptVersion, tier }, 'starting AI summary stream');
 
@@ -146,6 +150,14 @@ export async function streamToSSE(
       promptInput,
       (delta) => {
         if (clientDisconnected || ended || truncatedForFree) return;
+
+        // Latched rather than checked against accumulatedText: an empty first
+        // delta would otherwise keep re-arming and report the wrong latency.
+        if (!firstTokenSeen) {
+          firstTokenSeen = true;
+          aiFirstTokenDuration.observe({ tier }, (Date.now() - streamStart) / 1000);
+        }
+
         accumulatedText += delta;
 
         if (tier === 'free' && countWords(accumulatedText) >= FREE_PREVIEW_WORD_LIMIT) {
@@ -155,6 +167,7 @@ export async function streamToSSE(
           const wordCount = countWords(accumulatedText);
           writeSseEvent(res, 'upgrade_required', { wordCount } satisfies SseUpgradeRequiredEvent);
           writeSseEvent(res, 'done', { usage: null, reason: 'free_preview' } satisfies SseDoneEvent);
+          aiSummaryDuration.observe({ tier, outcome: 'free_preview' }, (Date.now() - streamStart) / 1000);
           safeEnd();
 
           // stop consuming Claude tokens
@@ -186,6 +199,7 @@ export async function streamToSSE(
     }
 
     writeSseEvent(res, 'done', { usage: result.usage, metadata: validatedMetadata } satisfies SseDoneEvent);
+    aiSummaryDuration.observe({ tier, outcome: 'complete' }, (Date.now() - streamStart) / 1000);
     safeEnd();
 
     const pipelineStats = pipelineInsights.map((i) => i.stat);
