@@ -8,6 +8,7 @@ const NFR = {
   dashboardLoad: 3_000, // NFR1
   csvUpload: 5_000, // NFR4, files under 10MB
   chartInteraction: 500, // NFR5, datasets up to 10k rows
+  sharedCard: 2_000, // NFR6, no auth required
 };
 
 // A shared GitHub runner is not the hardware the PRD targets, and a perf test
@@ -87,6 +88,49 @@ test.describe('Performance NFRs', () => {
     expect(elapsed).toBeLessThan(budget(NFR.csvUpload));
 
     await ctx.close();
+  });
+
+  // The share link is created authenticated, then measured signed out, because
+  // NFR6 is specifically about the no-auth view a recipient gets. A separate
+  // browser context is the cheapest way to guarantee no cookie leaks into it.
+  //
+  // generateShareLink refuses a dataset with no cached AI summary, and CI runs
+  // with a dummy Claude key, so this skips rather than fails when seed data
+  // shipped without one.
+  test('NFR6: shared insight card loads within budget', async ({ browser }) => {
+    const authed = await browser.newContext();
+    await authenticateAs(authed, { ...testUser, role: 'owner', isAdmin: true });
+
+    const listed = await authed.request.get('/api/datasets');
+    const datasetId = listed.ok() ? (await listed.json())?.data?.[0]?.id : undefined;
+    if (!datasetId) {
+      test.skip(true, 'no dataset in the seed org to share');
+      await authed.close();
+      return;
+    }
+
+    const created = await authed.request.post('/api/shares', { data: { datasetId } });
+    if (created.status() !== 201) {
+      const body = await created.text();
+      test.skip(true, `share not creatable: ${created.status()} ${body.slice(0, 120)}`);
+      await authed.close();
+      return;
+    }
+    const token = (await created.json()).data.token;
+    await authed.close();
+
+    const anon = await browser.newContext();
+    const page = await anon.newPage();
+
+    const started = Date.now();
+    await page.goto(`/share/${token}`);
+    await page.locator('article h1').waitFor({ timeout: 30_000 });
+    const elapsed = Date.now() - started;
+
+    reportTiming('NFR6 shared card', elapsed, NFR.sharedCard);
+    expect(elapsed).toBeLessThan(budget(NFR.sharedCard));
+
+    await anon.close();
   });
 
   // Runs against the public seeded dashboard, not an authenticated user:
