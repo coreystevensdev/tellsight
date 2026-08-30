@@ -13,6 +13,7 @@ export function composePriorContext(
   lastStateSentence: string | undefined,
   deltaEntries: readonly PriorContextEntry[],
   milestones: readonly DigestMilestoneEntry[],
+  weeksSincePrior = 1,
 ): string {
   const milestoneStatTypes = new Set(
     milestones.map((m) => m.statType).filter((statType): statType is ComputedStat['statType'] => statType !== null),
@@ -24,7 +25,13 @@ export function composePriorContext(
   if (survivingDeltas.length === 0 && milestones.length === 0) return '';
 
   const lines: string[] = [];
-  if (lastStateSentence) lines.push(`Last week: ${lastStateSentence}`);
+  if (lastStateSentence) {
+    // The prior digest is whatever came last, not necessarily seven days ago.
+    // Weeks get skipped when nothing was computable, so saying "last week" over
+    // a gap would be a claim we cannot back.
+    const lead = weeksSincePrior <= 1 ? 'Last week' : `${weeksSincePrior} weeks ago`;
+    lines.push(`${lead}: ${lastStateSentence}`);
+  }
   lines.push(...milestones.map((m) => m.label));
   lines.push(...survivingDeltas.map((entry) => entry.text));
 
