@@ -9,6 +9,19 @@ export default defineConfig({
     setupFiles: ['./test/setup.ts'],
     include: ['**/*.test.{ts,tsx}'],
     exclude: ['node_modules', '.next'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text-summary', 'lcov'],
+      exclude: ['node_modules', '.next', 'test/**', '**/*.config.*', '**/*.d.ts'],
+      // Ratchet, not target. Measured 2026-08-30: 65.5% lines, 82% branches,
+      // 71.3% functions. Raise as coverage climbs, never lower to pass a run.
+      thresholds: {
+        statements: 62,
+        branches: 78,
+        functions: 68,
+        lines: 62,
+      },
+    },
   },
   resolve: {
     alias: {

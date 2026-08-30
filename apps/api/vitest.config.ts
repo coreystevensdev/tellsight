@@ -12,7 +12,15 @@ export default defineConfig({
     exclude: [...configDefaults.exclude, 'src/**/*.integration.test.ts'],
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'lcov'],
+      reporter: ['text-summary', 'lcov'],
+      // Ratchet measured 2026-08-30: 88% lines, 89.7% branches, 81.2% functions.
+      // Only bites locally, since CI runs these under continue-on-error.
+      thresholds: {
+        statements: 85,
+        branches: 87,
+        functions: 78,
+        lines: 85,
+      },
     },
     pool: 'forks',
     poolOptions: {
