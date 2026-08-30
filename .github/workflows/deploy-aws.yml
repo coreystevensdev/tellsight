@@ -127,6 +127,7 @@ jobs:
           QUICKBOOKS_ENVIRONMENT: ${{ secrets.QUICKBOOKS_ENVIRONMENT }}
           ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
           ECR_API_REPO: ${{ secrets.ECR_API_REPO }}
+          ECR_WEB_REPO: ${{ secrets.ECR_WEB_REPO }}
         run: |
           python3 - << 'PY'
           import base64, json, os, subprocess, sys, time
