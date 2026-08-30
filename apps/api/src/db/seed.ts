@@ -186,12 +186,16 @@ async function seed() {
     // postgres connection), not lib/db.ts which pulls in config.ts env validation.
     // Duplicates the pipeline steps manually so seed can run without full app config.
     const apiKey = process.env.CLAUDE_API_KEY;
+    // Only catches the literal "placeholder". CI's key is a plausible-looking
+    // dummy, so it reaches the live call and fails there instead, which is why
+    // the catch below has to insert the fallback rather than shrug.
     const hasRealKey = apiKey && !apiKey.includes('placeholder');
-    if (!hasRealKey) {
-      // Hardcoded fallback, the dashboard works out of the box with no API key.
-      // Matches the seed data: 12 months for Sunrise Cafe, Dec revenue spike,
-      // Oct payroll anomaly, Q3 marketing dip.
-      await tx.insert(schema.aiSummaries).values({
+
+    // Hardcoded fallback, the dashboard works out of the box with no API key.
+    // Matches the seed data: 12 months for Sunrise Cafe, Dec revenue spike,
+    // Oct payroll anomaly, Q3 marketing dip.
+    const insertFallbackSummary = () =>
+      tx.insert(schema.aiSummaries).values({
         orgId,
         datasetId: dataset.id,
         content: FALLBACK_SEED_SUMMARY,
@@ -205,6 +209,9 @@ async function seed() {
         promptVersion: 'v1',
         isSeed: true,
       });
+
+    if (!hasRealKey) {
+      await insertFallbackSummary();
       console.info('Seed AI summary inserted (hardcoded fallback, no API key)');
     } else {
       try {
@@ -260,7 +267,11 @@ async function seed() {
 
         console.info(`Seed AI summary generated (${content.length} chars, ${message.usage.output_tokens} tokens)`);
       } catch (err) {
-        console.warn('Seed summary generation failed, continuing without it:', (err as Error).message);
+        // Leaving the org with no summary at all contradicts the promise above.
+        // A dud key, a network blip or a rate limit should degrade to the canned
+        // copy, not to an empty dashboard.
+        console.warn('Seed summary generation failed, using the fallback:', (err as Error).message);
+        await insertFallbackSummary();
       }
     }
   });
