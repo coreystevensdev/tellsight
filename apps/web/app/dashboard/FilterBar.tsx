@@ -22,31 +22,50 @@ export const DATE_PRESETS = [
 
 export type DatePresetValue = (typeof DATE_PRESETS)[number]['value'];
 
+// Clamp the day instead of letting it carry: new Date(2026, 1, 30) is Feb 30,
+// which rolls into March and cost "last 6 months" a month.
+function monthsBefore(now: Date, months: number): Date {
+  const target = new Date(now.getFullYear(), now.getMonth() - months, 1);
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(now.getDate(), lastDay));
+  return target;
+}
+
+// These dates are built from local parts, so formatting them through
+// toISOString() converts to UTC first and shifts the answer a day back for
+// anyone east of Greenwich. A user in Sydney asking for "last month" was
+// getting a window that ended yesterday and dropped today's rows.
+function toIsoDate(d: Date): string {
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${month}-${day}`;
+}
+
 export function computeDateRange(preset: string): { from: string; to: string } | null {
   if (preset === 'all') return null;
 
   const now = new Date();
-  const to = now.toISOString().slice(0, 10);
+  const to = toIsoDate(now);
   let from: Date;
 
   switch (preset) {
     case 'last-month':
-      from = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+      from = monthsBefore(now, 1);
       break;
     case 'last-3-months':
-      from = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+      from = monthsBefore(now, 3);
       break;
     case 'last-6-months':
-      from = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
+      from = monthsBefore(now, 6);
       break;
     case 'last-year':
-      from = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+      from = monthsBefore(now, 12);
       break;
     default:
       return null;
   }
 
-  return { from: from.toISOString().slice(0, 10), to };
+  return { from: toIsoDate(from), to };
 }
 
 // generic accessible dropdown, trigger + listbox with keyboard nav
