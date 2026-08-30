@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // v8 coverage output. Gitignored, but flat config does not read .gitignore,
+    // so its bundled lcov reporter assets get linted without this.
+    "coverage/**",
   ]),
   {
     rules: {
