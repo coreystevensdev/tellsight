@@ -41,8 +41,12 @@ export default function () {
 
   sleep(0.1);
 
-  // Dataset listing (adjust path to match actual API route)
-  const datasetsRes = http.get(`${BASE_URL}/api/datasets`, { headers: authHeaders });
+  // Without K6_JWT_TOKEN this 401s. The check below already allows that; the
+  // callback stops http_req_failed disagreeing and blowing the 0.5% SLO.
+  const datasetsRes = http.get(`${BASE_URL}/api/datasets`, {
+    headers: authHeaders,
+    responseCallback: http.expectedStatuses(200, 401),
+  });
   datasetLatency.add(datasetsRes.timings.duration);
   const datasetsOk = check(datasetsRes, {
     'datasets 200 or 401': (r) => r.status === 200 || r.status === 401,
