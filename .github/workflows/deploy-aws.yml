@@ -247,14 +247,19 @@ jobs:
               # Every deploy leaves the previous image dangling. 20GB fills up,
               # and a full disk is exactly how the pull started failing.
               "docker image prune -f",
-              "cd /opt/tellsight && docker compose pull",
+              # --quiet: pull progress goes to stderr and floods SSM's output
+              # buffer, which truncated the actual failure message last time.
+              "cd /opt/tellsight && docker compose pull --quiet",
               "docker compose up -d --remove-orphans",
               # Prove the container is actually on the image we just pulled.
               # set -e catches a failed pull, but this catches the whole class:
               # any path where the deploy reports success while production keeps
               # running something else.
+              # Compare against the pinned sha tag, not :latest. compose pulls
+              # only what it references, so :latest on the box is now whatever
+              # the previous deploy left there and would never match.
               f"running=$(docker inspect --format='{{{{.Image}}}}' tellsight-api-1)"
-              f" && expected=$(docker image inspect --format='{{{{.Id}}}}' {ecr_host}/tellsight-api:latest)"
+              f" && expected=$(docker image inspect --format='{{{{.Id}}}}' {os.environ['ECR_API_REPO']}:sha-{short})"
               f" && [ \"$running\" = \"$expected\" ]"
               f" || (echo 'DEPLOY DID NOT LAND: container image != pulled image' >&2; exit 1)",
               # caddy's own image/config never change between deploys, so
