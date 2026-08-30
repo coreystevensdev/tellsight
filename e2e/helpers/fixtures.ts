@@ -64,6 +64,22 @@ export async function ensureTestUser(
   return { userId, orgId };
 }
 
+/**
+ * The seed dataset's id. getDatasetListWithCounts filters isSeedData = false,
+ * because /datasets/manage is a list of user uploads, so the seed dataset is
+ * invisible through the API even though it is the only one a fresh CI org has.
+ */
+export async function getSeedDatasetId(orgId: number = SEED_ORG_ID): Promise<number | null> {
+  const sql = getConnection();
+  const [row] = await sql`
+    SELECT id FROM datasets
+    WHERE org_id = ${orgId} AND is_seed_data = true
+    ORDER BY id
+    LIMIT 1
+  `;
+  return row ? (row.id as number) : null;
+}
+
 /** Minimal valid CSV for upload tests */
 export const SAMPLE_CSV = `date,amount,category
 2025-01-15,1200.00,Revenue
