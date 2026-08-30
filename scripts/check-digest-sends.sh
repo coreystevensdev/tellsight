@@ -31,7 +31,10 @@ NODE_SCRIPT=$(cat <<'JS'
 import postgres from 'postgres';
 
 const since = process.argv[2];
-const sql = postgres(process.env.DATABASE_URL, { max: 1 });
+// ADMIN url, not DATABASE_URL. This is a platform-wide census and the
+// RLS-scoped app_user returns zero rows for every org-scoped table when no
+// org context is set, which silently reads as "nothing here".
+const sql = postgres(process.env.DATABASE_ADMIN_URL, { max: 1 });
 
 try {
   const [totals] = await sql`
@@ -43,16 +46,22 @@ try {
   `;
   console.log('TOTALS ' + JSON.stringify(totals));
 
-  // A zero send count is ambiguous on its own: broken cron, or nobody eligible.
-  // These are the five predicates findEligibleOrgs actually filters on, so the
-  // answer is readable instead of inferred.
+  // Counting each predicate separately answers the wrong question: five counts
+  // can all be non-zero while no single org satisfies all five. This is the
+  // same join findEligibleOrgs runs. A missing digest_preferences row means
+  // eligible, not opted out, which is why the LEFT JOIN allows a NULL cadence.
   const [eligibility] = await sql`
-    SELECT
-      (SELECT count(*)::int FROM orgs) AS orgs,
-      (SELECT count(*)::int FROM subscriptions WHERE status = 'active' AND plan = 'pro') AS active_pro_subs,
-      (SELECT count(*)::int FROM orgs WHERE active_dataset_id IS NOT NULL) AS orgs_with_active_dataset,
-      (SELECT count(*)::int FROM datasets WHERE created_at >= now() - interval '30 days') AS datasets_last_30d,
-      (SELECT count(*)::int FROM digest_preferences WHERE cadence = 'weekly' OR cadence IS NULL) AS weekly_opt_ins
+    SELECT count(*)::int AS eligible_orgs
+    FROM orgs o
+    JOIN subscriptions s ON s.org_id = o.id
+    JOIN datasets d ON d.id = o.active_dataset_id
+    WHERE s.status = 'active' AND s.plan = 'pro'
+      AND o.active_dataset_id IS NOT NULL
+      AND d.created_at >= now() - interval '30 days'
+      AND EXISTS (
+        SELECT 1 FROM user_orgs uo
+        LEFT JOIN digest_preferences dp ON dp.user_id = uo.user_id
+        WHERE uo.org_id = o.id AND (dp.cadence IS NULL OR dp.cadence <> 'off'))
   `;
   console.log('ELIGIBILITY ' + JSON.stringify(eligibility));
 
