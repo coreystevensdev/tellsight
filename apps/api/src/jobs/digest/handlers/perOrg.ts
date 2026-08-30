@@ -161,7 +161,11 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
   const priorContext = composePriorContext(lastDigest?.stateSentence, deltaEntries, milestones);
   const promptVersion = priorContext.length > 0 ? 'v2-digest' : 'v1-digest';
 
-  const cached = await aiSummariesQueries.getCachedDigest(orgId, datasetId, weekStart);
+  // dbAdmin, like the other platform-level reads in this handler. ai_summaries
+  // has RLS and this job runs off a cron with no request and no
+  // app.current_org_id, so the default client silently matches nothing here and
+  // fails outright on the insert below.
+  const cached = await aiSummariesQueries.getCachedDigest(orgId, datasetId, weekStart, dbAdmin);
   let summaryId: number;
   let cacheHit: boolean;
   let insightCount: number;
@@ -222,6 +226,7 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
       promptVersion,
       audience: DIGEST_AUDIENCE,
       weekStart,
+      client: dbAdmin,
     });
     summaryId = stored.id;
     cacheHit = false;
