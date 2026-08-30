@@ -149,12 +149,23 @@ test.describe('Performance NFRs', () => {
       return;
     }
 
-    // Clock starts on the click, not the navigation, so this measures the
-    // interaction rather than the page load behind it.
+    // Waits for the chart refetch the filter triggers, NOT networkidle.
+    // networkidle is defined as 500ms of no requests, so using it here put a
+    // 500ms floor under a 500ms target and made the NFR look breached by
+    // roughly the size of its own budget.
+    //
+    // The listener is armed before the click because the response can land
+    // before the click promise resolves. The initial load's own call to this
+    // endpoint has already settled, since a chart had to be visible above.
+    const refetched = page.waitForResponse(
+      (r) => r.url().includes('/dashboard/charts') && r.status() === 200,
+      { timeout: 15_000 },
+    );
+
     const started = Date.now();
     await dateFilter.click();
     await page.getByRole('option', { name: 'Last 6 months' }).click();
-    await page.waitForLoadState('networkidle');
+    await refetched;
     const elapsed = Date.now() - started;
 
     reportTiming('NFR5 date filter', elapsed, NFR.chartInteraction);
