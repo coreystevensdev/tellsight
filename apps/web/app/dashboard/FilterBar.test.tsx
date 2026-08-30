@@ -345,4 +345,86 @@ describe('computeDateRange', () => {
   it('returns null for unknown preset', () => {
     expect(computeDateRange('unknown')).toBeNull();
   });
+
+  // The tests above run against whatever today happens to be, so the month-end
+  // overflow bug only surfaced on some dates. These pin the dates that broke.
+  describe('month-end day clamping', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const on = (iso: string) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(iso));
+    };
+
+    const spanInMonths = (r: { from: string; to: string }) => {
+      const from = new Date(r.from);
+      const to = new Date(r.to);
+      return (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth());
+    };
+
+    it('lands on Feb 28 for last-6-months from Aug 30, not Mar 2', () => {
+      on('2026-08-30T12:00:00Z');
+      const result = computeDateRange('last-6-months')!;
+      expect(result.from).toBe('2026-02-28');
+      expect(spanInMonths(result)).toBe(6);
+    });
+
+    it('lands on Feb 28 for last-month from Mar 31, not Mar 3', () => {
+      on('2026-03-31T12:00:00Z');
+      const result = computeDateRange('last-month')!;
+      expect(result.from).toBe('2026-02-28');
+      expect(spanInMonths(result)).toBe(1);
+    });
+
+    it('keeps a full month when the target month is shorter, Jul 31 to Jun 30', () => {
+      on('2026-07-31T12:00:00Z');
+      const result = computeDateRange('last-month')!;
+      expect(result.from).toBe('2026-06-30');
+      expect(spanInMonths(result)).toBe(1);
+    });
+
+    // Sydney is UTC+10, so a morning there is still "yesterday" in UTC. These
+    // pin the case where the two calendars disagree, which is exactly when
+    // formatting through toISOString() used to hand back the wrong day.
+    describe('east of UTC', () => {
+      const realTz = process.env.TZ;
+
+      afterEach(() => {
+        process.env.TZ = realTz;
+      });
+
+      function sydneyMorningOf(iso: string) {
+        process.env.TZ = 'Australia/Sydney';
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(iso));
+      }
+
+      it('uses the local calendar date, not the UTC one, for the range end', () => {
+        // 2026-08-29T20:00Z is 2026-08-30 06:00 in Sydney.
+        sydneyMorningOf('2026-08-29T20:00:00Z');
+
+        const result = computeDateRange('last-month')!;
+        expect(result.to).toBe('2026-08-30');
+        expect(result.from).toBe('2026-07-30');
+      });
+
+      it('does not lose the current day on the six-month preset', () => {
+        sydneyMorningOf('2026-08-29T20:00:00Z');
+
+        const result = computeDateRange('last-6-months')!;
+        expect(result.to).toBe('2026-08-30');
+        expect(result.from).toBe('2026-02-28');
+        expect(spanInMonths(result)).toBe(6);
+      });
+    });
+
+    it('handles a leap year, last-year from Feb 29 2028', () => {
+      on('2028-02-29T12:00:00Z');
+      const result = computeDateRange('last-year')!;
+      expect(result.from).toBe('2027-02-28');
+      expect(spanInMonths(result)).toBe(12);
+    });
+  });
 });
