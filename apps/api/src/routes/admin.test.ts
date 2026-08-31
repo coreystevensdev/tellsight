@@ -16,6 +16,8 @@ const mockGetPendingCorrections = vi.fn();
 const mockFindById = vi.fn();
 const mockMarkStale = vi.fn().mockResolvedValue(undefined);
 const mockAudit = vi.fn();
+const mockAuditAuth = vi.fn();
+const mockSetLogLevel = vi.fn().mockReturnValue('info');
 const mockUpdateAgentEnabled = vi.fn();
 const mockTrackEvent = vi.fn();
 
@@ -56,6 +58,7 @@ vi.mock('../db/queries/index.js', () => ({
 
 vi.mock('../services/audit/auditService.js', () => ({
   audit: (...args: unknown[]) => mockAudit(...args),
+  auditAuth: (...args: unknown[]) => mockAuditAuth(...args),
 }));
 
 vi.mock('../services/analytics/trackEvent.js', () => ({
@@ -71,7 +74,11 @@ vi.mock('../config.js', () => ({
 }));
 
 vi.mock('../lib/logger.js', () => ({
+  isLogLevel: (v: unknown) =>
+    typeof v === 'string' && ['trace', 'debug', 'info', 'warn', 'error', 'fatal'].includes(v),
+  setLogLevel: (...args: unknown[]) => mockSetLogLevel(...args),
   logger: {
+    level: 'info',
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
@@ -843,5 +850,73 @@ describe('PATCH /admin/orgs/:orgId/agent-tier', () => {
     });
 
     expect(res.status).toBe(401);
+  });
+});
+
+describe('log level', () => {
+  it('reports the current level', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
+    const res = await fetch(`${baseUrl}/admin/log-level`, { headers: authHeaders });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ data: { level: 'info' } });
+  });
+
+  it('changes the level and reports what it was', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
+    mockSetLogLevel.mockReturnValueOnce('info');
+
+    const res = await fetch(`${baseUrl}/admin/log-level`, {
+      method: 'PATCH',
+      headers: authHeaders,
+      body: JSON.stringify({ level: 'debug' }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ data: { level: 'debug', previous: 'info' } });
+    expect(mockSetLogLevel).toHaveBeenCalledWith('debug');
+  });
+
+  it('audits the change, since raising the level can suppress the log line', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
+    mockSetLogLevel.mockReturnValueOnce('info');
+
+    await fetch(`${baseUrl}/admin/log-level`, {
+      method: 'PATCH',
+      headers: authHeaders,
+      body: JSON.stringify({ level: 'error' }),
+    });
+
+    expect(mockAuditAuth).toHaveBeenCalledWith(
+      expect.anything(),
+      'admin.log_level_changed',
+      expect.objectContaining({ metadata: { from: 'info', to: 'error' } }),
+    );
+  });
+
+  it('rejects a level pino does not have', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
+
+    const res = await fetch(`${baseUrl}/admin/log-level`, {
+      method: 'PATCH',
+      headers: authHeaders,
+      body: JSON.stringify({ level: 'verbose' }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(mockSetLogLevel).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-admin', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(regularPayload());
+
+    const res = await fetch(`${baseUrl}/admin/log-level`, {
+      method: 'PATCH',
+      headers: authHeaders,
+      body: JSON.stringify({ level: 'debug' }),
+    });
+
+    expect(res.status).toBe(403);
+    expect(mockSetLogLevel).not.toHaveBeenCalled();
   });
 });
