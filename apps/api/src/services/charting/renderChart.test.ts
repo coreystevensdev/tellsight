@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// These render real PNGs through Sharp rather than mocking it, which is the
+// point: the size budget and the degrade tiers are properties of the actual
+// encoder. Real work needs a real timeout. At the 5000ms default they pass
+// alone and flake under parallel load, which matters now that this job can fail
+// the build rather than being continue-on-error.
+vi.setConfig({ testTimeout: 45_000 });
+
 vi.mock('../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
