@@ -11,7 +11,21 @@ pnpm lint
 echo "[pre-push] pnpm type-check"
 pnpm type-check
 
+# validate-seed.ts imports config.ts, which validates every env var and throws at
+# module load. Without this the guard fails on a clean shell with a wall of
+# "Required" lines, which reads like a broken hook rather than a missing file,
+# and the obvious response is --no-verify. Same idiom as the root
+# test:integration script.
+if [ -f .env ]; then
+  set -a
+  . ./.env
+  set +a
+fi
+
 echo "[pre-push] seed-data snapshot"
-pnpm -C apps/api exec tsx ../../scripts/validate-seed.ts
+if ! pnpm -C apps/api exec tsx ../../scripts/validate-seed.ts; then
+  [ -f .env ] || echo "[pre-push] no .env found, so config.ts had nothing to validate against" >&2
+  exit 1
+fi
 
 echo "[pre-push] ok"
