@@ -30,6 +30,12 @@ jobs:
 
       - run: pnpm type-check
 
+      # Rollback re-pins the image but never the database, so a migration that
+      # drops something the previous release reads turns a rollback into a
+      # second outage.
+      - name: Migration rollback compatibility
+        run: pnpm -C apps/api exec tsx ../../scripts/check-migration-compat.ts
+
   # Deliberately not gated on `quality`: a leaked credential is worth knowing
   # about even when the build is broken for unrelated reasons.
   secret-scan:
