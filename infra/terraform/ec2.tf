@@ -219,10 +219,25 @@ locals {
     # caddy is the only service published beyond 127.0.0.1; it reaches api/web
     # by Docker Compose's internal service-name DNS, not the host loopback.
     cat > /opt/tellsight/docker-compose.yml << 'COMPOSE'
+    # Docker's default json-file driver has no size limit. Steady state is not
+    # the concern (Caddy wrote 220K in 26 days); a crash-looping container is,
+    # since each restart writes a stack trace and the disk is 20GB. 10m x 3
+    # caps the whole box at 120MB and still leaves a useful window to read.
+    #
+    # Set per service rather than in /etc/docker/daemon.json so applying it
+    # never needs a Docker daemon restart. Compose picks it up when a container
+    # is recreated, which the deploy already does.
+    x-logging: &logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
     services:
       redis:
         image: redis:7-alpine
         restart: always
+        logging: *logging
         volumes:
           - redis_data:/data
         command: redis-server --save 60 1 --loglevel warning
@@ -230,6 +245,7 @@ locals {
       api:
         image: ${aws_ecr_repository.api.repository_url}:latest
         restart: always
+        logging: *logging
         env_file: /opt/tellsight/.env
         environment:
           NODE_ENV: production
@@ -243,6 +259,7 @@ locals {
       web:
         image: ${aws_ecr_repository.web.repository_url}:latest
         restart: always
+        logging: *logging
         env_file: /opt/tellsight/.env
         environment:
           NODE_ENV: production
@@ -254,6 +271,7 @@ locals {
       caddy:
         image: caddy:2-alpine
         restart: always
+        logging: *logging
         ports:
           - "80:80"
           - "443:443"
