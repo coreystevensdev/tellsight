@@ -18,28 +18,37 @@ const PUBLIC_ROUTES = [
 const summarize = (violations: { id: string; impact?: string | null; nodes: unknown[] }[]) =>
   violations.map((v) => `${v.id} (${v.impact}, ${v.nodes.length} node(s))`);
 
-// Gate raised from critical-only to critical + serious, minus one rule.
+// Gates on critical and serious, with nothing excluded.
 //
-// color-contrast is excluded because it currently fails on 12 nodes, and every
-// one is the product's own palette rather than a markup mistake: white on the
-// teal accent #0d9488 at 12px scores 3.74 against the 4.5 AA needs, the success
-// green #3a9742 on #fcfcfc scores 3.6, and teal on the light teal surface
-// #e9f7f5 scores 3.4. Fixing those means darkening tokens in the locked colour
-// anchor, which is a design decision and not one to make inside an a11y test.
-// Excluding it by name keeps every other serious rule gating, instead of the
-// whole severity staying unwatched to hide one known problem.
+// color-contrast was briefly excluded here: it failed on 12 nodes, all of them
+// palette rather than markup. The tokens were darkened instead (#0D9488 to
+// #0B7C72, success to #2F7D37), so the exclusion is gone and the rule gates like
+// any other. Re-add an exclusion only as a last resort, and never silently:
+// a disabled rule looks identical to a passing one from the outside.
 const GATED_IMPACTS = new Set(['critical', 'serious']);
-const KNOWN_FAILING_RULES = ['color-contrast'];
 
 for (const route of PUBLIC_ROUTES) {
   test(`${route.name} passes axe with zero critical or serious violations`, async ({ page }) => {
     await page.goto(route.path);
     await page.locator('h1').first().waitFor({ timeout: 15_000 });
 
-    const results = await new AxeBuilder({ page }).disableRules(KNOWN_FAILING_RULES).analyze();
+    const results = await new AxeBuilder({ page }).analyze();
     const gated = results.violations.filter((v) => GATED_IMPACTS.has(v.impact ?? ''));
 
     expect(summarize(gated)).toEqual([]);
+  });
+}
+
+// NFR24 landmark half, on every public route rather than just the dashboard.
+// A page without <main> gives a screen reader user no way past the chrome, and
+// four of these five had none until the (auth) layout and the landing page were
+// given one.
+for (const route of PUBLIC_ROUTES) {
+  test(`${route.name} exposes a main landmark`, async ({ page }) => {
+    await page.goto(route.path);
+    await page.locator('h1').first().waitFor({ timeout: 15_000 });
+
+    await expect(page.locator('main')).toHaveCount(1);
   });
 }
 
@@ -82,10 +91,8 @@ test('skip link targets a real element', async ({ page }) => {
   await expect(page.locator(href!)).toHaveCount(1);
 });
 
-// NFR24: semantic elements rather than div-for-everything. Asserted on the
-// dashboard, the one route that carries the full set. The auth routes and the
-// landing page have h1/section/button but no <main>, which is a real gap
-// recorded in the traceability matrix rather than asserted away here.
+// NFR24: semantic elements rather than div-for-everything. The dashboard carries
+// the full set, so it is where the whole list is worth asserting.
 test('dashboard uses semantic landmarks', async ({ page }) => {
   await page.goto('/dashboard');
   await page.locator('#dashboard-heading').waitFor({ timeout: 15_000 });
