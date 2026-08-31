@@ -229,12 +229,25 @@ jobs:
               f"cd /opt/tellsight && printf '%s\\n' 'sha-{short}' | cat - deploy-history 2>/dev/null | awk 'NF && !seen[$0]++' | head -10 > .deploy-history.new && mv .deploy-history.new deploy-history",
               f"printf '%s' '{override_b64}' | base64 -d > /opt/tellsight/docker-compose.override.yml",
               f"aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin {ecr_host}",
-              # -a with an age filter, not plain prune: pinning to sha tags means
-              # superseded images stay tagged and never become dangling, so
-              # `prune -f` reclaims nothing and the disk refills at ~1.4GB per
-              # deploy. 48h keeps the last day or so of builds for a rollback
-              # while still clearing the backlog. Images in use are never removed.
-              "docker image prune -af --filter until=48h",
+              # No age filter. Pinning to sha tags means superseded images stay
+              # tagged and never go dangling, so plain `prune -f` reclaims
+              # nothing and the disk grows ~1.4GB per deploy. The 48h window
+              # that replaced it still filled a 20GB disk on a day with a dozen
+              # deploys, which failed a release on "no space left on device".
+              #
+              # Keeping old images locally was only ever a rollback convenience,
+              # and the rollback does not need it: it runs `docker compose pull`
+              # and fetches from ECR, which holds the last 10 tags. So the cost
+              # of pruning everything unused is roughly a minute of pull on the
+              # rare rollback, and the benefit is that disk use stops being a
+              # function of deploy frequency. Running images are never removed.
+              "docker image prune -af",
+              # A pull that runs out of disk fails deep inside a layer write
+              # ("failed to register layer"), which reads like a registry
+              # problem. Fail here instead, where the message says what is wrong.
+              "avail=$(df -BG --output=avail / | tail -1 | tr -dc '0-9')"
+              " && [ \"${avail:-0}\" -ge 4 ]"
+              " || { echo \"DISK_TOO_LOW: ${avail}G free after prune, need 4G\" >&2; df -h / >&2; exit 1; }",
               # --quiet: pull progress goes to stderr and floods SSM's output
               # buffer, which truncated the actual failure message last time.
               "cd /opt/tellsight && docker compose pull --quiet",
