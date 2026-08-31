@@ -115,10 +115,30 @@ Use when: schema migration can't be reversed, seed regression, data-layer corrup
 
 Bad release that touched schema + code: restore the DB first, then roll the app back. Always DB first, the app expects the schema it was built against.
 
-### Why migrations have to survive a rollback
+### Migrations run as their own step
 
-Rolling back re-pins the previous image. It does not touch the database, and
-`entrypoint.sh` runs migrations at container start, so after a rollback the
+The deploy runs `migrate.ts` and `seed.ts` in a one-off container from the image
+it is about to start, **before** `docker compose up -d` replaces anything:
+
+```bash
+docker compose run --rm --no-deps --entrypoint sh api \
+  -c 'cd /app/apps/api && npx tsx src/db/migrate.ts && npx tsx src/db/seed.ts'
+```
+
+Production sets `MIGRATE_ON_START=false` in `/opt/tellsight/.env` so the
+container entrypoint does not repeat it. Local and CI leave the flag unset and
+keep migrating on start, because there is no deploy step there to do it and a
+plain `docker compose up` on an empty volume has to produce a working stack.
+
+Two things this buys. A failed migration aborts the release instead of leaving
+new code running against an old schema. And the schema change is separable from
+the code deploy, so a rollback re-pins the image without touching the database.
+
+Both scripts are idempotent, so the two paths never conflict.
+
+### Why migrations still have to survive a rollback
+
+Rolling back re-pins the previous image and does not touch the database, so the
 **previous release runs against the newer schema**. A migration that drops a
 column the previous release still selects turns a rollback into a second
 outage, at the exact moment you least want one.
