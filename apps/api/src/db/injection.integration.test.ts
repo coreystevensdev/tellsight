@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { describe, it, expect, afterAll } from 'vitest';
 
 import { orgs } from './schema.js';
@@ -12,28 +12,32 @@ import { dbAdmin } from '../lib/db.js';
 // Runs under vitest.integration.config.ts, same real-Postgres CI job as the RLS
 // suite.
 
+// Explicit slugs rather than a hash of the payload: slug is unique, and a hash
+// collision would fail as a constraint violation that looks nothing like the
+// thing being tested.
 const PAYLOADS = [
-  { name: 'classic drop', value: "'; DROP TABLE orgs; --" },
-  { name: 'tautology', value: "' OR '1'='1" },
-  { name: 'union select', value: "' UNION SELECT NULL, current_user, NULL, NULL, NULL --" },
-  { name: 'stacked update', value: "'; UPDATE orgs SET name = 'pwned'; --" },
-  { name: 'newline comment terminator', value: 'admin\n-- ' },
-  { name: 'xss script tag', value: '<script>alert("xss")</script>' },
-  { name: 'xss img onerror', value: '<img src=x onerror=alert(1)>' },
+  { slug: 'inj-drop', value: "'; DROP TABLE orgs; --" },
+  { slug: 'inj-tautology', value: "' OR '1'='1" },
+  { slug: 'inj-union', value: "' UNION SELECT NULL, current_user, NULL, NULL, NULL --" },
+  { slug: 'inj-stacked', value: "'; UPDATE orgs SET name = 'pwned'; --" },
+  { slug: 'inj-comment', value: 'admin\n-- ' },
+  { slug: 'inj-xss-script', value: '<script>alert("xss")</script>' },
+  { slug: 'inj-xss-img', value: '<img src=x onerror=alert(1)>' },
 ];
 
+const TAUTOLOGY = "' OR '1'='1";
 const created: number[] = [];
 
 afterAll(async () => {
+  // inArray, not a raw ANY() bind: drizzle builds the parameter list itself, and
+  // a teardown that throws fails the whole file even when every test passed.
   if (created.length) {
-    await dbAdmin.delete(orgs).where(sql`id = ANY(${created})`);
+    await dbAdmin.delete(orgs).where(inArray(orgs.id, created));
   }
 });
 
 describe('injection payloads are data, not SQL', () => {
-  it.each(PAYLOADS)('stores $name verbatim and leaves the schema intact', async ({ value }) => {
-    const slug = `inj-${Math.abs(hash(value))}`;
-
+  it.each(PAYLOADS)('stores $slug verbatim and leaves the schema intact', async ({ slug, value }) => {
     const [row] = await dbAdmin.insert(orgs).values({ name: value, slug }).returning();
     expect(row).toBeDefined();
     created.push(row!.id);
@@ -43,45 +47,28 @@ describe('injection payloads are data, not SQL', () => {
     const [read] = await dbAdmin.select().from(orgs).where(eq(orgs.id, row!.id));
     expect(read!.name).toBe(value);
 
-    // The table the payloads try to drop or rewrite is still there, and no other
-    // row was touched by the stacked UPDATE attempt.
-    const rows = await dbAdmin.execute<{ count: string }>(
-      sql`SELECT count(*)::text AS count FROM orgs WHERE name = 'pwned'`,
-    );
-    expect(rows[0]?.count).toBe('0');
+    // The stacked-UPDATE payload tries to rename every org. Nothing should carry
+    // the name it would have written.
+    const pwned = await dbAdmin.select().from(orgs).where(eq(orgs.name, 'pwned'));
+    expect(pwned).toHaveLength(0);
   });
 
-  it('treats a payload as a literal in a WHERE clause rather than a predicate', async () => {
-    const tautology = "' OR '1'='1";
-    const [row] = await dbAdmin
-      .insert(orgs)
-      .values({ name: 'injection-where-probe', slug: `inj-where-${Date.now()}` })
-      .returning();
-    created.push(row!.id);
-
+  it('treats a tautology as a literal rather than a predicate', async () => {
     const total = await dbAdmin.select().from(orgs);
-    const matches = await dbAdmin.select().from(orgs).where(eq(orgs.name, tautology));
+    const matches = await dbAdmin.select().from(orgs).where(eq(orgs.name, TAUTOLOGY));
 
-    // The point is the comparison, not the count. Interpreted, `' OR '1'='1`
+    // The comparison is the point, not the count. Interpreted, `' OR '1'='1`
     // makes the predicate always true and returns every org. Parameterised, it
-    // is just a string, so it matches only rows literally named that, which the
-    // payload suite above happens to have created exactly one of.
-    expect(matches.length).toBeLessThan(total.length);
-    expect(matches.every((m) => m.name === tautology)).toBe(true);
+    // is just a string, so it matches only rows literally named that. The
+    // payload suite above created exactly one such row.
+    expect(total.length).toBeGreaterThan(matches.length);
+    expect(matches.every((m) => m.name === TAUTOLOGY)).toBe(true);
   });
 
-  it('keeps the orgs table present after every payload has been inserted', async () => {
-    const rows = await dbAdmin.execute<{ exists: boolean }>(
-      sql`SELECT to_regclass('public.orgs') IS NOT NULL AS exists`,
+  it('still has an orgs table after every payload has been inserted', async () => {
+    const rows = await dbAdmin.execute<{ present: boolean }>(
+      sql`SELECT to_regclass('public.orgs') IS NOT NULL AS present`,
     );
-    expect(rows[0]?.exists).toBe(true);
+    expect(rows[0]?.present).toBe(true);
   });
 });
-
-// Small stable hash so slugs are deterministic per payload and the unique
-// constraint does not fight repeated local runs.
-function hash(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-  return h;
-}
