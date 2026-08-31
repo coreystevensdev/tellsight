@@ -18,14 +18,34 @@ resource "aws_ecr_lifecycle_policy" "api" {
         }
         action = { type = "expire" }
       },
+      # One rule per prefix. tagPrefixList is AND, not OR: the previous single
+      # rule listed ["v", "sha-"] and so only matched an image carrying both a
+      # v* and a sha-* tag. Ours only ever carry sha-*, so it matched nothing
+      # and expired nothing for 26 days, while both repos grew to 64 images and
+      # 26GB. start-lifecycle-policy-preview reported wouldExpire: 0.
+      #
+      # 15, not 10: deploy-history keeps 10 entries and the rollback pulls from
+      # ECR, so every one of them has to still be here. At 10 the oldest entry
+      # sits exactly on the expiry boundary.
       {
         rulePriority = 2
-        description  = "Keep 10 most recent tagged images"
+        description  = "Keep 15 most recent sha- tagged images"
         selection = {
           tagStatus     = "tagged"
-          tagPrefixList = ["v", "sha-"]
+          tagPrefixList = ["sha-"]
           countType     = "imageCountMoreThan"
-          countNumber   = 10
+          countNumber   = 15
+        }
+        action = { type = "expire" }
+      },
+      {
+        rulePriority = 3
+        description  = "Keep 15 most recent v tagged images"
+        selection = {
+          tagStatus     = "tagged"
+          tagPrefixList = ["v"]
+          countType     = "imageCountMoreThan"
+          countNumber   = 15
         }
         action = { type = "expire" }
       }
