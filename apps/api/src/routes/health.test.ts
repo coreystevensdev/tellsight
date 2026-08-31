@@ -20,8 +20,17 @@ vi.hoisted(() => {
   });
 });
 
+// The query itself is covered against real Postgres in db.integration.test.ts.
+// These pin what the route does with the answer.
+const mockCheckDatabaseHealth = vi.hoisted(() => vi.fn());
+
 vi.mock('../lib/db.js', () => ({
-  db: { execute: vi.fn(async () => [{ ok: 1 }]) },
+  db: { execute: vi.fn() },
+  checkDatabaseHealth: mockCheckDatabaseHealth,
+}));
+
+vi.mock('../lib/logger.js', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn() },
 }));
 
 vi.mock('../lib/redis.js', () => ({
@@ -47,7 +56,11 @@ beforeAll(async () => {
 
 afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
 
-beforeEach(() => resetEmailProvider());
+beforeEach(() => {
+  resetEmailProvider();
+  mockCheckDatabaseHealth.mockReset();
+  mockCheckDatabaseHealth.mockResolvedValue({ status: 'ok', latencyMs: 1 });
+});
 
 describe('GET /health', () => {
   it('includes email: { provider, status, latencyMs } when console is registered', async () => {
@@ -106,5 +119,90 @@ describe('GET /health/ready', () => {
       status: 'ok',
       latencyMs: 0,
     });
+  });
+});
+
+// SELECT 1 passed against a database with no tables, so a dev container once
+// reported ready and then 500ed on every request. These pin the difference.
+describe('GET /health/ready schema awareness', () => {
+  it('is ready when every required table is there', async () => {
+    const res = await fetch(`${baseUrl}/health/ready`);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.services.database).toMatchObject({ status: 'ok' });
+    expect(body.services.database.reason).toBeUndefined();
+  });
+
+  it('is not ready when a required table is missing', async () => {
+    mockCheckDatabaseHealth.mockResolvedValue({
+      status: 'error',
+      reason: 'schema',
+      missing: ['data_rows'],
+      latencyMs: 2,
+    });
+
+    const res = await fetch(`${baseUrl}/health/ready`);
+    const body = await res.json();
+
+    expect(res.status).toBe(503);
+    expect(body.status).toBe('degraded');
+    expect(body.services.database).toMatchObject({ status: 'error', reason: 'schema' });
+  });
+
+  it('is not ready against a database with nothing in it', async () => {
+    mockCheckDatabaseHealth.mockResolvedValue({
+      status: 'error',
+      reason: 'schema',
+      missing: ['users', 'orgs', 'user_orgs', 'datasets', 'data_rows'],
+      latencyMs: 2,
+    });
+
+    const res = await fetch(`${baseUrl}/health/ready`);
+
+    expect(res.status).toBe(503);
+  });
+
+  it('separates a connection failure from a schema one', async () => {
+    mockCheckDatabaseHealth.mockResolvedValue({
+      status: 'error',
+      reason: 'connection',
+      latencyMs: 75,
+    });
+
+    const res = await fetch(`${baseUrl}/health/ready`);
+    const body = await res.json();
+
+    expect(res.status).toBe(503);
+    expect(body.services.database).toMatchObject({ status: 'error', reason: 'connection' });
+  });
+
+  // The endpoint is public, so the table names belong in the log and nowhere else.
+  it('does not name the missing tables in the response', async () => {
+    mockCheckDatabaseHealth.mockResolvedValue({
+      status: 'error',
+      reason: 'schema',
+      missing: ['users'],
+      latencyMs: 2,
+    });
+
+    const res = await fetch(`${baseUrl}/health/ready`);
+
+    expect(JSON.stringify(await res.json())).not.toContain('users');
+  });
+
+  // Liveness restarts containers. Restarting cannot create a table, so a schema
+  // problem must not look like a dead process.
+  it('leaves liveness alone when the schema is incomplete', async () => {
+    mockCheckDatabaseHealth.mockResolvedValue({
+      status: 'error',
+      reason: 'schema',
+      missing: ['users'],
+      latencyMs: 2,
+    });
+
+    const res = await fetch(`${baseUrl}/health/live`);
+
+    expect(res.status).toBe(200);
   });
 });
