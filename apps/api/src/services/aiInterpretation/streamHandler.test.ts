@@ -1,4 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// One test here stands up a real HTTP server and aborts a real client socket,
+// because res.destroyed and res.writableEnded cannot be observed through a
+// mock. It times out at the 5000ms default under parallel load, which matters
+// now that this job can fail the build rather than being continue-on-error.
+vi.setConfig({ testTimeout: 30_000 });
 import type { Response } from 'express';
 import type { StreamResult } from './claudeClient.js';
 import type { StreamOutcome } from './streamHandler.js';
