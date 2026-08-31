@@ -39,6 +39,14 @@ COPY --from=build /app/apps/api/src ./apps/api/src
 COPY apps/api/entrypoint.sh ./apps/api/
 RUN chmod +x ./apps/api/entrypoint.sh && chown -R node:node /app
 
+# The deploy runs migrate.ts and seed.ts as its own step before swapping any
+# container, so the entrypoint must not repeat it. Declared on the image rather
+# than injected at deploy time: an earlier version appended this to the
+# instance's .env, that file had no trailing newline, and the append welded
+# itself onto ENCRYPTION_KEY and took production down. The dev stage leaves it
+# unset on purpose, so a plain `docker compose up` still migrates.
+ENV MIGRATE_ON_START=false
+
 USER node
 EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

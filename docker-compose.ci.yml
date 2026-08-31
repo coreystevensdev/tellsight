@@ -15,6 +15,10 @@ services:
   api:
     ports:
       - '3001:3001'
+    environment:
+      # CI runs the production image but has no deploy step to migrate, so the
+      # entrypoint has to do it or the stack comes up against an empty database.
+      MIGRATE_ON_START: "true"
 
   web:
     ports:

@@ -246,10 +246,6 @@ jobs:
               # without touching the database. check-migration-compat.ts is what
               # makes that safe, by refusing a migration the previous release
               # cannot survive.
-              # Lives in .env rather than the compose override because rollback
-              # writes its own override and would otherwise drop the flag.
-              "cd /opt/tellsight && grep -q '^MIGRATE_ON_START=' .env"
-              " || echo 'MIGRATE_ON_START=false' >> .env",
               # --entrypoint sh: the image entrypoint is the thing being bypassed.
               # --no-deps: Postgres is RDS, there is nothing local to start.
               "cd /opt/tellsight && docker compose run --rm --no-deps --entrypoint sh api"
