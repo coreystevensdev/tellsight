@@ -37,7 +37,7 @@ export async function getEmailComplianceMetrics(): Promise<EmailComplianceMetric
   const result = await dbAdmin.execute(sql`
     SELECT
       (SELECT COUNT(*)::int FROM subscriptions
-        WHERE status = 'active' AND tier = 'pro') AS total_pro_users,
+        WHERE status = 'active' AND plan = 'pro') AS total_pro_users,
       (SELECT COUNT(*)::int FROM digest_preferences
         WHERE cadence <> 'off') AS cadence_active_users,
 
