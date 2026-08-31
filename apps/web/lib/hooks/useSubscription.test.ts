@@ -30,6 +30,35 @@ describe('useSubscription', () => {
     mockFetch.mockReset();
   });
 
+  // fetchTier's !res.ok branch had no coverage, so changing its 'free' to 'pro'
+  // would have passed every test here while granting Pro to everyone the moment
+  // /api/subscriptions returned a 500. An entitlement check has to fail closed.
+  it.each([500, 502, 401, 403])('falls back to free when the API returns %i', async (status) => {
+    mockFetch.mockReturnValue(jsonResponse({ error: 'nope' }, status));
+
+    const { useSubscription } = await import('./useSubscription.js');
+    const { result } = renderHook(() => useSubscription({ enabled: true }), { wrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.tier).toBe('free');
+    expect(result.current.isPro).toBe(false);
+  });
+
+  // Same branch from the other side: a 200 whose body is not the shape we expect
+  // must not read as Pro either.
+  it('falls back to free when the response body has no tier', async () => {
+    mockFetch.mockReturnValue(jsonResponse({ data: {} }));
+
+    const { useSubscription } = await import('./useSubscription.js');
+    const { result } = renderHook(() => useSubscription({ enabled: true }), { wrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.tier).toBe('free');
+    expect(result.current.isPro).toBe(false);
+  });
+
   it('returns free tier when no subscription exists', async () => {
     mockFetch.mockReturnValue(jsonResponse({ data: { tier: 'free' } }));
 
