@@ -12,16 +12,35 @@ const NFR = {
 };
 
 // A shared GitHub runner is not the hardware the PRD targets, and a perf test
-// that flakes gets deleted rather than fixed. So the assertion runs against a
-// slack multiple of the target, which still catches an order-of-magnitude
-// regression, while the real number is always logged. Read the logged numbers,
-// not the assertion, when you want to know whether the NFR actually holds.
-const SLACK = process.env.CI ? 4 : 1.5;
+// that flakes gets deleted rather than fixed, so the hard assertion still runs
+// against a slack multiple rather than the target itself.
+//
+// Was 4x. Traceability made the cost of that concrete: NFR1's target is 3000ms
+// and the build only failed above 12000ms, so a fourfold regression shipped
+// green. 2x keeps a wide margin over what CI actually measures (NFR1 709ms,
+// NFR4 97ms, NFR5 239ms, NFR6 309ms) while halving the blind spot. If NFR5
+// starts flaking, raise this back rather than deleting the test: the warning
+// below is the part that catches drift, and it does not depend on the multiple.
+const SLACK = process.env.CI ? 2 : 1.5;
 const budget = (target: number) => Math.round(target * SLACK);
 
 function reportTiming(label: string, elapsed: number, target: number) {
-  const verdict = elapsed <= target ? 'within' : 'OVER';
+  const over = elapsed > target;
+  const verdict = over ? 'OVER' : 'within';
   console.log(`[perf] ${label}: ${elapsed}ms (${verdict} NFR target ${target}ms, CI budget ${budget(target)}ms)`);
+
+  if (!over) return;
+
+  // Between the target and the budget the build passes, and telling someone to
+  // go read the log is the same as telling them nothing. A ::warning:: lands on
+  // the run summary and the changed file, and the annotation carries it into the
+  // HTML report, so exceeding the actual NFR is visible without failing on
+  // runner noise.
+  const detail = `${elapsed}ms against a ${target}ms target (build fails above ${budget(target)}ms)`;
+  test.info().annotations.push({ type: 'nfr-exceeded', description: `${label}: ${detail}` });
+  if (process.env.CI) {
+    console.log(`::warning title=NFR target exceeded::${label} took ${detail}`);
+  }
 }
 
 // 10k rows is the count NFR5 names and lands around 400KB, well under NFR4's
