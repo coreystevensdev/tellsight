@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { inArray } from 'drizzle-orm';
+import { describe, it, expect, afterAll } from 'vitest';
 
 import { dbAdmin } from '../../lib/db.js';
 import { orgs, users, datasets } from '../schema.js';
@@ -8,11 +9,27 @@ import { getDatasetListWithCounts } from './datasets.js';
 // getDatasetListWithCounts entirely, so it can't catch a query-shape bug
 // like uploadedBy coming back as a bare user id instead of {id, name}.
 
+const createdOrgs: number[] = [];
+const createdUsers: number[] = [];
+
+// Deleting the org cascades to its datasets; users are set null on the dataset
+// and have to go separately. Without this the suite leaves orgs behind on every
+// run, which matters locally and to any test that counts rows.
+afterAll(async () => {
+  if (createdOrgs.length) {
+    await dbAdmin.delete(orgs).where(inArray(orgs.id, createdOrgs));
+  }
+  if (createdUsers.length) {
+    await dbAdmin.delete(users).where(inArray(users.id, createdUsers));
+  }
+});
+
 async function seedOrg(label: string): Promise<number> {
   const [org] = await dbAdmin
     .insert(orgs)
     .values({ name: label, slug: `datasets-list-${label}-${Date.now()}-${Math.random().toString(36).slice(2)}` })
     .returning({ id: orgs.id });
+  createdOrgs.push(org!.id);
   return org!.id;
 }
 
@@ -23,6 +40,7 @@ describe('getDatasetListWithCounts against real Postgres', () => {
       .insert(users)
       .values({ email: `uploader-${Date.now()}@example.com`, name: 'Dana Uploader' })
       .returning({ id: users.id });
+    createdUsers.push(user!.id);
 
     await dbAdmin.insert(datasets).values({ orgId, name: 'Q1 Financials', uploadedBy: user!.id });
 
