@@ -238,6 +238,22 @@ jobs:
               # --quiet: pull progress goes to stderr and floods SSM's output
               # buffer, which truncated the actual failure message last time.
               "cd /opt/tellsight && docker compose pull --quiet",
+              # Schema first, as its own step, from the image about to run.
+              # Two reasons this is not left to the container entrypoint:
+              # a failed migration now aborts the release instead of leaving new
+              # code running against an old schema, and the schema change is
+              # separable from the code deploy, so a rollback re-pins the image
+              # without touching the database. check-migration-compat.ts is what
+              # makes that safe, by refusing a migration the previous release
+              # cannot survive.
+              # Lives in .env rather than the compose override because rollback
+              # writes its own override and would otherwise drop the flag.
+              "cd /opt/tellsight && grep -q '^MIGRATE_ON_START=' .env"
+              " || echo 'MIGRATE_ON_START=false' >> .env",
+              # --entrypoint sh: the image entrypoint is the thing being bypassed.
+              # --no-deps: Postgres is RDS, there is nothing local to start.
+              "cd /opt/tellsight && docker compose run --rm --no-deps --entrypoint sh api"
+              " -c 'cd /app/apps/api && npx tsx src/db/migrate.ts && npx tsx src/db/seed.ts'",
               "docker compose up -d --remove-orphans",
               # Prove the container is actually on the image we just pulled.
               # set -e catches a failed pull, but this catches the whole class:
