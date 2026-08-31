@@ -11,7 +11,14 @@ RUN pnpm install --frozen-lockfile
 # used by docker-compose.override.yml
 FROM deps AS development
 COPY . .
+RUN chmod +x ./apps/api/entrypoint.sh
 EXPOSE 3001 9229
+# Same entrypoint as production. Without it a fresh volume gives you an API that
+# answers /health/ready with database:ok and then 500s on every query, because
+# the dev command starts the server against whatever schema is already there.
+# The compose override replaces CMD, not ENTRYPOINT, so migrate and seed still
+# run first and then exec the dev command. Both are idempotent.
+ENTRYPOINT ["./apps/api/entrypoint.sh"]
 CMD ["pnpm", "--filter", "api", "dev"]
 
 FROM deps AS build
