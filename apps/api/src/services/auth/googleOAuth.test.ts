@@ -126,6 +126,46 @@ describe('googleOAuth', () => {
       } as never);
     }
 
+    // jose is mocked, so nothing here proved the ID token was verified against
+    // anything. Delete the audience and issuer options from verifyGoogleIdToken
+    // and every other test in this file still passes, while the app would accept
+    // a token minted by any Google OAuth client, which is account takeover.
+    it('verifies the ID token against our client id and Google as issuer', async () => {
+      setupGoogleTokenExchange();
+
+      const existingUser = {
+        id: 1,
+        email: 'marcus@example.com',
+        name: 'Marcus Rivera',
+        googleId: 'google-123',
+        isPlatformAdmin: false,
+      };
+      mockFindUserByGoogleId.mockResolvedValueOnce(existingUser);
+      mockUpdateUser.mockResolvedValueOnce(existingUser);
+      mockGetUserOrgs.mockResolvedValueOnce([
+        {
+          orgId: 10,
+          role: 'owner',
+          org: { id: 10, name: "Marcus Rivera's Organization", slug: 'marcus-rivera-org' },
+        },
+      ]);
+
+      await handleGoogleCallback('auth-code');
+
+      expect(mockJwtVerify).toHaveBeenCalled();
+      const options = mockJwtVerify.mock.calls[0]![2];
+
+      expect(options).toMatchObject({
+        audience: 'test-client-id.apps.googleusercontent.com',
+      });
+      // Google mints both spellings; accepting only one locks out real users,
+      // accepting anything else is the hole.
+      expect(options!.issuer).toEqual([
+        'https://accounts.google.com',
+        'accounts.google.com',
+      ]);
+    });
+
     it('creates new user with auto-created org for first-time sign-in', async () => {
       setupGoogleTokenExchange();
 
