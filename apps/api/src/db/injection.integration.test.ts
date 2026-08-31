@@ -59,10 +59,15 @@ describe('injection payloads are data, not SQL', () => {
       .returning();
     created.push(row!.id);
 
-    // If the tautology were interpolated it would match every org. Parameterised,
-    // it matches the zero orgs literally named "' OR '1'='1".
+    const total = await dbAdmin.select().from(orgs);
     const matches = await dbAdmin.select().from(orgs).where(eq(orgs.name, tautology));
-    expect(matches).toHaveLength(0);
+
+    // The point is the comparison, not the count. Interpreted, `' OR '1'='1`
+    // makes the predicate always true and returns every org. Parameterised, it
+    // is just a string, so it matches only rows literally named that, which the
+    // payload suite above happens to have created exactly one of.
+    expect(matches.length).toBeLessThan(total.length);
+    expect(matches.every((m) => m.name === tautology)).toBe(true);
   });
 
   it('keeps the orgs table present after every payload has been inserted', async () => {
