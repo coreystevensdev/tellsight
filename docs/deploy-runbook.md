@@ -109,11 +109,34 @@ Destructive. Only use when the fix cannot roll forward (bad migration, data corr
 4. Re-run `infra/rds-init.sql` against the restored instance if it predates the `app_user` role setup
 5. Trigger a manual deploy so the running containers pick up the new secrets
 
-Use when: schema migration can't be reversed, seed regression, data-layer corruption. RDS automated snapshots default to a 7-day retention window, verify that covers your incident before relying on it.
+Use when: schema migration can't be reversed, seed regression, data-layer corruption. Automated RDS backup retention is **1 day**, which is the AWS free plan's hard cap (anything higher is rejected with FreeTierRestrictionError). Past that window the recovery point is the daily 09:15 UTC AWS Backup snapshot, retained 30 days. Check which of the two covers your incident before relying on either.
 
 ### C. Combined rollback
 
 Bad release that touched schema + code: restore the DB first, then roll the app back. Always DB first, the app expects the schema it was built against.
+
+### Why migrations have to survive a rollback
+
+Rolling back re-pins the previous image. It does not touch the database, and
+`entrypoint.sh` runs migrations at container start, so after a rollback the
+**previous release runs against the newer schema**. A migration that drops a
+column the previous release still selects turns a rollback into a second
+outage, at the exact moment you least want one.
+
+So schema changes go out across two releases:
+
+1. Add the new shape and write to both old and new. Ship it.
+2. Once no deployed version reads the old shape, drop it. Ship that separately.
+
+`scripts/check-migration-compat.ts` enforces this in CI. It fails on `DROP
+COLUMN`, `DROP TABLE`, `RENAME COLUMN`, `RENAME TO`, `SET DATA TYPE` and `SET
+NOT NULL` in any migration. Step 2 above is legitimately one of those, so the
+script carries an acknowledgement list: add the filename with a reason saying
+why no deployed version reads the thing being removed.
+
+The acknowledgement lives in the script rather than as a comment in the
+migration, because applied migrations are content-hashed in
+`__drizzle_migrations` and editing one after the fact is its own problem.
 
 ---
 
