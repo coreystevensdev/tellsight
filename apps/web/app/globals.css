@@ -5,24 +5,33 @@
      number-highlighting -- one accent, two uses, per the restricted-purpose
      rule, not two competing hues). Teal reads as modern/fintech and lines
      up with the existing chart-revenue hue, so the brand accent and the
-     "this is money" chart color now speak the same visual language. */
+     "this is money" chart color now speak the same visual language.
+
+     The teal is #0B7C72 rather than the #0D9488 it started as. That original
+     scored 3.74 against white at 12px where WCAG AA wants 4.5, and 3.40 as text
+     on the AI surface, so axe failed 12 nodes on it. #0B7C72 is the same hue
+     one step deeper: 5.07 on white, 4.61 on the AI surface. Same identity,
+     legible at small sizes. Do not lighten it back without re-running
+     e2e/accessibility.spec.ts, which now gates on serious violations. */
   --color-background: #FAF6EF;
   --color-foreground: oklch(0.24 0 0);
-  --color-primary: #0D9488;
+  --color-primary: #0B7C72;
   --color-primary-foreground: oklch(1 0 0);
   --color-muted: oklch(0.94 0 0);
   --color-muted-foreground: oklch(0.48 0 0);
   --color-border: oklch(0.87 0 0);
   --color-accent: oklch(0.92 0.03 190);
-  --color-accent-warm: #0D9488;
+  --color-accent-warm: #0B7C72;
   --color-destructive: oklch(0.55 0.2 25);
   --color-destructive-foreground: oklch(1 0 0);
-  --color-success: oklch(0.60 0.15 145);
+  /* was oklch(0.60 0.15 145), which rendered #3A9742 and scored 3.60 on the
+     card surface. #2F7D37 scores 4.98. */
+  --color-success: #2F7D37;
   --color-success-foreground: oklch(1 0 0);
   --color-warning: oklch(0.72 0.15 85);
   --color-warning-foreground: oklch(0.2 0 0);
   --color-info: oklch(0.55 0.1 230);
-  --color-ring: #0D9488;
+  --color-ring: #0B7C72;
   --color-card: oklch(0.99 0 0);
   --color-card-foreground: oklch(0.24 0 0);
   --color-ai-surface: oklch(0.965 0.015 185);
