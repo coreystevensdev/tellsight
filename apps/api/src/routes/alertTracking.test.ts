@@ -1,4 +1,10 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
+
+// These do real fetches against a server this file spins up. 5s is fine alone
+// and gets tight when 140-odd files run in parallel on a loaded machine, where
+// it fails as a timeout rather than as a wrong answer. The timeout is a safety
+// net here, not part of the assertion, so it can afford to be generous.
+vi.setConfig({ testTimeout: 20_000 });
 import http from 'node:http';
 import express from 'express';
 import type { AddressInfo } from 'node:net';
