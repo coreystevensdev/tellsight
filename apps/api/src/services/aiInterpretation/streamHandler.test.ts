@@ -105,13 +105,43 @@ const defaultMetadata = {
 };
 
 describe('streamToSSE', () => {
+  // Nothing asserted what streamInterpretation was handed, so the prompt could
+  // have arrived empty and every test still passed. It did arrive empty, for as
+  // long as the mock above returned the wrong shape.
+  it('hands the assembled system and user prompt to the model', async () => {
+    mockStreamInterpretation.mockImplementation(
+      async (_prompt: unknown, onText: (d: string) => void) => {
+        onText('ok');
+        return { fullText: 'ok', usage: { inputTokens: 1, outputTokens: 1 } };
+      },
+    );
+
+    const { res } = createMockRes();
+
+    const { streamToSSE } = await import('./streamHandler.js');
+    await streamToSSE(res, 1, 1, 99);
+
+    expect(mockStreamInterpretation).toHaveBeenCalled();
+    const [promptInput] = mockStreamInterpretation.mock.calls[0]!;
+    expect(promptInput).toEqual({
+      system: 'test system prompt',
+      user: 'test user prompt',
+    });
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
 
     mockRunCurationPipeline.mockResolvedValue([]);
+    // Shape has to match what assemblePrompt actually returns. It was
+    // { prompt, metadata } here while production destructures
+    // { system, user, metadata }, so every test in this file ran with
+    // promptInput = { system: undefined, user: undefined } and the main AI
+    // path had no prompt coverage at all.
     mockAssemblePrompt.mockReturnValue({
-      prompt: 'test prompt',
+      system: 'test system prompt',
+      user: 'test user prompt',
       metadata: defaultMetadata,
     });
     mockValidateSummary.mockReturnValue({
