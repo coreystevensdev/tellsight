@@ -17,9 +17,9 @@ import { AUDIT_ACTIONS, ANALYTICS_EVENTS } from 'shared/constants';
 import { trackEvent } from '../services/analytics/trackEvent.js';
 import { requireUser } from '../lib/requireUser.js';
 import { ValidationError, NotFoundError, ConflictError } from '../lib/appError.js';
-import { audit } from '../services/audit/auditService.js';
+import { audit, auditAuth } from '../services/audit/auditService.js';
 import { env } from '../config.js';
-import { logger } from '../lib/logger.js';
+import { logger, isLogLevel, setLogLevel } from '../lib/logger.js';
 
 const orgIdParam = z.coerce.number().int().positive();
 
@@ -271,4 +271,38 @@ adminRouter.patch('/orgs/:orgId/agent-tier', async (req: Request, res: Response)
 
   logger.info({ orgId, userId, enabled }, 'Agent tier entitlement toggled');
   res.json({ data: { orgId, agentEnabled: enabled } });
+});
+
+adminRouter.get('/log-level', (_req: Request, res: Response) => {
+  res.json({ data: { level: logger.level } });
+});
+
+// Raising verbosity during an incident without a restart. A restart would drop
+// the in-flight SSE streams and every queue connection, which is a bad trade for
+// wanting to see debug lines for two minutes.
+adminRouter.patch('/log-level', (req: Request, res: Response) => {
+  const { level } = req.body ?? {};
+
+  if (!isLogLevel(level)) {
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'level must be one of trace, debug, info, warn, error, fatal',
+      },
+    });
+    return;
+  }
+
+  const previous = setLogLevel(level);
+
+  // Audited as well as logged on purpose. Setting the level to error or fatal
+  // suppresses the log line below, so the log is the one record that cannot be
+  // trusted to survive this particular action. The audit row is unaffected.
+  auditAuth(req, AUDIT_ACTIONS.ADMIN_LOG_LEVEL_CHANGED, {
+    targetType: 'logger',
+    metadata: { from: previous, to: level },
+  });
+  logger.warn({ from: previous, to: level }, 'Log level changed at runtime');
+
+  res.json({ data: { level, previous } });
 });

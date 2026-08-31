@@ -22,6 +22,9 @@ export const envSchema = z
     PUBLIC_API_URL: z.string().url().default('http://localhost:3001'),
     COOKIE_DOMAIN: z.string().min(1).optional(),
     NODE_ENV: z.enum(['development', 'production', 'test']),
+    // Starting level only. It can be changed at runtime through the admin
+    // route, so this is not the authority on what the logger is doing now.
+    LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).optional(),
     PORT: z.coerce.number().default(3001),
     ANALYTICS_RETENTION_DAYS: z.coerce.number().int().positive().default(90),
     METRICS_TOKEN: z.string().min(16).optional(),

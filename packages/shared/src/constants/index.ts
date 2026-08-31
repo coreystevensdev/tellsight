@@ -274,6 +274,7 @@ export const AUDIT_ACTIONS = {
   PROPOSAL_REJECTED: 'proposal.rejected',
   ADMIN_AGENT_TIER_ENABLED: 'admin.agent_tier_enabled',
   ADMIN_AGENT_TIER_DISABLED: 'admin.agent_tier_disabled',
+  ADMIN_LOG_LEVEL_CHANGED: 'admin.log_level_changed',
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
