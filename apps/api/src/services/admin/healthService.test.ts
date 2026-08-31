@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const mockExecute = vi.fn();
+const mockCheckDatabaseHealth = vi.fn();
 const mockCheckRedisHealth = vi.fn();
 const mockCheckClaudeHealth = vi.fn();
 
 vi.mock('../../lib/db.js', () => ({
-  db: { execute: (...args: unknown[]) => mockExecute(...args) },
+  db: { execute: vi.fn() },
+  checkDatabaseHealth: (...args: unknown[]) => mockCheckDatabaseHealth(...args),
 }));
 
 vi.mock('../../lib/redis.js', () => ({
@@ -22,7 +23,7 @@ beforeEach(() => vi.clearAllMocks());
 
 describe('getSystemHealth', () => {
   function allHealthy() {
-    mockExecute.mockResolvedValueOnce([{ '?column?': 1 }]);
+    mockCheckDatabaseHealth.mockResolvedValueOnce({ status: 'ok', latencyMs: 1 });
     mockCheckRedisHealth.mockResolvedValueOnce({ status: 'ok', latencyMs: 1 });
     mockCheckClaudeHealth.mockResolvedValueOnce({ status: 'ok', latencyMs: 10 });
   }
@@ -41,7 +42,7 @@ describe('getSystemHealth', () => {
   });
 
   it('returns error when database is down', async () => {
-    mockExecute.mockRejectedValueOnce(new Error('connection refused'));
+    mockCheckDatabaseHealth.mockResolvedValueOnce({ status: 'error', reason: 'connection', latencyMs: 1 });
     mockCheckRedisHealth.mockResolvedValueOnce({ status: 'ok', latencyMs: 1 });
     mockCheckClaudeHealth.mockResolvedValueOnce({ status: 'ok', latencyMs: 10 });
 
@@ -53,7 +54,7 @@ describe('getSystemHealth', () => {
   });
 
   it('returns error when redis is down', async () => {
-    mockExecute.mockResolvedValueOnce([{ '?column?': 1 }]);
+    mockCheckDatabaseHealth.mockResolvedValueOnce({ status: 'ok', latencyMs: 1 });
     mockCheckRedisHealth.mockResolvedValueOnce({ status: 'error', latencyMs: 5 });
     mockCheckClaudeHealth.mockResolvedValueOnce({ status: 'ok', latencyMs: 10 });
 
@@ -65,7 +66,7 @@ describe('getSystemHealth', () => {
   });
 
   it('returns error when claude API is down', async () => {
-    mockExecute.mockResolvedValueOnce([{ '?column?': 1 }]);
+    mockCheckDatabaseHealth.mockResolvedValueOnce({ status: 'ok', latencyMs: 1 });
     mockCheckRedisHealth.mockResolvedValueOnce({ status: 'ok', latencyMs: 1 });
     mockCheckClaudeHealth.mockResolvedValueOnce({ status: 'error', latencyMs: 50 });
 
@@ -78,7 +79,7 @@ describe('getSystemHealth', () => {
 
   it('returns degraded when a check exceeds timeout', async () => {
     // db check will exceed the 50ms timeout
-    mockExecute.mockImplementation(() => new Promise((resolve) => setTimeout(resolve, 200)));
+    mockCheckDatabaseHealth.mockImplementation(() => new Promise((resolve) => setTimeout(resolve, 200)));
     mockCheckRedisHealth.mockResolvedValueOnce({ status: 'ok', latencyMs: 1 });
     mockCheckClaudeHealth.mockResolvedValueOnce({ status: 'ok', latencyMs: 10 });
 
@@ -90,7 +91,7 @@ describe('getSystemHealth', () => {
 
   it('returns all services as degraded when all checks timeout', async () => {
     const slow = () => new Promise((resolve) => setTimeout(resolve, 200));
-    mockExecute.mockImplementation(slow);
+    mockCheckDatabaseHealth.mockImplementation(slow);
     mockCheckRedisHealth.mockImplementation(slow);
     mockCheckClaudeHealth.mockImplementation(slow);
 
@@ -125,7 +126,7 @@ describe('getSystemHealth', () => {
         }, 10);
       });
 
-    mockExecute.mockImplementation(trackConcurrency);
+    mockCheckDatabaseHealth.mockImplementation(trackConcurrency);
     mockCheckRedisHealth.mockImplementation(trackConcurrency);
     mockCheckClaudeHealth.mockImplementation(trackConcurrency);
 

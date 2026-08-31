@@ -1,7 +1,6 @@
-import { sql } from 'drizzle-orm';
 import type { ServiceStatus, SystemHealth } from 'shared/types';
 
-import { db } from '../../lib/db.js';
+import { checkDatabaseHealth } from '../../lib/db.js';
 import { checkRedisHealth } from '../../lib/redis.js';
 import { checkClaudeHealth } from '../aiInterpretation/claudeClient.js';
 
@@ -16,16 +15,6 @@ async function withTimeout<T>(
     setTimeout(() => resolve(fallback), timeoutMs),
   );
   return Promise.race([fn(), timeout]);
-}
-
-async function checkDatabaseHealth(): Promise<{ status: 'ok' | 'error'; latencyMs: number }> {
-  const start = Date.now();
-  try {
-    await db.execute(sql`SELECT 1`);
-    return { status: 'ok', latencyMs: Date.now() - start };
-  } catch {
-    return { status: 'error', latencyMs: Date.now() - start };
-  }
 }
 
 export function formatUptime(seconds: number): string {
@@ -44,9 +33,9 @@ export async function getSystemHealth(timeoutMs = DEFAULT_TIMEOUT_MS): Promise<S
   const degraded: ServiceStatus = { status: 'degraded', latencyMs: timeoutMs };
 
   const [database, redis, claude] = await Promise.all([
-    withTimeout(() => checkDatabaseHealth(), timeoutMs, degraded),
-    withTimeout(() => checkRedisHealth(), timeoutMs, degraded),
-    withTimeout(() => checkClaudeHealth(), timeoutMs, degraded),
+    withTimeout<ServiceStatus>(() => checkDatabaseHealth(), timeoutMs, degraded),
+    withTimeout<ServiceStatus>(() => checkRedisHealth(), timeoutMs, degraded),
+    withTimeout<ServiceStatus>(() => checkClaudeHealth(), timeoutMs, degraded),
   ]);
 
   const uptimeSeconds = process.uptime();

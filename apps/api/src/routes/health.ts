@@ -3,13 +3,23 @@
 // here would cost a real API call every 30s per instance and couple liveness to
 // an external SLA we don't control. Fail-open remains the posture for this endpoint.
 import { Router } from 'express';
-import { sql } from 'drizzle-orm';
 
-import { db } from '../lib/db.js';
+import { checkDatabaseHealth, type DbHealth } from '../lib/db.js';
+import { logger } from '../lib/logger.js';
 import { checkRedisHealth } from '../lib/redis.js';
 import { getEmailProvider } from '../services/email/index.js';
 
 const router = Router();
+
+// Both endpoints are public, so which tables are missing goes to the log and
+// stays out of the body. Logged at error so it survives someone raising the
+// level mid-incident.
+function reportDatabase({ missing, ...rest }: DbHealth) {
+  if (missing?.length) {
+    logger.error({ missing }, 'Readiness check found the schema incomplete');
+  }
+  return rest;
+}
 
 // liveness, is the process alive? Never check external deps here.
 // A failed liveness probe restarts the container, so keep it trivial.
@@ -20,12 +30,13 @@ router.get('/health/live', (_req, res) => {
 // readiness, can this instance serve traffic? Check DB + Redis.
 // A failed readiness probe stops routing traffic but doesn't restart.
 router.get('/health/ready', async (_req, res) => {
-  const [dbHealth, redisHealth, emailHealth] = await Promise.all([
+  const [rawDb, redisHealth, emailHealth] = await Promise.all([
     checkDatabaseHealth(),
     checkRedisHealth(),
     checkEmailHealth(),
   ]);
 
+  const dbHealth = reportDatabase(rawDb);
   const ready = dbHealth.status === 'ok' && redisHealth.status === 'ok';
 
   res.status(ready ? 200 : 503).json({
@@ -36,12 +47,13 @@ router.get('/health/ready', async (_req, res) => {
 
 // backward-compatible combined check (used by Docker healthcheck + E2E wait loop)
 router.get('/health', async (_req, res) => {
-  const [dbHealth, redisHealth, emailHealth] = await Promise.all([
+  const [rawDb, redisHealth, emailHealth] = await Promise.all([
     checkDatabaseHealth(),
     checkRedisHealth(),
     checkEmailHealth(),
   ]);
 
+  const dbHealth = reportDatabase(rawDb);
   const status = dbHealth.status === 'ok' && redisHealth.status === 'ok' ? 'ok' : 'degraded';
 
   res.status(status === 'ok' ? 200 : 503).json({
@@ -51,15 +63,6 @@ router.get('/health', async (_req, res) => {
   });
 });
 
-async function checkDatabaseHealth(): Promise<{ status: 'ok' | 'error'; latencyMs: number }> {
-  const start = Date.now();
-  try {
-    await db.execute(sql`SELECT 1`);
-    return { status: 'ok', latencyMs: Date.now() - start };
-  } catch {
-    return { status: 'error', latencyMs: Date.now() - start };
-  }
-}
 
 async function checkEmailHealth(): Promise<{
   provider: string;

@@ -64,6 +64,18 @@ down. The deploy treats a 503 as a failed release and rolls back, so the split
 matters: a container that is running but cannot reach its database should not
 count as a successful deploy.
 
+A failed database check carries a `reason`, because the two failures need
+different responses:
+
+```json
+{"status":"degraded","services":{"database":{"status":"error","reason":"schema","latencyMs":1}, ...}}
+```
+
+`connection` means Postgres is unreachable. `schema` means it answered but a
+required table is not there, which is what you get pointing the app at an empty
+or half-migrated database. Which tables are missing goes to the logs rather than
+this response, since the endpoint is public.
+
 ## Auth
 
 Invalid first, because the error shape is the useful part:
