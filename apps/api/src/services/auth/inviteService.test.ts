@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockCreateInvite = vi.fn();
@@ -67,9 +69,10 @@ describe('inviteService', () => {
       const result = await generateInvite(10, 1);
       const storedHash = mockCreateInvite.mock.calls[0]![1];
 
-      // the stored hash should differ from the raw token
+      // "differs from the token and looks hex" is satisfied by reversing the
+      // string. Pin the relationship so the hash cannot quietly stop being one.
       expect(storedHash).not.toBe(result.token);
-      expect(storedHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(storedHash).toBe(createHash('sha256').update(result.token).digest('hex'));
     });
 
     it('uses custom expiry days when provided', async () => {
