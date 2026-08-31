@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SignJWT } from 'jose';
 
@@ -152,8 +154,13 @@ describe('tokenService', () => {
       expect(hash).toMatch(/^[0-9a-f]{64}$/);
     });
 
-    it('raw and hash are different', () => {
+    // "both hex, and different from each other" is satisfied by reversing the
+    // string. Assert the actual relationship, or the hash could stop being a
+    // hash and nothing would notice. shareService.test.ts already does this.
+    it('hash is the sha256 of raw', () => {
       const { raw, hash } = generateRefreshToken();
+
+      expect(hash).toBe(createHash('sha256').update(raw).digest('hex'));
       expect(raw).not.toBe(hash);
     });
 

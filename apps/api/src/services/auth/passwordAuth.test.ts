@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockFindUserByEmail = vi.fn();
@@ -171,6 +173,15 @@ describe('passwordAuth', () => {
       const result = await requestPasswordReset('known@example.com');
       expect(result?.userId).toBe(7);
       expect(mockCreateToken).toHaveBeenCalledOnce();
+
+      // toHaveBeenCalledOnce says a token was stored, not that the stored value
+      // is a hash of the one emailed out. Storing the raw token would satisfy
+      // the line above and hand anyone with database read access every live
+      // reset link.
+      const [userId, storedHash] = mockCreateToken.mock.calls[0]!;
+      expect(userId).toBe(7);
+      expect(storedHash).not.toBe(result!.token);
+      expect(storedHash).toBe(createHash('sha256').update(result!.token).digest('hex'));
     });
   });
 
