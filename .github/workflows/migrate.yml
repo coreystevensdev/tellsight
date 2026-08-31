@@ -1,0 +1,153 @@
+# Applies database migrations to production without deploying code.
+#
+# The deploy already runs migrations as its own step, so this is not how they
+# normally reach production. This exists for the expand half of expand/contract:
+# ship the additive migration on its own, confirm it, and deploy the code that
+# uses it separately. It is also the way to re-run a migration that failed
+# without pushing a commit.
+#
+# It never touches the running containers. Only the schema moves.
+name: Migrate Database
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag holding the migration, e.g. sha-a1b2c3d. Blank uses what is deployed."
+        required: false
+        type: string
+      confirm:
+        description: 'Type "migrate" to proceed'
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  migrate:
+    name: Migrate production
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check the confirmation
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$CONFIRM" != "migrate" ]; then
+            echo "Confirmation was '$CONFIRM', expected 'migrate'. Nothing ran." >&2
+            exit 1
+          fi
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Run migrations over SSM
+        env:
+          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+          ECR_API_REPO: ${{ secrets.ECR_API_REPO }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess, sys, time
+
+          instance_id = os.environ["EC2_INSTANCE_ID"]
+          repo = os.environ["ECR_API_REPO"]
+          tag = os.environ.get("IMAGE_TAG", "").strip()
+          ecr_host = repo.split("/")[0]
+
+          # Blank means "whatever is deployed", read off the pin the deploy wrote.
+          # Reading the override rather than deploy-history: history's head is the
+          # last deploy that was attempted, the override is what is actually running.
+          resolve = (
+              f'tag="{tag}"; '
+              '[ -n "$tag" ] || tag=$(grep -o "sha-[0-9a-f]*" /opt/tellsight/docker-compose.override.yml | head -1); '
+              '[ -n "$tag" ] || { echo "Could not resolve an image tag" >&2; exit 1; }; '
+              'echo "Migrating from $tag"'
+          )
+
+          commands = [
+              "set -e",
+              "cd /opt/tellsight",
+              resolve,
+              f"aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin {ecr_host}",
+              f'docker pull --quiet "{repo}:$tag"',
+              # migrate.ts prints each statement it applies and ends with
+              # "Migrations completed successfully", so its own output is the
+              # record of what happened. Not wrapping it in a before/after count:
+              # that needs a DB client inside four levels of nested quoting, and
+              # it would tell you less than the log already does.
+              #
+              # migrate.ts only, not seed. This is a schema operation; seeding is
+              # the deploy's business.
+              'docker run --rm --entrypoint sh --env-file /opt/tellsight/.env --network tellsight_default '
+              f'"{repo}:$tag" -c \'cd /app/apps/api && npx tsx src/db/migrate.ts\'',
+              # Named explicitly because it is the point of this workflow.
+              'echo "Running containers untouched:"',
+              'docker ps --format "  {{.Names}} {{.Status}}"',
+          ]
+
+          send = subprocess.run([
+              "aws", "ssm", "send-command",
+              "--instance-ids", instance_id,
+              "--document-name", "AWS-RunShellScript",
+              "--parameters", json.dumps({"commands": commands}),
+              "--query", "Command.CommandId",
+              "--output", "text",
+          ], capture_output=True, text=True)
+
+          if send.returncode != 0:
+              print(send.stderr, file=sys.stderr)
+              sys.exit(1)
+
+          cmd_id = send.stdout.strip()
+          print(f"SSM command ID: {cmd_id}")
+
+          for _ in range(60):
+              time.sleep(5)
+              poll = subprocess.run([
+                  "aws", "ssm", "get-command-invocation",
+                  "--command-id", cmd_id,
+                  "--instance-id", instance_id,
+                  "--output", "json",
+              ], capture_output=True, text=True)
+              if poll.returncode != 0:
+                  continue
+              inv = json.loads(poll.stdout)
+              status = inv.get("Status", "")
+              print(f"Status: {status}")
+              if status == "Success":
+                  print(inv.get("StandardOutputContent", ""))
+                  sys.exit(0)
+              if status in ("Failed", "TimedOut", "Cancelled"):
+                  print(inv.get("StandardOutputContent", ""))
+                  print(inv.get("StandardErrorContent", ""), file=sys.stderr)
+                  sys.exit(1)
+
+          print("Timed out waiting for SSM command to complete", file=sys.stderr)
+          sys.exit(1)
+          PY
+
+      # A migration should not have disturbed anything. Say so out loud rather
+      # than assuming it.
+      - name: Confirm production is still serving
+        env:
+          PROD_URL: ${{ secrets.PRODUCTION_URL }}
+        run: |
+          body=$(curl -fsS -m 20 "$PROD_URL/api/health/ready") || {
+            echo "Production is not healthy after the migration." >&2
+            exit 1
+          }
+          echo "$body"
+          echo "$body" | grep -q '"status":"ok"' || {
+            echo "Health endpoint answered but not with status ok." >&2
+            exit 1
+          }
