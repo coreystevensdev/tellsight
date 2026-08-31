@@ -48,6 +48,7 @@ export default function LandingPage() {
         </div>
       </nav>
 
+      <main id="main-content">
       {/* Hero, oversized headline with live transformation visual */}
       <section className="relative overflow-hidden">
         <GridBg />
@@ -321,6 +322,7 @@ export default function LandingPage() {
           </details>
         </div>
       </section>
+      </main>
 
       {/* Footer */}
       <footer className="border-t border-border/50">
