@@ -76,14 +76,16 @@ jobs:
         env:
           CI: "true"
 
-  # API tests, Vitest + Drizzle ORM + Anthropic SDK module graph exceeds GitHub
-  # Actions free-tier runner memory (7GB) during module resolution. All 2,055
-  # tests pass locally. Marked continue-on-error until we move to larger runners.
+  # This job was continue-on-error for a long time, on the theory that the
+  # Vitest + Drizzle + Anthropic SDK module graph exceeded runner memory. Whatever
+  # was true when that was written is not true now: the step has succeeded on
+  # every run checked, and a genuine OOM does not pass repeatedly. The flag meant
+  # 2,265 of the suite's 3,134 tests could not fail the build, which is worse than
+  # any flake it was hiding.
   test-api:
     name: Tests (API)
     needs: quality
     runs-on: ubuntu-latest
-    continue-on-error: true
 
     steps:
       - uses: actions/checkout@v5
