@@ -137,6 +137,29 @@ pnpm test         # Run all tests
 pnpm screenshots  # Regenerate README assets via Playwright
 ```
 
+### Resetting local data
+
+```bash
+bash scripts/reset-local.sh
+```
+
+Drops the Postgres and Redis volumes, rebuilds, migrates, reseeds, then checks
+that `public.users` actually exists before reporting success. Use it when local
+state has drifted somewhere you cannot reason about. It prompts before deleting
+anything; `--yes` skips that, `--down` tears down without rebuilding.
+
+The schema check at the end is not belt and braces. `/health/ready` runs
+`SELECT 1`, which passes against a database with no tables in it at all, so a
+green readiness probe is not evidence that a reset worked.
+
+### Calling the API directly
+
+[`docs/api.md`](docs/api.md) has curl examples for every major route, valid and
+invalid, with real responses. Two things worth knowing before the first request:
+there is no `/api` prefix on Express (that belongs to the Next.js proxy), and
+auth is httpOnly cookies rather than a bearer header, so curl needs a cookie
+jar.
+
 ## Demo
 
 The app ships with seed data: 12 months of synthetic business data across 6 categories (Revenue, Payroll, Marketing, Rent, Supplies, Utilities) with a pre-generated AI summary. No API keys, no accounts. Just `docker compose up` and open the dashboard.
