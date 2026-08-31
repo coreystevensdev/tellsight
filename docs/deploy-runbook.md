@@ -142,6 +142,26 @@ migration, because applied migrations are content-hashed in
 
 ## 3. How to Observe
 
+### Testing that alerting still works
+
+```bash
+bash scripts/test-alerting.sh
+```
+
+Creates a throwaway alarm on the real SNS topic, fires it, and deletes it. One
+email, subject naming `tellsight-alerting-selftest`.
+
+**Do not test with `set-alarm-state` on `tellsight-endpoint-down`.** It works,
+but a forced transition is indistinguishable from a real one afterwards, so it
+writes a fake outage into the history you will be reading during an actual
+incident. Two of the three ALARM episodes on 2026-08-30 were drills, and nothing
+in CloudWatch says so.
+
+What the drill covers is the part that actually breaks: the topic, the
+subscription, and whether it was ever confirmed. What it does not cover is the
+production alarm's own action binding, which is static config; the script prints
+it so you can check it by eye.
+
 ### Real-time log tailing
 
 ```bash
