@@ -136,6 +136,18 @@ the code deploy, so a rollback re-pins the image without touching the database.
 
 Both scripts are idempotent, so the two paths never conflict.
 
+### Applying a migration without deploying code
+
+Actions tab, **Migrate Database**, Run workflow. Leave `image_tag` blank to use
+whatever is deployed, or give a `sha-` tag to run a migration that has been built
+but not released. Type `migrate` to confirm.
+
+It runs `migrate.ts` only, from that image, and leaves the running containers
+alone. Use it for the expand half of expand/contract: ship the additive migration
+on its own, confirm it, deploy the code that reads it separately.
+
+Seeding is deliberately not part of it. That is the deploy's business.
+
 ### Why migrations still have to survive a rollback
 
 Rolling back re-pins the previous image and does not touch the database, so the
