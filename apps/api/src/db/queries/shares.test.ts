@@ -101,6 +101,21 @@ describe('shares queries', () => {
       );
       expect(result).toEqual(fakeShare);
     });
+
+    // objectContaining({ with: ... }) says nothing about `where`, so deleting
+    // the token predicate satisfied the assertion above. The real guard is
+    // shares.integration.test.ts, which asks real Postgres whether a wrong token
+    // returns anything; a mock cannot answer that, since it returns whatever it
+    // was told to regardless of the filter.
+    it('passes a where clause at all', async () => {
+      mockFindFirst.mockResolvedValue({ id: 1 });
+
+      const { findByTokenHash } = await import('./shares.js');
+      await findByTokenHash('hash123');
+
+      const arg = mockFindFirst.mock.calls[0]![0] as { where?: unknown };
+      expect(arg.where, 'findFirst was called with no where clause').toBeDefined();
+    });
   });
 
   describe('incrementViewCount', () => {
