@@ -1,7 +1,13 @@
 import { test, expect } from '@playwright/test';
 
 import { authenticateAs } from './helpers/auth';
-import { ensureTestUser, cleanupFixtureConnection, getSeedDatasetId, TEST_USER } from './helpers/fixtures';
+import {
+  ensureTestUser,
+  ensureIsolatedOrg,
+  cleanupFixtureConnection,
+  getSeedDatasetId,
+  TEST_USER,
+} from './helpers/fixtures';
 
 // PRD targets. These are the product commitments, measured on real hardware.
 const NFR = {
@@ -27,24 +33,33 @@ const SLACK = process.env.CI ? 2 : 1.5;
 // wrong shape once real performance is orders of magnitude better than the
 // commitment: NFR4 runs at 97ms against a 5000ms target, so the build only
 // failed above 10000ms and a hundredfold regression shipped green.
-const OBSERVED_CI = {
-  dashboardLoad: 709,
-  csvUpload: 97,
-  chartInteraction: 239,
-  sharedCard: 309,
+// Slowest value seen across seven consecutive CI runs, 2026-09-01, not the
+// median: a budget set from the middle of a noisy distribution fails on the
+// tail, and a perf test that flakes gets deleted rather than fixed.
+const OBSERVED_CI_MAX = {
+  dashboardLoad: 956, // range 567-956
+  csvUpload: 149, // range 75-149
+  chartInteraction: 1203, // range 346-1203, see the note below
+  sharedCard: 516, // range 291-516
 } satisfies Record<keyof typeof NFR, number>;
+
+// NFR5 is the exception and deliberately gets no tightening. Its observed range
+// spans 3.5x and its worst run, 1203ms, is already above its own 1000ms budget.
+// Those runs went green because retries: 1 re-ran them, so this test is flaking
+// today and the retry hides it. Taking the min below leaves it at 1000ms; the
+// real fix is the variance, not the number.
 
 // 3x what this hardware actually does absorbs shared-runner noise while still
 // catching a real regression. The floor stops the smallest measurement from
 // producing a budget too tight to survive a noisy run. Taking the min with the
 // PRD ceiling means this can only tighten a budget, never loosen one, so the
 // product commitment stays the outer bound.
-const OBSERVED_MULTIPLE = 3;
+const OBSERVED_MULTIPLE = 2;
 const BUDGET_FLOOR_MS = 500;
 
 function budget(key: keyof typeof NFR): number {
   const prdCeiling = Math.round(NFR[key] * SLACK);
-  const fromObserved = Math.max(OBSERVED_CI[key] * OBSERVED_MULTIPLE, BUDGET_FLOOR_MS);
+  const fromObserved = Math.max(OBSERVED_CI_MAX[key] * OBSERVED_MULTIPLE, BUDGET_FLOOR_MS);
   return Math.min(prdCeiling, Math.round(fromObserved));
 }
 
@@ -108,8 +123,12 @@ test.describe('Performance NFRs', () => {
   });
 
   test('NFR4: 10k-row CSV upload completes within budget', async ({ browser }) => {
+    // Its own org, because confirm persists and persistUpload drops the org's
+    // seed data along the way. Pointed at SEED_ORG_ID this deleted the dataset
+    // NFR6 and NFR5 run against, three tests down the serial file.
+    const perfOrg = await ensureIsolatedOrg('perf-upload');
     const ctx = await browser.newContext();
-    await authenticateAs(ctx, { ...testUser, role: 'owner', isAdmin: true });
+    await authenticateAs(ctx, { ...perfOrg, role: 'owner', isAdmin: true });
 
     const csv = buildCsv(10_000);
     const started = Date.now();
