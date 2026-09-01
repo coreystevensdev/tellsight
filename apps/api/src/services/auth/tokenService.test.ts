@@ -191,6 +191,11 @@ describe('tokenService', () => {
 
       expect(mockCreateRefreshToken).toHaveBeenCalledOnce();
       const storedHash = mockCreateRefreshToken.mock.calls[0]![0].tokenHash;
+
+      // "they differ" is satisfied by swapping the two, which stores the live
+      // bearer token in plaintext and hands the caller its hash. Pin the
+      // relationship, not the inequality.
+      expect(storedHash).toBe(createHash('sha256').update(result.refreshToken).digest('hex'));
       expect(storedHash).not.toBe(result.refreshToken);
     });
   });
