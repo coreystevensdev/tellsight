@@ -219,6 +219,32 @@ describe('helper functions', () => {
     expect(parsed?.toISOString().slice(0, 10)).toBe('1976-03-23');
   });
 
+  // The bug this pins: the day-first branch built an ISO string, which the Date
+  // constructor reads as UTC, while the fallback handed a slash date straight to
+  // the constructor, which reads it as *local* midnight. Same calendar date, two
+  // timelines, so east of UTC a slash date landed on the previous day and the
+  // suite only passed because CI runners are UTC.
+  //
+  // Asserting the exact instant rather than the formatted day, because
+  // toISOString().slice(0, 10) is what hid this: at or west of UTC it prints the
+  // right day from the wrong instant.
+  it.each([
+    ['2012-03-10', false],
+    ['03/10/2012', false],
+    ['10/03/2012', true],
+  ])('parseDate builds UTC midnight for %s regardless of host timezone', (input, dayFirst) => {
+    const parsed = parseDate(input, dayFirst);
+
+    expect(parsed).not.toBeNull();
+    expect(parsed!.toISOString()).toBe('2012-03-10T00:00:00.000Z');
+  });
+
+  // Date.UTC rolls out-of-range parts over rather than rejecting them, so a
+  // round-trip check is what makes an impossible date null instead of March 2.
+  it.each(['02/30/2012', '13/01/2012', '2012-02-30'])('parseDate rejects %s', (input) => {
+    expect(parseDate(input, false)).toBeNull();
+  });
+
   it('parseDate keeps M/D/Y interpretation when dayFirst is false', () => {
     const parsed = parseDate('03/10/2012', false);
     expect(parsed?.toISOString().slice(0, 10)).toBe('2012-03-10');
