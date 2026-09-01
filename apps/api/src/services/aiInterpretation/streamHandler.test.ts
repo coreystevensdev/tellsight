@@ -111,30 +111,6 @@ const defaultMetadata = {
 };
 
 describe('streamToSSE', () => {
-  // Nothing asserted what streamInterpretation was handed, so the prompt could
-  // have arrived empty and every test still passed. It did arrive empty, for as
-  // long as the mock above returned the wrong shape.
-  it('hands the assembled system and user prompt to the model', async () => {
-    mockStreamInterpretation.mockImplementation(
-      async (_prompt: unknown, onText: (d: string) => void) => {
-        onText('ok');
-        return { fullText: 'ok', usage: { inputTokens: 1, outputTokens: 1 } };
-      },
-    );
-
-    const { res } = createMockRes();
-
-    const { streamToSSE } = await import('./streamHandler.js');
-    await streamToSSE(res, 1, 1, 99);
-
-    expect(mockStreamInterpretation).toHaveBeenCalled();
-    const [promptInput] = mockStreamInterpretation.mock.calls[0]!;
-    expect(promptInput).toEqual({
-      system: 'test system prompt',
-      user: 'test user prompt',
-    });
-  });
-
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
@@ -158,6 +134,34 @@ describe('streamToSSE', () => {
     });
     mockStoreSummary.mockResolvedValue({});
   });
+
+  // Nothing asserted what streamInterpretation was handed, so the prompt could
+  // have arrived empty and every test still passed. It did arrive empty, for as
+  // long as the mock above returned the wrong shape.
+  it('hands the assembled system and user prompt to the model', async () => {
+    // Once, not mockImplementation. The suite's beforeEach uses clearAllMocks,
+    // which resets calls but leaves implementations in place, so a persistent
+    // one set here bleeds into every later test in the file.
+    mockStreamInterpretation.mockImplementationOnce(
+      async (_prompt: unknown, onText: (d: string) => void) => {
+        onText('ok');
+        return { fullText: 'ok', usage: { inputTokens: 1, outputTokens: 1 } };
+      },
+    );
+
+    const { res } = createMockRes();
+
+    const { streamToSSE } = await import('./streamHandler.js');
+    await streamToSSE(res, 1, 1, 99);
+
+    expect(mockStreamInterpretation).toHaveBeenCalled();
+    const [promptInput] = mockStreamInterpretation.mock.calls[0]!;
+    expect(promptInput).toEqual({
+      system: 'test system prompt',
+      user: 'test user prompt',
+    });
+  });
+
 
   afterEach(() => {
     vi.useRealTimers();
