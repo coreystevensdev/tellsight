@@ -219,7 +219,16 @@ export function assemblePrompt(
 ): AssembledContext {
   const template = getTemplate(promptVersion);
   const businessContext = formatBusinessContext(businessProfile);
-  const today = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  // UTC so the prompt agrees with metadata.generatedAt below, which is an ISO
+  // string. Without it the two disagree about what day it is on any non-UTC
+  // host. Per-org would be better than either, but orgs have no timezone field.
+  const today = now.toLocaleDateString('en-US', {
+    timeZone: 'UTC',
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
   const benchmarks = getIndustryBenchmarks(businessProfile?.businessType) ?? 'No industry benchmarks available.';
 
   if (insights.length === 0) {
