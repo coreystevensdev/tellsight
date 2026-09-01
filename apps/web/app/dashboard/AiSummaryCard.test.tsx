@@ -234,6 +234,21 @@ describe('AiSummaryCard', () => {
     expect(screen.getByLabelText(/upgrade to pro subscription/i)).toBeTruthy();
   });
 
+  // The legal posture requires a disclaimer on every AI summary. Hiding
+  // PostCompletionFooter for free_preview is correct for share, export and
+  // transparency, and was wrong for the disclaimer, which used to live inside
+  // it. Asserted in both states so restoring that coupling fails here.
+  it.each([
+    ['free_preview', { status: 'free_preview' as const, text: 'preview' }],
+    ['done', { status: 'done' as const, text: 'the full analysis' }],
+  ])('renders the AI disclaimer in %s state', (_label, hookState) => {
+    mockUseAiStream.mockReturnValue(defaultHookReturn(hookState));
+
+    render(<AiSummaryCard datasetId={42} />);
+
+    expect(screen.getByText(/not financial advice/i)).toBeTruthy();
+  });
+
   it('hides PostCompletionFooter in free_preview state', () => {
     mockUseAiStream.mockReturnValue(
       defaultHookReturn({ status: 'free_preview', text: 'preview' }),

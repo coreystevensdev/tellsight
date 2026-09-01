@@ -44,9 +44,10 @@ test.describe('Dashboard', () => {
     // was also this test's skip condition, so the test skipped silently on every
     // run instead of failing, which is how it went unnoticed.
     //
-    // The disclaimer is the right thing to assert anyway: the project's legal
-    // posture requires one on every AI summary.
-    // The disclaimer is required on every AI summary by the legal posture.
+    // Scope worth being honest about: this path is the anonymous seed summary,
+    // which is never truncated, so it only covers the untruncated case. The
+    // free-tier preview path, where the disclaimer was actually missing, is
+    // covered by AiSummaryCard.test.tsx, which asserts it in both states.
     const disclaimer = page.getByText(/not financial advice/i);
     await expect(disclaimer).toBeVisible();
 

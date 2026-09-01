@@ -244,6 +244,18 @@ interface PostCompletionFooterProps {
   pdfStatus?: 'idle' | 'generating' | 'done' | 'error';
 }
 
+// Required on every AI summary by the legal posture, so it lives in one place
+// and both the paid and the free-preview paths render it. It used to sit inside
+// PostCompletionFooter, which free_preview deliberately hides in order to
+// withhold share, export and transparency. That correctly withheld the features
+// and incorrectly withheld the disclaimer, so a truncated free-tier summary
+// carried none.
+function AiDisclaimer() {
+  return (
+    <p className="mt-3 text-[11px] leading-tight text-muted-foreground/60">{AI_DISCLAIMER}</p>
+  );
+}
+
 function PostCompletionFooter({
   onToggleTransparency,
   transparencyOpen,
@@ -302,7 +314,7 @@ function PostCompletionFooter({
           )}
         </div>
       </div>
-      <p className="mt-3 text-[11px] leading-tight text-muted-foreground/60">{AI_DISCLAIMER}</p>
+      <AiDisclaimer />
     </div>
   );
 }
@@ -336,6 +348,8 @@ function FreePreviewOverlay({ previewText, onUpgrade }: { previewText: string; o
           onUpgrade={onUpgrade}
         />
       </div>
+
+      <AiDisclaimer />
     </div>
   );
 }
