@@ -506,4 +506,30 @@ describe('assemblePrompt', () => {
 
     expect(result.user).toBe('Header: Thursday, March 5, 2026 ... Footer: Thursday, March 5, 2026');
   });
+
+  // Both instants are March 5 in UTC. The first is March 4 anywhere west, the
+  // second March 6 anywhere east, so there is no timezone in which local
+  // formatting passes both. Noon UTC, which this file used to pin, is the one
+  // hour of the day where almost every zone agrees and so proves nothing.
+  it.each([
+    ['02:30', '2026-03-05T02:30:00.000Z'],
+    ['22:30', '2026-03-05T22:30:00.000Z'],
+  ])('renders {{today}} in UTC for an instant at %s, whatever the host zone', async (_label, iso) => {
+    const { readFileSync } = await import('node:fs');
+    vi.mocked(readFileSync).mockImplementation((path: unknown) => {
+      const p = String(path);
+      if (p.includes('-system.md') || p.includes('-user.md')) {
+        const err = new Error('ENOENT (test mock)') as Error & { code: string };
+        err.code = 'ENOENT';
+        throw err;
+      }
+      return '{{today}}';
+    });
+
+    const { assemblePrompt } = await import('./assembly.js');
+    const result = assemblePrompt(fixtureInsights, 1, 'v2', null, new Date(iso));
+
+    expect(result.user).toBe('Thursday, March 5, 2026');
+    expect(result.metadata.generatedAt.slice(0, 10)).toBe('2026-03-05');
+  });
 });
