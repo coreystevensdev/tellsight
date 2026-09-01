@@ -310,7 +310,11 @@ describe('computeDateRange', () => {
     expect(result!.from).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(result!.to).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     // rolling window through today, consistent with other presets
-    const today = new Date().toISOString().slice(0, 10);
+    // Built from local parts, like computeDateRange does. toISOString() converts
+    // to UTC first, which is the shift this preset was fixed to avoid, so using
+    // it here compared a local answer against a UTC expectation.
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     expect(result!.to).toBe(today);
     expect(new Date(result!.from).getTime()).toBeLessThan(new Date(result!.to).getTime());
   });
@@ -353,9 +357,12 @@ describe('computeDateRange', () => {
       vi.useRealTimers();
     });
 
-    const on = (iso: string) => {
+    // Local midday, not 12:00Z. computeDateRange reads local calendar parts, and
+    // at UTC+13/+14 noon UTC is already the next day, which rolled every fixture
+    // below forward by one and broke the clamping cases.
+    const on = (year: number, month: number, day: number) => {
       vi.useFakeTimers();
-      vi.setSystemTime(new Date(iso));
+      vi.setSystemTime(new Date(year, month - 1, day, 12));
     };
 
     const spanInMonths = (r: { from: string; to: string }) => {
@@ -365,21 +372,21 @@ describe('computeDateRange', () => {
     };
 
     it('lands on Feb 28 for last-6-months from Aug 30, not Mar 2', () => {
-      on('2026-08-30T12:00:00Z');
+      on(2026, 8, 30);
       const result = computeDateRange('last-6-months')!;
       expect(result.from).toBe('2026-02-28');
       expect(spanInMonths(result)).toBe(6);
     });
 
     it('lands on Feb 28 for last-month from Mar 31, not Mar 3', () => {
-      on('2026-03-31T12:00:00Z');
+      on(2026, 3, 31);
       const result = computeDateRange('last-month')!;
       expect(result.from).toBe('2026-02-28');
       expect(spanInMonths(result)).toBe(1);
     });
 
     it('keeps a full month when the target month is shorter, Jul 31 to Jun 30', () => {
-      on('2026-07-31T12:00:00Z');
+      on(2026, 7, 31);
       const result = computeDateRange('last-month')!;
       expect(result.from).toBe('2026-06-30');
       expect(spanInMonths(result)).toBe(1);
@@ -392,7 +399,14 @@ describe('computeDateRange', () => {
       const realTz = process.env.TZ;
 
       afterEach(() => {
-        process.env.TZ = realTz;
+        // Assigning undefined here would store the string "undefined", which
+        // leaves Intl unable to resolve a zone at all. TZ is normally unset.
+        if (realTz === undefined) {
+          delete process.env.TZ;
+        } else {
+          process.env.TZ = realTz;
+        }
+        vi.useRealTimers();
       });
 
       function sydneyMorningOf(iso: string) {
@@ -421,7 +435,7 @@ describe('computeDateRange', () => {
     });
 
     it('handles a leap year, last-year from Feb 29 2028', () => {
-      on('2028-02-29T12:00:00Z');
+      on(2028, 2, 29);
       const result = computeDateRange('last-year')!;
       expect(result.from).toBe('2027-02-28');
       expect(spanInMonths(result)).toBe(12);

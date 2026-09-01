@@ -127,10 +127,22 @@ describe('GET /digest/last-sent (AC #8)', () => {
     expect(mockGetByUserId).toHaveBeenCalledWith(42, expect.anything());
   });
 
-  it('rejects unauthenticated requests with 401', async () => {
-    mockVerifyAccessToken.mockRejectedValueOnce(new Error('Invalid token'));
-
+  it('rejects a request with no access token, without consulting the verifier', async () => {
     const res = await fetch(`${baseUrl}/digest/last-sent`);
+
     expect(res.status).toBe(401);
+    expect(mockVerifyAccessToken).not.toHaveBeenCalled();
+  });
+
+  it('rejects a request whose access token fails verification', async () => {
+    // Has to be AuthenticationError, which is what the real verifier throws.
+    // A bare Error reaches the handler as an unknown failure and returns 500.
+    const { AuthenticationError } = await import('../lib/appError.js');
+    mockVerifyAccessToken.mockRejectedValueOnce(new AuthenticationError('expired'));
+
+    const res = await fetch(`${baseUrl}/digest/last-sent`, { headers: authHeaders });
+
+    expect(res.status).toBe(401);
+    expect(mockVerifyAccessToken).toHaveBeenCalledTimes(1);
   });
 });
