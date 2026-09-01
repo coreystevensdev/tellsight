@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import http from 'node:http';
 import { validCsv, missingColumn, emptyFile, mixedCaseHeaders } from '../test/fixtures/csvFiles.js';
 
@@ -251,8 +251,19 @@ describe('POST /datasets', () => {
 });
 
 describe('POST /datasets/confirm', () => {
+  // Restoring only this spy, not vi.restoreAllMocks(), which also resets the
+  // vi.fn() mocks this file sets up once. clearAllMocks leaves a spy's
+  // implementation in place, and doing it in the test body means skipping it
+  // whenever an assertion above throws.
+  let nowSpy: ReturnType<typeof vi.spyOn> | undefined;
+
   beforeEach(() => {
     mockPersistUpload.mockResolvedValue({ datasetId: 7, rowCount: 3, demoState: 'user_only' });
+  });
+
+  afterEach(() => {
+    nowSpy?.mockRestore();
+    nowSpy = undefined;
   });
 
   it('persists data with valid preview token', async () => {
@@ -337,7 +348,7 @@ describe('POST /datasets/confirm', () => {
 
     // fast-forward past the 30-minute TTL
     const realNow = Date.now();
-    vi.spyOn(Date, 'now').mockReturnValue(realNow + 31 * 60 * 1000);
+    nowSpy = vi.spyOn(Date, 'now').mockReturnValue(realNow + 31 * 60 * 1000);
 
     mockVerifyAccessToken.mockResolvedValueOnce(userPayload());
 
@@ -346,8 +357,6 @@ describe('POST /datasets/confirm', () => {
 
     const body = (await res.json()) as ErrorBody;
     expect(body.error.message).toContain('File has changed since preview');
-
-    vi.restoreAllMocks();
   });
 
   it('rejects tampered preview token', async () => {

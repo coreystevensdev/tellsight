@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, waitFor } from '@testing-library/react';
+import { render, waitFor, act } from '@testing-library/react';
 import { DigestClickTracker } from './DigestClickTracker';
 
 const mockReplace = vi.fn();
@@ -55,7 +55,10 @@ describe('DigestClickTracker (AC #2)', () => {
     setSearch({ t: 'token-abc' });
     render(<DigestClickTracker />);
 
-    await new Promise((r) => setTimeout(r, 30));
+    // No wait: the effect runs to completion inside render's act(), and it
+    // returns before reaching fetch. Sleeping here only delayed the same
+    // assertion. waitFor would be worse, it passes on the first check and so
+    // proves nothing about a call that never happens.
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -63,7 +66,6 @@ describe('DigestClickTracker (AC #2)', () => {
     setSearch({ utm_source: 'digest' });
     render(<DigestClickTracker />);
 
-    await new Promise((r) => setTimeout(r, 30));
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -73,7 +75,6 @@ describe('DigestClickTracker (AC #2)', () => {
 
     render(<DigestClickTracker />);
 
-    await new Promise((r) => setTimeout(r, 30));
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -116,8 +117,7 @@ describe('DigestClickTracker (AC #2)', () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
-    // Give the rejected promise time to settle
-    await new Promise((r) => setTimeout(r, 20));
+    await act(async () => {});
     expect(mockReplace).not.toHaveBeenCalled();
     // Dedupe flag stays set even on failure: this metric is lossy (Apple MPP,
     // ad blockers) and duplicate analytics rows are worse than a missed retry.
@@ -134,7 +134,6 @@ describe('DigestClickTracker (AC #2)', () => {
 
     // Mount a second time with the same token still in URL: must NOT re-POST
     render(<DigestClickTracker />);
-    await new Promise((r) => setTimeout(r, 20));
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
