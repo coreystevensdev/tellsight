@@ -77,20 +77,34 @@ test.describe('FR24 mobile summary placement', () => {
     const viewportHeight = page.viewportSize()!.height;
     expect(box!.y).toBeLessThan(viewportHeight);
 
-    // DOM order rather than pixel order for the charts, because they lazy-load
-    // and a chart that has not mounted yet would make a position check pass for
-    // the wrong reason.
+    // Charts mount on viewport intersection, so on a phone-sized screen none
+    // exist until you scroll. Scroll to bring them in rather than tolerating
+    // their absence: this originally read
+    // `if (summaryPrecedesCharts !== null)` with a comment calling a missing
+    // chart "nothing to assert", which is the same
+    // skip-when-the-target-is-missing shape dashboard.spec.ts was fixed to drop.
+    // Break the chart endpoint and the ordering check went quiet.
+    //
+    // The above-the-fold measurement above is taken before this scroll, which is
+    // the only order that makes it mean anything.
+    // #main-content is the scroll container, not the window: dashboard/layout.tsx
+    // gives it overflow-y-auto, so document.body.scrollHeight equals the
+    // viewport height and window.scrollTo does nothing at all.
+    await page.evaluate(() => {
+      const scroller = document.getElementById('main-content');
+      if (scroller) scroller.scrollTop = scroller.scrollHeight;
+    });
+    await page.locator('svg.recharts-surface').first().waitFor({ timeout: 30_000 });
+
+    // DOM order rather than pixel order, because a chart below the fold still
+    // counts as coming after the summary.
     const summaryPrecedesCharts = await page.evaluate(() => {
       const s = document.querySelector('[aria-label="AI business summary"]');
-      const chart = document.querySelector('svg.recharts-surface, [class*="recharts-wrapper"], canvas');
+      const chart = document.querySelector('svg.recharts-surface');
       if (!s || !chart) return null;
       return Boolean(s.compareDocumentPosition(chart) & Node.DOCUMENT_POSITION_FOLLOWING);
     });
 
-    // null means no chart had mounted, in which case the summary is trivially
-    // first and there is nothing to assert.
-    if (summaryPrecedesCharts !== null) {
-      expect(summaryPrecedesCharts).toBe(true);
-    }
+    expect(summaryPrecedesCharts).toBe(true);
   });
 });
