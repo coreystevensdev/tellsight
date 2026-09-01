@@ -53,6 +53,7 @@ export async function ensureTestUser(
     RETURNING id
   `;
 
+  if (!row) throw new Error(`ensureTestUser: no row returned for ${user.email}`);
   const userId = row.id as number;
 
   await sql`
@@ -69,6 +70,30 @@ export async function ensureTestUser(
  * because /datasets/manage is a list of user uploads, so the seed dataset is
  * invisible through the API even though it is the only one a fresh CI org has.
  */
+/**
+ * A throwaway org for tests that write real datasets. persistUpload deletes an
+ * org's seed data as part of the same transaction, so running an upload against
+ * SEED_ORG_ID destroys the fixture every later test depends on.
+ */
+export async function ensureIsolatedOrg(
+  slug: string,
+  user: typeof TEST_USER | typeof FREE_TIER_USER = TEST_USER,
+): Promise<{ userId: number; orgId: number }> {
+  const sql = getConnection();
+
+  const [org] = await sql`
+    INSERT INTO orgs (name, slug)
+    VALUES (${`e2e ${slug}`}, ${`e2e-${slug}`})
+    ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
+    RETURNING id
+  `;
+  if (!org) throw new Error(`ensureIsolatedOrg: no row returned for ${slug}`);
+  const orgId = org.id as number;
+
+  const { userId } = await ensureTestUser(user, orgId);
+  return { userId, orgId };
+}
+
 export async function getSeedDatasetId(orgId: number = SEED_ORG_ID): Promise<number | null> {
   const sql = getConnection();
   const [row] = await sql`

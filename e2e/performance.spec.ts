@@ -1,7 +1,13 @@
 import { test, expect } from '@playwright/test';
 
 import { authenticateAs } from './helpers/auth';
-import { ensureTestUser, cleanupFixtureConnection, getSeedDatasetId, TEST_USER } from './helpers/fixtures';
+import {
+  ensureTestUser,
+  ensureIsolatedOrg,
+  cleanupFixtureConnection,
+  getSeedDatasetId,
+  TEST_USER,
+} from './helpers/fixtures';
 
 // PRD targets. These are the product commitments, measured on real hardware.
 const NFR = {
@@ -22,12 +28,46 @@ const NFR = {
 // starts flaking, raise this back rather than deleting the test: the warning
 // below is the part that catches drift, and it does not depend on the multiple.
 const SLACK = process.env.CI ? 2 : 1.5;
-const budget = (target: number) => Math.round(target * SLACK);
 
-function reportTiming(label: string, elapsed: number, target: number) {
+// Measured on the CI runner, 2026-08-30. A multiple of the PRD target is the
+// wrong shape once real performance is orders of magnitude better than the
+// commitment: NFR4 runs at 97ms against a 5000ms target, so the build only
+// failed above 10000ms and a hundredfold regression shipped green.
+// Slowest value seen across seven consecutive CI runs, 2026-09-01, not the
+// median: a budget set from the middle of a noisy distribution fails on the
+// tail, and a perf test that flakes gets deleted rather than fixed.
+const OBSERVED_CI_MAX = {
+  dashboardLoad: 956, // range 567-956
+  csvUpload: 149, // range 75-149
+  chartInteraction: 1203, // range 346-1203, see the note below
+  sharedCard: 516, // range 291-516
+} satisfies Record<keyof typeof NFR, number>;
+
+// NFR5 is the exception and deliberately gets no tightening. Its observed range
+// spans 3.5x and its worst run, 1203ms, is already above its own 1000ms budget.
+// Those runs went green because retries: 1 re-ran them, so this test is flaking
+// today and the retry hides it. Taking the min below leaves it at 1000ms; the
+// real fix is the variance, not the number.
+
+// 3x what this hardware actually does absorbs shared-runner noise while still
+// catching a real regression. The floor stops the smallest measurement from
+// producing a budget too tight to survive a noisy run. Taking the min with the
+// PRD ceiling means this can only tighten a budget, never loosen one, so the
+// product commitment stays the outer bound.
+const OBSERVED_MULTIPLE = 2;
+const BUDGET_FLOOR_MS = 500;
+
+function budget(key: keyof typeof NFR): number {
+  const prdCeiling = Math.round(NFR[key] * SLACK);
+  const fromObserved = Math.max(OBSERVED_CI_MAX[key] * OBSERVED_MULTIPLE, BUDGET_FLOOR_MS);
+  return Math.min(prdCeiling, Math.round(fromObserved));
+}
+
+function reportTiming(label: string, key: keyof typeof NFR, elapsed: number) {
+  const target = NFR[key];
   const over = elapsed > target;
   const verdict = over ? 'OVER' : 'within';
-  console.log(`[perf] ${label}: ${elapsed}ms (${verdict} NFR target ${target}ms, CI budget ${budget(target)}ms)`);
+  console.log(`[perf] ${label}: ${elapsed}ms (${verdict} NFR target ${target}ms, CI budget ${budget(key)}ms)`);
 
   if (!over) return;
 
@@ -36,7 +76,7 @@ function reportTiming(label: string, elapsed: number, target: number) {
   // the run summary and the changed file, and the annotation carries it into the
   // HTML report, so exceeding the actual NFR is visible without failing on
   // runner noise.
-  const detail = `${elapsed}ms against a ${target}ms target (build fails above ${budget(target)}ms)`;
+  const detail = `${elapsed}ms against a ${target}ms target (build fails above ${budget(key)}ms)`;
   test.info().annotations.push({ type: 'nfr-exceeded', description: `${label}: ${detail}` });
   if (process.env.CI) {
     console.log(`::warning title=NFR target exceeded::${label} took ${detail}`);
@@ -78,13 +118,17 @@ test.describe('Performance NFRs', () => {
     await page.locator('#dashboard-heading').waitFor({ timeout: 30_000 });
     const elapsed = Date.now() - started;
 
-    reportTiming('NFR1 dashboard load', elapsed, NFR.dashboardLoad);
-    expect(elapsed).toBeLessThan(budget(NFR.dashboardLoad));
+    reportTiming('NFR1 dashboard load', 'dashboardLoad', elapsed);
+    expect(elapsed).toBeLessThan(budget('dashboardLoad'));
   });
 
   test('NFR4: 10k-row CSV upload completes within budget', async ({ browser }) => {
+    // Its own org, because confirm persists and persistUpload drops the org's
+    // seed data along the way. Pointed at SEED_ORG_ID this deleted the dataset
+    // NFR6 and NFR5 run against, three tests down the serial file.
+    const perfOrg = await ensureIsolatedOrg('perf-upload');
     const ctx = await browser.newContext();
-    await authenticateAs(ctx, { ...testUser, role: 'owner', isAdmin: true });
+    await authenticateAs(ctx, { ...perfOrg, role: 'owner', isAdmin: true });
 
     const csv = buildCsv(10_000);
     const started = Date.now();
@@ -96,15 +140,38 @@ test.describe('Performance NFRs', () => {
     });
     const elapsed = Date.now() - started;
 
-    if (response.status() === 429) {
-      test.skip(true, 'upload rate limited in CI');
-      await ctx.close();
-      return;
-    }
-    expect(response.status()).toBe(200);
+    // A 429 here is the dashboardCompute/upload tier being wrong for a single
+    // 400KB post, not an environment quirk. Skipping on it meant a misconfigured
+    // limiter produced a green run.
+    expect(
+      response.status(),
+      `upload returned ${response.status()}; a 429 means the rate-limiter tier is misconfigured`,
+    ).toBe(200);
 
-    reportTiming(`NFR4 CSV upload (${Math.round(csv.byteLength / 1024)}KB)`, elapsed, NFR.csvUpload);
-    expect(elapsed).toBeLessThan(budget(NFR.csvUpload));
+    reportTiming(`NFR4 CSV upload (${Math.round(csv.byteLength / 1024)}KB)`, 'csvUpload', elapsed);
+    expect(elapsed).toBeLessThan(budget('csvUpload'));
+
+    // POST /api/datasets is parse plus validate plus hash with no row written.
+    // Timing only that left the insert path unmeasured, so a confirm handler
+    // rewritten to insert 10,000 rows one statement at a time was invisible
+    // here. No observed baseline for this yet, so it runs against the PRD
+    // ceiling; tighten it the same way once CI has reported a few numbers.
+    const previewToken = (await response.json()).data?.previewToken;
+    expect(previewToken, 'preview response carried no previewToken').toBeTruthy();
+
+    const confirmStarted = Date.now();
+    const confirmed = await ctx.request.post('/api/datasets/confirm', {
+      multipart: {
+        file: { name: 'perf-10k.csv', mimeType: 'text/csv', buffer: csv },
+        previewToken,
+      },
+      timeout: 60_000,
+    });
+    const confirmElapsed = Date.now() - confirmStarted;
+
+    expect(confirmed.status(), await confirmed.text().catch(() => '')).toBe(200);
+    console.log(`[perf] NFR4 confirm (10k rows persisted): ${confirmElapsed}ms`);
+    expect(confirmElapsed).toBeLessThan(Math.round(NFR.csvUpload * SLACK));
 
     await ctx.close();
   });
@@ -124,23 +191,16 @@ test.describe('Performance NFRs', () => {
     // filters isSeedData = false. A fresh CI org has only the seed dataset, so
     // the API list is legitimately empty and this used to skip every run.
     const datasetId = await getSeedDatasetId();
-    if (!datasetId) {
-      test.skip(true, 'no seed dataset present');
-      await authed.close();
-      return;
-    }
+    expect(datasetId, 'no seed dataset in the database, so seeding is broken').toBeTruthy();
 
     const created = await authed.request.post('/api/shares', { data: { datasetId } });
-    if (created.status() !== 201) {
-      const body = await created.text();
-      // Also environmental: seed ships a fallback summary only when the API key
-      // is absent, so a half-configured env can legitimately have none.
-      const noSummary = body.includes('Generate an AI summary first');
-      expect(noSummary, `unexpected share failure: ${created.status()} ${body.slice(0, 160)}`).toBeTruthy();
-      test.skip(true, 'dataset has no cached AI summary to share');
-      await authed.close();
-      return;
-    }
+    // seed.ts catches a failed live Claude call and inserts FALLBACK_SEED_SUMMARY,
+    // which is exactly what CI's dummy key produces, so there is always a cached
+    // summary to share. Skipping on its absence hid a broken seed.
+    expect(
+      created.status(),
+      `share creation failed: ${created.status()} ${(await created.text()).slice(0, 200)}`,
+    ).toBe(201);
 
     const token = (await created.json()).data.token;
     await authed.close();
@@ -153,8 +213,8 @@ test.describe('Performance NFRs', () => {
     await page.locator('article h1').waitFor({ timeout: 30_000 });
     const elapsed = Date.now() - started;
 
-    reportTiming('NFR6 shared card', elapsed, NFR.sharedCard);
-    expect(elapsed).toBeLessThan(budget(NFR.sharedCard));
+    reportTiming('NFR6 shared card', 'sharedCard', elapsed);
+    expect(elapsed).toBeLessThan(budget('sharedCard'));
 
     await anon.close();
   });
@@ -170,10 +230,10 @@ test.describe('Performance NFRs', () => {
     await page.locator('#dashboard-heading').waitFor({ timeout: 30_000 });
 
     const dateFilter = page.getByRole('button', { name: 'Filter by date range' });
-    if (!(await dateFilter.isVisible({ timeout: 15_000 }).catch(() => false))) {
-      test.skip(true, 'dashboard has no data, so FilterBar is not rendered');
-      return;
-    }
+    await expect(
+      dateFilter,
+      'FilterBar is absent on the seeded public dashboard, so either seeding or hasAnyData is broken',
+    ).toBeVisible({ timeout: 15_000 });
 
     // Waits for the chart refetch the filter triggers, NOT networkidle.
     // networkidle is defined as 500ms of no requests, so using it here put a
@@ -194,7 +254,7 @@ test.describe('Performance NFRs', () => {
     await refetched;
     const elapsed = Date.now() - started;
 
-    reportTiming('NFR5 date filter', elapsed, NFR.chartInteraction);
-    expect(elapsed).toBeLessThan(budget(NFR.chartInteraction));
+    reportTiming('NFR5 date filter', 'chartInteraction', elapsed);
+    expect(elapsed).toBeLessThan(budget('chartInteraction'));
   });
 });
