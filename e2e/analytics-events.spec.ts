@@ -28,13 +28,14 @@ test.describe('Analytics Event Verification (FR40)', () => {
     await page.locator('#dashboard-heading').waitFor({ timeout: 15_000 });
 
     const event = await waitForEvent(ctx.request, 'dashboard.viewed', since);
-    // fire-and-forget, may not persist within the polling window in CI
-    if (event) {
-      expect(event.org_id).toBe(adminUser.orgId);
-      expect(event.user_id).toBe(adminUser.userId);
-    } else {
-      console.warn('dashboard.viewed event not found within polling window, timing-dependent in CI');
-    }
+
+    // waitForEvent already polls 2s plus ten 1s attempts. Nothing after twelve
+    // seconds means the write is not coming, which is the thing under test, so
+    // this asserts rather than warning. The old `if (event)` passed with every
+    // trackEvent call deleted.
+    expect(event, 'dashboard.viewed never persisted').not.toBeNull();
+    expect(event!.org_id).toBe(adminUser.orgId);
+    expect(event!.user_id).toBe(adminUser.userId);
 
     await ctx.close();
   });
@@ -64,11 +65,10 @@ test.describe('Analytics Event Verification (FR40)', () => {
     expect(response.status()).toBe(200);
 
     const event = await waitForEvent(ctx.request, 'dataset.uploaded', since);
-    if (event) {
-      expect(event.event_name).toBe('dataset.uploaded');
-    } else {
-      console.warn('dataset.uploaded event not found within polling window');
-    }
+
+    expect(event, 'dataset.uploaded never persisted').not.toBeNull();
+    expect(event!.event_name).toBe('dataset.uploaded');
+    expect(event!.org_id).toBe(adminUser.orgId);
 
     await ctx.close();
   });
@@ -86,18 +86,26 @@ test.describe('Analytics Event Verification (FR40)', () => {
         orgId: adminUser.orgId,
         limit: 50,
       });
-    } catch {
-      // rate limited, skip shape validation rather than fail
+    } catch (err) {
+      // queryAnalyticsEvents throws two different things: a genuine rate-limit
+      // exhaustion, and any non-ok response. Catching both as "rate limited"
+      // means a 500 from the admin endpoint skips this test silently, which is
+      // how /admin/email-compliance stayed broken in production for a while.
+      const message = err instanceof Error ? err.message : String(err);
+      if (!message.includes('rate limited')) {
+        await ctx.close();
+        throw err;
+      }
       console.warn('Admin analytics query rate limited, skipping shape validation');
       await ctx.close();
       return;
     }
 
-    if (events.length === 0) {
-      console.warn('No analytics events found, fire-and-forget writes may not have persisted');
-      await ctx.close();
-      return;
-    }
+    // Was a warn-and-return. An empty list here is not a tolerable state: this
+    // test loads the dashboard first, so at least that event must exist, and
+    // with zero rows the shape loop below iterates nothing and the test passes
+    // having checked nothing.
+    expect(events.length, 'no analytics events to validate the shape of').toBeGreaterThan(0);
 
     for (const event of events) {
       expect(event).toHaveProperty('eventName');
