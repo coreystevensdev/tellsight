@@ -17,6 +17,7 @@ vi.hoisted(() => {
     NODE_ENV: 'development',
     EMAIL_FROM_ADDRESS: 'insights@kiln.test.local',
     EMAIL_MAILING_ADDRESS: '500 Test Ave, Denver, CO 80202',
+    EMAIL_PROVIDER: 'console',
   });
 });
 
@@ -47,7 +48,7 @@ describe('email service, barrel integration', () => {
   it('initEmailProvider + sendEmail routes through the registered provider', async () => {
     const logSpy = vi.spyOn(logger, 'info').mockImplementation(() => logger);
 
-    initEmailProvider(env); // picks console (env default is 'console' in test)
+    initEmailProvider(env);
 
     const result = await sendEmail({
       to: 'test@example.com',
