@@ -3,7 +3,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 
 import { orgs, users } from '../schema.js';
 import { createDataset } from './datasets.js';
-import { createShare, findByTokenHash } from './shares.js';
+import { createShare, findByTokenHash, getSharesByOrg } from './shares.js';
 import { dbAdmin } from '../../lib/db.js';
 
 // /share/:token is unauthenticated. The token hash is the entire access control,
@@ -85,5 +85,23 @@ describe('findByTokenHash against real Postgres', () => {
 
     expect(await findByTokenHash('hash-prefix-full', dbAdmin)).toBeUndefined();
     expect(await findByTokenHash('hash-prefix-full-value', dbAdmin)).toBeDefined();
+  });
+});
+
+// getSharesByOrg was the one function in this module left out when the rest was
+// covered. Deleting its org predicate returns every org's share rows, and the
+// share token hash lives on those rows.
+describe('getSharesByOrg against real Postgres', () => {
+  it('returns only the requesting org shares', async () => {
+    const orgOne = await seedShare('scope-one', 'hash-scope-one');
+    const orgTwo = await seedShare('scope-two', 'hash-scope-two');
+
+    const forOne = await getSharesByOrg(orgOne, dbAdmin);
+    const forTwo = await getSharesByOrg(orgTwo, dbAdmin);
+
+    expect(forOne).toHaveLength(1);
+    expect(forOne[0]!.tokenHash).toBe('hash-scope-one');
+    expect(forTwo).toHaveLength(1);
+    expect(forTwo[0]!.tokenHash).toBe('hash-scope-two');
   });
 });

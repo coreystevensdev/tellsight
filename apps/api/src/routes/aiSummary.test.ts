@@ -121,6 +121,32 @@ beforeAll(async () => {
 
 afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
 
+// This file is the only place the real protectedRouter is mounted, so it is the
+// only place the router's own guard wiring can be checked. Nothing asserted it,
+// and deleting roleGuard('admin') from protected.ts left all 2,303 tests green
+// while any authenticated user reached every /admin route.
+//
+// The authMiddleware stub above sets a user with no isAdmin, so roleGuard should
+// reject before the handler runs. Without the guard the request reaches
+// adminRouter, whose services are unmocked here, and the status stops being 403.
+describe('protectedRouter guard wiring', () => {
+  it('refuses a non-admin on /admin routes', async () => {
+    const res = await fetch(`${baseUrl}/admin/orgs`);
+
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('FORBIDDEN');
+  });
+
+  // The same caller must still reach a non-admin route, or the test above would
+  // also pass with the whole router broken.
+  it('still lets that caller reach a non-admin route', async () => {
+    const res = await fetch(`${baseUrl}/ai-summaries/1/latest`);
+
+    expect(res.status).not.toBe(403);
+  });
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
