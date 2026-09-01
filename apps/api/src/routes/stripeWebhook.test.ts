@@ -36,10 +36,15 @@ let server: http.Server;
 let baseUrl: string;
 
 beforeAll(async () => {
-  // webhook route needs raw body, mount it on a bare Express app without JSON parser
-  const result = await createTestApp((app) => {
-    app.use(stripeWebhookRouter);
-  });
+  // beforeParsers, not setup. The comment here used to claim this was "a bare
+  // Express app without JSON parser", which createTestApp was not: it mounted
+  // express.json() first, so the router's express.raw() was a no-op and the
+  // handler saw a parsed object. Mounting above the parser is what index.ts
+  // does and is the only way the raw body survives.
+  const result = await createTestApp(
+    () => {},
+    { beforeParsers: (app) => app.use(stripeWebhookRouter) },
+  );
   server = result.server;
   baseUrl = result.baseUrl;
 });
@@ -60,6 +65,30 @@ describe('POST /webhooks/stripe', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const json = (await res.json()) as any;
     expect(json.error.code).toBe('MISSING_SIGNATURE');
+  });
+
+  // Stripe's constructEvent recomputes the HMAC over the exact bytes sent. Hand
+  // it a parsed object and every real signature fails, so what it receives is
+  // the whole point of mounting this router above express.json().
+  it('hands stripe the unparsed body, not a parsed object', async () => {
+    mockConstructEvent.mockReturnValueOnce({
+      id: 'evt_raw',
+      type: 'checkout.session.completed',
+      data: { object: {} },
+    });
+    mockHandleWebhookEvent.mockResolvedValueOnce(undefined);
+    const body = '{"id":"evt_raw","spacing":  "preserved"}';
+
+    await fetch(`${baseUrl}/webhooks/stripe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'stripe-signature': 'sig' },
+      body,
+    });
+
+    const [payload] = mockConstructEvent.mock.calls[0]!;
+    expect(Buffer.isBuffer(payload)).toBe(true);
+    // Byte for byte, including the double space json parsing would discard.
+    expect((payload as Buffer).toString('utf8')).toBe(body);
   });
 
   it('returns 400 when signature is invalid', async () => {
