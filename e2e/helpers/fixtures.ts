@@ -53,6 +53,7 @@ export async function ensureTestUser(
     RETURNING id
   `;
 
+  if (!row) throw new Error(`ensureTestUser: no row returned for ${user.email}`);
   const userId = row.id as number;
 
   await sql`

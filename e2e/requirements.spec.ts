@@ -18,7 +18,7 @@ test.describe('FR12 correct and re-upload', () => {
   const GOOD = 'date,amount,category\n2026-01-15,12000,Revenue\n2026-02-15,15000,Revenue\n';
 
   test('a rejected upload does not cost the user their session', async ({ page, context }) => {
-    const userId = await ensureTestUser(TEST_USER);
+    const { userId } = await ensureTestUser(TEST_USER);
     await authenticateAs(context, {
       userId,
       orgId: SEED_ORG_ID,
