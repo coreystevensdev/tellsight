@@ -83,10 +83,17 @@ test('skip link targets a real element', async ({ page }) => {
   await page.goto('/dashboard');
   await page.locator('#dashboard-heading').waitFor({ timeout: 15_000 });
 
+  // Wait for the link itself before tabbing. Pressing Tab before hydration has
+  // wired it up lands focus somewhere else and the test flakes under load.
+  const skipLink = page.locator('a[href^="#"]').first();
+  await skipLink.waitFor({ state: 'attached', timeout: 15_000 });
   await page.keyboard.press('Tab');
-  const href = await page.evaluate(() => (document.activeElement as HTMLAnchorElement)?.getAttribute('href'));
 
-  expect(href).toBeTruthy();
+  const href = await page.evaluate(
+    () => (document.activeElement as HTMLAnchorElement)?.getAttribute('href') ?? null,
+  );
+
+  expect(href, 'first tab stop is not a link').toBeTruthy();
   expect(href!.startsWith('#')).toBe(true);
   await expect(page.locator(href!)).toHaveCount(1);
 });

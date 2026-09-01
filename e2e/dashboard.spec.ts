@@ -46,10 +46,20 @@ test.describe('Dashboard', () => {
     //
     // The disclaimer is the right thing to assert anyway: the project's legal
     // posture requires one on every AI summary.
-    await expect(page.getByText(/not financial advice/i)).toBeVisible();
+    // The disclaimer is required on every AI summary by the legal posture.
+    const disclaimer = page.getByText(/not financial advice/i);
+    await expect(disclaimer).toBeVisible();
 
+    // Subtracting it is what makes the length check mean anything. The
+    // disclaimer is 72 characters by itself, so the old
+    // `text.length >= 50` over the whole card passed with no summary prose in
+    // it at all. Read from the DOM rather than importing the constant, because
+    // shared/* does not resolve from the e2e project.
     const text = await summaryRegion.innerText();
-    expect(text.length).toBeGreaterThanOrEqual(50);
+    const chrome = ((await disclaimer.innerText()) + 'Analysis').replace(/\s/g, '');
+    const prose = text.replace(/\s/g, '');
+
+    expect(prose.length - chrome.length).toBeGreaterThanOrEqual(200);
   });
 });
 
