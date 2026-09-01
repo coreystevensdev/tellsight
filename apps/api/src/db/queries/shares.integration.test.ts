@@ -1,7 +1,7 @@
 import { inArray } from 'drizzle-orm';
 import { describe, it, expect, afterAll } from 'vitest';
 
-import { orgs } from '../schema.js';
+import { orgs, users } from '../schema.js';
 import { createDataset } from './datasets.js';
 import { createShare, findByTokenHash } from './shares.js';
 import { dbAdmin } from '../../lib/db.js';
@@ -20,7 +20,12 @@ afterAll(async () => {
   if (createdOrgs.length) {
     await dbAdmin.delete(orgs).where(inArray(orgs.id, createdOrgs));
   }
+  if (createdUsers.length) {
+    await dbAdmin.delete(users).where(inArray(users.id, createdUsers));
+  }
 });
+
+const createdUsers: number[] = [];
 
 async function seedShare(slug: string, tokenHash: string) {
   const [org] = await dbAdmin
@@ -29,13 +34,22 @@ async function seedShare(slug: string, tokenHash: string) {
     .returning();
   createdOrgs.push(org!.id);
 
+  // A real user rather than a hardcoded id. createdBy is a foreign key, and CI
+  // runs against a freshly migrated database with no rows in users, so `1`
+  // passes locally on a seeded database and fails there.
+  const [user] = await dbAdmin
+    .insert(users)
+    .values({ email: `share-${slug}-${process.pid}@example.com`, name: 'Share Owner' })
+    .returning();
+  createdUsers.push(user!.id);
+
   const dataset = await createDataset(org!.id, { name: `${slug}.csv` }, dbAdmin);
   await createShare(
     org!.id,
     dataset!.id,
     tokenHash,
     { headline: slug },
-    1,
+    user!.id,
     new Date(Date.now() + 86_400_000),
     dbAdmin,
   );
