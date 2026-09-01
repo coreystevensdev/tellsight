@@ -1,17 +1,28 @@
-import { createDecipheriv } from 'node:crypto';
-
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const TEST_KEY = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2';
 const WRONG_KEY = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
 
+// getKey() reads env.ENCRYPTION_KEY on every call rather than caching it, so a
+// getter here lets a test rotate the key between encrypt and decrypt and still
+// go through production's own key path.
+const activeKey = vi.hoisted(() => ({ value: '' }));
+
 vi.mock('../../config.js', () => ({
-  env: { ENCRYPTION_KEY: TEST_KEY },
+  env: {
+    get ENCRYPTION_KEY() {
+      return activeKey.value;
+    },
+  },
 }));
 
 const { encrypt, decrypt } = await import('./encryption.js');
 
 describe('encryption', () => {
+  beforeEach(() => {
+    activeKey.value = TEST_KEY;
+  });
+
   it('round-trips plaintext through encrypt and decrypt', () => {
     const plaintext = 'oauth-refresh-token-abc123';
     const encrypted = encrypt(plaintext);
@@ -65,21 +76,20 @@ describe('encryption', () => {
     expect(() => decrypt('two:segments')).toThrow('Invalid encrypted format');
   });
 
-  it('rejects decryption with wrong key', () => {
+  // Was building its own decipher with createDecipheriv and never calling
+  // decrypt, so it proved that Node's AES-GCM rejects a wrong key, which was
+  // never in question. It would have passed with getKey() returning
+  // Buffer.alloc(32). Rotating the key and calling production decrypt tests the
+  // thing that can actually break: key handling on our side.
+  it('rejects decryption under a different key', () => {
     const encrypted = encrypt('secret');
 
-    const parts = encrypted.split(':') as [string, string, string];
-    const iv = Buffer.from(parts[0], 'base64');
-    const authTag = Buffer.from(parts[1], 'base64');
-    const ciphertext = Buffer.from(parts[2], 'base64');
-    const wrongKey = Buffer.from(WRONG_KEY, 'hex');
+    activeKey.value = WRONG_KEY;
+    expect(() => decrypt(encrypted)).toThrow();
 
-    const decipher = createDecipheriv('aes-256-gcm', wrongKey, iv);
-    decipher.setAuthTag(authTag);
-    expect(() => {
-      decipher.update(ciphertext);
-      decipher.final();
-    }).toThrow();
+    // And is not simply broken for everything: the original key still works.
+    activeKey.value = TEST_KEY;
+    expect(decrypt(encrypted)).toBe('secret');
   });
 
   it('outputs colon-delimited base64 segments', () => {
