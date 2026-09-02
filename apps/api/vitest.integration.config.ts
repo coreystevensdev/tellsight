@@ -23,6 +23,15 @@ export default defineConfig({
       'shared/constants': new URL('../../packages/shared/src/constants/index.ts', import.meta.url).pathname,
       'shared/types': new URL('../../packages/shared/src/types/index.ts', import.meta.url).pathname,
       'shared/schemas': new URL('../../packages/shared/src/schemas/index.ts', import.meta.url).pathname,
+      // apps/web aliases all five; these two were missing here, so anything
+      // importing shared/agent or shared/formatting resolved through the package
+      // exports to packages/shared/dist and the suite tested the last build.
+      // Verified: gutting routeProposal in src and not rebuilding left
+      // evaluateOrg.test.ts at 16/16 green while shared's own suite failed 7.
+      // CI builds shared first so it was never wrong there, but the documented
+      // dev loop, pnpm -C apps/api test, was.
+      'shared/agent': new URL('../../packages/shared/src/agent/index.ts', import.meta.url).pathname,
+      'shared/formatting': new URL('../../packages/shared/src/formatting/index.ts', import.meta.url).pathname,
     },
   },
 });
