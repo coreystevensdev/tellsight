@@ -175,15 +175,49 @@ describe('assemblePrompt', () => {
     expect(result.user).toBe('Allow: none');
   });
 
-  it('never includes raw data fields in the prompt', async () => {
+  // This asserted the prompt did not contain "orgId", "datasetId" or "rows",
+  // none of which a ScoredInsight has ever carried, so it could not fail.
+  // Appending JSON.stringify(insights) to the prompt still passed it. The
+  // privacy boundary is real, but it is the ComputedStat union in types.ts that
+  // enforces it, and the test contributed nothing while reading as if it did.
+  //
+  // What can actually regress is the rendering: assembly walks each insight and
+  // formats named fields, so anything that serialises an object wholesale, or
+  // widens the formatter to dump unknown keys, leaks internals into the prompt.
+  it('renders formatted stats only, never the insight objects themselves', async () => {
     const { assemblePrompt } = await import('./assembly.js');
-    const result = assemblePrompt(fixtureInsights, 1);
 
-    // only check the prompt text, the metadata property is part of AssembledContext, not a data leak
-    const prompt = result.user;
-    expect(prompt).not.toContain('"orgId"');
-    expect(prompt).not.toContain('"datasetId"');
-    expect(prompt).not.toContain('"rows"');
+    // Values chosen to be unmistakable in a diff and impossible to produce by
+    // formatting. score and breakdown are ranking signals the model never sees.
+    const sentinel: ScoredInsight[] = [
+      {
+        stat: {
+          statType: StatType.Anomaly,
+          category: 'Sales',
+          value: 900,
+          comparison: 500,
+          details: { direction: 'above', zScore: 2.5, iqrBounds: { lower: 200, upper: 800 }, deviation: 400 },
+        },
+        score: 0.123456789,
+        breakdown: { novelty: 0.987654321, actionability: 0.876543219, specificity: 0.765432198 },
+      },
+    ];
+
+    const prompt = assemblePrompt(sentinel, 1).user;
+
+    // Positive control first: without this the rest passes on an empty prompt.
+    expect(prompt).toContain('Sales');
+    expect(prompt).toContain('z-score: 2.50');
+
+    for (const internal of ['0.123456789', '0.987654321', '0.876543219', '0.765432198']) {
+      expect(prompt, `scoring internal ${internal} reached the prompt`).not.toContain(internal);
+    }
+
+    // Object syntax at all means something was serialised rather than formatted.
+    expect(prompt).not.toContain('{"');
+    expect(prompt).not.toContain('"statType"');
+    expect(prompt).not.toContain('"breakdown"');
+    expect(prompt).not.toContain('iqrBounds');
   });
 
   it('formats each stat type correctly in the prompt', async () => {
