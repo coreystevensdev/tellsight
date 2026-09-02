@@ -944,6 +944,36 @@ describe('streamToSSE disconnect timing against a real server', () => {
 // thresholds can be checked, so these guard that the metric still records at
 // all rather than checking a wall-clock number.
 describe('AI latency instrumentation (NFR2, NFR3)', () => {
+  // Sibling of describe('streamToSSE'), so it never received that block's
+  // beforeEach. It passed anyway because clearAllMocks resets calls and leaves
+  // implementations, so whatever the last test up there configured was still in
+  // place. Run this describe on its own and both tests failed with
+  // "expected +0 to be 1": assemblePrompt returned undefined, the destructure in
+  // streamHandler threw, the PIPELINE_ERROR branch ran, and no metric was ever
+  // observed. The tests did catch a removed .observe(), but only by accident of
+  // file ordering.
+  //
+  // Real timers deliberately: this measures latency, and the sibling block runs
+  // on fake ones.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useRealTimers();
+
+    mockRunCurationPipeline.mockResolvedValue([]);
+    mockAssemblePrompt.mockReturnValue({
+      system: 'test system prompt',
+      user: 'test user prompt',
+      metadata: defaultMetadata,
+    });
+    mockValidateSummary.mockReturnValue({
+      status: 'clean',
+      unmatchedNumbers: [],
+      numbersChecked: 0,
+      allowedValueCount: 0,
+    });
+    mockStoreSummary.mockResolvedValue({});
+  });
+
   // prom-client reports a histogram under its base name; the _count and _sum
   // samples live inside values[] under metricName, not as separate metrics.
   async function observationCount(metric: string, labels: Record<string, string>) {
