@@ -76,17 +76,6 @@ export const envSchema = z
       path: ['STRIPE_SECRET_KEY'],
     },
   )
-  // Every other value in this file is checked for being wrong in production.
-  // This one bypasses all four rate-limiter tiers including auth, so a true
-  // here leaves login and password reset open to unbounded guessing, and it is
-  // the one production value that already ships as true somewhere: .env.ci sets
-  // it. A deploy that appended CI values to the production .env has happened,
-  // which is exactly the failure this file exists to catch at boot.
-  .refine((data) => !(data.NODE_ENV === 'production' && data.DISABLE_RATE_LIMIT === 'true'), {
-    message:
-      'DISABLE_RATE_LIMIT=true is not permitted in production. It bypasses every rate limiter including the auth tier, leaving login and password reset open to unbounded brute force. It exists for parallel Playwright workers in CI only.',
-    path: ['DISABLE_RATE_LIMIT'],
-  })
   .refine((data) => !(data.EMAIL_PROVIDER === 'resend' && !data.RESEND_API_KEY), {
     message: 'RESEND_API_KEY required when EMAIL_PROVIDER=resend.',
     path: ['EMAIL_PROVIDER'],

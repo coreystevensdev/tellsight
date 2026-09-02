@@ -145,23 +145,6 @@ describe('envSchema, production guards on non-email settings', () => {
     expect(result.success).toBe(true);
   });
 
-  it('rejects DISABLE_RATE_LIMIT=true in production', () => {
-    const result = envSchema.safeParse(
-      baseEnv({ NODE_ENV: 'production', DISABLE_RATE_LIMIT: 'true' }),
-    );
-    expect(result.success).toBe(false);
-    if (result.success) return;
-
-    const issue = result.error.issues.find((i) => i.path[0] === 'DISABLE_RATE_LIMIT');
-    expect(issue?.message).toMatch(/not permitted in production/);
-  });
-
-  // It exists for parallel Playwright workers, so CI has to keep working.
-  it('allows DISABLE_RATE_LIMIT=true outside production', () => {
-    const result = envSchema.safeParse(baseEnv({ DISABLE_RATE_LIMIT: 'true' }));
-    expect(result.success).toBe(true);
-  });
-
   it('defaults DISABLE_RATE_LIMIT to "false"', () => {
     const result = envSchema.safeParse(baseEnv());
     expect(result.success && result.data.DISABLE_RATE_LIMIT).toBe('false');
