@@ -111,6 +111,63 @@ describe('envSchema, email provider coupling', () => {
   });
 });
 
+describe('envSchema, production guards on non-email settings', () => {
+  // The only refine in the file that had no test. A test key in production takes
+  // real payments to nowhere, and the failure is silent until someone checks
+  // Stripe.
+  it('rejects a Stripe test key in production', () => {
+    const result = envSchema.safeParse(
+      baseEnv({ NODE_ENV: 'production', STRIPE_SECRET_KEY: 'sk_test_x' }),
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
+
+    const issue = result.error.issues.find((i) => i.path[0] === 'STRIPE_SECRET_KEY');
+    expect(issue?.message).toMatch(/must be a live key/);
+  });
+
+  it('accepts a live Stripe key in production', () => {
+    const result = envSchema.safeParse(
+      baseEnv({
+        NODE_ENV: 'production',
+        STRIPE_SECRET_KEY: 'sk_live_y',
+        EMAIL_PROVIDER: 'resend',
+        RESEND_API_KEY: 're_abc',
+        RESEND_WEBHOOK_SECRET: 'whsec_abc',
+        EMAIL_FROM_NAME: 'Tellsight',
+      }),
+    );
+    expect(result.success).toBe(true);
+  });
+
+  it('leaves a test key alone outside production', () => {
+    const result = envSchema.safeParse(baseEnv({ STRIPE_SECRET_KEY: 'sk_test_x' }));
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects DISABLE_RATE_LIMIT=true in production', () => {
+    const result = envSchema.safeParse(
+      baseEnv({ NODE_ENV: 'production', DISABLE_RATE_LIMIT: 'true' }),
+    );
+    expect(result.success).toBe(false);
+    if (result.success) return;
+
+    const issue = result.error.issues.find((i) => i.path[0] === 'DISABLE_RATE_LIMIT');
+    expect(issue?.message).toMatch(/not permitted in production/);
+  });
+
+  // It exists for parallel Playwright workers, so CI has to keep working.
+  it('allows DISABLE_RATE_LIMIT=true outside production', () => {
+    const result = envSchema.safeParse(baseEnv({ DISABLE_RATE_LIMIT: 'true' }));
+    expect(result.success).toBe(true);
+  });
+
+  it('defaults DISABLE_RATE_LIMIT to "false"', () => {
+    const result = envSchema.safeParse(baseEnv());
+    expect(result.success && result.data.DISABLE_RATE_LIMIT).toBe('false');
+  });
+});
+
 describe('envSchema, CAN-SPAM + delivery guards (no placeholder defaults)', () => {
   it('requires EMAIL_FROM_ADDRESS, fails when omitted', () => {
     const env = baseEnv();

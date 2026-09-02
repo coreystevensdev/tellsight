@@ -11,6 +11,12 @@ vi.mock('../config.js', () => ({
     CLAUDE_API_KEY: 'test-key',
     CLAUDE_MODEL: 'claude-sonnet-4-5-20250929',
   },
+  // integrations.ts calls these in router-level guards that run ahead of every
+  // route under /quickbooks and /shopify. Without them on the mock the call is
+  // undefined, the guard throws, and the request 500s before reaching the
+  // owner check further down.
+  isQbConfigured: () => true,
+  isShopifyConfigured: () => true,
 }));
 
 vi.mock('../lib/logger.js', () => ({
@@ -142,6 +148,32 @@ describe('protectedRouter guard wiring', () => {
   // also pass with the whole router broken.
   it('still lets that caller reach a non-admin route', async () => {
     const res = await fetch(`${baseUrl}/ai-summaries/1/latest`);
+
+    expect(res.status).not.toBe(403);
+  });
+
+  // integrations.test.ts mocks roleGuard to a pass-through and its createMockReq
+  // hardcodes role 'owner', so the real owner guard on the two disconnect routes
+  // was never exercised from either side. Stripping every roleGuard in the repo
+  // failed 12 tests and not one was in that file, leaving a plain org member able
+  // to disconnect the org's QuickBooks or Shopify connection.
+  //
+  // The auth stub above sets a user with no role at all, so role !== 'owner'.
+  it.each(['/integrations/quickbooks', '/integrations/shopify'])(
+    'refuses a non-owner disconnecting %s',
+    async (path) => {
+      const res = await fetch(`${baseUrl}${path}`, { method: 'DELETE' });
+
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { error?: { code?: string } };
+      expect(body.error?.code).toBe('FORBIDDEN');
+    },
+  );
+
+  // Same caller on an integrations route with no owner guard. Without this the
+  // two above would pass just as well with the router never mounted at all.
+  it('still lets that caller reach an unguarded integrations route', async () => {
+    const res = await fetch(`${baseUrl}/integrations/quickbooks/status`);
 
     expect(res.status).not.toBe(403);
   });
