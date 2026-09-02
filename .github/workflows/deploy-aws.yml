@@ -215,6 +215,18 @@ jobs:
               # success, and production silently kept running old code.
               "set -e",
               f"printf '%s' '{env_b64}' | base64 -d > /opt/tellsight/.env",
+              # DISABLE_RATE_LIMIT bypasses all four limiter tiers including auth.
+              # It belongs to CI, where parallel Playwright workers would otherwise
+              # blow the 60/min public limit, and .env.ci sets it. The deploy never
+              # writes it, so it can only arrive by someone appending to this file
+              # by hand, which is exactly how an ENCRYPTION_KEY got welded to the
+              # end of a line and took production down.
+              #
+              # This check lives here rather than in config.ts because the E2E
+              # stack boots the API in production mode with the flag on, and
+              # nothing at the config layer can tell that container from this one.
+              # The deploy can.
+              "grep -qE '^DISABLE_RATE_LIMIT=true' /opt/tellsight/.env && { echo 'REFUSING: DISABLE_RATE_LIMIT=true in the production .env'; exit 1; } || true",
               f"printf '%s' '{caddy_b64}' | base64 -d > /opt/tellsight/Caddyfile",
               # deploy-history is a newest-first list of deployed sha tags, and it
               # is what makes rollback a stack instead of one deep. The previous

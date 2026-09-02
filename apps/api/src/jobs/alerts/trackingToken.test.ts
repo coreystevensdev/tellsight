@@ -1,3 +1,5 @@
+import { createHmac } from 'node:crypto';
+
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('../../config.js', () => ({
@@ -95,4 +97,36 @@ describe('verifyAlertTrackingToken', () => {
     const oversized = 'a'.repeat(513);
     expect(verifyAlertTrackingToken(oversized)).toBeNull();
   });
+});
+
+// Every test above signs and verifies through the module's own functions, so the
+// purpose prefix cancels out: change PURPOSE from 'alert:track' to anything else
+// and both halves move together and the round trip still passes. muteToken.ts
+// has an explicit test for the equivalent guard; this one did not.
+//
+// Rebuilding the signature here with the prefix written out is what pins it. It
+// is the only reason a digest tracking token, which uses the same HMAC scheme
+// and the same secret, cannot be replayed against this verifier.
+describe('purpose prefix isolation', () => {
+  const SECRET = 'a'.repeat(64);
+
+  function tokenSignedWith(purpose: string) {
+    const sig = createHmac('sha256', SECRET)
+      .update(
+        `${purpose}:${PAYLOAD.orgId}:${PAYLOAD.userId}:${PAYLOAD.ruleId}:${PAYLOAD.ruleKind}:${PAYLOAD.fireId}`,
+      )
+      .digest('base64url');
+    return Buffer.from(JSON.stringify({ ...PAYLOAD, sig }), 'utf8').toString('base64url');
+  }
+
+  it("accepts a signature built with the 'alert:track' prefix", () => {
+    expect(verifyAlertTrackingToken(tokenSignedWith('alert:track'))).toEqual(PAYLOAD);
+  });
+
+  it.each(['digest:track', 'alert:mute', 'unsubscribe', 'track', ''])(
+    'rejects a signature built with the %s prefix',
+    (purpose) => {
+      expect(verifyAlertTrackingToken(tokenSignedWith(purpose))).toBeNull();
+    },
+  );
 });
