@@ -11,12 +11,27 @@ vi.mock('../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-const mockBreakerInstances: Array<{ name: string; execSpy: ReturnType<typeof vi.fn> }> = [];
+interface BreakerOpts {
+  name: string;
+  threshold: number;
+  cooldownMs: number;
+  isIgnored: (err: unknown) => boolean;
+}
+
+// Captures the whole options object, not just the name. Reading only opts.name
+// meant threshold, cooldownMs and isIgnored were unasserted at all three
+// construction sites, and replacing isIgnored with () => false left the entire
+// API suite green.
+const mockBreakerInstances: Array<{
+  name: string;
+  opts: BreakerOpts;
+  execSpy: ReturnType<typeof vi.fn>;
+}> = [];
 
 vi.mock('../../lib/circuitBreaker.js', () => ({
-  CircuitBreaker: vi.fn().mockImplementation((opts: { name: string }) => {
+  CircuitBreaker: vi.fn().mockImplementation((opts: BreakerOpts) => {
     const execSpy = vi.fn((fn: () => Promise<unknown>) => fn());
-    mockBreakerInstances.push({ name: opts.name, execSpy });
+    mockBreakerInstances.push({ name: opts.name, opts, execSpy });
     return { exec: execSpy, isOpen: () => false };
   }),
   CircuitOpenError: class CircuitOpenError extends Error {
@@ -70,6 +85,80 @@ vi.mock('@anthropic-ai/sdk', () => {
 });
 
 import { logger } from '../../lib/logger.js';
+
+describe('circuit breaker construction options', () => {
+  async function breakerOpts() {
+    vi.resetModules();
+    vi.clearAllMocks();
+    mockBreakerInstances.length = 0;
+
+    mockComputeCost.mockReturnValue(0.01);
+    mockExceedsBudget.mockReturnValue({ exceeded: false, observed: 0.01, cap: null, median: null });
+
+    const claudeClient = await import('./claudeClient.js');
+    return { opts: mockBreakerInstances.map((b) => b.opts), claudeClient };
+  }
+
+  // Anthropic's SDK already retries twice per call, so 3 trips is roughly 9
+  // failed attempts over ~45s of real outage before a breaker opens. A lower
+  // number turns a transient blip into a 30s outage for every user.
+  it('gives all three breakers the same threshold and cooldown', async () => {
+    const { opts } = await breakerOpts();
+
+    expect(opts).toHaveLength(3);
+    for (const o of opts) {
+      expect(o.threshold).toBe(3);
+      expect(o.cooldownMs).toBe(30_000);
+    }
+  });
+
+  it('gives all three breakers the same isIgnored predicate', async () => {
+    const { opts } = await breakerOpts();
+
+    for (const o of opts) expect(typeof o.isIgnored).toBe('function');
+    expect(opts[1]!.isIgnored).toBe(opts[0]!.isIgnored);
+    expect(opts[2]!.isIgnored).toBe(opts[0]!.isIgnored);
+  });
+
+  // A cost-cap trip is the system working, not Anthropic failing. Counting it
+  // means three users hitting the cap opens the breaker and everyone else gets
+  // AI_UNAVAILABLE for 30s.
+  it('does not count a budget trip against the breaker', async () => {
+    const { opts } = await breakerOpts();
+    const { CostBudgetExceededError } = await import('../../lib/appError.js');
+
+    expect(opts[0]!.isIgnored(new CostBudgetExceededError(1.23, 1.0))).toBe(true);
+  });
+
+  it('does count a real upstream failure', async () => {
+    const { opts } = await breakerOpts();
+
+    expect(opts[0]!.isIgnored(new Error('502 from Anthropic'))).toBe(false);
+    expect(opts[0]!.isIgnored(new TypeError('undefined is not a function'))).toBe(false);
+    expect(opts[0]!.isIgnored('not even an error')).toBe(false);
+  });
+
+  // AbortedByClient is module-private, so the only way to check it is to make
+  // the client throw one and hand that instance back to the predicate. Three
+  // users pressing Cancel must not open the breaker for everybody else.
+  it('does not count a client-side abort against the breaker', async () => {
+    const { opts, claudeClient } = await breakerOpts();
+
+    const controller = new AbortController();
+    controller.abort();
+    // Any stream failure while the signal is aborted takes the abort branch.
+    mockStream.mockImplementation(() => {
+      throw new Error('stream torn down');
+    });
+
+    const thrown = await claudeClient
+      .streamInterpretation({ system: '', user: 'x' }, () => {}, controller.signal)
+      .catch((e: unknown) => e);
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect(opts[0]!.isIgnored(thrown)).toBe(true);
+  });
+});
 
 describe('circuit breaker wiring', () => {
   it('routes generate/stream through the shared breaker, generateTool and converseWithTools each through their own', async () => {

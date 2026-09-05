@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest';
 
 import { BANNED_IMPERATIVES } from './constants.js';
-import { agentProposalSchema } from './proposal.js';
+import {
+  ACTION_MUTATES,
+  ACTION_TYPES,
+  actionMutates,
+  agentProposalSchema,
+} from './proposal.js';
 
 function validProposal(over: Record<string, unknown> = {}) {
   return {
@@ -71,4 +76,34 @@ describe('agentProposalSchema currency case boundary', () => {
   it('rejects an empty currency code', () => {
     expect(agentProposalSchema.safeParse(withCurrency('')).success).toBe(false);
   });
+});
+
+// grep for actionMutates or ACTION_MUTATES across every test file in the repo
+// returned nothing before this. The fallback is the gate's last line of defence:
+// an action type added to the schema but never registered here has to route to
+// human approval rather than run unattended, and flipping the default to false
+// was invisible to both this package and the API suite.
+describe('actionMutates', () => {
+  it('reports the registered flag for every known action type', () => {
+    expect(actionMutates('notify')).toBe(false);
+    expect(actionMutates('createNote')).toBe(false);
+    expect(actionMutates('flagInvoice')).toBe(false);
+    expect(actionMutates('reclassify')).toBe(true);
+  });
+
+  it('covers every type in ACTION_TYPES, so a new one cannot slip through', () => {
+    for (const type of ACTION_TYPES) {
+      expect(ACTION_MUTATES, `${type} has no registered mutates flag`).toHaveProperty(type);
+      expect(typeof ACTION_MUTATES[type]).toBe('boolean');
+    }
+  });
+
+  // The fail-safe direction. An unregistered type must be treated as mutating,
+  // so it goes to a human instead of executing on its own.
+  it.each(['reclassifyV2', 'postToQuickbooks', 'sendPayment', '', 'toString'])(
+    'treats the unregistered type %s as mutating',
+    (type) => {
+      expect(actionMutates(type)).toBe(true);
+    },
+  );
 });

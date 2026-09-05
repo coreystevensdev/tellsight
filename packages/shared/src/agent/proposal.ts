@@ -30,8 +30,12 @@ export const ACTION_MUTATES: Record<ActionType, boolean> = {
   reclassify: true,
 };
 
+// hasOwn, not ??: Object.prototype keys resolve to inherited members, so
+// actionMutates('toString') returned a function rather than falling through to
+// the safe default. The Zod enum keeps those out in practice, but a fail-safe
+// that only works for some unknown inputs is not one.
 export const actionMutates = (type: string): boolean =>
-  ACTION_MUTATES[type as ActionType] ?? true;
+  Object.hasOwn(ACTION_MUTATES, type) ? ACTION_MUTATES[type as ActionType] : true;
 
 const moneyImpactSchema = z.object({
   amount: z.number().nonnegative(),
