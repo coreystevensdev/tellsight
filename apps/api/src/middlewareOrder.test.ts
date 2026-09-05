@@ -31,6 +31,7 @@ describe('express middleware chain order', () => {
   it('found every marker it asserts on', () => {
     for (const marker of [
       "app.set('trust proxy'",
+      'app.use(metricsRouter)',
       'app.use(correlationId)',
       'app.use(stripeWebhookRouter)',
       'app.use(resendWebhookRouter)',
@@ -84,14 +85,22 @@ describe('express middleware chain order', () => {
 });
 
 describe('metrics endpoint exposure', () => {
-  // /metrics carries request volumes, error rates and AI spend. It is mounted
-  // before helmet and outside every rate limiter, so the bearer check is the
-  // only thing in front of it.
-  it('gates /metrics behind a bearer token in production', () => {
-    const handler = SOURCE.slice(positionOf("app.get('/metrics'"), positionOf('// request duration histogram'));
+  // What is left here is the positional half, which source text does express
+  // faithfully. Whether the bearer gate is enforced is behavioural and lives in
+  // routes/metrics.test.ts, which drives the handler; an earlier version of this
+  // block asserted only that three substrings appeared in the source slice and
+  // would have passed against `env.NODE_ENV === 'production' && false`.
+  it('mounts /metrics before helmet, so the scraper needs no security headers', () => {
+    expect(positionOf('app.use(metricsRouter)')).toBeLessThan(positionOf('app.use(helmet('));
+  });
 
-    expect(handler).toContain("env.NODE_ENV === 'production'");
-    expect(handler).toContain('env.METRICS_TOKEN');
-    expect(handler).toContain('res.status(401)');
+  // Outside the limiter on purpose: a scraper polling every 15s would otherwise
+  // consume the public budget. That makes the bearer check the only thing in
+  // front of it, which is why it now has behavioural coverage.
+  it('mounts /metrics before the public rate limiter', () => {
+    // The bare name would match the import at the top of the file, not the mount.
+    expect(positionOf('app.use(metricsRouter)')).toBeLessThan(
+      positionOf('app.use(rateLimitPublic,'),
+    );
   });
 });

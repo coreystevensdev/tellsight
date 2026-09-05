@@ -64,7 +64,8 @@ import { redis } from './lib/redis.js';
 import { queryClient, adminClient } from './lib/db.js';
 import { abortAll as abortAllStreams } from './lib/activeStreams.js';
 import { Sentry, setupExpressErrorHandler } from './lib/sentry.js';
-import { registry, httpRequestDuration } from './lib/metrics.js';
+import { httpRequestDuration } from './lib/metrics.js';
+import { metricsRouter } from './routes/metrics.js';
 
 const app = express();
 
@@ -75,19 +76,9 @@ const app = express();
 // proxy mode is re-enabled on the apex record.
 app.set('trust proxy', 2);
 
-// Prometheus metrics, before helmet so scraper doesn't need to handle security headers.
-// Gated by bearer token in production to prevent leaking operational data.
-app.get('/metrics', async (req, res) => {
-  if (env.NODE_ENV === 'production') {
-    const auth = req.headers.authorization;
-    if (!auth?.startsWith('Bearer ') || auth.slice(7) !== env.METRICS_TOKEN) {
-      res.status(401).end();
-      return;
-    }
-  }
-  res.set('Content-Type', registry.contentType);
-  res.end(await registry.metrics());
-});
+// Before helmet so the scraper does not need to handle security headers. The
+// bearer gate lives in the router, where it can be tested.
+app.use(metricsRouter);
 
 // request duration histogram, wraps all routes
 app.use((req, res, next) => {
