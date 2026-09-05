@@ -112,9 +112,12 @@ vi.mock('../services/analytics/trackEvent.js', () => ({
   trackEvent: mockTrackEvent,
 }));
 
+const mockAudit = vi.fn();
+const mockAuditAuth = vi.fn();
+
 vi.mock('../services/audit/auditService.js', () => ({
-  audit: vi.fn(),
-  auditAuth: vi.fn(),
+  audit: (...args: unknown[]) => mockAudit(...args),
+  auditAuth: (...args: unknown[]) => mockAuditAuth(...args),
 }));
 
 vi.mock('../services/integrations/worker.js', () => ({
@@ -299,6 +302,15 @@ describe('integrations routes', () => {
         expect.objectContaining({ provider: 'quickbooks' }),
       );
       expect(res._json?.data?.message).toBe('QuickBooks disconnected');
+
+      // Deleting the auditAuth call left the whole API suite green: the mock was
+      // anonymous and nothing asserted on it. Analytics and audit are separate
+      // records, so trackEvent passing above says nothing about the audit row.
+      expect(mockAuditAuth).toHaveBeenCalledWith(
+        expect.anything(),
+        'integration.disconnected',
+        expect.objectContaining({ targetType: 'integration' }),
+      );
     });
 
     it('returns 404 if not connected', async () => {

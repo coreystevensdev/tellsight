@@ -19,6 +19,14 @@ const mockRequestPasswordReset = vi.fn();
 const mockResetPassword = vi.fn();
 const mockSendEmail = vi.fn();
 
+const mockAudit = vi.fn();
+const mockAuditAuth = vi.fn();
+
+vi.mock('../services/audit/auditService.js', () => ({
+  audit: (...args: unknown[]) => mockAudit(...args),
+  auditAuth: (...args: unknown[]) => mockAuditAuth(...args),
+}));
+
 vi.mock('../services/auth/index.js', () => ({
   generateOAuthState: mockGenerateOAuthState,
   buildGoogleAuthUrl: mockBuildGoogleAuthUrl,
@@ -195,6 +203,16 @@ describe('auth routes', () => {
 
       expect(mockHandleGoogleCallback).toHaveBeenCalledWith('google-auth-code', undefined);
       expect(mockCreateTokenPair).toHaveBeenCalledWith(1, 10, 'owner', false);
+
+      // auth.ts uses the unauthenticated audit() rather than auditAuth, since
+      // these fire before a session exists. Nothing asserted on it, so deleting
+      // the call left the whole API suite green, and login and signup are the
+      // events an audit trail exists for above all others. isNewUser is true in
+      // this fixture, so the action is the signup branch.
+      expect(mockAudit).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ orgId: 10, userId: 1, action: 'auth.signup' }),
+      );
     });
 
     it('returns 401 when OAuth state does not match cookie', async () => {
