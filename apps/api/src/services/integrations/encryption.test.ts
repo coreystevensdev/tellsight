@@ -102,3 +102,66 @@ describe('encryption', () => {
     }
   });
 });
+
+// The tests above tamper with the value of each segment; none touched its
+// length, so both length guards were unasserted and deleting either left the
+// whole API suite green.
+//
+// That matters because Node does not enforce these itself. createDecipheriv
+// accepts a 16-byte IV for GCM, and setAuthTag accepts a 4-byte tag and
+// decrypts successfully, with only a deprecation warning. So this guard is the
+// only thing standing between 2^128 and 2^32 forgery resistance: an attacker
+// who can present a short tag needs about four billion attempts rather than a
+// number with 39 digits.
+describe('encryption segment lengths', () => {
+  function reassemble(encrypted: string, index: number, replace: (b: Buffer) => Buffer) {
+    const parts = encrypted.split(':') as [string, string, string];
+    parts[index] = replace(Buffer.from(parts[index]!, 'base64')).toString('base64');
+    return parts.join(':');
+  }
+
+  it.each([
+    ['truncated to 4 bytes', (b: Buffer) => b.subarray(0, 4)],
+    ['truncated to 15 bytes, one short', (b: Buffer) => b.subarray(0, 15)],
+    ['a single byte', (b: Buffer) => b.subarray(0, 1)],
+    ['empty', () => Buffer.alloc(0)],
+    ['padded to 17 bytes', (b: Buffer) => Buffer.concat([b, Buffer.alloc(1)])],
+  ])('rejects an auth tag %s', (_label, mangle) => {
+    const encrypted = encrypt('quickbooks-refresh-token');
+
+    expect(() => decrypt(reassemble(encrypted, 1, mangle))).toThrow(/Invalid auth tag length/);
+  });
+
+  it.each([
+    ['truncated to 4 bytes', (b: Buffer) => b.subarray(0, 4)],
+    ['empty', () => Buffer.alloc(0)],
+    ['padded to 16 bytes, which GCM would otherwise accept', (b: Buffer) =>
+      Buffer.concat([b, Buffer.alloc(4)])],
+  ])('rejects an IV %s', (_label, mangle) => {
+    const encrypted = encrypt('quickbooks-refresh-token');
+
+    expect(() => decrypt(reassemble(encrypted, 0, mangle))).toThrow(/Invalid IV length/);
+  });
+
+  // The message names the length rather than being a generic crypto failure,
+  // which is how we know the guard rejected it and not the cipher.
+  it('reports the expected and actual length', () => {
+    const encrypted = encrypt('token');
+
+    expect(() => decrypt(reassemble(encrypted, 1, (b) => b.subarray(0, 4)))).toThrow(
+      'Invalid auth tag length: expected 16, got 4',
+    );
+    expect(() => decrypt(reassemble(encrypted, 0, (b) => b.subarray(0, 4)))).toThrow(
+      'Invalid IV length: expected 12, got 4',
+    );
+  });
+
+  it('still accepts segments of exactly the right length', () => {
+    const encrypted = encrypt('token');
+    const [iv, tag] = encrypted.split(':') as [string, string, string];
+
+    expect(Buffer.from(iv, 'base64')).toHaveLength(12);
+    expect(Buffer.from(tag, 'base64')).toHaveLength(16);
+    expect(decrypt(encrypted)).toBe('token');
+  });
+});

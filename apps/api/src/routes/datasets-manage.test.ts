@@ -37,9 +37,11 @@ vi.mock('../services/analytics/trackEvent.js', () => ({
   trackEvent: mockTrackEvent,
 }));
 
+const mockAuditAuth = vi.fn();
+
 vi.mock('../services/audit/auditService.js', () => ({
   audit: vi.fn(),
-  auditAuth: vi.fn(),
+  auditAuth: (...args: unknown[]) => mockAuditAuth(...args),
 }));
 
 const mockWithRlsContext = vi.fn();
@@ -217,6 +219,20 @@ describe('DELETE /datasets/manage/:id', () => {
       rowCount: 50,
       hadActiveShares: false,
     }));
+
+    // The mock here was anonymous, so deleting the auditAuth call from the route
+    // left the whole API suite green. Analytics and audit are separate records
+    // with separate purposes, and trackEvent passing says nothing about the
+    // audit row. Deleting a dataset is exactly the action a trail exists for.
+    expect(mockAuditAuth).toHaveBeenCalledWith(
+      expect.anything(),
+      'dataset.deleted',
+      expect.objectContaining({
+        targetType: 'dataset',
+        targetId: '4',
+        metadata: expect.objectContaining({ name: 'Stale Data', rowCount: 50 }),
+      }),
+    );
   });
 
   it('rejects member delete with 403', async () => {
