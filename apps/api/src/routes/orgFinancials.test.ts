@@ -10,6 +10,13 @@ const mockGetRowsByDataset = vi.fn();
 const mockGetMonthlyBucketsByDataset = vi.fn();
 const mockTrackEvent = vi.fn();
 
+const mockAuditAuth = vi.fn();
+
+vi.mock('../services/audit/auditService.js', () => ({
+  audit: vi.fn(),
+  auditAuth: (...args: unknown[]) => mockAuditAuth(...args),
+}));
+
 vi.mock('../services/auth/tokenService.js', () => ({
   verifyAccessToken: mockVerifyAccessToken,
 }));
@@ -157,6 +164,17 @@ describe('PUT /org/financials', () => {
       fields: expect.arrayContaining(['cashOnHand']),
     });
     expect(mockTrackEvent).toHaveBeenCalledWith(10, 5, 'runway.enabled', { cashOnHand: 25000 });
+
+    // Deleting the auditAuth call from the route left the whole API suite green:
+    // the mock was anonymous and nothing asserted on it. auditService itself is
+    // covered; that the route still calls it was not. An audit trail nobody
+    // checks stops existing the first time someone tidies a line that looks
+    // unused.
+    expect(mockAuditAuth).toHaveBeenCalledWith(
+      expect.anything(),
+      'financials.updated',
+      expect.objectContaining({ metadata: expect.anything() }),
+    );
   });
 
   it('fires only financials.updated (not runway.enabled) on subsequent updates', async () => {

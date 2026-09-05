@@ -6,6 +6,13 @@ const mockGenerateShareLink = vi.fn();
 const mockGetSharedInsight = vi.fn();
 const mockTrackEvent = vi.fn();
 
+const mockAuditAuth = vi.fn();
+
+vi.mock('../services/audit/auditService.js', () => ({
+  audit: vi.fn(),
+  auditAuth: (...args: unknown[]) => mockAuditAuth(...args),
+}));
+
 vi.mock('../services/auth/tokenService.js', () => ({
   verifyAccessToken: mockVerifyAccessToken,
 }));
@@ -103,6 +110,17 @@ describe('POST /shares', () => {
     expect(body.data.url).toContain('/share/');
     expect(body.data.token).toBeDefined();
     expect(mockGenerateShareLink).toHaveBeenCalledWith(10, 5, 1, expect.anything());
+
+    // Deleting the auditAuth call from the route left the whole API suite green:
+    // the mock was anonymous and nothing asserted on it. auditService itself is
+    // covered; that the route still calls it was not. An audit trail nobody
+    // checks stops existing the first time someone tidies a line that looks
+    // unused.
+    expect(mockAuditAuth).toHaveBeenCalledWith(
+      expect.anything(),
+      'share.created',
+      expect.objectContaining({ targetType: 'share' }),
+    );
   });
 
   it('does not fire share.created server-side (moved to client useCreateShareLink)', async () => {

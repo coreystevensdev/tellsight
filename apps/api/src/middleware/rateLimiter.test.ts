@@ -275,3 +275,81 @@ describe('rateLimiter', { retry: 2 }, () => {
     });
   });
 });
+
+// Both user-keyed limiters could be silently downgraded to IP-keyed and every
+// test still passed: the existing blocks pin one user, so what the key is made
+// of was never observed. In production everyone behind one office NAT would then
+// share a single 5/min AI budget, and the logger.warn about falling back to IP
+// survives the downgrade untouched, so the logs would not show it either.
+//
+// The discriminating shape is two users on one IP. Every request here comes from
+// 127.0.0.1; only the identity differs.
+describe('user-keyed limiters key on the user, not the address', { retry: 2 }, () => {
+  async function appKeyedByHeader(limiter: typeof rateLimitAi) {
+    return createTestApp((app) => {
+      app.use((req: Request, _res: Response, next) => {
+        const sub = req.headers['x-test-user'];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if (sub) (req as any).user = { sub: String(sub) };
+        next();
+      });
+      app.use(limiter);
+      app.get('/guarded', (_req: Request, res: Response) => res.json({ data: { ok: true } }));
+    });
+  }
+
+  async function exhaust(baseUrl: string, user: string, attempts: number) {
+    const codes: number[] = [];
+    for (let i = 0; i < attempts; i += 1) {
+      const res = await fetch(`${baseUrl}/guarded`, { headers: { 'x-test-user': user } });
+      codes.push(res.status);
+    }
+    return codes;
+  }
+
+  it('gives two users on the same address separate AI budgets', async () => {
+    const { server, baseUrl } = await appKeyedByHeader(rateLimitAi);
+
+    try {
+      const first = await exhaust(baseUrl, 'ai-heavy-user', 8);
+      expect(first).toContain(429);
+
+      // Same IP, different person. IP-keyed, this is 429 too.
+      const second = await fetch(`${baseUrl}/guarded`, {
+        headers: { 'x-test-user': 'ai-quiet-user' },
+      });
+      expect(second.status).toBe(200);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it('gives two users on the same address separate dashboard budgets', async () => {
+    const { server, baseUrl } = await appKeyedByHeader(rateLimitDashboardCompute);
+
+    try {
+      const first = await exhaust(baseUrl, 'dash-heavy-user', 45);
+      expect(first).toContain(429);
+
+      const second = await fetch(`${baseUrl}/guarded`, {
+        headers: { 'x-test-user': 'dash-quiet-user' },
+      });
+      expect(second.status).toBe(200);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  // The other half: one identity is one budget however many addresses it
+  // arrives from, which is what makes the quota per user rather than per device.
+  it('shares one budget across repeated requests from the same user', async () => {
+    const { server, baseUrl } = await appKeyedByHeader(rateLimitAi);
+
+    try {
+      const codes = await exhaust(baseUrl, 'ai-single-user', 8);
+      expect(codes.filter((c) => c === 200).length).toBeLessThanOrEqual(5);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+});
