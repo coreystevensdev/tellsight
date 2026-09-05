@@ -943,6 +943,30 @@ describe('computeCashForecast', () => {
     expect(d.confidence).toBe('high');
   });
 
+  // The staleness rule is `ageInDays > 90`, exclusive, and the existing cases all
+  // use a fresh balance so the boundary was never crossed. Widening it to 900
+  // left the whole suite green while a two-month-old balance kept reporting
+  // 'high' confidence.
+  // The 30-day window in the 'high' rule is the staleness boundary that actually
+  // decides something. Its neighbour, an `ageInDays > 90` rule, turned out to be
+  // dead: anything past 90 days also fails this check and reached the same
+  // 'moderate' through the catch-all, so removing it changed no answer.
+  it.each([
+    ['30 days old, on the boundary', '2026-05-16T00:00:00Z', 'high'],
+    ['31 days old, one past it', '2026-05-15T00:00:00Z', 'moderate'],
+    ['four months old', '2026-02-15T00:00:00Z', 'moderate'],
+  ])('reports a balance %s as %s confidence', (_label, cashAsOfDate, expected) => {
+    const nets = [-10000, -10000, -10000, -10000, -10000, -10000];
+    const result = computeCashForecast(
+      [burningCashFlow()],
+      { cashOnHand: 25_000, cashAsOfDate },
+      netsWindow(6, nets),
+      NOW,
+    );
+
+    expect(result[0]!.details.confidence).toBe(expected);
+  });
+
   it('accelerating burn: regression catches the trend, earlier zero crossing than flat extrapolation', () => {
     const nets = [-5000, -7000, -9000, -11000, -13000, -15000];
     const result = computeCashForecast(
@@ -1048,7 +1072,12 @@ describe('computeCashForecast', () => {
     expect(result[0]!.details.confidence).toBe('moderate');
   });
 
-  it('very stale cash (>90 days) explicitly downgrades to moderate via the stale-cash rule', () => {
+  // Named for a rule that turned out not to exist in any meaningful sense. There
+  // was an `[ageInDays > 90, 'moderate']` entry, and this test was written as
+  // though it were what produced the answer, but anything past 90 days also
+  // fails the 'high' rule's 30-day check and reached the same 'moderate' through
+  // the catch-all. The rule is gone; the behaviour this asserts is unchanged.
+  it('very stale cash still reports moderate, via the catch-all', () => {
     const staleCashDate = new Date(NOW.getTime() - 120 * 24 * 60 * 60 * 1000).toISOString();
     const result = computeCashForecast(
       [burningCashFlow()],
@@ -1651,6 +1680,45 @@ describe('marginTrendMonths', () => {
     });
   });
 
+  // The band is `Math.abs(diff) < 2`. Widening it to 10 left the suite green,
+  // and direction is load-bearing in three places downstream: novelty (0.8 vs
+  // 0.35), actionability for 'shrinking' (0.9 vs 0.5), and breakEvenConfidence.
+  it.each([
+    ['a 5 point margin gain', '550.00', 'expanding'],
+    ['a 5 point margin loss', '650.00', 'shrinking'],
+    ['a 1 point move, inside the band', '590.00', 'stable'],
+  ])('calls %s %s', (_label, recentExpense, expected) => {
+    const rows = [
+      ...[0, 1].flatMap((m) => [
+        monthRow('Income', 2026, m, '1000.00'),
+        monthRow('Expenses', 2026, m, '600.00'),
+      ]),
+      ...[2, 3].flatMap((m) => [
+        monthRow('Income', 2026, m, '1000.00'),
+        monthRow('Expenses', 2026, m, recentExpense),
+      ]),
+    ];
+
+    const stat = computeStats(rows).find((st) => st.statType === StatType.MarginTrend);
+    expect(stat).toBeDefined();
+    expect((stat as MarginTrendStat).details.direction).toBe(expected);
+  });
+
+  // The 3/3 case above cannot tell floor from ceil, because they agree on even
+  // counts. An odd count is what pins which half "recent" is, and that decides
+  // recentMarginPercent, which is BreakEven's divisor.
+  it('gives the extra month to the recent half when the count is odd', () => {
+    const rows = [0, 1, 2, 3, 4].flatMap((m) => [
+      monthRow('Income', 2026, m, '1000.00'),
+      monthRow('Expenses', 2026, m, '600.00'),
+    ]);
+
+    expect(marginTrendMonths(rows)).toEqual({
+      recentMonths: ['2026-03', '2026-04', '2026-05'],
+      priorMonths: ['2026-01', '2026-02'],
+    });
+  });
+
   it('returns null with fewer than 4 distinct Income/Expenses months', () => {
     const rows = [0, 1, 2].map((m) => monthRow('Income', 2026, m, '1000.00'));
     expect(marginTrendMonths(rows)).toBeNull();
@@ -1823,5 +1891,174 @@ describe('UTC month-boundary regression (DW-51/52)', () => {
     } finally {
       restore();
     }
+  });
+});
+
+// The anomaly and trend tests above assert that stats come out, not which rows
+// produced them or with what magnitude, so the constants doing the deciding were
+// unpinned: widening the IQR fence from 1.5 to 5, or halving the z-score, left
+// the whole API suite green while changing what reaches the LLM.
+//
+// These fixtures are built so exactly one value sits outside the real fence and
+// comfortably inside a widened one.
+describe('anomaly boundary constants', () => {
+  function row(id: number, amount: number, category = 'Sales') {
+    return {
+      id,
+      orgId: 1,
+      datasetId: 1,
+      sourceType: 'csv' as const,
+      category,
+      parentCategory: null,
+      date: new Date(`2026-${String((id % 12) + 1).padStart(2, '0')}-01`),
+      amount: amount.toFixed(2),
+      label: `row ${id}`,
+      metadata: null,
+      createdAt: new Date(),
+    };
+  }
+
+  // q1 = 100, q3 = 130, iqr = 30, so the real fence is 130 + 45 = 175 and a
+  // widened 5x fence would be 130 + 150 = 280.
+  const tight = [100, 110, 115, 120, 125, 130].map((v, i) => row(i + 1, v));
+
+  it('flags a value outside the 1.5x IQR fence', () => {
+    const stats = computeStats([...tight, row(99, 200)]);
+    const anomalies = stats.filter((st) => st.statType === StatType.Anomaly);
+
+    expect(anomalies).toHaveLength(1);
+    expect(anomalies[0]!.value).toBe(200);
+  });
+
+  // 260 is beyond the real fence but inside a 5x one, so widening the multiplier
+  // stops this being an anomaly at all.
+  it('flags a value that only a widened fence would let through', () => {
+    const stats = computeStats([...tight, row(99, 260)]);
+
+    expect(stats.filter((st) => st.statType === StatType.Anomaly)).toHaveLength(1);
+  });
+
+  // The lower fence is a separate constant and needs its own case. With q1
+  // around 100 and iqr 30 the real floor is about 55, while a widened 5x floor
+  // would be about -50, so a value of 20 is caught by one and not the other.
+  it('flags a value below the 1.5x IQR floor', () => {
+    const stats = computeStats([...tight, row(99, 20)]);
+    const anomalies = stats.filter((st) => st.statType === StatType.Anomaly);
+
+    expect(anomalies).toHaveLength(1);
+    expect(anomalies[0]!.value).toBe(20);
+  });
+
+  it('does not flag a value inside the fence', () => {
+    const stats = computeStats([...tight, row(99, 140)]);
+
+    expect(stats.filter((st) => st.statType === StatType.Anomaly)).toHaveLength(0);
+  });
+
+  // zScore is not cosmetic: scoring.ts gates anomaly actionability on
+  // Math.abs(zScore) >= 2, so halving the divisor demotes an anomaly from 0.9 to
+  // 0.5 and re-ranks what the prompt receives.
+  it('computes the z-score against the category standard deviation', () => {
+    const amounts = [100, 110, 115, 120, 125, 130, 400];
+    const stats = computeStats(amounts.map((v, i) => row(i + 1, v)));
+    const anomaly = stats.find((st) => st.statType === StatType.Anomaly);
+
+    const m = amounts.reduce((a, b) => a + b, 0) / amounts.length;
+    const sd = Math.sqrt(amounts.reduce((a, b) => a + (b - m) ** 2, 0) / amounts.length);
+
+    expect(anomaly).toBeDefined();
+    expect((anomaly as { details: { zScore: number } }).details.zScore).toBeCloseTo((400 - m) / sd, 6);
+  });
+
+  it('reports the direction relative to the mean', () => {
+    const high = computeStats([...tight, row(99, 400)]).find((st) => st.statType === StatType.Anomaly);
+    const low = computeStats([...tight, row(99, -400)]).find((st) => st.statType === StatType.Anomaly);
+
+    expect((high as { details: { direction: string } }).details.direction).toBe('above');
+    expect((low as { details: { direction: string } }).details.direction).toBe('below');
+  });
+});
+
+// growthPercent divides by Math.abs(firstValue). Without the abs, a category
+// whose first period is negative (a refund-heavy month, a contra account) has
+// the sign of its growth inverted, and that value flows into scoring and into
+// the prompt as "fell 40%" when it rose. Every existing trend fixture starts
+// positive, so nothing noticed.
+describe('trend growth with a negative first period', () => {
+  function monthly(values: number[], category = 'Refunds') {
+    return values.map((v, i) => ({
+      id: i + 1,
+      orgId: 1,
+      datasetId: 1,
+      sourceType: 'csv' as const,
+      category,
+      parentCategory: null,
+      date: new Date(2026, i, 1),
+      amount: v.toFixed(2),
+      label: `m${i}`,
+      metadata: null,
+      createdAt: new Date(),
+    }));
+  }
+
+  it('reports growth as positive when a negative first period rises toward zero', () => {
+    // -100 to -20 is an improvement of 80 on a magnitude of 100, so +80%.
+    const stats = computeStats(monthly([-100, -80, -60, -40, -20]));
+    const trend = stats.find((st) => st.statType === StatType.Trend);
+
+    expect(trend).toBeDefined();
+    expect((trend as { details: { growthPercent: number } }).details.growthPercent).toBeCloseTo(80, 6);
+  });
+
+  it('reports growth as negative when a negative first period falls further', () => {
+    const stats = computeStats(monthly([-100, -120, -140, -160, -180]));
+    const trend = stats.find((st) => st.statType === StatType.Trend);
+
+    expect((trend as { details: { growthPercent: number } }).details.growthPercent).toBeCloseTo(-80, 6);
+  });
+
+  it('is unchanged for a positive first period', () => {
+    const stats = computeStats(monthly([100, 120, 140, 160, 180]));
+    const trend = stats.find((st) => st.statType === StatType.Trend);
+
+    expect((trend as { details: { growthPercent: number } }).details.growthPercent).toBeCloseTo(80, 6);
+  });
+});
+
+// monthsBurning counts months strictly below zero. Relaxing it to <= pulls a
+// break-even month into the count, and that number feeds runwayConfidence
+// (>= 2 becomes 'high') and the CashFlow 0.8/0.9-vs-0.7/0.75 split, so both the
+// emitted confidence and the ranking move. Every existing fixture is strictly
+// negative, so nothing observed the boundary.
+describe('monthsBurning counts strictly negative months', () => {
+  it('excludes a month whose net is exactly zero', () => {
+    const stat = cashFlowStat([
+      ...ccfMonth(2026, 1, 10000, 17000), // -7000
+      ...ccfMonth(2026, 2, 10000, 10000), // 0, break-even
+      ...ccfMonth(2026, 3, 10000, 11000), // -1000
+    ]);
+
+    expect(stat).not.toBeNull();
+    expect(stat!.details.monthsBurning).toBe(2);
+  });
+
+  it('counts every month when all are negative', () => {
+    const stat = cashFlowStat([
+      ...ccfMonth(2026, 1, 10000, 17000),
+      ...ccfMonth(2026, 2, 10000, 13000),
+      ...ccfMonth(2026, 3, 10000, 11000),
+    ]);
+
+    expect(stat!.details.monthsBurning).toBe(3);
+  });
+
+  it('counts none when every month is positive', () => {
+    const stat = cashFlowStat([
+      ...ccfMonth(2026, 1, 17000, 10000),
+      ...ccfMonth(2026, 2, 13000, 10000),
+      ...ccfMonth(2026, 3, 11000, 10000),
+    ]);
+
+    expect(stat!.details.monthsBurning).toBe(0);
   });
 });
