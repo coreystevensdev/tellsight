@@ -844,12 +844,17 @@ export function computeCashForecast(
   // First-match rule table. The final `true` default absorbs three 'moderate'
   // cases the explicit rules don't hit: (a) 31-90 days old with non-volatile
   // nets, (b) fresh with a 2σ outlier, (c) fewer than 31 days old but volatile.
-  // None earn 'high'; rule 3's `ageInDays > 90` only catches the "stale cash"
-  // slice. Everything else that isn't squarely 'high' or 'low' lands here.
+  // None earn 'high'; everything that isn't squarely 'high' or 'low' lands here.
+  //
+  // There used to be an `[ageInDays > 90, 'moderate']` rule above the 'high'
+  // one, described as catching the stale-cash slice. It never changed an answer:
+  // anything older than 90 days also fails the `ageInDays <= 30` in the 'high'
+  // rule, so it reached the same 'moderate' through the catch-all. Removing it
+  // left every test green, which is how it was found. The staleness that does
+  // decide something is the 30-day window in the 'high' rule.
   const rules: Array<[boolean, 'high' | 'moderate' | 'low']> = [
     [method === 'rolling_mean',                                        'low'],
     [months.length < 6,                                                'low'],
-    [ageInDays > 90,                                                   'moderate'],
     [months.length >= 6 && ageInDays <= 30 && !hasVolatileNets(nets),  'high'],
     [true,                                                             'moderate'],
   ];

@@ -671,3 +671,68 @@ describe('scoreInsights with excludedStatIds', () => {
     );
   });
 });
+
+// The cash-flow arc is pinned precisely here (toBeCloseTo plus a breakdown
+// toEqual), but the older stat types only get relative-order assertions, which
+// survive a threshold move. Dropping YoY novelty's cutoff from 15 to 1, or
+// actionability's from 10 to 1, or inverting anomaly specificity, all left the
+// full API suite green while changing what ranks into the top N.
+describe('branch constants in the score functions', () => {
+  function yoy(changePercent: number): ComputedStat {
+    return {
+      statType: StatType.YearOverYear,
+      category: 'Sales',
+      value: 1000,
+      details: {
+        changePercent,
+        currentYear: 1000,
+        priorYear: 900,
+        currentYearLabel: '2026',
+        priorYearLabel: '2025',
+        month: '2026-06',
+      },
+    };
+  }
+
+  async function breakdownOf(stat: ComputedStat) {
+    mockConfig({ ...validConfig, topN: 10 });
+    const { scoreInsights } = await import('./scoring.js');
+    const [insight] = scoreInsights([stat]);
+    return insight!.breakdown;
+  }
+
+  // 15 and 10 are the cutoffs, and both are exclusive, so the value on the line
+  // takes the low branch. Testing either side of each is what pins the number
+  // rather than just its existence.
+  it('scores YoY novelty high only above a 15% change', async () => {
+    expect((await breakdownOf(yoy(16))).novelty).toBeCloseTo(0.85, 6);
+    expect((await breakdownOf(yoy(15))).novelty).toBeCloseTo(0.6, 6);
+    expect((await breakdownOf(yoy(-16))).novelty).toBeCloseTo(0.85, 6);
+  });
+
+  it('scores YoY actionability high only above a 10% change', async () => {
+    expect((await breakdownOf(yoy(11))).actionability).toBeCloseTo(0.8, 6);
+    expect((await breakdownOf(yoy(10))).actionability).toBeCloseTo(0.4, 6);
+    expect((await breakdownOf(yoy(-11))).actionability).toBeCloseTo(0.8, 6);
+  });
+
+  // A category-scoped anomaly is more specific than an overall one, and the
+  // direction of that comparison is the whole point of the field.
+  it('scores a category-scoped anomaly as more specific than an overall one', async () => {
+    const details = {
+      direction: 'above' as const,
+      zScore: 2.5,
+      iqrBounds: { lower: 200, upper: 800 },
+      deviation: 400,
+    };
+    const scoped = { statType: StatType.Anomaly, category: 'Sales', value: 900, comparison: 500, details } as ComputedStat;
+    const overall = { statType: StatType.Anomaly, category: null, value: 900, comparison: 500, details } as ComputedStat;
+
+    const scopedScore = (await breakdownOf(scoped)).specificity;
+    const overallScore = (await breakdownOf(overall)).specificity;
+
+    expect(scopedScore).toBeCloseTo(0.95, 6);
+    expect(overallScore).toBeCloseTo(0.7, 6);
+    expect(scopedScore).toBeGreaterThan(overallScore);
+  });
+});
