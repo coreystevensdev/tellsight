@@ -11,6 +11,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 const fetchMock = vi.fn();
 vi.stubGlobal('fetch', fetchMock);
 
+interface ClientError {
+  status: number;
+  code: string | null;
+  message: string;
+}
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -167,9 +173,9 @@ describe('apiClient 401 recovery', () => {
 describe('apiClient error shaping', () => {
   it('lifts the code and message off the error envelope', async () => {
     fetchMock.mockResolvedValueOnce(json({ error: { code: 'RATE_LIMITED', message: 'slow down' } }, 429));
-    const { apiClient, ApiClientError } = await freshClient();
+    const { apiClient } = await freshClient();
 
-    const err = (await apiClient('/x').catch((e: unknown) => e)) as InstanceType<typeof ApiClientError>;
+    const err = (await apiClient('/x').catch((e: unknown) => e)) as ClientError;
 
     expect(err.status).toBe(429);
     expect(err.code).toBe('RATE_LIMITED');
@@ -180,9 +186,9 @@ describe('apiClient error shaping', () => {
   // fail softly rather than replacing the status with a JSON syntax error.
   it('falls back to the status when the body is not JSON', async () => {
     fetchMock.mockResolvedValueOnce(new Response('<html>502</html>', { status: 502 }));
-    const { apiClient, ApiClientError } = await freshClient();
+    const { apiClient } = await freshClient();
 
-    const err = (await apiClient('/x').catch((e: unknown) => e)) as InstanceType<typeof ApiClientError>;
+    const err = (await apiClient('/x').catch((e: unknown) => e)) as ClientError;
 
     expect(err.status).toBe(502);
     expect(err.code).toBeNull();

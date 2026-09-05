@@ -3,6 +3,18 @@ import { Sentry } from '../lib/sentry.js';
 import { AppError, ExternalServiceError, ProgrammerError } from '../lib/appError.js';
 import { logger } from '../lib/logger.js';
 
+// Only the types a caller can actually provoke. Anything else from body-parser
+// is still treated as a bug and kept loud.
+const BODY_PARSER_CODES: Record<string, string> = {
+  'entity.parse.failed': 'INVALID_JSON',
+  'entity.too.large': 'PAYLOAD_TOO_LARGE',
+};
+
+const BODY_PARSER_MESSAGES: Record<string, string> = {
+  INVALID_JSON: 'Request body is not valid JSON.',
+  PAYLOAD_TOO_LARGE: 'Request body is too large.',
+};
+
 export function errorHandler(err: Error, req: Request, res: Response, _next: NextFunction) {
   const log = req.log ?? logger;
 
@@ -44,6 +56,23 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
         message: err.message,
         ...(safeDetails !== undefined && { details: safeDetails }),
       },
+    });
+    return;
+  }
+
+  // body-parser rejects a malformed or oversized body before any route runs, so
+  // these never reach a handler and never become AppErrors. They were falling
+  // through to the branch below: a client posting `"nope"` got a 500 saying the
+  // server had a problem, and every one of them woke Sentry. Both are the
+  // caller's mistake, and body-parser already worked out the right status.
+  const parseFailure = err as Error & { type?: string; status?: number; statusCode?: number };
+  const clientCode = BODY_PARSER_CODES[parseFailure.type ?? ''];
+  if (clientCode) {
+    const status = parseFailure.status ?? parseFailure.statusCode ?? 400;
+    log.warn({ err, type: parseFailure.type, statusCode: status }, 'Malformed request body');
+
+    res.status(status).json({
+      error: { code: clientCode, message: BODY_PARSER_MESSAGES[clientCode]! },
     });
     return;
   }
