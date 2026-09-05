@@ -451,3 +451,72 @@ describe('useAiStream fetch behavior', () => {
     expect(result.current.error).toBe('Missing access token');
   });
 });
+
+// The reducer's START isRetry increment is covered above, but retry() itself was
+// never called in this file, and AiSummaryCard.test.tsx mocks the hook wholesale
+// and feeds maxRetriesReached in as an input. So the guard that produces it was
+// unexercised: removing the cap left all 834 web tests green. The UI hiding the
+// button is the effective backstop today, but the hook is exported and each
+// retry is a fresh Claude call.
+describe('useAiStream retry guard', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function alwaysFails(status = 503) {
+    return vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status,
+      json: () =>
+        Promise.resolve({ error: { code: 'AI_UNAVAILABLE', message: 'upstream down' } }),
+    } as Response);
+  }
+
+  async function erroredHook(status = 503) {
+    const fetchSpy = alwaysFails(status);
+    const { result } = renderHook(() => useAiStream(7));
+    await act(async () => {
+      await result.current.start();
+    });
+    return { result, fetchSpy };
+  }
+
+  it('stops after three retries however many times it is called', async () => {
+    const { result, fetchSpy } = await erroredHook();
+    expect(result.current.retryable).toBe(true);
+
+    const before = fetchSpy.mock.calls.length;
+    for (let i = 0; i < 6; i += 1) {
+      await act(async () => {
+        await result.current.retry();
+      });
+    }
+
+    expect(fetchSpy.mock.calls.length - before).toBe(3);
+    expect(result.current.maxRetriesReached).toBe(true);
+  });
+
+  it('reports maxRetriesReached only once the cap is hit', async () => {
+    const { result } = await erroredHook();
+
+    expect(result.current.maxRetriesReached).toBe(false);
+    await act(async () => {
+      await result.current.retry();
+    });
+    expect(result.current.maxRetriesReached).toBe(false);
+  });
+
+  // A 4xx is the request being wrong, so retrying it just spends another call
+  // to fail the same way.
+  it('refuses to retry an error the server called final', async () => {
+    const { result, fetchSpy } = await erroredHook(400);
+    expect(result.current.retryable).toBe(false);
+
+    const before = fetchSpy.mock.calls.length;
+    await act(async () => {
+      await result.current.retry();
+    });
+
+    expect(fetchSpy.mock.calls.length).toBe(before);
+  });
+});
