@@ -27,9 +27,12 @@ vi.mock('../lib/rls.js', () => ({
   withRlsContext: vi.fn((_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({})),
 }));
 
+const mockAudit = vi.fn();
+const mockAuditAuth = vi.fn();
+
 vi.mock('../services/audit/auditService.js', () => ({
-  audit: vi.fn(),
-  auditAuth: vi.fn(),
+  audit: (...args: unknown[]) => mockAudit(...args),
+  auditAuth: (...args: unknown[]) => mockAuditAuth(...args),
 }));
 
 vi.mock('../config.js', () => ({
@@ -127,6 +130,12 @@ const json = (await res.json()) as any;
     expect(res.status).toBe(200);
     expect(json.data.checkoutUrl).toBe('https://checkout.stripe.com/session/cs_test');
     expect(mockCreateCheckoutSession).toHaveBeenCalledWith(10, 1, expect.anything());
+
+    // Deleting the audit call from the route left the whole API suite green:
+    // these mocks were anonymous, or absent, and nothing asserted on them.
+    // Analytics and audit are separate records with separate purposes, so a
+    // passing trackEvent says nothing about the audit row.
+    expect(mockAuditAuth).toHaveBeenCalledWith(expect.anything(), 'subscription.checkout');
   });
 
   it('returns 401 without auth', async () => {

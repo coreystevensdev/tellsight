@@ -6,6 +6,14 @@ const mockVerifyAccessToken = vi.fn();
 const mockTrackEvent = vi.fn();
 const mockPersistUpload = vi.fn();
 
+const mockAudit = vi.fn();
+const mockAuditAuth = vi.fn();
+
+vi.mock('../services/audit/auditService.js', () => ({
+  audit: (...args: unknown[]) => mockAudit(...args),
+  auditAuth: (...args: unknown[]) => mockAuditAuth(...args),
+}));
+
 vi.mock('../services/auth/tokenService.js', () => ({
   verifyAccessToken: mockVerifyAccessToken,
 }));
@@ -276,6 +284,16 @@ describe('POST /datasets/confirm', () => {
     const body = (await res.json()) as ConfirmBody;
     expect(body.data.datasetId).toBe(7);
     expect(body.data.rowCount).toBe(3);
+
+    // Deleting the audit call from the route left the whole API suite green:
+    // these mocks were anonymous, or absent, and nothing asserted on them.
+    // Analytics and audit are separate records with separate purposes, so a
+    // passing trackEvent says nothing about the audit row.
+    expect(mockAuditAuth).toHaveBeenCalledWith(
+      expect.anything(),
+      'dataset.uploaded',
+      expect.objectContaining({ targetType: 'dataset' }),
+    );
   });
 
   it('calls persistUpload with correct org, user, filename, and rows', async () => {
