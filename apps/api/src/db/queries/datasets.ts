@@ -96,6 +96,33 @@ export async function deleteSeedDatasets(
     .where(and(eq(datasets.orgId, orgId), eq(datasets.isSeedData, true)));
 }
 
+// Distinct from alertRuleFires' 771. Sharing a namespace would make an alert
+// fire and a dataset upload for the same org block each other for no reason,
+// since advisory locks only collide within a namespace.
+const DATASET_QUOTA_LOCK_NAMESPACE = 772;
+
+/**
+ * Serializes same-org callers across the count-then-insert in the upload path.
+ *
+ * Without it the check is a race: two uploads read the same count under the
+ * limit before either commits, and both insert. READ COMMITTED is the default
+ * here, so neither transaction sees the other's uncommitted row. Demonstrated
+ * against a real database at 21 rows for a limit of 20.
+ *
+ * The lock is transaction-scoped, so it releases on commit or rollback with no
+ * unlock call to forget. Same shape as alertRuleFires.createIfUnderQuota, which
+ * solves the identical problem for alert quotas.
+ */
+export async function lockOrgForDatasetQuota(
+  orgId: number,
+  client: typeof db | DbTransaction,
+): Promise<void> {
+  // Bounds how long a stuck holder can block another upload. Failing fast with
+  // a 500 beats holding an HTTP connection open indefinitely.
+  await client.execute(sql`set local lock_timeout = '5s'`);
+  await client.execute(sql`select pg_advisory_xact_lock(${DATASET_QUOTA_LOCK_NAMESPACE}, ${orgId})`);
+}
+
 export async function getNonSeedDatasetCount(
   orgId: number,
   client: typeof db | DbTransaction = db,
