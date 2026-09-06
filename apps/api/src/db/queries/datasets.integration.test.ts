@@ -1,11 +1,18 @@
-import { and, eq, inArray } from 'drizzle-orm';
-import { describe, it, expect, afterAll } from 'vitest';
+import { and, eq, inArray, sql } from 'drizzle-orm';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 
 import { dbAdmin } from '../../lib/db.js';
-import { orgs, users, datasets } from '../schema.js';
-import { getDatasetListWithCounts, deleteDataset } from './datasets.js';
+import type { NormalizedRow } from '../../services/dataIngestion/normalizer.js';
+import { orgs, users, datasets, dataRows, aiSummaries, milestoneAwards } from '../schema.js';
+import {
+  getDatasetListWithCounts,
+  deleteDataset,
+  getNonSeedDatasetCount,
+  lockOrgForDatasetQuota,
+  persistUpload,
+  getUserOrgDemoState,
+} from './datasets.js';
 import { awardMilestone } from './milestoneAwards.js';
-import { milestoneAwards } from '../schema.js';
 
 // Real Postgres, no mocks -- the datasets-manage.test.ts route test mocks
 // getDatasetListWithCounts entirely, so it can't catch a query-shape bug
@@ -129,5 +136,185 @@ describe('awardMilestone against real Postgres', () => {
 
     const rows = await dbAdmin.select().from(milestoneAwards).where(eq(milestoneAwards.orgId, orgId));
     expect(rows).toHaveLength(2);
+  });
+});
+
+// The upload path counts an org's datasets and then inserts, which is a race no
+// serial test can see: under READ COMMITTED two callers both read the same
+// under-limit count before either commits, and both insert. Demonstrated at 21
+// rows for a limit of 20 before the advisory lock went in.
+//
+// This models the route's shape rather than calling it, because the race is in
+// the transaction boundary and the route wraps it in HTTP, auth and RLS that
+// have nothing to do with the failure.
+describe('dataset quota under concurrency', () => {
+  const LIMIT = 20;
+
+  async function insertN(orgId: number, n: number) {
+    for (let i = 0; i < n; i += 1) {
+      await dbAdmin.insert(datasets).values({ orgId, name: `seeded-${i}.csv`, isSeedData: false });
+    }
+  }
+
+  /** One upload attempt, shaped exactly like the route's withRlsContext block. */
+  async function attemptUpload(orgId: number, opts: { lock: boolean }) {
+    return dbAdmin.transaction(async (tx) => {
+      if (opts.lock) await lockOrgForDatasetQuota(orgId, tx);
+
+      const count = await getNonSeedDatasetCount(orgId, tx);
+      if (count >= LIMIT) return 'rejected' as const;
+
+      // A real upload does more work between the count and the insert, which is
+      // what widens the window. This stands in for it.
+      await tx.execute(sql`select pg_sleep(0.1)`);
+      await tx.insert(datasets).values({ orgId, name: 'concurrent.csv', isSeedData: false });
+      return 'accepted' as const;
+    });
+  }
+
+  it('admits only one of two concurrent uploads at the ceiling', async () => {
+    const orgId = await seedOrg('quota-race');
+    await insertN(orgId, LIMIT - 1);
+
+    const outcomes = await Promise.all([
+      attemptUpload(orgId, { lock: true }),
+      attemptUpload(orgId, { lock: true }),
+    ]);
+
+    expect(outcomes.filter((o) => o === 'accepted')).toHaveLength(1);
+    expect(outcomes.filter((o) => o === 'rejected')).toHaveLength(1);
+    expect(await getNonSeedDatasetCount(orgId, dbAdmin)).toBe(LIMIT);
+  });
+
+  // The same scenario without the lock, proving the test can tell the two apart
+  // rather than passing because concurrency never actually happened.
+  it('would exceed the ceiling without the lock', async () => {
+    const orgId = await seedOrg('quota-race-unlocked');
+    await insertN(orgId, LIMIT - 1);
+
+    const outcomes = await Promise.all([
+      attemptUpload(orgId, { lock: false }),
+      attemptUpload(orgId, { lock: false }),
+    ]);
+
+    expect(outcomes.filter((o) => o === 'accepted')).toHaveLength(2);
+    expect(await getNonSeedDatasetCount(orgId, dbAdmin)).toBe(LIMIT + 1);
+  });
+
+  it('still admits an upload when the org is under the ceiling', async () => {
+    const orgId = await seedOrg('quota-under');
+    await insertN(orgId, 2);
+
+    expect(await attemptUpload(orgId, { lock: true })).toBe('accepted');
+    expect(await getNonSeedDatasetCount(orgId, dbAdmin)).toBe(3);
+  });
+});
+
+// routes/datasets.test.ts mocks persistUpload wholesale and no integration test
+// existed, so nothing in the repo executed its body. Deleting markStale from it
+// left all 2,459 api tests green, and that call is the entire "AI summary cache
+// goes stale on upload" decision: without it a user uploads fresh data and keeps
+// reading last week's interpretation, with nothing to indicate it is old.
+describe('persistUpload against real Postgres', () => {
+  // uploadedBy carries a foreign key, so the id has to be a real row.
+  let uploaderId: number;
+
+  beforeAll(async () => {
+    const [user] = await dbAdmin
+      .insert(users)
+      .values({ email: `persist-uploader-${Date.now()}@test.local`, name: 'Uploader' })
+      .returning({ id: users.id });
+    uploaderId = user!.id;
+    createdUsers.push(uploaderId);
+  });
+
+  const rows: NormalizedRow[] = [
+    { category: 'Sales', parentCategory: 'Income', date: new Date('2026-01-15'), amount: '1000.00', label: 'A', metadata: null },
+    { category: 'Rent', parentCategory: 'Expenses', date: new Date('2026-01-16'), amount: '400.00', label: 'B', metadata: null },
+  ];
+
+  // persistUpload falls back to the RLS-scoped client when no transaction is
+  // passed, and there is no RLS context here, so the insert would be refused by
+  // policy. The route supplies one via withRlsContext; this supplies an admin
+  // transaction, which exercises the same body and the same boundary.
+  function upload(orgId: number, name: string, batch = rows) {
+    return dbAdmin.transaction((tx) => persistUpload(orgId, uploaderId, name, batch, tx));
+  }
+
+  async function seedSummary(orgId: number, datasetId: number) {
+    await dbAdmin.insert(aiSummaries).values({
+      orgId,
+      datasetId,
+      content: 'Last week you were profitable.',
+      audience: 'dashboard',
+      promptVersion: 'v1.6',
+    });
+  }
+
+  it('writes the dataset and every row in one call', async () => {
+    const orgId = await seedOrg('persist-basic');
+
+    const result = await upload(orgId, 'january.csv');
+
+    expect(result.rowCount).toBe(2);
+    const stored = await dbAdmin.select().from(dataRows).where(eq(dataRows.datasetId, result.datasetId));
+    expect(stored).toHaveLength(2);
+  });
+
+  // The cache invalidation. Marked stale, not deleted, so the old text stays
+  // readable while the new one generates.
+  it('marks an existing AI summary stale', async () => {
+    const orgId = await seedOrg('persist-stale');
+    const seed = await upload(orgId, 'first.csv');
+    await seedSummary(orgId, seed.datasetId);
+
+    await upload(orgId, 'second.csv');
+
+    const [summary] = await dbAdmin.select().from(aiSummaries).where(eq(aiSummaries.orgId, orgId));
+    expect(summary?.staleAt).not.toBeNull();
+  });
+
+  it('leaves another org summary alone', async () => {
+    const mine = await seedOrg('persist-mine');
+    const theirs = await seedOrg('persist-theirs');
+    const theirDataset = await upload(theirs, 'theirs.csv');
+    await seedSummary(theirs, theirDataset.datasetId);
+
+    await upload(mine, 'mine.csv');
+
+    const [summary] = await dbAdmin.select().from(aiSummaries).where(eq(aiSummaries.orgId, theirs));
+    expect(summary?.staleAt).toBeNull();
+  });
+
+  // Option C: a real upload replaces the demo data rather than sitting beside
+  // it, which is what moves the org out of seed_only.
+  it('clears the org seed data and reports the new demo state', async () => {
+    const orgId = await seedOrg('persist-seed');
+    const [seeded] = await dbAdmin
+      .insert(datasets)
+      .values({ orgId, name: 'Demo data', isSeedData: true })
+      .returning({ id: datasets.id });
+
+    const result = await upload(orgId, 'real.csv');
+
+    expect(await dbAdmin.select().from(datasets).where(eq(datasets.id, seeded!.id))).toHaveLength(0);
+    expect(result.demoState).toBe('user_only');
+    expect(await getUserOrgDemoState(orgId, dbAdmin)).toBe('user_only');
+  });
+
+  // One transaction, so a failure part-way leaves nothing behind. amount is
+  // numeric(12,2), so a value past that ceiling makes insertBatch reject after
+  // the dataset row already exists inside the same transaction. An empty batch
+  // will not do it: insertBatch handles that case without erroring.
+  it('rolls the dataset back when the row insert fails', async () => {
+    const orgId = await seedOrg('persist-rollback');
+    const before = await getNonSeedDatasetCount(orgId, dbAdmin);
+    const overflows: NormalizedRow[] = [
+      { category: 'Sales', parentCategory: 'Income', date: new Date('2026-01-15'), amount: '99999999999.99', label: 'too big', metadata: null },
+    ];
+
+    await expect(upload(orgId, 'broken.csv', overflows)).rejects.toThrow();
+
+    expect(await getNonSeedDatasetCount(orgId, dbAdmin)).toBe(before);
   });
 });

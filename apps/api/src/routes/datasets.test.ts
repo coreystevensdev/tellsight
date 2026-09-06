@@ -7,6 +7,7 @@ const mockTrackEvent = vi.fn();
 const mockPersistUpload = vi.fn();
 
 const mockGetNonSeedDatasetCount = vi.hoisted(() => vi.fn());
+const mockLockOrgForDatasetQuota = vi.hoisted(() => vi.fn());
 const mockAudit = vi.fn();
 const mockAuditAuth = vi.fn();
 
@@ -43,6 +44,7 @@ vi.mock('../db/queries/index.js', () => ({
   datasetsQueries: {
     persistUpload: (...args: unknown[]) => mockPersistUpload(...args),
     getNonSeedDatasetCount: mockGetNonSeedDatasetCount,
+    lockOrgForDatasetQuota: mockLockOrgForDatasetQuota,
   },
   orgsQueries: {
     setActiveDataset: vi.fn().mockResolvedValue(null),
@@ -107,6 +109,7 @@ afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
 beforeEach(() => {
   vi.clearAllMocks();
   mockGetNonSeedDatasetCount.mockResolvedValue(0);
+  mockLockOrgForDatasetQuota.mockResolvedValue(undefined);
 });
 
 function userPayload() {
@@ -454,6 +457,21 @@ describe('upload limits and preview-token scope', () => {
   });
 
   // 20 per org. The check is >=, so an org already holding 20 cannot add a 21st.
+  // The count and the insert have to be one atomic decision, and the lock is
+  // what makes them one. Taken after the count it serializes nothing, because
+  // both callers would already have read the stale value.
+  it('locks the org before counting its datasets', async () => {
+    const token = await getPreviewToken(validCsv);
+
+    mockVerifyAccessToken.mockResolvedValueOnce(userPayload());
+    await confirmCsv(validCsv, 'test.csv', token);
+
+    expect(mockLockOrgForDatasetQuota).toHaveBeenCalledWith(10, expect.anything());
+    expect(mockLockOrgForDatasetQuota.mock.invocationCallOrder[0]!).toBeLessThan(
+      mockGetNonSeedDatasetCount.mock.invocationCallOrder[0]!,
+    );
+  });
+
   it('refuses an upload once the org is at its dataset ceiling', async () => {
     mockGetNonSeedDatasetCount.mockResolvedValue(20);
     const token = await getPreviewToken(validCsv);

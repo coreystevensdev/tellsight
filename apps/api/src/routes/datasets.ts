@@ -253,6 +253,11 @@ datasetsRouter.post(
 
     const normalizedRows = normalizeRows(parseResult.rows, parseResult.headers);
     const result = await withRlsContext(orgId, user.isAdmin, async (tx) => {
+      // The count and the insert have to be one atomic decision. Without this
+      // two uploads read the same under-limit count before either commits and
+      // both insert, which puts an org over its ceiling.
+      await datasetsQueries.lockOrgForDatasetQuota(orgId, tx);
+
       const datasetCount = await datasetsQueries.getNonSeedDatasetCount(orgId, tx);
       if (datasetCount >= MAX_DATASETS_PER_ORG) {
         throw new ValidationError(
