@@ -19,6 +19,20 @@ const mockTxInsertValues = vi.fn();
 const mockTxReturning = vi.fn();
 const mockTxExecute = vi.fn().mockResolvedValue(undefined);
 
+// The tx spy receives the compiled query, { sql, values }, not the raw template
+// object, so the statement text and its bound parameters are read apart.
+function flatten(stmt: unknown): string {
+  return String((stmt as { sql?: unknown }).sql ?? '');
+}
+
+function params(stmt: unknown): unknown[] {
+  return (stmt as { values?: unknown[] }).values ?? [];
+}
+
+function statementsIssued(): string[] {
+  return mockTxExecute.mock.calls.map(([stmt]) => flatten(stmt));
+}
+
 let selectResult: unknown[] = [];
 let returningResult: unknown[] = [];
 
@@ -225,6 +239,10 @@ describe('createIfUnderQuota', () => {
     expect(result).toEqual(mockRow);
     expect(mockTransaction).toHaveBeenCalled();
     expect(mockTxExecute).toHaveBeenCalled();
+    expect(statementsIssued()).toEqual([
+      expect.stringContaining("set local lock_timeout"),
+      expect.stringContaining('pg_advisory_xact_lock'),
+    ]);
     expect(mockTxInsertValues).toHaveBeenCalledWith(
       expect.objectContaining({ orgId: 10, ruleId: 5, band: 3 }),
     );
@@ -290,4 +308,67 @@ describe('createIfUnderQuota', () => {
       expect.objectContaining({ orgId: 10, ruleId: 5, band: 3 }),
     );
   });
+
+  // toHaveBeenCalled() on the tx spy was satisfied by the `set local lock_timeout`
+  // call one line above the lock, so deleting the advisory lock left the whole API
+  // suite green. That lock is the only thing in the codebase solving a
+  // check-then-act race, and the docstring on createIfUnderQuota says so: two
+  // evaluate-org jobs for the same org can each read a count under quota before
+  // either commits, and both insert.
+  describe('createIfUnderQuota takes the advisory lock', () => {
+    it('issues the lock before counting, and for this org', async () => {
+      selectResult = [{ value: 0 }];
+      returningResult = [mockRow];
+
+      await createIfUnderQuota(input, 3, dbAdmin);
+
+      const lock = mockTxExecute.mock.calls.find(([stmt]) =>
+        flatten(stmt).includes('pg_advisory_xact_lock'),
+      );
+
+      expect(lock, 'no pg_advisory_xact_lock statement was issued').toBeDefined();
+      // The org id is a bound parameter, not interpolated, so it is checked
+      // separately from the statement text.
+      expect(params(lock![0])).toContain(input.orgId);
+    });
+
+    // Ordering is the whole point. A lock taken after the count serializes
+    // nothing: both callers would already have read the stale value and both
+    // would insert.
+    //
+    // The count goes through select and the lock through execute, so ordering
+    // has to be compared across two spies rather than within one. An earlier
+    // version of this test asserted the lock was the last execute call, which
+    // moving it after the count does not change, so it could not tell the two
+    // apart.
+    it('locks before the count, not after', async () => {
+      selectResult = [{ value: 0 }];
+      returningResult = [mockRow];
+
+      await createIfUnderQuota(input, 3, dbAdmin);
+
+      const lockCall = mockTxExecute.mock.calls.findIndex(([stmt]) =>
+        flatten(stmt).includes('pg_advisory_xact_lock'),
+      );
+      expect(lockCall, 'no lock statement was issued').toBeGreaterThanOrEqual(0);
+
+      // invocationCallOrder is a global counter shared by every vi spy, which is
+      // what makes the comparison meaningful across two of them.
+      const lockOrder = mockTxExecute.mock.invocationCallOrder[lockCall]!;
+      const countOrder = mockTxSelectFrom.mock.invocationCallOrder[0]!;
+
+      expect(countOrder, 'the count never ran').toBeGreaterThan(0);
+      expect(lockOrder).toBeLessThan(countOrder);
+    });
+
+    it('bounds how long a stuck holder can block, so a worker slot is not tied up', async () => {
+      selectResult = [{ value: 0 }];
+      returningResult = [mockRow];
+
+      await createIfUnderQuota(input, 3, dbAdmin);
+
+      expect(statementsIssued().some((st) => st.includes("lock_timeout = '5s'"))).toBe(true);
+    });
+  });
 });
+

@@ -21,7 +21,7 @@ vi.mock('../lib/logger.js', () => ({
 }));
 
 const { createTestApp } = await import('../test/helpers/testApp.js');
-const { ValidationError, ProgrammerError } = await import('../lib/appError.js');
+const { ValidationError, ProgrammerError, ExternalServiceError } = await import('../lib/appError.js');
 
 let server: http.Server;
 let baseUrl: string;
@@ -37,6 +37,18 @@ beforeAll(async () => {
     });
     app.get('/boom', () => {
       throw new Error('something exploded');
+    });
+    app.get('/stripe-down', () => {
+      // What stripeService actually throws: the whole upstream error object as
+      // details, including whatever Stripe put in it.
+      throw new ExternalServiceError('Stripe', {
+        type: 'StripeAuthenticationError',
+        raw: { message: 'Invalid API Key provided: sk_live_**********************abcd' },
+        requestId: 'req_secret123',
+      });
+    });
+    app.get('/validation-with-details', () => {
+      throw new ValidationError('bad field', { field: 'email' });
     });
   });
   server = result.server;
@@ -127,5 +139,62 @@ describe('errorHandler, malformed request bodies', () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ data: { a: 1 } });
+  });
+});
+
+// Seven tests mention ExternalServiceError and every one asserts that a service
+// throws it. None exercised the handler branch that decides what reaches the
+// client, so dropping the strip left all 2,434 tests green while the whole
+// upstream error object was serialized into the 502 body. stripeService.ts
+// throws `new ExternalServiceError('Stripe', err)` with the raw Stripe error.
+describe('errorHandler, upstream failure details', () => {
+  it('answers 502 without leaking the upstream error object', async () => {
+    const res = await fetch(`${baseUrl}/stripe-down`);
+    const body = await res.text();
+
+    expect(res.status).toBe(502);
+    expect(JSON.parse(body)).toEqual({
+      error: { code: 'EXTERNAL_SERVICE_ERROR', message: 'External service error: Stripe' },
+    });
+
+    // Named individually, because a details key surviving is only interesting
+    // for what it carries.
+    expect(body).not.toContain('sk_live');
+    expect(body).not.toContain('req_secret123');
+    expect(body).not.toContain('StripeAuthenticationError');
+    expect(body).not.toContain('details');
+  });
+
+  // The strip is specific to upstream failures. An application error's details
+  // are ours and are how a client learns which field was wrong.
+  it('still returns details for an ordinary application error', async () => {
+    const res = await fetch(`${baseUrl}/validation-with-details`);
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      error: { code: 'VALIDATION_ERROR', details: { field: 'email' } },
+    });
+  });
+
+  // Fingerprinting by devMessage is what keeps distinct invariants as distinct
+  // Sentry issues; err.message is the generic client-facing text and would
+  // collapse every ProgrammerError into one. Asserting the call count alone
+  // passes either way.
+  it('fingerprints a programmer error by its developer message', async () => {
+    await fetch(`${baseUrl}/programmer-error`);
+
+    expect(mockCaptureException).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ fingerprint: ['programmer-error', 'invariant broken'] }),
+    );
+  });
+
+  it('fingerprints an upstream failure by service, so Stripe and Claude stay apart', async () => {
+    await fetch(`${baseUrl}/stripe-down`);
+
+    expect(mockCaptureException).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ fingerprint: ['external-service', 'Stripe'] }),
+    );
   });
 });
