@@ -6,6 +6,7 @@ const mockVerifyAccessToken = vi.fn();
 const mockTrackEvent = vi.fn();
 const mockPersistUpload = vi.fn();
 
+const mockGetNonSeedDatasetCount = vi.hoisted(() => vi.fn());
 const mockAudit = vi.fn();
 const mockAuditAuth = vi.fn();
 
@@ -41,7 +42,7 @@ vi.mock('../lib/logger.js', () => ({
 vi.mock('../db/queries/index.js', () => ({
   datasetsQueries: {
     persistUpload: (...args: unknown[]) => mockPersistUpload(...args),
-    getNonSeedDatasetCount: vi.fn().mockResolvedValue(0),
+    getNonSeedDatasetCount: mockGetNonSeedDatasetCount,
   },
   orgsQueries: {
     setActiveDataset: vi.fn().mockResolvedValue(null),
@@ -103,7 +104,10 @@ beforeAll(async () => {
 
 afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockGetNonSeedDatasetCount.mockResolvedValue(0);
+});
 
 function userPayload() {
   return {
@@ -396,5 +400,79 @@ describe('POST /datasets/confirm', () => {
       body: form,
     });
     expect(res.status).toBe(401);
+  });
+});
+
+// Three limits on the upload path, all unenforceable with the suite green.
+// Every confirm test uses the same userPayload(), so no cross-org case existed,
+// and both ceilings were only ever exercised from under them.
+describe('upload limits and preview-token scope', () => {
+  function csvWithRows(n: number) {
+    const lines = ['date,amount,category'];
+    for (let i = 0; i < n; i += 1) lines.push(`2026-01-15,100.00,Sales`);
+    return lines.join('\n');
+  }
+
+  // The HMAC covers the token's own org, so the signature stays self-consistent
+  // when a token is replayed against another org. This comparison is the only
+  // thing binding a preview to the org that confirms it.
+  it('refuses a preview token issued to another org', async () => {
+    const token = await getPreviewToken(validCsv);
+
+    mockVerifyAccessToken.mockResolvedValueOnce({ ...userPayload(), org_id: 99 });
+    const res = await confirmCsv(validCsv, 'test.csv', token);
+
+    expect(res.status).toBe(400);
+    expect(mockPersistUpload).not.toHaveBeenCalled();
+  });
+
+  it('accepts the same token from the org it was issued to', async () => {
+    const token = await getPreviewToken(validCsv);
+
+    mockVerifyAccessToken.mockResolvedValueOnce(userPayload());
+    const res = await confirmCsv(validCsv, 'test.csv', token);
+
+    expect(res.status).toBe(200);
+  });
+
+  // 50,000 rows. Parsing is bounded elsewhere; this is the ceiling that keeps a
+  // single upload from writing an unbounded number of rows.
+  it('refuses a file over the row ceiling', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(userPayload());
+
+    const res = await uploadCsv(csvWithRows(50_001));
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ErrorBody;
+    expect(body.error.message).toMatch(/maximum is 50,000/);
+  });
+
+  it('accepts a file exactly at the row ceiling', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(userPayload());
+
+    expect((await uploadCsv(csvWithRows(50_000))).status).toBe(200);
+  });
+
+  // 20 per org. The check is >=, so an org already holding 20 cannot add a 21st.
+  it('refuses an upload once the org is at its dataset ceiling', async () => {
+    mockGetNonSeedDatasetCount.mockResolvedValue(20);
+    const token = await getPreviewToken(validCsv);
+
+    mockVerifyAccessToken.mockResolvedValueOnce(userPayload());
+    const res = await confirmCsv(validCsv, 'test.csv', token);
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ErrorBody;
+    expect(body.error.message).toMatch(/Dataset limit reached/);
+    expect(mockPersistUpload).not.toHaveBeenCalled();
+  });
+
+  it('allows the upload that lands exactly on the ceiling', async () => {
+    mockGetNonSeedDatasetCount.mockResolvedValue(19);
+    const token = await getPreviewToken(validCsv);
+
+    mockVerifyAccessToken.mockResolvedValueOnce(userPayload());
+
+    expect((await confirmCsv(validCsv, 'test.csv', token)).status).toBe(200);
   });
 });
