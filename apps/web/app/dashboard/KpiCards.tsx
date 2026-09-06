@@ -3,16 +3,11 @@
 import { TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Scale, Tag } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { RevenueTrendPoint, ExpenseBreakdownItem } from 'shared/types';
+import { formatAbbreviated } from 'shared/formatting';
 
 interface KpiCardsProps {
   revenueTrend: RevenueTrendPoint[];
   expenseBreakdown: ExpenseBreakdownItem[];
-}
-
-function formatCompact(value: number): string {
-  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
-  return `$${value.toFixed(0)}`;
 }
 
 function KpiCard({ label, value, icon: Icon, trend, iconColor }: {
@@ -89,20 +84,20 @@ export function KpiCards({ revenueTrend, expenseBreakdown }: KpiCardsProps) {
     <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
       <KpiCard
         label="Total Revenue"
-        value={formatCompact(totalRevenue)}
+        value={formatAbbreviated(totalRevenue)}
         icon={ArrowUpRight}
         iconColor="text-success"
         trend={revenueTrend12 != null ? { value: revenueTrend12, label: revenueTrend.length >= 13 ? 'vs last year' : 'vs prev month' } : null}
       />
       <KpiCard
         label="Total Expenses"
-        value={formatCompact(totalExpenses)}
+        value={formatAbbreviated(totalExpenses)}
         icon={ArrowDownRight}
         iconColor="text-destructive"
       />
       <KpiCard
         label="Net Profit"
-        value={formatCompact(netProfit)}
+        value={formatAbbreviated(netProfit)}
         icon={Scale}
         iconColor={netProfit >= 0 ? 'text-success' : 'text-destructive'}
       />
