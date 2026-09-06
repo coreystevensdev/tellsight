@@ -160,6 +160,40 @@ function runwayInsight(runwayMonths: number) {
   };
 }
 
+function anomalyRule(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: 5,
+    orgId: 42,
+    kind: 'anomaly_fires' as const,
+    threshold: { confidence: 'moderate' as const },
+    enabled: true,
+    muteUntil: null,
+    deletedAt: null,
+    createdAt: new Date('2026-07-01'),
+    updatedAt: new Date('2026-07-01'),
+    ...overrides,
+  };
+}
+
+function anomalyInsight(zScore: number, category = 'Payroll') {
+  return {
+    stat: {
+      statType: 'anomaly',
+      category,
+      value: 9000,
+      comparison: 5000,
+      details: {
+        direction: (zScore > 0 ? 'above' : 'below') as 'above' | 'below',
+        zScore,
+        iqrBounds: { lower: 2000, upper: 8000 },
+        deviation: 4000,
+      },
+    },
+    score: 0.9,
+    breakdown: { novelty: 0.9, actionability: 0.9, specificity: 0.95 },
+  };
+}
+
 // cash_burn_spikes reads from cashFlowForAlerting/scoreInsights running for
 // real against this map (see the vi.mock block: curation/computation.js and
 // curation/scoring.js are deliberately not mocked), not from an injected
@@ -697,5 +731,103 @@ describe('invalid job payload', () => {
       expect.objectContaining({ correlationId: 'corr-bad-3', jobId: 'j-bad-3' }),
       'invalid job payload, skipping',
     );
+  });
+});
+
+// anomaly_fires is one of five user-selectable rule kinds and had no test at all:
+// counting by kind, runway had 4, cash_burn 11, breakeven 2, margin 1, anomaly 0.
+// Putting `return null` as the first line of evaluateAnomaly left every one of
+// 2,460 api tests green, so a customer could create an anomaly rule that never
+// fires and CI would say nothing. The bands themselves are unit-tested in
+// bands.test.ts; what was missing is the insight-selection to band wiring.
+describe('anomaly_fires rule evaluation', () => {
+  // 2.0 is the significance bar scoring.ts already uses, 2.5 and 3.0 step up.
+  it.each([
+    ['below the significance bar', 1.9, false],
+    ['at low confidence, under a moderate rule', 2.0, false],
+    ['at moderate confidence', 2.5, true],
+    ['at high confidence', 3.2, true],
+  ])('a z-score %s fires: %s', async (_label, zScore, shouldFire) => {
+    mockGetEnabledRules.mockResolvedValueOnce([anomalyRule()]);
+    mockRunCurationPipeline.mockResolvedValueOnce([anomalyInsight(zScore)]);
+
+    await handleEvaluateOrgJob({ id: 'anom-1', data: baseJobData } as never);
+
+    if (shouldFire) expect(mockCreateIfUnderQuota).toHaveBeenCalled();
+    else expect(mockCreateIfUnderQuota).not.toHaveBeenCalled();
+  });
+
+  // A negative z-score is an anomaly below the mean, which is just as much an
+  // anomaly.
+  it('fires on a large negative deviation too', async () => {
+    mockGetEnabledRules.mockResolvedValueOnce([anomalyRule()]);
+    mockRunCurationPipeline.mockResolvedValueOnce([anomalyInsight(-3.2)]);
+
+    await handleEvaluateOrgJob({ id: 'anom-2', data: baseJobData } as never);
+
+    expect(mockCreateIfUnderQuota).toHaveBeenCalled();
+  });
+
+  // The reduce compares absolute values. Comparing raw ones would pick the
+  // milder positive anomaly over the severe negative one, and the rule would
+  // silently downgrade from high to low. A single-insight case cannot catch
+  // that: the reduce returns its only element whichever way it compares.
+  it('prefers a severe negative anomaly over a milder positive one', async () => {
+    mockGetEnabledRules.mockResolvedValueOnce([anomalyRule({ threshold: { confidence: 'high' } })]);
+    mockRunCurationPipeline.mockResolvedValueOnce([
+      anomalyInsight(2.1, 'Rent'),
+      anomalyInsight(-3.4, 'Refunds'),
+    ]);
+
+    await handleEvaluateOrgJob({ id: 'anom-2b', data: baseJobData } as never);
+
+    expect(mockCreateIfUnderQuota).toHaveBeenCalled();
+    expect(mockCreateIfUnderQuota.mock.calls[0]![0].band).toBe(3);
+  });
+
+  // Several categories can be anomalous in one pass, and the rule's band comes
+  // from the most extreme of them. Picking the least extreme would under-report
+  // the severity, or miss the rule entirely when only one clears the bar.
+  it('drives the band from the most extreme anomaly, not the first', async () => {
+    mockGetEnabledRules.mockResolvedValueOnce([anomalyRule({ threshold: { confidence: 'high' } })]);
+    mockRunCurationPipeline.mockResolvedValueOnce([
+      anomalyInsight(2.1, 'Rent'),
+      anomalyInsight(3.4, 'Payroll'),
+      anomalyInsight(2.2, 'Software'),
+    ]);
+
+    await handleEvaluateOrgJob({ id: 'anom-3', data: baseJobData } as never);
+
+    expect(mockCreateIfUnderQuota).toHaveBeenCalled();
+    // The fire has to carry the anomaly that justified it, not a milder sibling.
+    const [input] = mockCreateIfUnderQuota.mock.calls[0]!;
+    expect(input.band).toBe(3);
+  });
+
+  it('does not fire when the pass surfaced no anomalies at all', async () => {
+    mockGetEnabledRules.mockResolvedValueOnce([anomalyRule()]);
+    mockRunCurationPipeline.mockResolvedValueOnce([runwayInsight(2)]);
+
+    await handleEvaluateOrgJob({ id: 'anom-4', data: baseJobData } as never);
+
+    expect(mockCreateIfUnderQuota).not.toHaveBeenCalled();
+  });
+
+  // A rule set to low accepts anything past the significance bar; one set to
+  // high accepts only the top tier. Both directions matter, or the threshold is
+  // decorative.
+  it.each([
+    ['low', 2.0, true],
+    ['high', 2.5, false],
+  ])('a %s-threshold rule against z=%s fires: %s', async (confidence, zScore, shouldFire) => {
+    mockGetEnabledRules.mockResolvedValueOnce([
+      anomalyRule({ threshold: { confidence } }),
+    ]);
+    mockRunCurationPipeline.mockResolvedValueOnce([anomalyInsight(zScore)]);
+
+    await handleEvaluateOrgJob({ id: 'anom-5', data: baseJobData } as never);
+
+    if (shouldFire) expect(mockCreateIfUnderQuota).toHaveBeenCalled();
+    else expect(mockCreateIfUnderQuota).not.toHaveBeenCalled();
   });
 });

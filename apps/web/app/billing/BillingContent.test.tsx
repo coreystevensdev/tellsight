@@ -38,6 +38,32 @@ describe('BillingContent tier affordances', () => {
     expect(screen.queryByRole('button', { name: /Manage Subscription/ })).not.toBeInTheDocument();
   });
 
+  // The buttons above were the only tier assertions, so inverting the Current
+  // Plan ternary passed: a free user could be shown "Pro" and a paying one
+  // "Free", with the correct button underneath.
+  it.each([
+    ['free', 'Free'],
+    ['pro', 'Pro'],
+  ])('names the %s tier as %s under Current Plan', (tier, label) => {
+    useSubscription.mockReturnValue({ tier, isLoading: false });
+
+    render(<BillingContent />);
+
+    const heading = screen.getByText('Current Plan');
+    expect(heading.nextElementSibling).toHaveTextContent(label);
+  });
+
+  // The upgrade pitch is free-tier only. Showing it to someone already paying
+  // reads as though their subscription is not active.
+  it('pitches the upgrade only on the free tier', () => {
+    render(<BillingContent />);
+    expect(screen.getByText(/Upgrade to Pro for the full/)).toBeInTheDocument();
+
+    useSubscription.mockReturnValue({ tier: 'pro', isLoading: false });
+    render(<BillingContent />);
+    expect(screen.getAllByText(/Upgrade to Pro for the full/)).toHaveLength(1);
+  });
+
   // Showing "Upgrade" to someone already paying would take a second payment.
   it('offers the portal on the pro tier, not checkout', () => {
     useSubscription.mockReturnValue({ tier: 'pro', isLoading: false });
