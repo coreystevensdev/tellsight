@@ -1,10 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import { eq, and, isNull } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
 
 import * as schema from '../schema.js';
-import { aiSummaries } from '../schema.js';
 
 const mockFindFirst = vi.fn();
 const mockReturning = vi.fn();
@@ -18,13 +17,9 @@ vi.mock('../../lib/db.js', () => ({
   },
 }));
 
-// Real Drizzle instance backed by an inert postgres tag so we can call
-// `.toSQL()` on relational queries and verify the audience filter actually
-// reaches the database. Story 9.2 AC #14j called out the seed-summary
-// regression risk: if the new `eq(audience, 'dashboard')` filter on
-// `getCachedSummary` were dropped (or scoped to the wrong literal), demo
-// mode silently breaks. The mock-based assertion below proves only that
-// `findFirst` was called; this rig proves the SQL actually filters.
+// Real Drizzle instance over an inert postgres tag, so a captured where clause
+// can be rendered with .toSQL() without a database behind it. Only the
+// predicate is built here; nothing connects.
 const inertClient = postgres('postgres://test:test@localhost:1/test', {
   max: 0,
   fetch_types: false,
@@ -215,120 +210,68 @@ describe('storeSummary (options bag)', () => {
   });
 });
 
-describe('seed-summary cache regression (AC #14j)', () => {
-  // Pre-migration rows did not carry an `audience` column. Migration 0020
-  // backfills every row to `audience='dashboard'` via the column DEFAULT.
-  // After that, the new audience-scoped getCachedSummary must still find
-  // them. The risk: if the filter ever drifts (e.g., to `audience='primary'`
-  // or `'main'`), demo mode silently breaks for every existing user.
+// Renders the clause a helper actually built, rather than one written here. An
+// earlier version of this block rebuilt each where clause inline and asserted on
+// its own construction, which is a statement about Drizzle and not about these
+// functions: dropping the org filter from getCachedSummary left all 2,470 API
+// tests green.
+async function emitted(run: () => Promise<unknown>) {
+  mockFindFirst.mockResolvedValueOnce(undefined);
+  await run();
+  const arg = mockFindFirst.mock.calls.at(-1)![0] as { where: SQL; orderBy?: SQL[] };
+  return inertDb.query.aiSummaries.findFirst(arg).toSQL();
+}
 
-  it('emits a SQL filter that matches the migration DEFAULT literal', () => {
-    // Build the same query getCachedSummary builds, run it through .toSQL(),
-    // and assert the bound param is the EXACT string the migration backfills.
-    const query = inertDb.query.aiSummaries.findFirst({
-      where: and(
-        eq(aiSummaries.orgId, 1),
-        eq(aiSummaries.datasetId, 1),
-        eq(aiSummaries.audience, 'dashboard'),
-        isNull(aiSummaries.staleAt),
-      ),
-    });
-    const { sql, params } = query.toSQL();
+// Anchored on the table alias so a bare column in the select list cannot satisfy it.
+const filtersOn = (column: string) => new RegExp(`"aiSummaries"\\."${column}"\\s*=\\s*\\$`);
+const excludesStale = /"aiSummaries"\."stale_at"\s+is\s+null/i;
 
-    expect(sql).toMatch(/"(?:ai_summaries|aiSummaries)"\."audience"\s*=\s*\$/);
-    expect(sql).toMatch(/"(?:ai_summaries|aiSummaries)"\."stale_at"\s+is\s+null/i);
-    // The literal must match migration 0020's DEFAULT 'dashboard' verbatim.
-    // If a future refactor renames the audience to 'primary' on either side,
-    // this assertion catches the drift before it reaches production.
-    expect(params).toContain('dashboard');
+describe('the SQL the cache lookups emit', () => {
+  // Migration 0020 backfilled every pre-existing row to audience='dashboard' via
+  // the column DEFAULT. If either side of that drifts, demo mode goes blank for
+  // every account older than the migration.
+  it('getCachedSummary scopes to org, dataset, dashboard and fresh', async () => {
+    const { sql, params } = await emitted(() => getCachedSummary(7, 9));
+
+    expect(sql).toMatch(filtersOn('org_id'));
+    expect(sql).toMatch(filtersOn('dataset_id'));
+    expect(sql).toMatch(excludesStale);
+    expect(params).toEqual(expect.arrayContaining([7, 9, 'dashboard']));
   });
 
-  it('finds seed-flagged dashboard rows via getCachedSummary after migration backfill', async () => {
-    // Shape mirrors what migration 0020's DEFAULT backfill produces for an
-    // existing pre-migration row: audience set, week_start NULL, all other
-    // columns unchanged.
-    const seedRow = {
-      id: 99,
-      orgId: 1,
-      datasetId: 1,
-      content: 'seed AI summary content',
-      audience: 'dashboard',
-      weekStart: null,
-      isSeed: true,
-      staleAt: null,
-    };
-    mockFindFirst.mockResolvedValueOnce(seedRow);
-
-    const result = await getCachedSummary(1, 1);
-
-    expect(result).toEqual(seedRow);
-    // The where clause must include both the audience filter AND the stale
-    // filter; either one missing reintroduces the regression.
-    const callArg = mockFindFirst.mock.calls[0]![0] as { where: unknown };
-    expect(callArg.where).toBeDefined();
-  });
-
-  it('does not match digest-weekly rows when scanning the dashboard cache', () => {
-    // Boundary check: the same query, given a digest-audience row, would
-    // skip it. We can't run the query, but we CAN verify the audience
-    // literal is the dashboard value and not something looser (e.g., a
-    // wildcard or LIKE). If audience drifted to `like('%dash%')` this
-    // assertion fails because the operator would not be `=`.
-    const dashQuery = inertDb.query.aiSummaries.findFirst({
-      where: and(
-        eq(aiSummaries.orgId, 1),
-        eq(aiSummaries.datasetId, 1),
-        eq(aiSummaries.audience, 'dashboard'),
-        isNull(aiSummaries.staleAt),
-      ),
-    });
-    const { sql } = dashQuery.toSQL();
-    // The audience predicate must use equality, not LIKE / IN / regex / etc.
-    // A regression to a looser match would let digest-weekly rows poison
-    // the dashboard cache.
-    expect(sql).not.toMatch(/"(?:ai_summaries|aiSummaries)"\."audience"\s+(like|in|~|<>|!=)/i);
-  });
-
-  it('getCachedDigest scopes to digest-weekly + matches weekStart by equality', () => {
+  it('getCachedDigest pins the week and still excludes stale rows', async () => {
     const weekStart = new Date('2026-05-03T00:00:00Z');
-    const query = inertDb.query.aiSummaries.findFirst({
-      where: and(
-        eq(aiSummaries.orgId, 1),
-        eq(aiSummaries.datasetId, 1),
-        eq(aiSummaries.audience, 'digest-weekly'),
-        eq(aiSummaries.weekStart, weekStart),
-        isNull(aiSummaries.staleAt),
-      ),
-    });
-    const { sql, params } = query.toSQL();
+    const { sql, params } = await emitted(() => getCachedDigest(7, 9, weekStart));
 
-    expect(sql).toMatch(/"(?:ai_summaries|aiSummaries)"\."audience"\s*=\s*\$/);
-    expect(sql).toMatch(/"(?:ai_summaries|aiSummaries)"\."week_start"\s*=\s*\$/);
-    expect(sql).toMatch(/"(?:ai_summaries|aiSummaries)"\."stale_at"\s+is\s+null/i);
-    expect(params).toContain('digest-weekly');
-    // Drizzle serializes timestamptz values as ISO strings on the wire.
-    const containsWeekStart = params.some((p) =>
-      p instanceof Date
-        ? p.getTime() === weekStart.getTime()
-        : typeof p === 'string' && new Date(p).getTime() === weekStart.getTime(),
-    );
-    expect(containsWeekStart).toBe(true);
+    expect(sql).toMatch(filtersOn('org_id'));
+    expect(sql).toMatch(filtersOn('week_start'));
+    expect(sql).toMatch(excludesStale);
+    expect(params).toEqual(expect.arrayContaining([7, 9, 'digest-weekly']));
+    // timestamptz crosses the wire as an ISO string, so compare instants.
+    expect(
+      params.some((p) => typeof p === 'string' && new Date(p).getTime() === weekStart.getTime()),
+    ).toBe(true);
   });
 
-  it('getCachedAlertSummary scopes to alert + matches fireId by equality', () => {
-    const query = inertDb.query.aiSummaries.findFirst({
-      where: and(
-        eq(aiSummaries.orgId, 1),
-        eq(aiSummaries.datasetId, 1),
-        eq(aiSummaries.audience, 'alert'),
-        eq(aiSummaries.fireId, 501),
-      ),
-    });
-    const { sql, params } = query.toSQL();
+  // Alerts fire once per event rather than once per week, so cache identity is
+  // the fire and not the calendar.
+  it('getCachedAlertSummary keys on fireId and not weekStart', async () => {
+    const { sql, params } = await emitted(() => getCachedAlertSummary(7, 9, 501));
 
-    expect(sql).toMatch(/"(?:ai_summaries|aiSummaries)"\."audience"\s*=\s*\$/);
-    expect(sql).toMatch(/"(?:ai_summaries|aiSummaries)"\."fire_id"\s*=\s*\$/);
-    expect(params).toContain('alert');
-    expect(params).toContain(501);
+    expect(sql).toMatch(filtersOn('org_id'));
+    expect(sql).toMatch(filtersOn('fire_id'));
+    expect(sql).not.toMatch(filtersOn('week_start'));
+    expect(params).toEqual(expect.arrayContaining([7, 9, 'alert', 501]));
+  });
+
+  // This one returns stale rows deliberately. It feeds the "data updated,
+  // refresh?" banner, which never appears if staleness is filtered out.
+  it('getLatestSummary reads stale rows and orders by recency', async () => {
+    const { sql, params } = await emitted(() => getLatestSummary(7, 9));
+
+    expect(sql).toMatch(filtersOn('org_id'));
+    expect(sql).not.toMatch(excludesStale);
+    expect(sql).toMatch(/order by "aiSummaries"\."created_at" desc/i);
+    expect(params).toEqual(expect.arrayContaining([7, 9, 'dashboard']));
   });
 });
