@@ -257,7 +257,14 @@ export const digestPreferences = pgTable('digest_preferences', {
   unsubscribedAt: timestamp('unsubscribed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-});
+},
+  (table) => [
+    // Created by migration 0021 and never declared here, so the file that is
+    // supposed to describe the schema did not know it existed. The weekly cron
+    // scans for preferences whose last send is older than the cadence window.
+    index('idx_digest_preferences_last_sent_at').on(table.lastSentAt),
+  ],
+);
 
 // Append-only delivery record, one row per org per week. Immutable: never
 // staled or deleted by application logic (mirrors cash_balance_snapshots).
