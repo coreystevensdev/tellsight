@@ -12,11 +12,13 @@ export async function GET(
   const { datasetId, statId } = await params;
   const cookie = request.headers.get('cookie') || '';
 
-  // Next decodes the path segment into `statId` (so a category containing
-  // `/` comes through with a literal slash), re-encode before forwarding or
-  // the upstream request line would split into extra segments.
+  // Next decodes both path segments (so a category containing `/` comes through
+  // with a literal slash), re-encode before forwarding or the upstream request
+  // line would split into extra segments. datasetId was left raw here while its
+  // sibling route encoded both; numeric ids made that harmless and it was still
+  // one asymmetry too many to leave in.
   const upstreamUrl = new URL(
-    `${webEnv.API_INTERNAL_URL}/ai-summaries/${datasetId}/stats/${encodeURIComponent(statId)}/rows`,
+    `${webEnv.API_INTERNAL_URL}/ai-summaries/${encodeURIComponent(datasetId)}/stats/${encodeURIComponent(statId)}/rows`,
   );
   const limit = request.nextUrl.searchParams.get('limit');
   const offset = request.nextUrl.searchParams.get('offset');
