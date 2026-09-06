@@ -211,10 +211,17 @@ function validate() {
     return;
   }
 
+  // Creating it here and returning 0 turned a missing, renamed or accidentally
+  // ignored snapshot into a passing run with no comparison performed: CI's
+  // "Seed Data Validation" job went green having checked nothing. Bootstrapping
+  // is what --update is for, and it is deliberate rather than a side effect of
+  // the file being absent.
   if (!existsSync(SNAPSHOT_PATH)) {
-    writeSnapshot(actual);
-    console.log(`\nSnapshot created: ${SNAPSHOT_PATH}`);
-    console.log('Commit this file, subsequent runs will compare against it.');
+    console.error(`\nFAIL: no snapshot at ${SNAPSHOT_PATH}`);
+    console.error('Nothing to compare the prompt against, so this run proves nothing.');
+    console.error('To create it deliberately:');
+    console.error('  pnpm -C apps/api exec tsx ../../scripts/validate-seed.ts --update');
+    process.exitCode = 1;
     return;
   }
 

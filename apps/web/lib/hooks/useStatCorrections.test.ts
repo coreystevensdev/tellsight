@@ -50,9 +50,13 @@ describe('useStatCorrections', () => {
     expect(result.current.error).toBe('Something broke');
   });
 
+  // Seeded with an existing row rather than an empty list. With [] the result
+  // holds exactly one element and prepend is indistinguishable from append, so
+  // the word in this test's name was untested.
   it('submitCorrection posts the note and prepends the new row on success', async () => {
+    const existing = { ...sampleCorrection, id: 99, note: 'An earlier correction' };
     vi.spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ data: [] }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ data: [existing] }) } as Response)
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ data: sampleCorrection }) } as Response);
 
     const { result } = renderHook(() => useStatCorrections(7, '7:runway:_:_'));
@@ -64,7 +68,8 @@ describe('useStatCorrections', () => {
     });
 
     expect(ok).toBe(true);
-    expect(result.current.corrections).toEqual([sampleCorrection]);
+    // Newest first: the new row ahead of the one already there.
+    expect(result.current.corrections).toEqual([sampleCorrection, existing]);
     expect(result.current.submitStatus).toBe('idle');
   });
 
