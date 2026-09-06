@@ -33,8 +33,10 @@ vi.mock('../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn() },
 }));
 
+const mockCheckRedisHealth = vi.hoisted(() => vi.fn());
+
 vi.mock('../lib/redis.js', () => ({
-  checkRedisHealth: vi.fn(async () => ({ status: 'ok', latencyMs: 1 })),
+  checkRedisHealth: mockCheckRedisHealth,
 }));
 
 import { createTestApp } from '../test/helpers/testApp.js';
@@ -60,6 +62,8 @@ beforeEach(() => {
   resetEmailProvider();
   mockCheckDatabaseHealth.mockReset();
   mockCheckDatabaseHealth.mockResolvedValue({ status: 'ok', latencyMs: 1 });
+  mockCheckRedisHealth.mockReset();
+  mockCheckRedisHealth.mockResolvedValue({ status: 'ok', latencyMs: 1 });
 });
 
 describe('GET /health', () => {
@@ -95,6 +99,41 @@ describe('GET /health', () => {
       status: 'unregistered',
       latencyMs: 0,
     });
+  });
+});
+
+// Every 503 assertion in this file was on /health/ready. /health is the endpoint
+// the production CloudWatch alarm polls, and nothing checked that it reports a
+// failed dependency, so the alarm's whole premise was untested from this side.
+describe('GET /health with a failed dependency', () => {
+  it.each([
+    ['the database', () => mockCheckDatabaseHealth.mockResolvedValue({ status: 'error', reason: 'connection', latencyMs: 1 })],
+    ['redis', () => mockCheckRedisHealth.mockResolvedValue({ status: 'error', latencyMs: 1 })],
+  ])('answers 503 degraded when %s is down', async (_label, breakIt) => {
+    breakIt();
+
+    const res = await fetch(`${baseUrl}/health`);
+    const body = (await res.json()) as { status: string };
+
+    expect(res.status).toBe(503);
+    expect(body.status).toBe('degraded');
+  });
+
+  it('answers 503 when both are down', async () => {
+    mockCheckDatabaseHealth.mockResolvedValue({ status: 'error', reason: 'connection', latencyMs: 1 });
+    mockCheckRedisHealth.mockResolvedValue({ status: 'error', latencyMs: 1 });
+
+    expect((await fetch(`${baseUrl}/health`)).status).toBe(503);
+  });
+
+  // The positive control. Without it the three above would pass just as well
+  // against a route that always answers 503.
+  it('answers 200 ok when both are healthy', async () => {
+    const res = await fetch(`${baseUrl}/health`);
+    const body = (await res.json()) as { status: string };
+
+    expect(res.status).toBe(200);
+    expect(body.status).toBe('ok');
   });
 });
 
