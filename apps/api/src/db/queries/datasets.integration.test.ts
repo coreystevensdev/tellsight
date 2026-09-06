@@ -58,6 +58,36 @@ describe('getDatasetListWithCounts against real Postgres', () => {
     expect(result?.uploadedBy).toEqual({ id: user!.id, name: 'Dana Uploader' });
   });
 
+  // Every other test here seeds a fresh org holding one dataset, which makes the
+  // org filter invisible: results come back newest-first, so index 0 is the row
+  // the test just inserted whether or not the query scopes by org. This one
+  // inserts a newer dataset somewhere else, so dropping the scope changes what
+  // comes back. It did not before: removing the org predicate left 2,469 unit
+  // and 100 integration tests green while every org read every org's list.
+  it('returns only the caller org datasets, not the newest row overall', async () => {
+    const mine = await seedOrg('scope-mine');
+    const theirs = await seedOrg('scope-theirs');
+
+    await dbAdmin.insert(datasets).values({ orgId: mine, name: 'Mine' });
+    await dbAdmin.insert(datasets).values({ orgId: theirs, name: 'Theirs, and newer' });
+
+    const rows = await getDatasetListWithCounts(mine, null, dbAdmin);
+
+    expect(rows.map((r) => r.name)).toEqual(['Mine']);
+  });
+
+  // Seed rows belong to demo mode, not to the org's own file list. Inserted last
+  // so it sorts first, which is where an unfiltered query would surface it.
+  it('leaves seed datasets out of the org list', async () => {
+    const orgId = await seedOrg('scope-seed');
+    await dbAdmin.insert(datasets).values({ orgId, name: 'Uploaded by hand' });
+    await dbAdmin.insert(datasets).values({ orgId, name: 'Demo data', isSeedData: true });
+
+    const rows = await getDatasetListWithCounts(orgId, null, dbAdmin);
+
+    expect(rows.map((r) => r.name)).toEqual(['Uploaded by hand']);
+  });
+
   it('returns uploadedBy as null when the dataset has no uploader', async () => {
     const orgId = await seedOrg('no-uploader');
     await dbAdmin.insert(datasets).values({ orgId, name: 'Imported via API' });

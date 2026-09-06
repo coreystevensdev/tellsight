@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 
 import { dbAdmin } from '../../lib/db.js';
@@ -8,6 +8,9 @@ import {
   getExpiredUnfoldedProposals,
   countExpiredUnfoldedProposals,
   resolveProposal,
+  expireProposals,
+  getRecentDedupKeys,
+  getPendingProposals,
   type AgentProposalStatus,
 } from './agentProposals.js';
 
@@ -27,6 +30,9 @@ async function insertTestProposal(overrides: {
   resolvedAt?: Date | null;
   title?: string;
   orgId?: number;
+  expiresAt?: Date;
+  createdAt?: Date;
+  dedupKey?: string;
 }) {
   const [row] = await dbAdmin
     .insert(agentProposals)
@@ -39,11 +45,12 @@ async function insertTestProposal(overrides: {
       recommendation: 'Consider reviewing your largest expense categories.',
       confidence: '0.850',
       evidence: ['monthly_burn_rate'],
-      dedupKey: `cash_flow:burn_rate:${Math.random()}`,
+      dedupKey: overrides.dedupKey ?? `cash_flow:burn_rate:${Math.random()}`,
       lane: 'auto_notify',
       period: '2026-06',
       status: overrides.status,
-      expiresAt: new Date('2026-07-06T00:00:00Z'),
+      expiresAt: overrides.expiresAt ?? new Date('2026-07-06T00:00:00Z'),
+      ...(overrides.createdAt ? { createdAt: overrides.createdAt } : {}),
       resolvedAt: overrides.resolvedAt ?? null,
     })
     .returning({ id: agentProposals.id });
@@ -151,5 +158,94 @@ describe('resolveProposal against real Postgres', () => {
     const id = await insertTestProposal({ status: 'approved', resolvedAt: new Date() });
 
     expect(await resolveProposal(id, 'rejected', resolverUserId, orgId)).toBeNull();
+  });
+});
+
+// expireProposals is the one query here with no org scope: it sweeps every
+// tenant at once. The window below sits entirely in 2020 so the sweep can only
+// reach rows this test made, and a mutation that widens it shows up as the
+// future-dated row flipping to expired.
+describe('expireProposals against real Postgres', () => {
+  it('expires only what is past its own expiry, not everything pending', async () => {
+    const overdue = await insertTestProposal({
+      status: 'pending',
+      expiresAt: new Date('2020-01-01T00:00:00Z'),
+      title: 'Overdue',
+    });
+    const stillLive = await insertTestProposal({
+      status: 'pending',
+      expiresAt: new Date('2099-01-01T00:00:00Z'),
+      title: 'Still live',
+    });
+
+    const expired = await expireProposals(new Date('2020-06-01T00:00:00Z'), dbAdmin);
+
+    expect(expired).toContain(overdue);
+    expect(expired).not.toContain(stillLive);
+
+    const rows = await dbAdmin
+      .select({ id: agentProposals.id, status: agentProposals.status, resolvedAt: agentProposals.resolvedAt })
+      .from(agentProposals)
+      .where(inArray(agentProposals.id, [overdue, stillLive]));
+    const byId = new Map(rows.map((r) => [r.id, r]));
+
+    expect(byId.get(overdue)?.status).toBe('expired');
+    expect(byId.get(overdue)?.resolvedAt).not.toBeNull();
+    expect(byId.get(stillLive)?.status).toBe('pending');
+  });
+
+  it('leaves an already-approved proposal alone even when overdue', async () => {
+    const approved = await insertTestProposal({
+      status: 'approved',
+      resolvedAt: new Date('2019-12-01T00:00:00Z'),
+      expiresAt: new Date('2020-01-01T00:00:00Z'),
+    });
+
+    const expired = await expireProposals(new Date('2020-06-01T00:00:00Z'), dbAdmin);
+
+    expect(expired).not.toContain(approved);
+  });
+});
+
+// The dedup key is what stops the agent re-raising a finding it already raised.
+// Scoped wrong, one tenant's keys silence another tenant's proposals.
+describe('getRecentDedupKeys against real Postgres', () => {
+  it('returns this org keys inside the window and nothing else', async () => {
+    const marker = `dedup-window-${Date.now()}`;
+    await insertTestProposal({ status: 'pending', dedupKey: `${marker}:recent` });
+    await insertTestProposal({
+      status: 'pending',
+      dedupKey: `${marker}:stale`,
+      createdAt: new Date('2020-01-01T00:00:00Z'),
+    });
+    await insertTestProposal({ status: 'pending', dedupKey: `${marker}:other-org`, orgId: otherOrgId });
+
+    const keys = await getRecentDedupKeys(orgId, new Date(Date.now() - 60_000), dbAdmin);
+
+    expect(keys).toContain(`${marker}:recent`);
+    expect(keys).not.toContain(`${marker}:stale`);
+    expect(keys).not.toContain(`${marker}:other-org`);
+  });
+});
+
+describe('getPendingProposals against real Postgres', () => {
+  it('returns only pending rows belonging to the caller org', async () => {
+    const pending = await insertTestProposal({ status: 'pending', title: 'Awaiting review' });
+    const resolved = await insertTestProposal({
+      status: 'approved',
+      resolvedAt: new Date(),
+      title: 'Already handled',
+    });
+    const foreign = await insertTestProposal({
+      status: 'pending',
+      orgId: otherOrgId,
+      title: 'Someone else problem',
+    });
+
+    const ids = (await getPendingProposals(orgId, dbAdmin)).map((r) => r.id);
+
+    expect(ids).toContain(pending);
+    expect(ids).not.toContain(resolved);
+    expect(ids).not.toContain(foreign);
   });
 });

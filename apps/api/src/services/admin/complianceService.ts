@@ -3,6 +3,19 @@ import { dbAdmin } from '../../lib/db.js';
 import { ANALYTICS_EVENTS } from 'shared/constants';
 import type { AlertRuleKind } from 'shared/schemas';
 
+type SqlRow = Record<string, number | string>;
+
+// A NULL column is real data: an aggregate over no rows. A missing column means
+// an alias in the SQL drifted from the mapping that reads it, and reporting that
+// as 0 makes a compliance dashboard read as compliant. Renaming one alias used
+// to leave all 16 unit and both integration tests green.
+function column(row: SqlRow | undefined, key: string): number {
+  if (!row || !(key in row)) {
+    throw new Error(`compliance metrics: query returned no "${key}" column`);
+  }
+  return Number(row[key] ?? 0);
+}
+
 export interface WindowCounts {
   unsubscribed: number;
   bounced: number;
@@ -78,11 +91,10 @@ export async function getEmailComplianceMetrics(): Promise<EmailComplianceMetric
           AND created_at >= NOW() - INTERVAL '30 days') AS clicked_30d
   `);
 
-  const row = (result as unknown as { rows?: Record<string, number | string>[] }).rows?.[0]
-    ?? (result as unknown as Record<string, number | string>[])[0]
-    ?? {};
+  const row = (result as unknown as { rows?: SqlRow[] }).rows?.[0]
+    ?? (result as unknown as SqlRow[])[0];
 
-  const num = (key: string): number => Number(row[key] ?? 0);
+  const num = (key: string): number => column(row, key);
 
   return {
     totalProUsers: num('total_pro_users'),
@@ -203,13 +215,12 @@ export async function getAlertComplianceMetrics(): Promise<AlertComplianceMetric
     `),
   ]);
 
-  const summaryRows = (summaryResult as unknown as { rows?: Record<string, number | string>[] }).rows
-    ?? (summaryResult as unknown as Record<string, number | string>[]);
-  const summary = summaryRows[0] ?? {};
-  const num = (key: string): number => Number(summary[key] ?? 0);
+  const summaryRows = (summaryResult as unknown as { rows?: SqlRow[] }).rows
+    ?? (summaryResult as unknown as SqlRow[]);
+  const num = (key: string): number => column(summaryRows[0], key);
 
-  const kindRows = (byKindResult as unknown as { rows?: Record<string, number | string>[] }).rows
-    ?? (byKindResult as unknown as Record<string, number | string>[]);
+  const kindRows = (byKindResult as unknown as { rows?: SqlRow[] }).rows
+    ?? (byKindResult as unknown as SqlRow[]);
 
   return {
     totalRules: num('total_rules'),
@@ -218,10 +229,10 @@ export async function getAlertComplianceMetrics(): Promise<AlertComplianceMetric
     d30: { fired: num('fired_30d'), quotaSuppressed: num('quota_suppressed_30d') },
     byRuleKind: kindRows.map((row) => ({
       ruleKind: row.rule_kind as AlertRuleKind,
-      totalRules: Number(row.total_rules ?? 0),
-      fired: Number(row.fired ?? 0),
-      clicked: Number(row.clicked ?? 0),
-      candidateDefaultOffRules: Number(row.candidate_default_off_rules ?? 0),
+      totalRules: column(row, 'total_rules'),
+      fired: column(row, 'fired'),
+      clicked: column(row, 'clicked'),
+      candidateDefaultOffRules: column(row, 'candidate_default_off_rules'),
     })),
     computedAt: new Date().toISOString(),
   };

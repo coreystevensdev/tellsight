@@ -43,19 +43,29 @@ describe('getEmailComplianceMetrics', () => {
     expect(new Date(m.computedAt).toString()).not.toBe('Invalid Date');
   });
 
-  it('returns zeros across both windows when the result row is empty', async () => {
+  // The query is scalar subqueries with no outer FROM, so Postgres always returns
+  // exactly one row. No rows means the statement or the driver shape broke, and
+  // answering that with zeros is how a compliance dashboard reports "nobody was
+  // emailed without consent" when it actually knows nothing.
+  it('refuses to report zeros when the query returned no row', async () => {
     mockExecute.mockResolvedValueOnce([]);
 
-    const m = await getEmailComplianceMetrics();
+    await expect(getEmailComplianceMetrics()).rejects.toThrow(/no "total_pro_users" column/);
+  });
 
-    expect(m.totalProUsers).toBe(0);
-    expect(m.cadenceActiveUsers).toBe(0);
-    expect(m.d7).toEqual({
-      unsubscribed: 0, bounced: 0, complained: 0, digestsSent: 0, opened: 0, clicked: 0,
-    });
-    expect(m.d30).toEqual({
-      unsubscribed: 0, bounced: 0, complained: 0, digestsSent: 0, opened: 0, clicked: 0,
-    });
+  // Same reason, one step subtler: the row arrives, but an alias in the SQL no
+  // longer matches the key the mapping reads.
+  it('refuses to report zeros when an alias no longer matches the mapping', async () => {
+    mockExecute.mockResolvedValueOnce([
+      {
+        total_pro_users_typo: 42,
+        cadence_active_users: 30,
+        unsub_7d: 3, bounce_7d: 1, complaint_7d: 0, sent_7d: 200, opened_7d: 90, clicked_7d: 30,
+        unsub_30d: 11, bounce_30d: 4, complaint_30d: 1, sent_30d: 800, opened_30d: 360, clicked_30d: 120,
+      },
+    ]);
+
+    await expect(getEmailComplianceMetrics()).rejects.toThrow(/no "total_pro_users" column/);
   });
 
   it('coerces string-shaped counts (driver may return text from COUNT)', async () => {
@@ -80,7 +90,14 @@ describe('getEmailComplianceMetrics', () => {
   });
 
   it('embeds bounce, complaint, and sent event names in the SQL bindings', async () => {
-    mockExecute.mockResolvedValueOnce([{}]);
+    mockExecute.mockResolvedValueOnce([
+      {
+        total_pro_users: 42,
+        cadence_active_users: 30,
+        unsub_7d: 3, bounce_7d: 1, complaint_7d: 0, sent_7d: 200, opened_7d: 90, clicked_7d: 30,
+        unsub_30d: 11, bounce_30d: 4, complaint_30d: 1, sent_30d: 800, opened_30d: 360, clicked_30d: 120,
+      },
+    ]);
 
     await getEmailComplianceMetrics();
 
@@ -91,7 +108,14 @@ describe('getEmailComplianceMetrics', () => {
   });
 
   it('embeds the engagement event names + COUNT(DISTINCT) shape (AC #6)', async () => {
-    mockExecute.mockResolvedValueOnce([{}]);
+    mockExecute.mockResolvedValueOnce([
+      {
+        total_pro_users: 42,
+        cadence_active_users: 30,
+        unsub_7d: 3, bounce_7d: 1, complaint_7d: 0, sent_7d: 200, opened_7d: 90, clicked_7d: 30,
+        unsub_30d: 11, bounce_30d: 4, complaint_30d: 1, sent_30d: 800, opened_30d: 360, clicked_30d: 120,
+      },
+    ]);
 
     await getEmailComplianceMetrics();
 
@@ -103,7 +127,14 @@ describe('getEmailComplianceMetrics', () => {
   });
 
   it('queries both 7-day and 30-day intervals', async () => {
-    mockExecute.mockResolvedValueOnce([{}]);
+    mockExecute.mockResolvedValueOnce([
+      {
+        total_pro_users: 42,
+        cadence_active_users: 30,
+        unsub_7d: 3, bounce_7d: 1, complaint_7d: 0, sent_7d: 200, opened_7d: 90, clicked_7d: 30,
+        unsub_30d: 11, bounce_30d: 4, complaint_30d: 1, sent_30d: 800, opened_30d: 360, clicked_30d: 120,
+      },
+    ]);
 
     await getEmailComplianceMetrics();
 
@@ -146,8 +177,14 @@ describe('getAlertComplianceMetrics', () => {
     expect(typeof m.computedAt).toBe('string');
   });
 
+  // The kind table legitimately comes back empty; the summary row does not, so
+  // it is given real zeros rather than no row at all.
   it('returns zeros and an empty kind table when nothing exists yet', async () => {
-    mockExecute.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    mockExecute
+      .mockResolvedValueOnce([
+        { total_rules: 0, muted_rules: 0, fired_7d: 0, quota_suppressed_7d: 0, fired_30d: 0, quota_suppressed_30d: 0 },
+      ])
+      .mockResolvedValueOnce([]);
 
     const m = await getAlertComplianceMetrics();
 
