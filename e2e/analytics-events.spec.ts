@@ -57,12 +57,14 @@ test.describe('Analytics Event Verification (FR40)', () => {
       },
     });
 
-    if (response.status() === 429) {
-      console.warn('Upload rate limited in CI, skipping event assertion');
-      await ctx.close();
-      return;
-    }
-    expect(response.status()).toBe(200);
+    // Was a warn-and-return, which reports as PASS rather than SKIPPED, so a
+    // limiter misconfigured to reject one small upload produced a green run. The
+    // catch below already draws this distinction for the admin query; this is the
+    // same call made here.
+    expect(
+      response.status(),
+      `upload returned ${response.status()}; a 429 means the rate-limiter tier is misconfigured`,
+    ).toBe(200);
 
     const event = await waitForEvent(ctx.request, 'dataset.uploaded', since);
 

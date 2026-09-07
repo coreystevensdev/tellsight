@@ -91,6 +91,20 @@ describe('tokenService', () => {
     });
   });
 
+  // AUTH.ACCESS_TOKEN_EXPIRY was read by nothing in the suite, so shortening or
+  // lengthening it was silent. Asserted through a real signed token rather than
+  // against the constant, since the requirement is about the token's lifetime,
+  // not about a string.
+  describe('access token lifetime', () => {
+    it('expires 15 minutes after issue', async () => {
+      const token = await signAccessToken({ userId: 1, orgId: 10, role: 'owner', isAdmin: false });
+
+      const claims = await verifyAccessToken(token);
+
+      expect(claims.exp - claims.iat).toBe(15 * 60);
+    });
+  });
+
   describe('verifyAccessToken', () => {
     it('verifies a valid token and returns claims', async () => {
       const token = await signAccessToken({

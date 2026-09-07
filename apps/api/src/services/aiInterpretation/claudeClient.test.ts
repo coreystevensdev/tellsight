@@ -86,6 +86,24 @@ vi.mock('@anthropic-ai/sdk', () => {
 
 import { logger } from '../../lib/logger.js';
 
+// Retry and timeout are delegated entirely to the SDK, so these two numbers are
+// the whole of the retry policy. The mock constructor used to discard its
+// options, which meant setting maxRetries to 0 left the suite green while the
+// cost ceiling and the breaker's own sizing both assume 2.
+describe('Anthropic client construction', () => {
+  it('asks the SDK for two retries and a 15s timeout', async () => {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default as unknown as {
+      mock: { calls: [{ maxRetries?: number; timeout?: number }][] };
+    };
+
+    await import('./claudeClient.js');
+
+    const opts = Anthropic.mock.calls[0]![0];
+    expect(opts.maxRetries).toBe(2);
+    expect(opts.timeout).toBe(15_000);
+  });
+});
+
 describe('circuit breaker construction options', () => {
   async function breakerOpts() {
     vi.resetModules();
