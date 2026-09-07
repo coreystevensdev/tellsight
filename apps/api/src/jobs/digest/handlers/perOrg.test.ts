@@ -1163,3 +1163,31 @@ describe('invalid job payload', () => {
     );
   });
 });
+
+// Six of the nine org-scoped queries here are already caught by an argument
+// assertion somewhere in this file. These three were not: pointed at another
+// org they returned the same fixture and the whole API suite stayed green.
+//
+// getCachedDigest is the sharp one. aiSummaries.test.ts proves that helper scopes
+// its own SQL by org, and that proof holds. It says nothing about whether this
+// caller hands it the right org, and nothing did.
+describe('org scoping of the queries this handler issues', () => {
+  it('reads the digest cache, the agent flag and the expired-proposal count for the job org', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockGetCachedDigest.mockResolvedValueOnce(undefined);
+    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockGenerateInterpretation.mockResolvedValueOnce('- bullet 1\n- bullet 2\n- bullet 3');
+    mockStoreSummary.mockResolvedValueOnce({ id: 999 });
+    mockFindOrgRecipients.mockResolvedValueOnce([]);
+
+    await handlePerOrgJob({ id: 'scope-1', data: baseJobData } as never);
+
+    // The org argument is the whole point, so these assert position rather than
+    // the full call: which client each query got is a separate concern and
+    // pinning it here would break on an unrelated refactor.
+    expect(mockGetCachedDigest.mock.calls[0]!.slice(0, 2)).toEqual([42, 100]);
+    expect(mockGetAgentEnabled.mock.calls[0]![0]).toBe(42);
+    expect(mockCountExpiredUnfoldedProposals.mock.calls[0]![0]).toBe(42);
+  });
+});

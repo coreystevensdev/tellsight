@@ -740,6 +740,56 @@ describe('invalid job payload', () => {
 // 2,460 api tests green, so a customer could create an anomaly rule that never
 // fires and CI would say nothing. The bands themselves are unit-tested in
 // bands.test.ts; what was missing is the insight-selection to band wiring.
+// Every query here takes the org as an argument, and a mocked query layer returns
+// the same fixture whichever org it is handed. Five of these could be pointed at
+// `orgId + 1` with the whole 2,506-case API suite green. The rule query is the
+// worst: crossed, another tenant's thresholds and rule kinds are evaluated
+// against this org's data while this org's own rules stop firing, both halves
+// silent. mockGetEnabledRules appears two dozen times in this file and never once
+// inside an expect.
+//
+// Sliced rather than matched whole, because only the leading arguments carry the
+// tenancy and the trailing ones are optional.
+describe('org scoping of the queries this handler issues', () => {
+  const DB = { __tag: 'dbAdmin' };
+
+  it('hands every query the org from the job payload', async () => {
+    mockGetActiveDatasetId.mockResolvedValue(555);
+    mockGetEnabledRules.mockResolvedValueOnce([runwayRule()]);
+    mockRunCurationPipeline.mockResolvedValueOnce([runwayInsight(2)]);
+
+    await handleEvaluateOrgJob({ id: 'scope-1', data: baseJobData } as never);
+
+    expect(mockGetActiveTier).toHaveBeenCalledWith(42, DB);
+    expect(mockGetActiveDatasetId).toHaveBeenCalledWith(42, DB);
+    expect(mockGetEnabledRules).toHaveBeenCalledWith([42], DB);
+    expect(mockFindOrgById).toHaveBeenCalledWith(42);
+    expect(mockRunCurationPipeline.mock.calls[0]!.slice(0, 3)).toEqual([42, 555, DB]);
+  });
+
+  // The two history queries only run on the on-upload path, so they need that
+  // trigger rather than riding on the cron run above.
+  it('hands the history queries the same org and the freshly-fetched dataset', async () => {
+    mockGetActiveDatasetId.mockResolvedValue(555);
+    mockGetEnabledRules.mockResolvedValueOnce([runwayRule()]);
+    mockGetDateRange.mockResolvedValueOnce({
+      earliest: new Date('2026-01-01'),
+      latest: new Date('2026-06-01'),
+    });
+    mockRunCurationPipeline.mockResolvedValueOnce([runwayInsight(2)]);
+
+    await handleEvaluateOrgJob({
+      id: 'scope-2',
+      data: { orgId: 42, datasetId: 100, trigger: 'on-upload' as const, correlationId: 'corr-scope' },
+    } as never);
+
+    // 555, not the 100 in the payload: the handler re-reads the active dataset
+    // rather than trusting a job that may have been queued before a switch.
+    expect(mockGetDateRange.mock.calls[0]!.slice(0, 3)).toEqual([42, 555, DB]);
+    expect(mockCountDistinctDates.mock.calls[0]!.slice(0, 3)).toEqual([42, 555, DB]);
+  });
+});
+
 describe('anomaly_fires rule evaluation', () => {
   // 2.0 is the significance bar scoring.ts already uses, 2.5 and 3.0 step up.
   it.each([
