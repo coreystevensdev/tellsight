@@ -93,6 +93,44 @@ describe('POST /webhooks/resend', () => {
     expect(mockTrackEventSystem).not.toHaveBeenCalled();
   });
 
+  // Needs its own module registry: env is mocked at the top of this file with the
+  // secret set, and the router closes over it. Without this, an unconfigured
+  // deploy still fails closed, because new Webhook(undefined) throws, but it
+  // surfaces as an unhandled 500 through the global error handler instead of the
+  // operator signal this branch was written to give.
+  it('returns 400 WEBHOOK_NOT_CONFIGURED when the secret is unset', async () => {
+    vi.resetModules();
+    vi.doMock('../config.js', () => ({
+      env: { NODE_ENV: 'test', EMAIL_FROM_ADDRESS: 'digest@tellsight.test' },
+    }));
+
+    try {
+      const { resendWebhookRouter: unconfigured } = await import('./resendWebhook.js');
+      const app = express();
+      app.use(unconfigured);
+
+      const local = await new Promise<http.Server>((resolve) => {
+        const srv = app.listen(0, () => resolve(srv));
+      });
+      const port = (local.address() as AddressInfo).port;
+
+      const { body, headers } = signedRequest({ type: 'email.bounced', data: {} });
+      const res = await fetch(`http://127.0.0.1:${port}/webhooks/resend`, {
+        method: 'POST',
+        headers,
+        body,
+      });
+
+      expect(res.status).toBe(400);
+      expect((await res.json()).error.code).toBe('WEBHOOK_NOT_CONFIGURED');
+
+      await new Promise<void>((resolve) => local.close(() => resolve()));
+    } finally {
+      vi.doUnmock('../config.js');
+      vi.resetModules();
+    }
+  });
+
   it('returns 400 when svix headers are missing entirely', async () => {
     const res = await fetch(`${baseUrl}/webhooks/resend`, {
       method: 'POST',

@@ -193,6 +193,51 @@ describe('rateLimiter', { retry: 2 }, () => {
     });
   });
 
+  // The key is `${user}:${statInstanceId}`. Every test in the block below pins
+  // req.user.sub to one value, so the user half of that key was unasserted:
+  // dropping it left a per-stat bucket shared by the whole org, where one member
+  // flagging a stat spends everyone else's budget on it and they get a 429 they
+  // did nothing to earn.
+  describe('rateLimitStatCorrectionTier1 keying', () => {
+    let server: http.Server;
+    let baseUrl: string;
+
+    beforeAll(async () => {
+      const result = await createTestApp((app) => {
+        app.use((req: Request, _res: Response, next) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (req as any).user = { sub: req.headers['x-test-user'] as string };
+          next();
+        });
+        app.post('/stat-corrections/:statInstanceId', (req: Request, res: Response, next) => {
+          rateLimitStatCorrectionTier1(req.params.statInstanceId as string)(req, res, next);
+        }, (_req: Request, res: Response) => {
+          res.status(201).json({ data: { ok: true } });
+        });
+      });
+      server = result.server;
+      baseUrl = result.baseUrl;
+    });
+
+    afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
+
+    it('gives two users independent budgets for the same stat', async () => {
+      const post = (user: string) =>
+        fetch(`${baseUrl}/stat-corrections/shared-stat`, {
+          method: 'POST',
+          headers: { 'x-test-user': user },
+        });
+
+      for (let i = 0; i < 3; i++) {
+        expect((await post('keying-user-a')).status).toBe(201);
+      }
+      expect((await post('keying-user-a')).status).toBe(429);
+
+      // Same stat, different person, untouched budget.
+      expect((await post('keying-user-b')).status).toBe(201);
+    });
+  });
+
   describe('rateLimitStatCorrectionTier1', () => {
     let server: http.Server;
     let baseUrl: string;
