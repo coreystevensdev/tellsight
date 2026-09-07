@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { createHmac } from 'node:crypto';
 
 vi.mock('../../config.js', () => ({
   env: { JWT_SECRET: 'a'.repeat(64) },
@@ -67,5 +68,36 @@ describe('verifyMuteToken', () => {
 
   it('uses constant-time comparison (sigs of differing length return null safely)', () => {
     expect(verifyMuteToken('7.short')).toBeNull();
+  });
+});
+
+
+// Every test above signs and verifies through this module's own functions, so
+// the purpose prefix cancels out: drop it from both halves and the round trip
+// still passes. The cross-scheme test that exists has the same blind spot, since
+// it signs the other token with that module's real signer, so removing this
+// prefix moves only one side and the two literals still differ.
+//
+// Writing the prefix out by hand is what pins it. Removing `${PURPOSE}:` from
+// the HMAC input left all 2,483 API tests green before this block existed.
+describe('purpose prefix isolation', () => {
+  const SECRET = 'a'.repeat(64);
+
+  function tokenSignedWith(prefixed: string) {
+    const sig = createHmac('sha256', SECRET).update(prefixed).digest('base64url');
+    return `7.${sig}`;
+  }
+
+  it("accepts a signature built with the 'mute-rule' prefix", () => {
+    expect(verifyMuteToken(tokenSignedWith('mute-rule:7'))).toEqual({ ruleId: 7 });
+  });
+
+  it.each(['unsubscribe', 'alert:track', 'digest:track', 'mute'])('rejects a signature built with the %s prefix', (other: string) => {
+    expect(verifyMuteToken(tokenSignedWith(`${other}:7`))).toBeNull();
+  });
+
+  // What dropping the prefix altogether produces: a signature over the bare id.
+  it('rejects a signature over the bare id', () => {
+    expect(verifyMuteToken(tokenSignedWith('7'))).toBeNull();
   });
 });
