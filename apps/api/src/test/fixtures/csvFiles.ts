@@ -82,6 +82,16 @@ bad-date,450.50,Expenses
 2025-01-18,not-a-number,Expenses
 2025-01-19,300.00,Revenue`;
 
+/** 5 rows, 3 invalid: 60% failure, inside the band the reject threshold governs.
+ *  mostlyInvalid below fails at 100%, where validRows is empty either way, so it
+ *  cannot tell the threshold from its absence. */
+export const sixtyPercentInvalid = `date,amount,category
+2025-01-15,1200.00,Revenue
+bad-date,450.50,Expenses
+2025-01-17,not-a-number,Revenue
+nope,nah,Expenses
+2025-01-19,300.00,Revenue`;
+
 /** All rows invalid (>50% failure) */
 export const mostlyInvalid = `date,amount,category
 bad,bad,
