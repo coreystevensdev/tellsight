@@ -5,5 +5,6 @@
     "rootDir": "src"
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+  "//": "src/test holds the vitest network guard, which self-executes on import. It is loaded by setupFiles as TypeScript, so it never needs building, and shipping it put a fetch-blocking side effect inside the published bundle.",
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "src/test/**"]
 }
