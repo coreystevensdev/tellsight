@@ -255,6 +255,45 @@ describe('tokenService', () => {
       await expect(rotateRefreshToken('a'.repeat(64))).rejects.toThrow('User not found');
     });
 
+    // The single-membership case above cannot tell `.find(m => m.orgId === ...)`
+    // apart from `memberships[0]`, because index 0 is the match. Two memberships
+    // with the token bound to the second one can. Getting this wrong hands a
+    // member of org A the role they hold in some other org, on every refresh.
+    it('takes the role from the membership matching the token org, not the first one', async () => {
+      const existing = { id: 5, userId: 1, orgId: 20 };
+
+      mockFindByHash.mockResolvedValueOnce(existing);
+      mockRevokeToken.mockResolvedValueOnce({ ...existing, revokedAt: new Date() });
+      mockFindUserById.mockResolvedValueOnce({ id: 1, isPlatformAdmin: false });
+      mockGetUserOrgs.mockResolvedValueOnce([
+        { orgId: 10, role: 'owner', org: { id: 10 } },
+        { orgId: 20, role: 'member', org: { id: 20 } },
+      ]);
+      mockCreateRefreshToken.mockResolvedValueOnce({ id: 6 });
+
+      const result = await rotateRefreshToken('a'.repeat(64));
+
+      // Decoded, because the role only exists inside the minted token: asserting
+      // on result.orgId alone passes with the wrong membership selected.
+      const claims = await verifyAccessToken(result.accessToken);
+      expect(claims.org_id).toBe(20);
+      expect(claims.role).toBe('member');
+    });
+
+    // The empty-list case below is also satisfied by memberships[0], so it does
+    // not prove the org is checked. This one has memberships that simply do not
+    // include the token's org.
+    it('refuses to rotate when the user belongs to other orgs but not this one', async () => {
+      mockFindByHash.mockResolvedValueOnce({ id: 5, userId: 1, orgId: 99 });
+      mockRevokeToken.mockResolvedValueOnce({});
+      mockFindUserById.mockResolvedValueOnce({ id: 1, isPlatformAdmin: false });
+      mockGetUserOrgs.mockResolvedValueOnce([{ orgId: 10, role: 'owner', org: { id: 10 } }]);
+
+      await expect(rotateRefreshToken('a'.repeat(64))).rejects.toThrow(
+        'Organization membership not found',
+      );
+    });
+
     it('throws AuthenticationError when membership not found', async () => {
       mockFindByHash.mockResolvedValueOnce({ id: 5, userId: 1, orgId: 10 });
       mockRevokeToken.mockResolvedValueOnce({});

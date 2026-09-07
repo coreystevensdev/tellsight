@@ -654,10 +654,18 @@ describe('integrations routes', () => {
       const { integrationsCallbackRouter } = await import('./integrations.js');
       const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/shopify/callback');
 
-      const req = createMockReq({ query: validQuery() });
+      // The matching state cookie is what makes this test about HMAC. Without it
+      // the state check three lines further down produces the same error
+      // redirect and the same uncalled exchangeCode, so deleting the HMAC call
+      // site entirely left this passing.
+      const req = createMockReq({
+        query: validQuery(),
+        cookies: { shopify_oauth_state: 'valid-state' },
+      });
       const res = createMockRes();
       await handler(req, res, vi.fn());
 
+      expect(mockShopifyVerifyHmac).toHaveBeenCalled();
       expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?shopify=error');
       expect(mockShopifyExchangeCode).not.toHaveBeenCalled();
     });

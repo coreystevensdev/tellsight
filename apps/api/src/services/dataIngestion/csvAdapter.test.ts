@@ -18,6 +18,7 @@ import {
   trailingNewlines,
   partiallyValid,
   mostlyInvalid,
+  sixtyPercentInvalid,
   quotedHeaders,
 } from '../../test/fixtures/csvFiles.js';
 
@@ -144,6 +145,18 @@ describe('csvAdapter.parse', () => {
     const result = csvAdapter.parse(toBuffer(mostlyInvalid));
     expect(result.rows).toHaveLength(0);
     expect(result.rowCount).toBe(3);
+  });
+
+  // 100% failure leaves validRows empty whether or not the threshold exists, so
+  // the case above passes with the branch deleted. 60% is inside the band the
+  // branch actually governs, and the empty warnings array is what separates a
+  // reject from a partial accept: the accept path reports "N rows skipped".
+  it('rejects at 60% failure rather than importing the survivors', () => {
+    const result = csvAdapter.parse(toBuffer(sixtyPercentInvalid));
+
+    expect(result.rowCount).toBe(5);
+    expect(result.rows).toHaveLength(0);
+    expect(result.warnings).toHaveLength(0);
   });
 
   it('handles quoted headers containing commas', () => {
