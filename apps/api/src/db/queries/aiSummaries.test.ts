@@ -236,7 +236,10 @@ describe('the SQL the cache lookups emit', () => {
     expect(sql).toMatch(filtersOn('org_id'));
     expect(sql).toMatch(filtersOn('dataset_id'));
     expect(sql).toMatch(excludesStale);
-    expect(params).toEqual(expect.arrayContaining([7, 9, 'dashboard']));
+    // slice rather than arrayContaining: the latter is order-blind, so swapping
+    // the org and dataset predicates in the source still satisfied it.
+    expect(params.slice(0, 2)).toEqual([7, 9]);
+    expect(params).toContain('dashboard');
   });
 
   it('getCachedDigest pins the week and still excludes stale rows', async () => {
@@ -246,7 +249,8 @@ describe('the SQL the cache lookups emit', () => {
     expect(sql).toMatch(filtersOn('org_id'));
     expect(sql).toMatch(filtersOn('week_start'));
     expect(sql).toMatch(excludesStale);
-    expect(params).toEqual(expect.arrayContaining([7, 9, 'digest-weekly']));
+    expect(params.slice(0, 2)).toEqual([7, 9]);
+    expect(params).toContain('digest-weekly');
     // timestamptz crosses the wire as an ISO string, so compare instants.
     expect(
       params.some((p) => typeof p === 'string' && new Date(p).getTime() === weekStart.getTime()),
@@ -261,7 +265,9 @@ describe('the SQL the cache lookups emit', () => {
     expect(sql).toMatch(filtersOn('org_id'));
     expect(sql).toMatch(filtersOn('fire_id'));
     expect(sql).not.toMatch(filtersOn('week_start'));
-    expect(params).toEqual(expect.arrayContaining([7, 9, 'alert', 501]));
+    expect(params.slice(0, 2)).toEqual([7, 9]);
+    expect(params).toContain('alert');
+    expect(params).toContain(501);
   });
 
   // This one returns stale rows deliberately. It feeds the "data updated,
@@ -272,6 +278,7 @@ describe('the SQL the cache lookups emit', () => {
     expect(sql).toMatch(filtersOn('org_id'));
     expect(sql).not.toMatch(excludesStale);
     expect(sql).toMatch(/order by "aiSummaries"\."created_at" desc/i);
-    expect(params).toEqual(expect.arrayContaining([7, 9, 'dashboard']));
+    expect(params.slice(0, 2)).toEqual([7, 9]);
+    expect(params).toContain('dashboard');
   });
 });

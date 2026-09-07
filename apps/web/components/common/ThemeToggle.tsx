@@ -3,6 +3,7 @@
 import { useTheme } from 'next-themes';
 import { Sun, Moon, Monitor } from 'lucide-react';
 import { useSyncExternalStore } from 'react';
+import { ANALYTICS_EVENTS } from 'shared/constants';
 import { trackClientEvent } from '@/lib/analytics';
 
 const cycleOrder = ['light', 'dark', 'system'] as const;
@@ -19,7 +20,7 @@ export function ThemeToggle() {
     const idx = cycleOrder.indexOf(theme as (typeof cycleOrder)[number]);
     const next = cycleOrder[(idx + 1) % cycleOrder.length] ?? 'system';
     setTheme(next);
-    trackClientEvent('theme.changed', { theme: next });
+    trackClientEvent(ANALYTICS_EVENTS.THEME_CHANGED, { theme: next });
   }
 
   if (!mounted) {

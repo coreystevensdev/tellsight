@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    setupFiles: ['./src/test/blockExternalNetwork.ts'],
+    setupFiles: ['../../packages/shared/src/test/blockExternalNetwork.ts'],
     fileParallelism: false,
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     // rls.integration.test.ts hits a real Postgres role and runs under its

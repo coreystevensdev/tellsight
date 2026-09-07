@@ -4,6 +4,7 @@ import { useTheme } from 'next-themes';
 import { useSyncExternalStore } from 'react';
 import { Sun, Moon, Monitor } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ANALYTICS_EVENTS } from 'shared/constants';
 import { trackClientEvent } from '@/lib/analytics';
 
 const themes = [
@@ -21,7 +22,7 @@ export default function Preferences() {
 
   function selectTheme(value: string) {
     setTheme(value);
-    trackClientEvent('theme.changed', { theme: value });
+    trackClientEvent(ANALYTICS_EVENTS.THEME_CHANGED, { theme: value });
   }
 
   return (

@@ -1,5 +1,7 @@
+import type { AnalyticsEventName } from 'shared/constants';
+
 export function trackClientEvent(
-  eventName: string,
+  eventName: AnalyticsEventName,
   metadata?: Record<string, unknown>,
 ): void {
   fetch('/api/analytics', {
