@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    setupFiles: ['./src/test/blockExternalNetwork.ts'],
     include: ['src/**/*.test.ts'],
     coverage: {
       provider: 'v8',

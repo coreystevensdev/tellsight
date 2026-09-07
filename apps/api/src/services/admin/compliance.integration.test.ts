@@ -16,9 +16,9 @@ describe('compliance metrics against real Postgres', () => {
   it('getEmailComplianceMetrics runs and maps every field', async () => {
     const m = await getEmailComplianceMetrics();
 
-    // A misspelled alias reads back as undefined and Number(undefined) is NaN,
-    // so this catches the alias drifting from the mapping as well as a bad
-    // column name, which throws outright.
+    // Drift is caught by column() throwing on a missing key, not by these
+    // assertions: Number(row[key] ?? 0) reads a missing column back as 0, which
+    // is finite. These only check that what did arrive maps to numbers.
     for (const value of [m.totalProUsers, m.cadenceActiveUsers]) {
       expect(Number.isFinite(value)).toBe(true);
     }

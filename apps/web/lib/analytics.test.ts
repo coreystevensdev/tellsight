@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ANALYTICS_EVENTS } from 'shared/constants';
+
 import { trackClientEvent } from './analytics';
 
 describe('trackClientEvent', () => {
@@ -9,7 +11,7 @@ describe('trackClientEvent', () => {
   it('sends POST to /api/analytics with event data', () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response());
 
-    trackClientEvent('transparency_panel.opened', { datasetId: 42 });
+    trackClientEvent(ANALYTICS_EVENTS.TRANSPARENCY_PANEL_OPENED, { datasetId: 42 });
 
     expect(fetchSpy).toHaveBeenCalledWith('/api/analytics', {
       method: 'POST',
@@ -22,10 +24,10 @@ describe('trackClientEvent', () => {
   it('works without metadata', () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response());
 
-    trackClientEvent('some.event');
+    trackClientEvent(ANALYTICS_EVENTS.DASHBOARD_VIEWED);
 
     expect(fetchSpy).toHaveBeenCalledWith('/api/analytics', expect.objectContaining({
-      body: JSON.stringify({ eventName: 'some.event' }),
+      body: JSON.stringify({ eventName: ANALYTICS_EVENTS.DASHBOARD_VIEWED }),
     }));
   });
 
@@ -33,6 +35,6 @@ describe('trackClientEvent', () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network'));
 
     // should not throw
-    expect(() => trackClientEvent('some.event')).not.toThrow();
+    expect(() => trackClientEvent(ANALYTICS_EVENTS.DASHBOARD_VIEWED)).not.toThrow();
   });
 });

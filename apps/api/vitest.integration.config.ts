@@ -7,7 +7,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    setupFiles: ['./src/test/blockExternalNetwork.ts'],
+    setupFiles: ['../../packages/shared/src/test/blockExternalNetwork.ts'],
     fileParallelism: false,
     include: ['src/**/*.integration.test.ts'],
     pool: 'forks',

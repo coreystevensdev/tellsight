@@ -91,6 +91,7 @@ export const ANALYTICS_EVENTS = {
   SUBSCRIPTION_EXPIRED: 'subscription.expired',
   SUBSCRIPTION_STATUS_CHECKED: 'subscription.status_checked',
   TRANSPARENCY_PANEL_OPENED: 'transparency_panel.opened',
+  THEME_CHANGED: 'theme.changed',
   DATASET_RENAMED: 'dataset.renamed',
   DATASET_ACTIVATED: 'dataset.activated',
   INTEGRATION_CONNECTED: 'integration.connected',
