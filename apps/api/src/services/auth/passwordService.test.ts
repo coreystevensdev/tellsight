@@ -24,4 +24,14 @@ describe('passwordService', () => {
     const valid = await verifyPassword('anything', 'not-a-real-hash');
     expect(valid).toBe(false);
   });
+
+  // 'not-a-real-hash' has no colon, so the split guard catches it and the length
+  // check below never runs. This one splits fine and is simply too short:
+  // timingSafeEqual throws on a length mismatch, which would turn a wrong
+  // password into a 500 on every login for that account, not a clean failure.
+  it('rejects a truncated stored hash instead of throwing', async () => {
+    const valid = await verifyPassword('anything', 'aa:bb');
+
+    expect(valid).toBe(false);
+  });
 });

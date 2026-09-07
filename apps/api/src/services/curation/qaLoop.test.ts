@@ -49,7 +49,7 @@ vi.mock('./interpretationTools.js', () => ({
 import { logger } from '../../lib/logger.js';
 import { CostBudgetExceededError } from '../../lib/appError.js';
 import { CircuitOpenError } from '../../lib/circuitBreaker.js';
-import { runQaLoop, MAX_TOOL_TURNS, MAX_LOOP_COST_USD } from './qaLoop.js';
+import { runQaLoop, MAX_TOOL_TURNS, MAX_LOOP_COST_USD, MAX_TOOL_CALLS_PER_TURN } from './qaLoop.js';
 import type { ToolContext } from './interpretationTools.js';
 
 const CTX: ToolContext = { orgId: 1, isAdmin: false, datasetId: 7, now: new Date('2026-04-13T00:00:00Z') };
@@ -92,6 +92,37 @@ describe('runQaLoop', () => {
     });
     expect(mockConverseWithTools).toHaveBeenCalledTimes(1);
     expect(mockExceedsBudget).not.toHaveBeenCalled();
+  });
+
+  // Every other test in this file hands back one tool call per turn, so the cap
+  // and its skipped-call result were never produced and MAX_TOOL_CALLS_PER_TURN
+  // was exported but read by nothing outside qaLoop. The number matters because
+  // model output decides the fan-out: each dispatch opens its own RLS
+  // transaction, so an uncapped turn is however many concurrent transactions the
+  // model felt like asking for.
+  it('dispatches only up to the per-turn cap and returns errors for the rest', async () => {
+    const over = MAX_TOOL_CALLS_PER_TURN + 2;
+    const calls = Array.from({ length: over }, (_, i) => toolCall({ id: `call_${i}` }));
+
+    mockConverseWithTools
+      .mockResolvedValueOnce(turn({ toolCalls: calls }))
+      .mockResolvedValueOnce(turn({ text: 'done' }));
+
+    await runQaLoop(QUESTION, CTX);
+
+    expect(mockGetMetricWithTrend).toHaveBeenCalledTimes(MAX_TOOL_CALLS_PER_TURN);
+
+    const sentBack = mockConverseWithTools.mock.calls[1]![3] as {
+      toolCallId: string;
+      isError?: boolean;
+      output: unknown;
+    }[];
+    expect(sentBack).toHaveLength(over);
+    // The model still gets one result per call it asked for, so the skipped ones
+    // come back as errors rather than going missing.
+    const skipped = sentBack.slice(MAX_TOOL_CALLS_PER_TURN);
+    expect(skipped.every((r) => r.isError === true)).toBe(true);
+    expect(skipped[0]!.output).toEqual({ error: 'tool call skipped, per-turn call limit reached' });
   });
 
   it('passes state: null and tools: [] toolResultInputs on the first call', async () => {

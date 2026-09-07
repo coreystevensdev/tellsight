@@ -400,6 +400,49 @@ describe('ToolCallCache', () => {
     expect(second.stat).toBe(first.stat);
   });
 
+  // One runQaLoop shares a single ctx, so orgId and isAdmin never vary inside a
+  // cache and neither of these can fire today. They are pinned because that
+  // keying is the entire reason a per-request cache is safe: move this anywhere
+  // longer-lived with orgId out of the key and it hands one tenant's stats to
+  // another, with a suite exactly this green.
+  it('does not serve one org a context cached for another', async () => {
+    await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
+    await getMetricWithTrend(
+      { statType: StatType.Trend, category: 'Sales' },
+      { ...ctx, orgId: ctx.orgId + 1 },
+      cache,
+    );
+
+    expect(mockGetRowsByDataset).toHaveBeenCalledTimes(2);
+  });
+
+  // The stat cache is keyed separately from the context cache, and counting
+  // getRowsByDataset does not reach it. Identity is what does: with orgId in the
+  // key the second org recomputes and gets its own object, without it the first
+  // org's cached instance comes straight back.
+  it('does not serve one org a stat cached for another', async () => {
+    const mine = await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
+    const theirs = await getMetricWithTrend(
+      { statType: StatType.Trend, category: 'Sales' },
+      { ...ctx, orgId: ctx.orgId + 1 },
+      cache,
+    );
+
+    if (!mine.found || !theirs.found) throw new Error('expected both calls to find the stat');
+    expect(theirs.stat).not.toBe(mine.stat);
+  });
+
+  it('does not share a context across an isAdmin change, which changes the RLS scope', async () => {
+    await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
+    await getMetricWithTrend(
+      { statType: StatType.Trend, category: 'Sales' },
+      { ...ctx, isAdmin: true },
+      cache,
+    );
+
+    expect(mockGetRowsByDataset).toHaveBeenCalledTimes(2);
+  });
+
   it('lets compareToPriorPeriods reuse a stat already cached by a getMetricWithTrend call for the same statType/category', async () => {
     const priorLookup = await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
     if (!priorLookup.found) throw new Error('expected the prior lookup to find the stat');
