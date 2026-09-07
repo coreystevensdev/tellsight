@@ -108,16 +108,20 @@ export interface DigestRecipient {
 }
 
 const SIX_DAYS_AGO = sql`now() - interval '6 days'`;
+// 27 rather than 30, for the same reason the weekly window is 6 rather than 7:
+// the job only runs on a weekly tick, so the window has to close before the tick
+// that should carry the send. At 30 the fourth tick after a send lands at day 28,
+// still inside the window, and the digest slips a week further every month.
+const TWENTY_SEVEN_DAYS_AGO = sql`now() - interval '27 days'`;
 
 /**
  * Returns the org members eligible for a per-send job this tick:
  *   - cadence='weekly' (or NULL, which defaults to weekly per table DEFAULT)
- *   - last_sent_at IS NULL OR last_sent_at < now() - interval '6 days'
+ *     and last_sent_at IS NULL OR older than 6 days
+ *   - cadence='monthly' and last_sent_at IS NULL OR older than 27 days
  *
- * Monthly-cadence users are skipped (weekly-only launch scope). Off-cadence
- * users skip via the cadence filter. Per-user dedupe
- * via the last_sent_at filter prevents a multi-org user from receiving N
- * digests per week.
+ * Off-cadence users skip via the cadence filter. Per-user dedupe via
+ * last_sent_at prevents a multi-org user from receiving N digests per tick.
  *
  * Bypasses RLS via dbAdmin, platform fan-out, not a user request.
  */
@@ -134,8 +138,22 @@ export async function findOrgRecipients(orgId: number): Promise<DigestRecipient[
     .where(
       and(
         eq(userOrgs.orgId, orgId),
-        or(isNull(digestPreferences.cadence), eq(digestPreferences.cadence, 'weekly')),
-        or(isNull(digestPreferences.lastSentAt), lt(digestPreferences.lastSentAt, SIX_DAYS_AGO)),
+        // Each cadence carries its own dedupe window, so they cannot be split
+        // into separate top-level predicates: a monthly user would otherwise
+        // match the weekly window and receive a digest every week.
+        or(
+          and(
+            or(isNull(digestPreferences.cadence), eq(digestPreferences.cadence, 'weekly')),
+            or(isNull(digestPreferences.lastSentAt), lt(digestPreferences.lastSentAt, SIX_DAYS_AGO)),
+          ),
+          and(
+            eq(digestPreferences.cadence, 'monthly'),
+            or(
+              isNull(digestPreferences.lastSentAt),
+              lt(digestPreferences.lastSentAt, TWENTY_SEVEN_DAYS_AGO),
+            ),
+          ),
+        ),
       ),
     );
 
