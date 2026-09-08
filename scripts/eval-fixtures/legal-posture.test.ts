@@ -122,3 +122,22 @@ investigating with your accountant.`;
     expect(r.violations).not.toContain('no approved hedge present');
   });
 });
+
+// This scorer used to rebuild the banned-phrase regex from the shared list
+// instead of calling the shared matcher, so the two could disagree while both
+// importing the same constant. They did: an exemption for the descriptive
+// reading of "you need to" landed in production and the eval kept reporting a
+// violation nothing else saw. These pin the agreement rather than the list.
+describe('agreement with the runtime directive scan', () => {
+  it('accepts the descriptive reading, as production does', () => {
+    const result = scoreLegalPosture(
+      "The $40,000 gap between what you're earning and what you need to break even, worth investigating with your accountant.",
+    );
+
+    expect(result.violations).not.toContain('banned imperative: "you need to"');
+  });
+
+  it('still rejects the directive form, as production does', () => {
+    expect(scoreLegalPosture('You need to cut payroll next month.').pass).toBe(false);
+  });
+});
