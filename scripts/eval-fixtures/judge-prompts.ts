@@ -83,3 +83,36 @@ export function interpretationJudge(question: string, knownFigures: string[], an
     user: `QUESTION:\n${question}\n\nKNOWN FIGURES (already in the question):\n${known}\n\nANSWER:\n${answer}`,
   };
 }
+
+// FR22 asks for at least one non-obvious, actionable insight per analysis, and
+// nothing measured it: faithfulness asks whether claims are true, completeness
+// asks whether the stats got covered, and a summary can score 1.00 on both by
+// restating every figure and suggesting nothing.
+//
+// The requirement's two halves are judged together because either alone is
+// cheap to satisfy. "Revenue fell 12% in March" is non-obvious and inert;
+// "worth reviewing your largest expenses" is a next step attached to nothing.
+//
+// The hedging note matters more than it looks. The system prompt requires
+// hedged framing and bans "you should" / "I recommend" outright, so a judge that
+// rewarded imperatives would pull the model straight into a legal-posture
+// failure. The two scores have to be satisfiable at the same time, and they are:
+// "worth investigating whether the March payroll spike repeats" names a specific
+// next step without commanding anything.
+const INSIGHT_SYSTEM = `You are grading a small-business financial summary against a single requirement: it must contain at least one insight that is both NON-OBVIOUS and ACTIONABLE.
+
+NON-OBVIOUS means the insight references a trend, an anomaly, or a comparison. Something a reader would not get by scanning the raw numbers. Restating a total, an average, or a single figure is obvious, however large the figure is.
+
+ACTIONABLE means the insight names a specific next step tied to a specific subject: investigate, reduce, expand, compare, or similar. The step has to attach to something concrete. "Worth investigating whether the March payroll spike repeats" is actionable. "Keep an eye on your finances" and "this is worth watching" are not, because neither names what to do or what to do it to.
+
+Critically: this writer is required to hedge. Phrases like "you might consider", "worth investigating", "could indicate" are the house style and are fully actionable. Do NOT treat hedged framing as less actionable, and do NOT reward commands like "you should" or "I recommend"; those are prohibited elsewhere and their absence is correct.
+
+Extract every distinct insight in the summary. Label each on both axes independently. Be deterministic: same inputs, same output. Respond with JSON only, no prose, no code fences. Shape:
+{"insights":[{"insight":"<short quote or paraphrase>","nonObvious":true|false,"actionable":true|false,"reason":"<one clause>"}]}`;
+
+export function insightJudge(summary: string): PromptInput {
+  return {
+    system: INSIGHT_SYSTEM,
+    user: `SUMMARY:\n${summary}`,
+  };
+}
