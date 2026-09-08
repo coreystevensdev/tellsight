@@ -107,15 +107,23 @@ export function cashCrunch(): ComputedStat[] {
       },
     },
     {
+      // computeBreakEven emits value: breakEvenRevenue and derives
+      // breakEvenRevenue = monthlyFixedCosts / (marginPercent / 100), so 16000 at
+      // 20% is 80000 and the gap against 40000 of revenue is 40000. The previous
+      // numbers (48000 / gap 8000, with the gap in `value`) were not reachable by
+      // any input: at a "break-even revenue" of 48000 a 20% margin returns 9600
+      // against 16000 of fixed costs, which is not break-even. Faithfulness
+      // scored 1.00 on it regardless, because that judge checks the summary
+      // against the ground truth and never the ground truth against the formula.
       statType: 'break_even',
       category: null,
-      value: 8000,
+      value: 80000,
       details: {
         monthlyFixedCosts: 16000,
         marginPercent: 20,
-        breakEvenRevenue: 48000,
+        breakEvenRevenue: 80000,
         currentMonthlyRevenue: 40000,
-        gap: 8000,
+        gap: 40000,
         confidence: 'high',
       },
     },

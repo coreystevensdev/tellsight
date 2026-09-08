@@ -30,6 +30,7 @@ import type { LlmProvider } from '../apps/api/src/services/aiInterpretation/prov
 import type { StatType } from '../apps/api/src/services/curation/types.js';
 import { FIXTURES } from './eval-fixtures/fixtures.js';
 import { faithfulnessJudge, completenessJudge, insightJudge } from './eval-fixtures/judge-prompts.js';
+import { parseJudge } from './eval-fixtures/parse-judge.js';
 import { scoreLegalPosture } from './eval-fixtures/legal-posture.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -120,25 +121,6 @@ function extractStatSummaries(userPrompt: string): string {
   return userPrompt.slice(start + SUMMARIES_START.length, end).trim();
 }
 
-function parseJudge<T>(raw: string, schema: z.ZodType<T>, ctx: string): T {
-  // Judges are told to emit bare JSON, but strip a stray ```json fence just in case.
-  const cleaned = raw
-    .trim()
-    .replace(/^```(?:json)?/i, '')
-    .replace(/```$/, '')
-    .trim();
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch {
-    throw new Error(`${ctx} judge returned non-JSON: ${raw.slice(0, 200)}`);
-  }
-  const result = schema.safeParse(parsed);
-  if (!result.success) {
-    throw new Error(`${ctx} judge returned unexpected shape (${result.error.message}): ${raw.slice(0, 200)}`);
-  }
-  return result.data;
-}
 
 async function scoreFaithfulness(
   provider: LlmProvider,
