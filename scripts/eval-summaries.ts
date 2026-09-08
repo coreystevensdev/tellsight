@@ -29,7 +29,7 @@ import { assemblePrompt } from '../apps/api/src/services/curation/assembly.js';
 import type { LlmProvider } from '../apps/api/src/services/aiInterpretation/provider.js';
 import type { StatType } from '../apps/api/src/services/curation/types.js';
 import { FIXTURES } from './eval-fixtures/fixtures.js';
-import { faithfulnessJudge, completenessJudge } from './eval-fixtures/judge-prompts.js';
+import { faithfulnessJudge, completenessJudge, insightJudge } from './eval-fixtures/judge-prompts.js';
 import { scoreLegalPosture } from './eval-fixtures/legal-posture.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -47,7 +47,9 @@ const SAMPLES = 3;
 const DEFAULT_PROMPT_VERSION = 'v1.6';
 
 // Floors apply to the mean (the number that lands in the README). Legal posture
-// is a floor of its own: it must pass on every sample, not on average.
+// and the FR22 insight check are floors of their own: both must hold on every
+// sample, not on average. FR22 says "at least one per analysis", so a mean would
+// let one analysis ship with none and still pass.
 const FLOORS = { faithfulness: 0.85, completeness: 0.8 };
 
 // The statSummaries block sits between these two anchors in the rendered v1.6
@@ -76,11 +78,24 @@ const completenessSchema = z.object({
   ),
 });
 
+const insightSchema = z.object({
+  insights: z.array(
+    z.object({
+      insight: z.string(),
+      nonObvious: z.boolean(),
+      actionable: z.boolean(),
+      reason: z.string(),
+    }),
+  ),
+});
+
 interface SampleScore {
   faithfulness: number;
   completeness: number;
   legalPass: boolean;
   legalViolations: string[];
+  insightPass: boolean;
+  qualifyingInsight: string | null;
 }
 
 interface FixtureScore {
@@ -89,6 +104,7 @@ interface FixtureScore {
   faithfulness: { mean: number; min: number };
   completeness: { mean: number; min: number };
   legalPosture: { pass: boolean; violations: string[] };
+  insight: { pass: boolean; examples: string[] };
   sampledCount: number;
 }
 
@@ -164,18 +180,31 @@ async function scoreCompleteness(
   return covered / answerKey.length;
 }
 
+// FR22 is satisfied by one insight carrying both properties, so the qualifying
+// one is returned for the scorecard: a bare false is very hard to act on, and the
+// quote shows whether the judge and the requirement agree about what counts.
+async function scoreActionability(
+  provider: LlmProvider,
+  summary: string,
+): Promise<{ pass: boolean; qualifying: string | null }> {
+  const raw = await provider.generate(insightJudge(summary));
+  const { insights } = parseJudge(raw, insightSchema, 'insight');
+  const qualifying = insights.find((i) => i.nonObvious && i.actionable);
+  return { pass: qualifying !== undefined, qualifying: qualifying?.insight ?? null };
+}
+
 function mean(xs: number[]): number {
   return xs.reduce((a, b) => a + b, 0) / xs.length;
 }
 
 function printScorecardTable(rows: FixtureScore[]): void {
-  console.log('\n| Fixture | Faithfulness | Completeness | Legal posture |');
-  console.log('|---|---|---|---|');
+  console.log('\n| Fixture | Faithfulness | Completeness | Legal posture | FR22 insight |');
+  console.log('|---|---|---|---|---|');
   for (const r of rows) {
     const f = `${r.faithfulness.mean.toFixed(2)} (min ${r.faithfulness.min.toFixed(2)})`;
     const c = `${r.completeness.mean.toFixed(2)} (min ${r.completeness.min.toFixed(2)})`;
     const degraded = r.sampledCount < SAMPLES ? ` (n=${r.sampledCount}/${SAMPLES})` : '';
-    console.log(`| ${r.id}${degraded} | ${f} | ${c} | ${r.legalPosture.pass ? 'pass' : 'FAIL'} |`);
+    console.log(`| ${r.id}${degraded} | ${f} | ${c} | ${r.legalPosture.pass ? 'pass' : 'FAIL'} | ${r.insight.pass ? 'pass' : 'FAIL'} |`);
   }
 }
 
@@ -191,9 +220,10 @@ async function scoreFixture(
   for (let i = 0; i < SAMPLES; i++) {
     try {
       const summary = await provider.generate({ system, user });
-      const [faithfulness, completeness] = await Promise.all([
+      const [faithfulness, completeness, insight] = await Promise.all([
         scoreFaithfulness(provider, groundTruth, summary),
         scoreCompleteness(provider, fixture.answerKey, summary),
+        scoreActionability(provider, summary),
       ]);
       const legal = scoreLegalPosture(summary);
       samples.push({
@@ -201,9 +231,11 @@ async function scoreFixture(
         completeness,
         legalPass: legal.pass,
         legalViolations: legal.violations,
+        insightPass: insight.pass,
+        qualifyingInsight: insight.qualifying,
       });
       console.log(
-        `  ${fixture.id} sample ${i + 1}/${SAMPLES}: faith ${faithfulness.toFixed(2)}, comp ${completeness.toFixed(2)}, legal ${legal.pass ? 'pass' : 'FAIL'}`,
+        `  ${fixture.id} sample ${i + 1}/${SAMPLES}: faith ${faithfulness.toFixed(2)}, comp ${completeness.toFixed(2)}, legal ${legal.pass ? 'pass' : 'FAIL'}, insight ${insight.pass ? 'pass' : 'FAIL'}`,
       );
     } catch (err) {
       console.error(`  ${fixture.id} sample ${i + 1}/${SAMPLES} failed: ${err instanceof Error ? err.message : err}`);
@@ -227,6 +259,10 @@ async function scoreFixture(
       legalPosture: {
         pass: samples.every((s) => s.legalPass),
         violations: [...new Set(samples.flatMap((s) => s.legalViolations))],
+      },
+      insight: {
+        pass: samples.every((s) => s.insightPass),
+        examples: [...new Set(samples.map((s) => s.qualifyingInsight).filter((q): q is string => q !== null))],
       },
       sampledCount: samples.length,
     },
@@ -329,6 +365,11 @@ async function main(): Promise<void> {
     }
     if (!r.legalPosture.pass) {
       breaches.push(`${r.id}: legal posture failed (${r.legalPosture.violations.join('; ')})`);
+    }
+    // Per sample, not on the mean: FR22 says one per analysis, and a mean lets an
+    // analysis ship with none while the fixture still passes.
+    if (!r.insight.pass) {
+      breaches.push(`${r.id}: no non-obvious, actionable insight in at least one sample (FR22)`);
     }
   }
 
