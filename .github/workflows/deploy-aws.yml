@@ -196,7 +196,19 @@ jobs:
           # 127.0.0.1 -- caddy is a sibling container on the same compose
           # network (ec2.tf), not a process on the host, so 127.0.0.1 inside
           # the caddy container would mean the caddy container itself.
+          # Caddy already redirects http to https and renews the certificate on
+          # its own, so what was missing is HSTS: without it the very first
+          # request a browser makes to this host still goes out in the clear and
+          # the redirect itself is interceptable.
+          #
+          # One year, and deliberately no `preload`. Preload is a submission to a
+          # list baked into browser binaries, and getting back off it takes
+          # months, so it is a decision to make on purpose rather than a default
+          # to inherit from a snippet.
           caddyfile = f"""{domain} {{
+              header {{
+                  Strict-Transport-Security "max-age=31536000; includeSubDomains"
+              }}
               handle /webhooks/* {{
                   reverse_proxy api:3001
               }}
@@ -353,8 +365,43 @@ jobs:
           echo "Production did not become healthy within 3 minutes"
           exit 1
 
+      # NFR7 was graded NONE by a traceability pass: the redirect and the
+      # certificate are Caddy defaults that nothing asserted, so nobody would
+      # notice them going away. Runs after the health poll and inside the same
+      # rollback guard, because a deploy that serves the app over plain HTTP is a
+      # deploy worth reverting.
+      - name: Verify HTTPS posture
+        id: tls
+        continue-on-error: true
+        env:
+          PROD_URL: ${{ secrets.PRODUCTION_URL }}
+        run: |
+          set -euo pipefail
+          host=$(echo "$PROD_URL" | sed -E 's#^https?://##; s#/.*##')
+
+          hsts=$(curl -sSI "https://$host/" | tr -d '\r' | grep -i '^strict-transport-security:' || true)
+          if [ -z "$hsts" ]; then
+            echo "FAIL: no Strict-Transport-Security header on https://$host/"
+            exit 1
+          fi
+          echo "$hsts"
+
+          # A max-age of 0 is a valid header that switches HSTS off, so the
+          # header being present is not the same as HSTS being on.
+          age=$(echo "$hsts" | grep -oE 'max-age=[0-9]+' | cut -d= -f2)
+          if [ "${age:-0}" -lt 15552000 ]; then
+            echo "FAIL: max-age=${age:-0} is under 180 days"
+            exit 1
+          fi
+
+          code=$(curl -sS -o /dev/null -w '%{http_code}' "http://$host/")
+          case "$code" in
+            30[1278]) echo "plain HTTP redirects ($code)" ;;
+            *) echo "FAIL: http://$host/ answered $code, expected a redirect"; exit 1 ;;
+          esac
+
       - name: Roll back to previous images
-        if: steps.smoke.outcome == 'failure'
+        if: steps.smoke.outcome == 'failure' || steps.tls.outcome == 'failure'
         env:
           ECR_API: ${{ secrets.ECR_API_REPO }}
           ECR_WEB: ${{ secrets.ECR_WEB_REPO }}
@@ -413,7 +460,7 @@ jobs:
 
       # Rollback restores service; it does not make the deploy a success.
       - name: Fail the run if the deploy was rolled back
-        if: steps.smoke.outcome == 'failure'
+        if: steps.smoke.outcome == 'failure' || steps.tls.outcome == 'failure'
         run: |
-          echo "Smoke test failed. See the rollback step for whether production recovered." >&2
+          echo "Smoke test or HTTPS check failed. See the rollback step for whether production recovered." >&2
           exit 1
