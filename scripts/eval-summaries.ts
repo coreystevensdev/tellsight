@@ -59,6 +59,14 @@ const FLOORS = { faithfulness: 0.85, completeness: 0.8 };
 const SUMMARIES_START = "computed from the business's uploaded data:\n\n";
 const SUMMARIES_END = '\n\n**Data lineage:**';
 
+// The user prompt opens with "Today is <date>." and the model reasons from it:
+// 2.4 months of runway against a dated balance becomes a calendar month in the
+// summary. The ground truth handed to the faithfulness judge started at the stats
+// block, so it never contained that line, and every date the model derived came
+// back unsupported however correct the arithmetic was. That accounted for most of
+// what the judge was flagging.
+const TODAY_LINE = /^Today is .+$/m;
+
 const faithfulnessSchema = z.object({
   claims: z.array(
     z.object({
@@ -107,6 +115,14 @@ interface FixtureScore {
   legalPosture: { pass: boolean; violations: string[] };
   insight: { pass: boolean; examples: string[] };
   sampledCount: number;
+}
+
+// Everything the model was given as fact, which is what "unsupported" has to be
+// measured against.
+function extractGroundTruth(userPrompt: string): string {
+  const stats = extractStatSummaries(userPrompt);
+  const today = TODAY_LINE.exec(userPrompt)?.[0];
+  return today ? `${today}\n\n${stats}` : stats;
 }
 
 function extractStatSummaries(userPrompt: string): string {
@@ -196,7 +212,7 @@ async function scoreFixture(
 ): Promise<{ score: FixtureScore; promptVersion: string }> {
   const scored = scoreInsights(fixture.build());
   const { system, user, metadata } = assemblePrompt(scored, 1, undefined, undefined, FROZEN_NOW);
-  const groundTruth = extractStatSummaries(user);
+  const groundTruth = extractGroundTruth(user);
 
   const samples: SampleScore[] = [];
   for (let i = 0; i < SAMPLES; i++) {

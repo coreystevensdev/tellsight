@@ -71,7 +71,10 @@ export function healthyGrowth(): ComputedStat[] {
         cashOnHand: 84000,
         monthlyNet: -6000,
         runwayMonths: 14,
-        cashAsOfDate: '2026-06-01',
+        // Before eval-summaries' FROZEN_NOW of 2026-01-15, not after it. These read
+        // 2026-06-01, a balance dated five months in the model's future, and the
+        // summaries reasoned forward from a today it could not reconcile with.
+        cashAsOfDate: '2026-01-01',
         confidence: 'high',
         trailingMonths: 6,
       },
@@ -89,7 +92,7 @@ export function cashCrunch(): ComputedStat[] {
         cashOnHand: 24000,
         monthlyNet: -10000,
         runwayMonths: 2.4,
-        cashAsOfDate: '2026-06-01',
+        cashAsOfDate: '2026-01-01',
         confidence: 'high',
         trailingMonths: 6,
       },
@@ -133,7 +136,7 @@ export function cashCrunch(): ComputedStat[] {
       value: -3000,
       details: {
         startingBalance: 24000,
-        asOfDate: '2026-06-01',
+        asOfDate: '2026-01-01',
         method: 'linear_regression',
         slope: -9000,
         intercept: 24000,
