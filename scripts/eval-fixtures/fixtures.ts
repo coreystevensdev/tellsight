@@ -29,7 +29,7 @@ export function healthyGrowth(): ComputedStat[] {
     {
       statType: 'trend',
       category: 'Revenue',
-      value: 25,
+      value: 1666,
       details: {
         slope: 1666,
         intercept: 40000,
@@ -130,7 +130,7 @@ export function cashCrunch(): ComputedStat[] {
     {
       statType: 'cash_forecast',
       category: null,
-      value: 3,
+      value: -3000,
       details: {
         startingBalance: 24000,
         asOfDate: '2026-06-01',
@@ -167,7 +167,7 @@ export function seasonalAnomaly(): ComputedStat[] {
     {
       statType: 'year_over_year',
       category: 'Revenue',
-      value: 11.1,
+      value: 50000,
       details: {
         currentYear: 50000,
         priorYear: 45000,
@@ -192,11 +192,11 @@ export function seasonalAnomaly(): ComputedStat[] {
     {
       statType: 'trend',
       category: 'Marketing',
-      value: -18,
+      value: -80,
       details: {
-        slope: -150,
+        slope: -80,
         intercept: 1200,
-        growthPercent: -18,
+        growthPercent: -33.3,
         dataPoints: 6,
         firstValue: 1200,
         lastValue: 800,
