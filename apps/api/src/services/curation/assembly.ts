@@ -10,7 +10,7 @@ import { getIndustryBenchmarks } from './config/industry-benchmarks.js';
 import { statInstanceId } from './computation.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_VERSION = 'v1.6';
+const DEFAULT_VERSION = 'v1.7';
 export const usd = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
 
 // Signed currency with explicit `+` for positives, used for CashFlow and

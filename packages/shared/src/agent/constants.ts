@@ -26,7 +26,25 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-const DIRECTIVE_SOURCE = `\\b(?:${BANNED_IMPERATIVES.map((p) => escapeRegExp(p).replace(/ /g, '\\s+')).join('|')})\\b`;
+// "you need to" is the one phrase here that also has a purely descriptive
+// reading: "the gap between what you're earning and what you need to break even"
+// states a number, it does not tell anyone to do anything. A substring match
+// cannot separate those, and the eval harness flagged exactly that sentence as a
+// banned imperative on a live generation.
+//
+// Flagging it is not harmless. This runs on every AI summary in production and
+// fires an analytics event the admin compliance view reads, so a false positive
+// there teaches an operator to discount the signal that matters.
+//
+// Narrow on purpose: only this phrase, only directly after a relative pronoun.
+// "You need to cut costs" is untouched, and so is every other banned phrase.
+const RELATIVE_READING: Partial<Record<(typeof BANNED_IMPERATIVES)[number], string>> = {
+  'you need to': '(?<!\\b(?:what|whatever)\\s+)',
+};
+
+const DIRECTIVE_SOURCE = `\\b(?:${BANNED_IMPERATIVES.map(
+  (p) => `${RELATIVE_READING[p] ?? ''}${escapeRegExp(p).replace(/ /g, '\\s+')}`,
+).join('|')})\\b`;
 
 export function hasDirectiveLanguage(text: string): boolean {
   return new RegExp(DIRECTIVE_SOURCE, 'i').test(text);

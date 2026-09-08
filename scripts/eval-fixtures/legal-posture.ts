@@ -8,12 +8,19 @@
 // If that template's boundaries change, update these to match, otherwise the eval
 // stops measuring what production actually enforces.
 //
-// BANNED_IMPERATIVES is shared with the runtime proposal validator
-// (packages/shared/src/agent/proposal.ts) so the QA scorer here and the API
-// boundary check can't drift. The financial-verb and hedge lists stay local:
-// proposal.ts has no equivalent, so there's nothing to share.
+// findDirectiveLanguage is shared with the runtime checks (proposal.ts's
+// validator, streamHandler's per-summary scan) so this scorer and the API
+// boundary can't drift. It used to import only BANNED_IMPERATIVES and rebuild
+// the regex here, which shares the list while duplicating the logic that reads
+// it: an exemption added to the shared matcher for the descriptive reading of
+// "you need to" applied in production and not here, and the eval went on
+// reporting a violation production no longer saw. Sharing the matcher is what
+// the original comment was trying to buy.
+//
+// The financial-verb and hedge lists stay local: production has no equivalent,
+// so there is nothing to share.
 
-import { BANNED_IMPERATIVES } from '../../packages/shared/src/agent/constants.js';
+import { findDirectiveLanguage } from '../../packages/shared/src/agent/constants.js';
 
 export interface LegalPostureResult {
   pass: boolean;
@@ -43,10 +50,7 @@ const worthHedgeRe = /\bworth\s+(?:\w+ing\b|a\s+(?:closer\s+)?look\b)/i;
 // doesn't happen to contain one of the other approved phrases.
 const accountantRe = /\baccountant\b/i;
 
-const bannedPatterns = BANNED_IMPERATIVES.map((p) => ({
-  phrase: p,
-  re: new RegExp(`\\b${escapeRe(p)}\\b`, 'i'),
-}));
+
 
 // A financial verb counts as a command only when it heads a sentence (start of
 // text or right after sentence punctuation / a line break) or follows a 2nd-person
@@ -64,8 +68,8 @@ const hedgePatterns = APPROVED_HEDGES.map((h) => new RegExp(`\\b${escapeRe(h)}\\
 export function scoreLegalPosture(summary: string): LegalPostureResult {
   const violations: string[] = [];
 
-  for (const { phrase, re } of bannedPatterns) {
-    if (re.test(summary)) violations.push(`banned imperative: "${phrase}"`);
+  for (const phrase of findDirectiveLanguage(summary)) {
+    violations.push(`banned imperative: "${phrase.toLowerCase()}"`);
   }
 
   for (const m of summary.matchAll(commandRe)) {
