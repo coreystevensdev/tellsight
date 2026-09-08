@@ -10,6 +10,11 @@ export default defineConfig({
   // that pair could interleave. Serial in CI costs wall clock and removes a
   // whole class of cross-file flake; locally the default still applies.
   workers: process.env.CI ? 1 : undefined,
+  // The retry stays: a genuine runner blip should not fail a build. What changes
+  // is that it stops being silent. A retried pass currently reports as a plain
+  // green tick, so NFR5 has been flaking against a budget it exceeds and nothing
+  // said so. The json report is what the CI step reads to surface it.
+  reporter: process.env.CI ? [['list'], ['json', { outputFile: 'e2e-results.json' }]] : 'list',
   // A committed test.only would otherwise cut the run to one test and still
   // report green.
   forbidOnly: !!process.env.CI,
