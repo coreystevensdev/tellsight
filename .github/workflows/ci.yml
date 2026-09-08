@@ -297,6 +297,35 @@ jobs:
       - name: Run Playwright tests
         run: npx playwright test
 
+      # A retried pass is a green tick, so a test that only passes on the second
+      # attempt is invisible until it fails twice in a row. Annotates rather than
+      # fails: the retry is deliberate, and turning every retry into a red build
+      # is how a useful retry gets deleted.
+      - name: Surface retried tests
+        if: always()
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            if (!fs.existsSync("e2e-results.json")) process.exit(0);
+            const report = JSON.parse(fs.readFileSync("e2e-results.json", "utf8"));
+            const retried = [];
+            const walk = (suite) => {
+              for (const spec of suite.specs ?? []) {
+                for (const test of spec.tests ?? []) {
+                  if ((test.results ?? []).some((r) => r.retry > 0 && r.status === "passed")) {
+                    retried.push(spec.title);
+                  }
+                }
+              }
+              for (const child of suite.suites ?? []) walk(child);
+            };
+            for (const suite of report.suites ?? []) walk(suite);
+            for (const title of retried) {
+              console.log(`::warning title=Flaky e2e test::${title} passed only on retry`);
+            }
+            console.log(retried.length ? `${retried.length} test(s) passed only on retry` : "no retried passes");
+          '
+
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4

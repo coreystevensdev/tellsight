@@ -15,7 +15,13 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text-summary', 'lcov'],
       // Ratchet measured 2026-08-30: 88% lines, 89.7% branches, 81.2% functions.
-      // Only bites locally, since CI runs these under continue-on-error.
+      //
+      // Local only, and no longer for the reason this used to give: CI dropped
+      // continue-on-error from the API job, but that job runs `vitest run` while
+      // shared and web run `test:coverage`, so this is the one ratchet in the repo
+      // that never gates. Turning it on is not a one-line change. Under v8
+      // instrumentation the suite goes from 56s to 376s and two tests exceed the
+      // 5s default timeout, so it needs those timeouts raised first.
       thresholds: {
         statements: 85,
         branches: 87,

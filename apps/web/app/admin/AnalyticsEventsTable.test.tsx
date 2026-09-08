@@ -60,14 +60,26 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+// The event names this file used to wait on are also rendered as static <option>
+// values in the event-type filter, from the mocked ANALYTICS_EVENTS, on first
+// paint and before either fetch resolves. So the gate was satisfied at t=0 and
+// the assertions after it raced the data. Adding a 10ms macrotask to the mock
+// failed 3 of these 11.
+//
+// The skeleton is the one thing that is unambiguously pre-load, and waiting on it
+// to clear works for the empty fixture too, which no data-shaped anchor does.
+async function waitForLoaded() {
+  await waitFor(() => {
+    expect(document.querySelectorAll('.animate-pulse')).toHaveLength(0);
+  });
+}
+
 describe('AnalyticsEventsTable', () => {
   it('renders events with org name, email, and event badge', async () => {
     setupMocks();
     render(<AnalyticsEventsTable />);
 
-    await waitFor(() => {
-      expect(screen.getByText('user.signed_in')).toBeInTheDocument();
-    });
+    await waitForLoaded();
 
     // org names appear in both table rows and filter dropdown, so use getAllByText
     expect(screen.getAllByText('Acme Corp').length).toBeGreaterThan(0);
@@ -99,9 +111,7 @@ describe('AnalyticsEventsTable', () => {
     setupMocks();
     render(<AnalyticsEventsTable />);
 
-    await waitFor(() => {
-      expect(screen.getByText('user.signed_in')).toBeInTheDocument();
-    });
+    await waitForLoaded();
 
     const headers = screen.getAllByRole('columnheader');
     const headerTexts = headers.map((h) => h.textContent);
@@ -112,9 +122,7 @@ describe('AnalyticsEventsTable', () => {
     setupMocks();
     render(<AnalyticsEventsTable />);
 
-    await waitFor(() => {
-      expect(screen.getByText('user.signed_in')).toBeInTheDocument();
-    });
+    await waitForLoaded();
 
     expect(screen.getByLabelText('Previous page')).toBeInTheDocument();
     expect(screen.getByLabelText('Next page')).toBeInTheDocument();
@@ -125,9 +133,7 @@ describe('AnalyticsEventsTable', () => {
     setupMocks();
     render(<AnalyticsEventsTable />);
 
-    await waitFor(() => {
-      expect(screen.getByText('user.signed_in')).toBeInTheDocument();
-    });
+    await waitForLoaded();
 
     expect(screen.getByLabelText('Previous page')).toBeDisabled();
   });
@@ -136,9 +142,7 @@ describe('AnalyticsEventsTable', () => {
     setupMocks();
     render(<AnalyticsEventsTable />);
 
-    await waitFor(() => {
-      expect(screen.getByText('user.signed_in')).toBeInTheDocument();
-    });
+    await waitForLoaded();
 
     expect(screen.getByLabelText('Filter by event type')).toBeInTheDocument();
     expect(screen.getByLabelText('Filter by organization')).toBeInTheDocument();
@@ -162,9 +166,7 @@ describe('AnalyticsEventsTable', () => {
     const user = userEvent.setup();
     render(<AnalyticsEventsTable />);
 
-    await waitFor(() => {
-      expect(screen.getByText('user.signed_in')).toBeInTheDocument();
-    });
+    await waitForLoaded();
 
     const eventSelect = screen.getByLabelText('Filter by event type');
     await user.selectOptions(eventSelect, 'user.signed_in');
@@ -182,9 +184,7 @@ describe('AnalyticsEventsTable', () => {
     setupMocks();
     render(<AnalyticsEventsTable />);
 
-    await waitFor(() => {
-      expect(screen.getByText('dataset.uploaded')).toBeInTheDocument();
-    });
+    await waitForLoaded();
 
     expect(screen.getByText('2 fields')).toBeInTheDocument();
   });
@@ -193,9 +193,7 @@ describe('AnalyticsEventsTable', () => {
     setupMocks();
     render(<AnalyticsEventsTable />);
 
-    await waitFor(() => {
-      expect(screen.getByText('user.signed_in')).toBeInTheDocument();
-    });
+    await waitForLoaded();
 
     expect(screen.getByText('-')).toBeInTheDocument();
   });
