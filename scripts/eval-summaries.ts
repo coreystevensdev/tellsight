@@ -328,6 +328,12 @@ async function main(): Promise<void> {
     faithfulness: mean(results.map((r) => r.faithfulness.mean)),
     completeness: mean(results.map((r) => r.completeness.mean)),
     legalPosture: results.every((r) => r.legalPosture.pass),
+    // Boolean like legalPosture, since the gate is per sample. The count is here
+    // too because the boolean alone loses the thing worth knowing: on the first
+    // real run every fixture scored 1.00 faithfulness and 1.00 completeness while
+    // one of them found a qualifying insight in a single sample out of three.
+    insight: results.every((r) => r.insight.pass),
+    insightFixturesPassing: `${results.filter((r) => r.insight.pass).length}/${results.length}`,
   };
 
   const scorecard = {
