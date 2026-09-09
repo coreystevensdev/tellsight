@@ -58,6 +58,7 @@ vi.mock('../../lib/metrics.js', () => ({
 }));
 
 const mockCreate = vi.fn();
+const mockModelsList = vi.fn();
 const mockStream = vi.fn();
 
 vi.mock('@anthropic-ai/sdk', () => {
@@ -77,6 +78,7 @@ vi.mock('@anthropic-ai/sdk', () => {
   const MockAnthropic = Object.assign(
     vi.fn().mockImplementation(() => ({
       messages: { create: mockCreate, stream: mockStream },
+      models: { list: mockModelsList },
     })),
     { AuthenticationError, BadRequestError },
   );
@@ -1485,5 +1487,67 @@ describe('converseWithTools', () => {
     await expect(converseWithTools(null, { system: '', user: 'analyze' }, [tool], [])).rejects.toThrow(
       'External service error: Claude API',
     );
+  });
+});
+
+// The probe behind the admin dashboard's Claude tile. Nothing exercised it at any
+// layer: forcing it to return ok unconditionally left all 2,509 API tests green,
+// so the tile would have read healthy with the API refusing every request. It is
+// not on the readiness path, which deliberately checks database, redis and email
+// only, so this is the surface an operator looks at rather than a gate.
+describe('checkClaudeHealth', () => {
+  async function probe() {
+    const { checkClaudeHealth } = await import('./claudeClient.js');
+    return checkClaudeHealth();
+  }
+
+  // The generate/stream spies are shared with every other block in this file, so
+  // the "did not generate anything" assertion below needs them cleared here
+  // rather than trusting whatever ran before.
+  beforeEach(() => {
+    mockModelsList.mockReset();
+    mockCreate.mockClear();
+    mockStream.mockClear();
+  });
+
+  it('reports ok when the API answers, with a latency it measured', async () => {
+    mockModelsList.mockResolvedValueOnce({ data: [] });
+
+    const health = await probe();
+
+    expect(health.status).toBe('ok');
+    expect(health.latencyMs).toBeGreaterThanOrEqual(0);
+    expect(Number.isFinite(health.latencyMs)).toBe(true);
+  });
+
+  // The cheapest call that proves credentials and reachability. A probe that ran
+  // a completion would cost money on every dashboard load.
+  it('asks for one model rather than generating anything', async () => {
+    mockModelsList.mockResolvedValueOnce({ data: [] });
+
+    await probe();
+
+    expect(mockModelsList).toHaveBeenCalledWith({ limit: 1 });
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockStream).not.toHaveBeenCalled();
+  });
+
+  it('reports error when the API refuses', async () => {
+    mockModelsList.mockRejectedValueOnce(new Error('credit balance is too low'));
+
+    expect((await probe()).status).toBe('error');
+  });
+
+  // getSystemHealth runs the three probes under Promise.all, so one that threw
+  // would fail the whole endpoint rather than its own tile. This one swallows,
+  // and that has to stay true.
+  it('never throws, whatever the API does', async () => {
+    mockModelsList.mockRejectedValueOnce(new Error('boom'));
+    await expect(probe()).resolves.toBeDefined();
+
+    mockModelsList.mockImplementationOnce(() => {
+      throw new Error('synchronous');
+    });
+    await expect(probe()).resolves.toMatchObject({ status: 'error' });
   });
 });

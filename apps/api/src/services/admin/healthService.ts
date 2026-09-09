@@ -14,7 +14,14 @@ async function withTimeout<T>(
   const timeout = new Promise<T>((resolve) =>
     setTimeout(() => resolve(fallback), timeoutMs),
   );
-  return Promise.race([fn(), timeout]);
+  // .catch, because a rejecting probe used to reject the Promise.all below and
+  // take the whole health endpoint with it rather than just its own tile. All
+  // three probes catch internally today, so this never fired; it stops that
+  // discipline from being the only thing holding the endpoint up. A probe that
+  // rejects reports as the same fallback a timeout does, which is a small lie
+  // about why, and a better one than a 500 from the page that exists to say what
+  // is broken.
+  return Promise.race([fn().catch(() => fallback), timeout]);
 }
 
 export function formatUptime(seconds: number): string {
