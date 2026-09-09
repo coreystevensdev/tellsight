@@ -161,3 +161,34 @@ describe('formatUptime', () => {
     expect(formatUptime(3661.78)).toBe('1h 1m');
   });
 });
+
+// The three probes run under Promise.all, so a rejection from any one of them
+// used to reject the whole call: the page that exists to say what is broken would
+// have been the thing that broke. All three catch internally today, which is why
+// this never fired, and these stop that discipline from being the only thing
+// holding the endpoint up.
+describe('a probe that rejects instead of reporting', () => {
+  it('degrades that one service rather than failing the endpoint', async () => {
+    mockCheckDatabaseHealth.mockResolvedValueOnce({ status: 'ok', latencyMs: 1 });
+    mockCheckRedisHealth.mockResolvedValueOnce({ status: 'ok', latencyMs: 1 });
+    mockCheckClaudeHealth.mockRejectedValueOnce(new Error('credit balance is too low'));
+
+    const health = await getSystemHealth(50);
+
+    expect(health.services.claude.status).toBe('degraded');
+    expect(health.services.database.status).toBe('ok');
+    expect(health.services.redis.status).toBe('ok');
+  });
+
+  it('still reports the other two when the database probe is the one that throws', async () => {
+    mockCheckDatabaseHealth.mockRejectedValueOnce(new Error('connection refused'));
+    mockCheckRedisHealth.mockResolvedValueOnce({ status: 'ok', latencyMs: 1 });
+    mockCheckClaudeHealth.mockResolvedValueOnce({ status: 'ok', latencyMs: 1 });
+
+    const health = await getSystemHealth(50);
+
+    expect(health.services.database.status).toBe('degraded');
+    expect(health.services.redis.status).toBe('ok');
+    expect(health.uptime.seconds).toBeGreaterThanOrEqual(0);
+  });
+});
