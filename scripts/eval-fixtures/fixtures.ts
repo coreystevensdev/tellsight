@@ -4,14 +4,23 @@
 // not seed data reverse-engineered from CSV rows. Every `details` shape is
 // cross-checked against apps/api/src/services/curation/types.ts.
 //
-// A note on synthetic combinations: production only emits `runway` when cash
-// flow is burning (types.ts:95). `healthy-growth` pairs a long runway with a
-// surplus anyway, because these fixtures exercise the pipeline + judges over
-// arbitrary stat sets, not just live-shaped ones. The harness runs each set
-// through real scoreInsights -> assemblePrompt, so a regression there still shows.
-// The surplus (+$9k/mo) and the runway burn (-$6k/mo) are deliberately different
-// magnitudes: an identical figure with a flipped sign would put a same-number
-// contradiction into the faithfulness judge's ground truth and muddy the score.
+// A note on synthetic combinations: these exercise the pipeline and judges over
+// arbitrary stat sets, not only live-shaped ones, and the harness runs each
+// through the real scoreInsights -> assemblePrompt, so a regression there still
+// shows.
+//
+// One combination has been removed rather than kept. `healthy-growth` used to
+// carry a runway alongside its surplus, with the two nets given different
+// magnitudes so that an identical figure with a flipped sign would not put a
+// same-number contradiction into the faithfulness judge's ground truth. The
+// magnitudes did not help: both stats declare trailingMonths: 6, so they describe
+// the same window in opposite directions, and a summary that faithfully reports
+// either one contradicts the other. The judge duly rejected "you're still
+// spending more than you're earning" against a ground truth also saying
+// "surplus, net +$9,000/mo".
+//
+// Runway is still covered, coherently, by cash-crunch. A runway is how long until
+// the cash runs out, which is not a quantity a business in surplus has.
 
 import type { ComputedStat, StatType } from '../../apps/api/src/services/curation/types.js';
 
@@ -61,22 +70,6 @@ export function healthyGrowth(): ComputedStat[] {
         direction: 'surplus',
         monthsBurning: 0,
         recentMonths: [],
-      },
-    },
-    {
-      statType: 'runway',
-      category: null,
-      value: 14,
-      details: {
-        cashOnHand: 84000,
-        monthlyNet: -6000,
-        runwayMonths: 14,
-        // Before eval-summaries' FROZEN_NOW of 2026-01-15, not after it. These read
-        // 2026-06-01, a balance dated five months in the model's future, and the
-        // summaries reasoned forward from a today it could not reconcile with.
-        cashAsOfDate: '2026-01-01',
-        confidence: 'high',
-        trailingMonths: 6,
       },
     },
   ];
@@ -211,8 +204,8 @@ export function seasonalAnomaly(): ComputedStat[] {
 export const FIXTURES: EvalFixture[] = [
   {
     id: 'healthy-growth',
-    label: 'Expanding margin, surplus cash flow, long runway, revenue trending up',
-    answerKey: ['trend', 'margin_trend', 'cash_flow', 'runway'],
+    label: 'Expanding margin, surplus cash flow, revenue trending up',
+    answerKey: ['trend', 'margin_trend', 'cash_flow'],
     build: healthyGrowth,
   },
   {
