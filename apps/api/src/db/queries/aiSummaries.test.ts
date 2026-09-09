@@ -117,8 +117,8 @@ describe('storeSummary (options bag)', () => {
       orgId: 7,
       datasetId: 9,
       content: 'fresh insights',
-      metadata: { promptVersion: 'v1.7' },
-      promptVersion: 'v1.7',
+      metadata: { promptVersion: 'v1.8' },
+      promptVersion: 'v1.8',
     });
 
     expect(mockInsertValues).toHaveBeenCalledWith(
@@ -126,7 +126,7 @@ describe('storeSummary (options bag)', () => {
         orgId: 7,
         datasetId: 9,
         content: 'fresh insights',
-        promptVersion: 'v1.7',
+        promptVersion: 'v1.8',
         isSeed: false,
         audience: 'dashboard',
         weekStart: null,
@@ -182,7 +182,7 @@ describe('storeSummary (options bag)', () => {
       datasetId: 9,
       content: 'seed summary',
       metadata: {},
-      promptVersion: 'v1.7',
+      promptVersion: 'v1.8',
       isSeed: true,
     });
 
@@ -201,7 +201,7 @@ describe('storeSummary (options bag)', () => {
       datasetId: 9,
       content: 'tx write',
       metadata: {},
-      promptVersion: 'v1.7',
+      promptVersion: 'v1.8',
       client: tx,
     });
 

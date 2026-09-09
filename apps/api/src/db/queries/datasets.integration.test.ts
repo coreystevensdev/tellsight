@@ -277,7 +277,7 @@ describe('persistUpload against real Postgres', () => {
       datasetId,
       content: 'Last week you were profitable.',
       audience: 'dashboard',
-      promptVersion: 'v1.7',
+      promptVersion: 'v1.8',
     });
   }
 
