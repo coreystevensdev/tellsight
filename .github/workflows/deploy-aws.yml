@@ -121,6 +121,12 @@ jobs:
               # .env and an API that cannot boot.
               if "'" in value or "\n" in value:
                   sys.exit(f"{key} contains a quote or newline, which docker compose cannot represent in an env_file")
+              # An unset repository secret arrives as "", not absent, so
+              # os.environ[key] hands back an empty string instead of raising.
+              # Without this the deploy writes KEY='', pulls both images, and
+              # only falls over when migrate.ts loads config on the instance.
+              if not value:
+                  sys.exit(f"{key} is empty. Set the repository secret; the deploy will not write a blank required value.")
               return f"{key}='{value}'"
 
           env_pairs = [
