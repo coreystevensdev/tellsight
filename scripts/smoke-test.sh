@@ -73,7 +73,16 @@ if [[ "$RUN_LOAD" == true ]]; then
     echo "FAIL: --load requested but k6 is not installed"
     exit 1
   fi
+  # k6/load-test.js exercises the four flows NFR16 names, all of which are
+  # authenticated. It signs its own token and refuses to start without the
+  # secret, rather than grading a 401 as a passing flow like the version before
+  # it did. Read straight out of .env because this job has no node_modules.
+  LOAD_JWT_SECRET=$(grep -E '^JWT_SECRET=' .env | cut -d= -f2-)
+  if [ -z "$LOAD_JWT_SECRET" ]; then
+    echo "FAIL: JWT_SECRET is not set in .env, k6 cannot sign a token"
+    exit 1
+  fi
   echo "Running k6 load test against the booted stack..."
-  K6_BASE_URL="http://localhost:3001" k6 run k6/load-test.js
+  K6_BASE_URL="http://localhost:3001" K6_JWT_SECRET="$LOAD_JWT_SECRET" k6 run k6/load-test.js
   echo "PASS: k6 SLO thresholds held"
 fi
