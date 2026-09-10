@@ -34,6 +34,13 @@ describe('Sidebar admin nav', () => {
 
     expect(screen.queryByText('Admin')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /admin/i })).not.toBeInTheDocument();
+    // By href, because the guard covers two links and the second is labelled
+    // "Analytics", which /admin/i does not match: moving only that one outside
+    // the isAdmin check passed every assertion above.
+    expect(
+      document.querySelectorAll('a[href^="/admin"]'),
+      'no admin-scoped link may render for a non-admin',
+    ).toHaveLength(0);
   });
 
   it('shows Admin link when user is platform admin', () => {
