@@ -30,7 +30,8 @@ import type { LlmProvider } from '../apps/api/src/services/aiInterpretation/prov
 import type { StatType } from '../apps/api/src/services/curation/types.js';
 import { FIXTURES } from './eval-fixtures/fixtures.js';
 import { faithfulnessJudge, completenessJudge, insightJudge } from './eval-fixtures/judge-prompts.js';
-import { parseJudge } from './eval-fixtures/parse-judge.js';
+import { askJudge } from './eval-fixtures/parse-judge.js';
+import { insightGate, INSIGHT_MISS_CEILING } from './eval-fixtures/insight-gate.js';
 import { scoreLegalPosture } from './eval-fixtures/legal-posture.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -48,10 +49,9 @@ const SAMPLES = 3;
 const DEFAULT_PROMPT_VERSION = 'v1.6';
 
 // Floors apply to the mean (the number that lands in the README). Legal posture
-// and the FR22 insight check are floors of their own: both must hold on every
-// sample, not on average. FR22 says "at least one per analysis", so a mean would
-// let one analysis ship with none and still pass.
+// still has to hold on every sample: a banned imperative is a defect, not a rate.
 const FLOORS = { faithfulness: 0.85, completeness: 0.8 };
+
 
 // The statSummaries block sits between these two anchors in the rendered v1.6
 // user prompt. Slicing it out gives the exact bytes the model received as ground
@@ -113,7 +113,7 @@ interface FixtureScore {
   faithfulness: { mean: number; min: number };
   completeness: { mean: number; min: number };
   legalPosture: { pass: boolean; violations: string[] };
-  insight: { pass: boolean; examples: string[] };
+  insight: { misses: number; examples: string[] };
   sampledCount: number;
 }
 
@@ -143,8 +143,12 @@ async function scoreFaithfulness(
   groundTruth: string,
   summary: string,
 ): Promise<number> {
-  const raw = await provider.generate(faithfulnessJudge(groundTruth, summary));
-  const { claims } = parseJudge(raw, faithfulnessSchema, 'faithfulness');
+  const { claims } = await askJudge(
+    provider,
+    faithfulnessJudge(groundTruth, summary),
+    faithfulnessSchema,
+    'faithfulness',
+  );
   if (claims.length === 0) return 1; // nothing checkable means nothing unfaithful
   const honest = claims.filter((c) => c.label !== 'unsupported').length;
   return honest / claims.length;
@@ -155,8 +159,7 @@ async function scoreCompleteness(
   answerKey: StatType[],
   summary: string,
 ): Promise<number> {
-  const raw = await provider.generate(completenessJudge(answerKey, summary));
-  const { items } = parseJudge(raw, completenessSchema, 'completeness');
+  const { items } = await askJudge(provider, completenessJudge(answerKey, summary), completenessSchema, 'completeness');
 
   // The judge is told to echo the exact statType literal. If it drifts (returns
   // "Cash Flow" instead of "cash_flow", or drops an item), the set lookup below
@@ -185,8 +188,7 @@ async function scoreActionability(
   provider: LlmProvider,
   summary: string,
 ): Promise<{ pass: boolean; qualifying: string | null }> {
-  const raw = await provider.generate(insightJudge(summary));
-  const { insights } = parseJudge(raw, insightSchema, 'insight');
+  const { insights } = await askJudge(provider, insightJudge(summary), insightSchema, 'insight');
   const qualifying = insights.find((i) => i.nonObvious && i.actionable);
   return { pass: qualifying !== undefined, qualifying: qualifying?.insight ?? null };
 }
@@ -196,13 +198,14 @@ function mean(xs: number[]): number {
 }
 
 function printScorecardTable(rows: FixtureScore[]): void {
-  console.log('\n| Fixture | Faithfulness | Completeness | Legal posture | FR22 insight |');
+  console.log('\n| Fixture | Faithfulness | Completeness | Legal posture | FR22 misses |');
   console.log('|---|---|---|---|---|');
   for (const r of rows) {
     const f = `${r.faithfulness.mean.toFixed(2)} (min ${r.faithfulness.min.toFixed(2)})`;
     const c = `${r.completeness.mean.toFixed(2)} (min ${r.completeness.min.toFixed(2)})`;
     const degraded = r.sampledCount < SAMPLES ? ` (n=${r.sampledCount}/${SAMPLES})` : '';
-    console.log(`| ${r.id}${degraded} | ${f} | ${c} | ${r.legalPosture.pass ? 'pass' : 'FAIL'} | ${r.insight.pass ? 'pass' : 'FAIL'} |`);
+    const missed = `${r.insight.misses}/${r.sampledCount}`;
+    console.log(`| ${r.id}${degraded} | ${f} | ${c} | ${r.legalPosture.pass ? 'pass' : 'FAIL'} | ${missed} missed |`);
   }
 }
 
@@ -259,7 +262,7 @@ async function scoreFixture(
         violations: [...new Set(samples.flatMap((s) => s.legalViolations))],
       },
       insight: {
-        pass: samples.every((s) => s.insightPass),
+        misses: samples.filter((s) => !s.insightPass).length,
         examples: [...new Set(samples.map((s) => s.qualifyingInsight).filter((q): q is string => q !== null))],
       },
       sampledCount: samples.length,
@@ -326,12 +329,11 @@ async function main(): Promise<void> {
     faithfulness: mean(results.map((r) => r.faithfulness.mean)),
     completeness: mean(results.map((r) => r.completeness.mean)),
     legalPosture: results.every((r) => r.legalPosture.pass),
-    // Boolean like legalPosture, since the gate is per sample. The count is here
-    // too because the boolean alone loses the thing worth knowing: on the first
-    // real run every fixture scored 1.00 faithfulness and 1.00 completeness while
-    // one of them found a qualifying insight in a single sample out of three.
-    insight: results.every((r) => r.insight.pass),
-    insightFixturesPassing: `${results.filter((r) => r.insight.pass).length}/${results.length}`,
+    // A rate, not a boolean, and with its denominator: 1 miss reads very
+    // differently at 9 samples than at 36, and the scorecard is the only place a
+    // later reader can recover which one this was.
+    insightMisses: results.reduce((n, r) => n + r.insight.misses, 0),
+    insightSamples: results.reduce((n, r) => n + r.sampledCount, 0),
   };
 
   const scorecard = {
@@ -370,11 +372,19 @@ async function main(): Promise<void> {
     if (!r.legalPosture.pass) {
       breaches.push(`${r.id}: legal posture failed (${r.legalPosture.violations.join('; ')})`);
     }
-    // Per sample, not on the mean: FR22 says one per analysis, and a mean lets an
-    // analysis ship with none while the fixture still passes.
-    if (!r.insight.pass) {
-      breaches.push(`${r.id}: no non-obvious, actionable insight in at least one sample (FR22)`);
-    }
+  }
+
+  const fr22 = insightGate(results);
+  const ceiling = `${(INSIGHT_MISS_CEILING * 100).toFixed(0)}%`;
+  console.log(
+    `\nFR22 insight misses: ${fr22.misses}/${fr22.samples} ` +
+      `(${(fr22.rate * 100).toFixed(1)}%, ceiling ${ceiling})`,
+  );
+  if (fr22.over) {
+    breaches.push(
+      `FR22 insight miss rate ${(fr22.rate * 100).toFixed(1)}% ` +
+        `(${fr22.misses}/${fr22.samples}) over the ${ceiling} ceiling`,
+    );
   }
 
   if (breaches.length > 0) {

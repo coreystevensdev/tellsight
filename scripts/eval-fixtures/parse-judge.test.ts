@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 
-import { parseJudge } from './parse-judge.js';
+import { askJudge, parseJudge } from './parse-judge.js';
 
 // Every judge reply goes through here, and a reply this cannot parse discards the
 // whole sample: the generation, all three judge calls, and whatever signal that
@@ -13,6 +13,7 @@ import { parseJudge } from './parse-judge.js';
 
 const schema = z.object({ verdict: z.string() });
 const parse = (raw: string) => parseJudge(raw, schema, 'test');
+const prompt = { system: 's', user: 'u' };
 
 describe('parseJudge', () => {
   it('reads a bare object', () => {
@@ -55,5 +56,48 @@ describe('parseJudge', () => {
 
   it('still rejects a well-formed object of the wrong shape', () => {
     expect(() => parse('{"result":"ok"}')).toThrow(/unexpected shape/);
+  });
+});
+
+describe('askJudge', () => {
+  const fakeProvider = (replies: string[]) => {
+    const calls: number[] = [];
+    return {
+      provider: {
+        generate: async () => {
+          calls.push(1);
+          return replies[calls.length - 1] ?? '';
+        },
+      } as never,
+      count: () => calls.length,
+    };
+  };
+
+  it('asks once when the first reply parses', async () => {
+    const { provider, count } = fakeProvider(['{"verdict":"ok"}']);
+    await expect(askJudge(provider, prompt, schema, 'test')).resolves.toEqual({ verdict: 'ok' });
+    expect(count()).toBe(1);
+  });
+
+  it('asks again when the first reply is unusable', async () => {
+    const { provider, count } = fakeProvider(['not json at all', '{"verdict":"ok"}']);
+    await expect(askJudge(provider, prompt, schema, 'test')).resolves.toEqual({ verdict: 'ok' });
+    expect(count()).toBe(2);
+  });
+
+  // A judge that mangles this particular prompt every time is a real failure, not
+  // a blip, and swallowing it would score the sample on nothing.
+  it('gives up after the second reply', async () => {
+    const { provider, count } = fakeProvider(['nope', 'still nope']);
+    await expect(askJudge(provider, prompt, schema, 'test')).rejects.toThrow(/non-JSON/);
+    expect(count()).toBe(2);
+  });
+
+  // The shape check runs after JSON.parse succeeds, and it used to be the one
+  // failure that never retried.
+  it('asks again when the reply parses but is the wrong shape', async () => {
+    const { provider, count } = fakeProvider(['{"wrong":"field"}', '{"verdict":"ok"}']);
+    await expect(askJudge(provider, prompt, schema, 'test')).resolves.toEqual({ verdict: 'ok' });
+    expect(count()).toBe(2);
   });
 });
