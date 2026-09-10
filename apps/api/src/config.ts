@@ -76,6 +76,17 @@ export const envSchema = z
       path: ['STRIPE_SECRET_KEY'],
     },
   )
+  // The mirror of the check above, and the one that costs money. A test key in
+  // production ships a broken checkout; a live key on a laptop bills real cards
+  // and creates real customers off a dev run, a seed script, or a stray test.
+  .refine(
+    (data) => !(data.NODE_ENV !== 'production' && data.STRIPE_SECRET_KEY.startsWith('sk_live_')),
+    {
+      message:
+        'STRIPE_SECRET_KEY must be a test key (sk_test_*) outside production. A live key here charges real cards from a dev machine.',
+      path: ['STRIPE_SECRET_KEY'],
+    },
+  )
   .refine((data) => !(data.EMAIL_PROVIDER === 'resend' && !data.RESEND_API_KEY), {
     message: 'RESEND_API_KEY required when EMAIL_PROVIDER=resend.',
     path: ['EMAIL_PROVIDER'],

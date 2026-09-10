@@ -7,7 +7,7 @@ vi.hoisted(() => {
     DATABASE_ADMIN_URL: 'postgres://u:p@localhost:5432/db',
     REDIS_URL: 'redis://localhost:6379',
     CLAUDE_API_KEY: 'sk-ant-test',
-    STRIPE_SECRET_KEY: 'sk_live_x',
+    STRIPE_SECRET_KEY: 'sk_test_x',
     STRIPE_WEBHOOK_SECRET: 'whsec_x',
     STRIPE_PRICE_ID: 'price_x',
     GOOGLE_CLIENT_ID: 'gci',

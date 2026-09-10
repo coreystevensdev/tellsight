@@ -47,6 +47,12 @@ describe('k6 load test paths', () => {
     // looks like from the outside.
     envBefore = { ...process.env };
     process.loadEnvFile(`${repoRoot}.env.ci`);
+    // .env.ci is internally consistent, NODE_ENV=production paired with an
+    // sk_live_ key, because config rejects a test key in production. loadEnvFile
+    // does not override an existing variable and vitest has already set
+    // NODE_ENV=test, so the pair arrives split and the mirror guard rejects the
+    // live key. Nothing here touches Stripe; config just has to load.
+    process.env.STRIPE_SECRET_KEY = 'sk_test_k6_paths_unused';
 
     const { createTestApp } = await import('../test/helpers/testApp.js');
     const healthRouter = (await import('./health.js')).default;
@@ -62,7 +68,10 @@ describe('k6 load test paths', () => {
       // direction: the fix is to mount it.
       app.use((_req, res) => res.status(404).json({ error: { code: 'NOT_ROUTED' } }));
     }));
-  }, 30_000);
+    // Importing three routers pulls most of the service layer with it, which is
+    // seconds on an idle machine and more on a busy one. The test is about which
+    // paths route, not how fast the tree loads, so this is generous on purpose.
+  }, 90_000);
 
   afterAll(() => {
     server?.close();

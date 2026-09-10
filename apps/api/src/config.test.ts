@@ -9,7 +9,7 @@ vi.hoisted(() => {
     DATABASE_ADMIN_URL: 'postgres://u:p@localhost:5432/db',
     REDIS_URL: 'redis://localhost:6379',
     CLAUDE_API_KEY: 'sk-ant-test',
-    STRIPE_SECRET_KEY: 'sk_live_x',
+    STRIPE_SECRET_KEY: 'sk_test_x',
     STRIPE_WEBHOOK_SECRET: 'whsec_x',
     STRIPE_PRICE_ID: 'price_x',
     GOOGLE_CLIENT_ID: 'gci',
@@ -25,12 +25,16 @@ vi.hoisted(() => {
 import { envSchema } from './config.js';
 
 function baseEnv(overrides: Record<string, string> = {}) {
+  // The two Stripe guards are mirror images, so any fixed key here is invalid in
+  // one env or the other. Follow NODE_ENV, and let a test that is about the key
+  // override it.
+  const nodeEnv = overrides.NODE_ENV ?? 'development';
   return {
     DATABASE_URL: 'postgres://u:p@localhost:5432/db',
     DATABASE_ADMIN_URL: 'postgres://u:p@localhost:5432/db',
     REDIS_URL: 'redis://localhost:6379',
     CLAUDE_API_KEY: 'sk-ant-test',
-    STRIPE_SECRET_KEY: 'sk_live_x',
+    STRIPE_SECRET_KEY: nodeEnv === 'production' ? 'sk_live_x' : 'sk_test_x',
     STRIPE_WEBHOOK_SECRET: 'whsec_x',
     STRIPE_PRICE_ID: 'price_x',
     GOOGLE_CLIENT_ID: 'gci',
@@ -38,7 +42,7 @@ function baseEnv(overrides: Record<string, string> = {}) {
     JWT_SECRET: 'j'.repeat(32),
     APP_URL: 'http://localhost:3000',
     PUBLIC_API_URL: 'https://api.kiln.app',
-    NODE_ENV: 'development',
+    NODE_ENV: nodeEnv,
     EMAIL_FROM_ADDRESS: 'insights@kiln.app',
     EMAIL_MAILING_ADDRESS: '500 Real St, Denver, CO 80202',
     ...overrides,
@@ -138,6 +142,15 @@ describe('envSchema, production guards on non-email settings', () => {
       }),
     );
     expect(result.success).toBe(true);
+  });
+
+  it('rejects a live Stripe key outside production', () => {
+    const result = envSchema.safeParse(baseEnv({ STRIPE_SECRET_KEY: 'sk_live_z' }));
+    expect(result.success).toBe(false);
+    if (result.success) return;
+
+    const issue = result.error.issues.find((i) => i.path[0] === 'STRIPE_SECRET_KEY');
+    expect(issue?.message).toMatch(/must be a test key/);
   });
 
   it('leaves a test key alone outside production', () => {
