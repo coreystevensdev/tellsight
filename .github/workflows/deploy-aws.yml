@@ -108,28 +108,43 @@ jobs:
 
           domain = os.environ['PRODUCTION_DOMAIN']
 
-          env_lines = [
-              f"NODE_ENV=production",
-              f"DATABASE_URL={os.environ['DATABASE_URL']}",
-              f"DATABASE_ADMIN_URL={os.environ['DATABASE_ADMIN_URL']}",
-              f"CLAUDE_API_KEY={os.environ['CLAUDE_API_KEY']}",
-              f"CLAUDE_MODEL={os.environ.get('CLAUDE_MODEL', 'claude-sonnet-4-5-20250929')}",
-              f"STRIPE_SECRET_KEY={os.environ['STRIPE_SECRET_KEY']}",
-              f"STRIPE_WEBHOOK_SECRET={os.environ['STRIPE_WEBHOOK_SECRET']}",
-              f"STRIPE_PRICE_ID={os.environ['STRIPE_PRICE_ID']}",
-              f"GOOGLE_CLIENT_ID={os.environ['GOOGLE_CLIENT_ID']}",
-              f"GOOGLE_CLIENT_SECRET={os.environ['GOOGLE_CLIENT_SECRET']}",
-              f"JWT_SECRET={os.environ['JWT_SECRET']}",
-              f"APP_URL=https://{domain}",
-              f"PUBLIC_API_URL=https://{domain}",
-              f"EMAIL_PROVIDER=resend",
-              f"EMAIL_FROM_ADDRESS={os.environ['EMAIL_FROM_ADDRESS']}",
-              f"EMAIL_FROM_NAME={os.environ['EMAIL_FROM_NAME']}",
-              f"EMAIL_MAILING_ADDRESS={os.environ['EMAIL_MAILING_ADDRESS']}",
-              f"RESEND_API_KEY={os.environ['RESEND_API_KEY']}",
-              f"RESEND_WEBHOOK_SECRET={os.environ['RESEND_WEBHOOK_SECRET']}",
-              f"METRICS_TOKEN={os.environ['METRICS_TOKEN']}",
-              f"QUICKBOOKS_ENVIRONMENT={os.environ.get('QUICKBOOKS_ENVIRONMENT') or 'sandbox'}",
+          # Single quotes, because compose and a shell that sources this file
+          # agree on them: whitespace preserved, no $ expansion. Double quotes are
+          # not equivalent, both consumers expand $ inside them. Bare was the bug:
+          # EMAIL_MAILING_ADDRESS went out unquoted, so `. ./.env` read its second
+          # word as a command.
+          def env_line(key, value):
+              value = str(value)
+              # Compose has no escape for a single quote inside a single-quoted
+              # value. The shell form ('"'"') breaks its parser outright and takes
+              # the whole file with it, so refuse rather than ship an unreadable
+              # .env and an API that cannot boot.
+              if "'" in value or "\n" in value:
+                  sys.exit(f"{key} contains a quote or newline, which docker compose cannot represent in an env_file")
+              return f"{key}='{value}'"
+
+          env_pairs = [
+              ("NODE_ENV", "production"),
+              ("DATABASE_URL", os.environ['DATABASE_URL']),
+              ("DATABASE_ADMIN_URL", os.environ['DATABASE_ADMIN_URL']),
+              ("CLAUDE_API_KEY", os.environ['CLAUDE_API_KEY']),
+              ("CLAUDE_MODEL", os.environ.get('CLAUDE_MODEL', 'claude-sonnet-4-5-20250929')),
+              ("STRIPE_SECRET_KEY", os.environ['STRIPE_SECRET_KEY']),
+              ("STRIPE_WEBHOOK_SECRET", os.environ['STRIPE_WEBHOOK_SECRET']),
+              ("STRIPE_PRICE_ID", os.environ['STRIPE_PRICE_ID']),
+              ("GOOGLE_CLIENT_ID", os.environ['GOOGLE_CLIENT_ID']),
+              ("GOOGLE_CLIENT_SECRET", os.environ['GOOGLE_CLIENT_SECRET']),
+              ("JWT_SECRET", os.environ['JWT_SECRET']),
+              ("APP_URL", f"https://{domain}"),
+              ("PUBLIC_API_URL", f"https://{domain}"),
+              ("EMAIL_PROVIDER", "resend"),
+              ("EMAIL_FROM_ADDRESS", os.environ['EMAIL_FROM_ADDRESS']),
+              ("EMAIL_FROM_NAME", os.environ['EMAIL_FROM_NAME']),
+              ("EMAIL_MAILING_ADDRESS", os.environ['EMAIL_MAILING_ADDRESS']),
+              ("RESEND_API_KEY", os.environ['RESEND_API_KEY']),
+              ("RESEND_WEBHOOK_SECRET", os.environ['RESEND_WEBHOOK_SECRET']),
+              ("METRICS_TOKEN", os.environ['METRICS_TOKEN']),
+              ("QUICKBOOKS_ENVIRONMENT", os.environ.get('QUICKBOOKS_ENVIRONMENT') or 'sandbox'),
           ]
 
           # QuickBooks is fully optional (isQbConfigured() gates the connector
@@ -137,18 +152,15 @@ jobs:
           # validation when the key is absent entirely -- an empty string from
           # an unset GitHub secret still fails z.string().url()/.length(64), so
           # these are omitted rather than written as blank lines.
-          optional_vars = {
-              "QUICKBOOKS_CLIENT_ID": os.environ.get("QUICKBOOKS_CLIENT_ID", ""),
-              "QUICKBOOKS_CLIENT_SECRET": os.environ.get("QUICKBOOKS_CLIENT_SECRET", ""),
-              "QUICKBOOKS_REDIRECT_URI": os.environ.get("QUICKBOOKS_REDIRECT_URI", ""),
-              "ENCRYPTION_KEY": os.environ.get("ENCRYPTION_KEY", ""),
-          }
-          for key, value in optional_vars.items():
+          for key in ("QUICKBOOKS_CLIENT_ID", "QUICKBOOKS_CLIENT_SECRET", "QUICKBOOKS_REDIRECT_URI", "ENCRYPTION_KEY"):
+              value = os.environ.get(key, "")
               if value:
-                  env_lines.append(f"{key}={value}")
+                  env_pairs.append((key, value))
+
+          env_lines = [env_line(k, v) for k, v in env_pairs]
 
           # Base64-encode so no shell-quoting issues when the string hits the EC2 shell.
-          env_b64 = base64.b64encode("\n".join(env_lines).encode()).decode()
+          env_b64 = base64.b64encode(("\n".join(env_lines) + "\n").encode()).decode()
           ecr_host = os.environ['ECR_API_REPO'].split('/')[0]
 
           # The base compose on the instance pins both services to :latest, a
