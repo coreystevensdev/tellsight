@@ -41,7 +41,18 @@ const MARKER_PATH = resolve(__dirname, 'eval-fixtures', 'scorecard.zero-results.
 // Freeze the date so the {{today}} placeholder doesn't drift the prompt between
 // runs, same posture as validate-seed.ts:161.
 const FROZEN_NOW = new Date('2026-01-15T12:00:00Z');
-const SAMPLES = 3;
+// 10 per fixture, 30 total. At 3 the gate was bad at both ends: a single miss is
+// 22% so it failed a healthy run 10.6% of the time, while catching a regression
+// the size of v1.7's only 77% of the time. 10 puts those at 3.8% and 95% for
+// about $0.84 a run. 15 buys 2.2% and 98% for half as much again, which is not
+// worth it. Worth knowing that more samples is not monotonically better here:
+// the ceiling is crossed in whole misses, so 60 samples needs 10 of them (16.7%)
+// and is actually worse than 45 at catching a 20% rate.
+const SAMPLES = Number(process.env.EVAL_SAMPLES ?? 10);
+
+// Diagnosing one fixture should not cost three. Misses are the thing worth
+// reading and they concentrate: cash-crunch carried 4 of the 6 in the last run.
+const ONLY_FIXTURE = process.env.EVAL_FIXTURE ?? '';
 
 // Only the initial value of the reported version; the real one is read back from
 // assemblePrompt's metadata per fixture, so a default-version bump can't leave the
@@ -105,6 +116,7 @@ interface SampleScore {
   legalViolations: string[];
   insightPass: boolean;
   qualifyingInsight: string | null;
+  insightShortfall: string[];
 }
 
 interface FixtureScore {
@@ -113,7 +125,7 @@ interface FixtureScore {
   faithfulness: { mean: number; min: number };
   completeness: { mean: number; min: number };
   legalPosture: { pass: boolean; violations: string[] };
-  insight: { misses: number; examples: string[] };
+  insight: { misses: number; examples: string[]; missed: string[] };
   sampledCount: number;
 }
 
@@ -187,10 +199,21 @@ async function scoreCompleteness(
 async function scoreActionability(
   provider: LlmProvider,
   summary: string,
-): Promise<{ pass: boolean; qualifying: string | null }> {
+): Promise<{ pass: boolean; qualifying: string | null; shortfall: string[] }> {
   const { insights } = await askJudge(provider, insightJudge(summary), insightSchema, 'insight');
   const qualifying = insights.find((i) => i.nonObvious && i.actionable);
-  return { pass: qualifying !== undefined, qualifying: qualifying?.insight ?? null };
+  if (qualifying) return { pass: true, qualifying: qualifying.insight, shortfall: [] };
+
+  // On a miss the scorecard used to keep the 16 passes and drop the 4 failures,
+  // which is the wrong half: an insight that scored is not evidence about the one
+  // that did not. Record which property each candidate was missing.
+  return {
+    pass: false,
+    qualifying: null,
+    shortfall: insights.map(
+      (i) => `[${i.nonObvious ? 'non-obvious' : 'OBVIOUS'}/${i.actionable ? 'actionable' : 'NOT actionable'}] ${i.insight} -- ${i.reason}`,
+    ),
+  };
 }
 
 function mean(xs: number[]): number {
@@ -234,6 +257,7 @@ async function scoreFixture(
         legalViolations: legal.violations,
         insightPass: insight.pass,
         qualifyingInsight: insight.qualifying,
+        insightShortfall: insight.shortfall,
       });
       console.log(
         `  ${fixture.id} sample ${i + 1}/${SAMPLES}: faith ${faithfulness.toFixed(2)}, comp ${completeness.toFixed(2)}, legal ${legal.pass ? 'pass' : 'FAIL'}, insight ${insight.pass ? 'pass' : 'FAIL'}`,
@@ -264,6 +288,7 @@ async function scoreFixture(
       insight: {
         misses: samples.filter((s) => !s.insightPass).length,
         examples: [...new Set(samples.map((s) => s.qualifyingInsight).filter((q): q is string => q !== null))],
+        missed: samples.filter((s) => !s.insightPass).flatMap((s) => s.insightShortfall),
       },
       sampledCount: samples.length,
     },
@@ -288,11 +313,16 @@ async function main(): Promise<void> {
   const { getProvider } = await import('../apps/api/src/services/aiInterpretation/provider.js');
   const provider = getProvider();
 
-  console.log(`Running ${FIXTURES.length} fixtures x ${SAMPLES} samples...`);
+  console.log(`Running ${ONLY_FIXTURE ? 1 : FIXTURES.length} fixture(s) x ${SAMPLES} samples...`);
   const results: FixtureScore[] = [];
   const failedFixtureIds: string[] = [];
   let promptVersion = DEFAULT_PROMPT_VERSION;
-  for (const fixture of FIXTURES) {
+  const selected = ONLY_FIXTURE ? FIXTURES.filter((f) => f.id === ONLY_FIXTURE) : FIXTURES;
+  if (ONLY_FIXTURE && selected.length === 0) {
+    console.error(`No fixture named "${ONLY_FIXTURE}". Have: ${FIXTURES.map((f) => f.id).join(', ')}`);
+    process.exit(1);
+  }
+  for (const fixture of selected) {
     try {
       const { score, promptVersion: version } = await scoreFixture(provider, fixture);
       promptVersion = version;
