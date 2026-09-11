@@ -265,10 +265,22 @@ describe('webhookHandler', () => {
       expect(mockAuditRecord).toHaveBeenCalledTimes(1);
     });
 
-    it('handles missing orgId metadata gracefully', async () => {
-      await handleWebhookEvent(fakeSubscriptionUpdatedEvent({
-        metadata: {},
-      }));
+    // Every subscription created through Checkout arrives with metadata {},
+    // because session metadata does not propagate to the subscription. Bailing
+    // here is what left a cancelled org on Pro indefinitely.
+    it('falls back to the stored org when the subscription carries no metadata', async () => {
+      mockGetSubscriptionByStripeId.mockResolvedValueOnce({ orgId: 1, stripeSubscriptionId: 'sub_test_789' });
+
+      await handleWebhookEvent(fakeSubscriptionUpdatedEvent({ metadata: {} }));
+
+      expect(mockGetSubscriptionByStripeId).toHaveBeenCalledWith('sub_test_789', expect.anything());
+      expect(mockUpdateSubscriptionPeriod).toHaveBeenCalled();
+    });
+
+    it('gives up when there is no metadata and no matching row', async () => {
+      mockGetSubscriptionByStripeId.mockResolvedValueOnce(null);
+
+      await handleWebhookEvent(fakeSubscriptionUpdatedEvent({ metadata: {} }));
 
       expect(mockUpdateSubscriptionPeriod).not.toHaveBeenCalled();
       expect(mockUpdateSubscriptionStatus).not.toHaveBeenCalled();
@@ -390,7 +402,17 @@ describe('webhookHandler', () => {
       );
     });
 
-    it('handles missing orgId metadata gracefully', async () => {
+    it('expires the stored org when the subscription carries no metadata', async () => {
+      mockGetSubscriptionByStripeId.mockResolvedValueOnce({ orgId: 1, stripeSubscriptionId: 'sub_test_789' });
+
+      await handleWebhookEvent(fakeSubscriptionDeletedEvent({ metadata: {} }));
+
+      expect(mockUpdateSubscriptionStatus).toHaveBeenCalledWith('sub_test_789', 'expired', undefined, expect.anything());
+    });
+
+    it('gives up when there is no metadata and no matching row', async () => {
+      mockGetSubscriptionByStripeId.mockResolvedValueOnce(null);
+
       await handleWebhookEvent(fakeSubscriptionDeletedEvent({ metadata: {} }));
 
       expect(mockUpdateSubscriptionStatus).not.toHaveBeenCalled();

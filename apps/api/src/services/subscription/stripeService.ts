@@ -32,6 +32,10 @@ export async function createCheckoutSession(
       success_url: `${env.APP_URL}/billing?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${env.APP_URL}/billing?canceled=true`,
       metadata: { orgId: String(orgId), userId: String(userId) },
+      // Session metadata does not reach the subscription Stripe creates from it,
+      // and the lifecycle webhooks arrive carrying the subscription, not the
+      // session. Without this every renewal and cancellation lands with no org.
+      subscription_data: { metadata: { orgId: String(orgId), userId: String(userId) } },
       ...customerParam,
     });
 
