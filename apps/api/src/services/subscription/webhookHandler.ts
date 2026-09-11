@@ -74,14 +74,27 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   logger.info({ orgId, userId, sessionId: session.id }, 'Checkout completed, org upgraded to Pro');
 }
 
+// Stripe puts Checkout Session metadata on the session, not on the subscription
+// it creates, and stripeService never set subscription_data.metadata. So every
+// subscription born from checkout arrives here with metadata {} and both
+// lifecycle handlers bailed before touching the row: a cancellation left the org
+// on Pro forever. The org is already stored against the subscription id, so read
+// it from there and treat Stripe's metadata as a hint rather than the source.
+async function resolveOrgId(subscription: SubscriptionWebhookPayload): Promise<number | null> {
+  const fromMetadata = Number(subscription.metadata?.orgId);
+  if (fromMetadata) return fromMetadata;
+  const row = await subscriptionsQueries.getSubscriptionByStripeId(subscription.id, dbAdmin);
+  return row?.orgId ?? null;
+}
+
 async function handleSubscriptionUpdated(subscription: SubscriptionWebhookPayload) {
   const stripeSubscriptionId = subscription.id;
-  const orgId = Number(subscription.metadata?.orgId);
   const cancelAtPeriodEnd = subscription.cancel_at_period_end;
   const currentPeriodEnd = new Date(subscription.current_period_end * 1000);
 
+  const orgId = await resolveOrgId(subscription);
   if (!orgId) {
-    logger.error({ subscriptionId: stripeSubscriptionId }, 'Missing orgId metadata in subscription.updated');
+    logger.error({ subscriptionId: stripeSubscriptionId }, 'Cannot resolve orgId for subscription.updated, no metadata and no matching row');
     return;
   }
 
@@ -173,10 +186,10 @@ async function handleInvoicePaymentFailed(invoice: InvoiceWebhookPayload) {
 
 async function handleSubscriptionDeleted(subscription: SubscriptionWebhookPayload) {
   const stripeSubscriptionId = subscription.id;
-  const orgId = Number(subscription.metadata?.orgId);
 
+  const orgId = await resolveOrgId(subscription);
   if (!orgId) {
-    logger.error({ subscriptionId: stripeSubscriptionId }, 'Missing orgId metadata in subscription.deleted');
+    logger.error({ subscriptionId: stripeSubscriptionId }, 'Cannot resolve orgId for subscription.deleted, no metadata and no matching row');
     return;
   }
 
