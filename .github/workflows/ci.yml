@@ -363,6 +363,33 @@ jobs:
       - name: Run smoke test and load test
         run: bash scripts/smoke-test.sh --ci --load
 
+  test-count:
+    name: Test Count
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: README test count matches every suite
+        run: |
+          # count-tests.sh collects with `vitest list` and `playwright test --list`,
+          # neither of which executes anything, so no database and no browsers.
+          out=$(bash scripts/count-tests.sh)
+          echo "$out"
+          val() { echo "$out" | awk -v k="$1" '$1==k{print $2}'; }
+          t=$(val total_fmt); v=$(val vitest_fmt); e2e=$(val playwright)
+          [ -n "$t" ] && [ -n "$v" ] && [ -n "$e2e" ] || { echo "count script produced no totals"; exit 1; }
+          fail=0
+          grep -q "badge/tests-${t/,/%2C}-brightgreen" README.md || { echo "badge does not say $t"; fail=1; }
+          grep -q "alt=\"$t tests\"" README.md || { echo "badge alt text does not say $t"; fail=1; }
+          grep -q "$t automated tests ($v Vitest plus $e2e Playwright E2E)" README.md || { echo "overview line does not say $t ($v Vitest plus $e2e Playwright)"; fail=1; }
+          [ "$fail" = 0 ] || { echo "Run scripts/count-tests.sh and update README.md."; exit 1; }
+          echo "README agrees with every suite: $t"
+
   # Deployment itself lives in deploy-aws.yml, triggered via workflow_run once
   # this workflow succeeds on main. No deploy job here, ECR build/push + SSM
   # deploy + health poll all happen there.
