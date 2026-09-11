@@ -95,7 +95,7 @@ export default function SignupForm({ redirectPath, inviteToken }: { redirectPath
 
       <p className="text-center text-xs text-muted-foreground">
         Already have an account?{' '}
-        <a href="/login" className="text-foreground hover:underline">Sign in</a>
+        <a href="/login" className="text-foreground underline underline-offset-4">Sign in</a>
       </p>
     </form>
   );
