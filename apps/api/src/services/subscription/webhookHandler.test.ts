@@ -148,20 +148,35 @@ describe('webhookHandler', () => {
     });
 
     it('does not re-fire upgrade analytics when the org is already Pro (redelivered event)', async () => {
-      mockUpsertSubscription.mockResolvedValue({ id: 1 });
-      // First delivery: no prior row, analytics fires once.
+      // The upsert reports whether it actually wrote. A redelivery finds the row
+      // already holding these exact values, writes nothing, and returns null.
+      mockUpsertSubscription.mockResolvedValueOnce({ id: 1 });
       await handleWebhookEvent(fakeCheckoutEvent());
       expect(mockTrackEvent).toHaveBeenCalledTimes(1);
 
-      // Redelivery: org already active/pro on the same subscription, skip analytics.
-      mockGetSubscriptionByOrgId.mockResolvedValueOnce({
-        stripeSubscriptionId: 'sub_test_789',
-        status: 'active',
-        plan: 'pro',
-      });
+      mockUpsertSubscription.mockResolvedValueOnce(null);
       await handleWebhookEvent(fakeCheckoutEvent());
 
       expect(mockUpsertSubscription).toHaveBeenCalledTimes(2);
+      expect(mockTrackEvent).toHaveBeenCalledTimes(1);
+    });
+
+    // The reason this moved into the upsert: the old guard read the row, compared,
+    // then wrote. Concurrent deliveries all read before any wrote, so every one of
+    // them looked like the first and counted as an upgrade.
+    it('counts one upgrade when deliveries arrive concurrently', async () => {
+      mockUpsertSubscription
+        .mockResolvedValueOnce({ id: 1 })
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
+
+      await Promise.all([
+        handleWebhookEvent(fakeCheckoutEvent()),
+        handleWebhookEvent(fakeCheckoutEvent()),
+        handleWebhookEvent(fakeCheckoutEvent()),
+      ]);
+
+      expect(mockUpsertSubscription).toHaveBeenCalledTimes(3);
       expect(mockTrackEvent).toHaveBeenCalledTimes(1);
     });
 

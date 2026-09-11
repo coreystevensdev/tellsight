@@ -44,16 +44,12 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     return;
   }
 
-  // upsertSubscription is idempotent, but the upgrade analytics is not. On a
-  // redelivered checkout the org is already active/pro on this subscription, so
-  // treat the replay as a no-op for analytics to avoid double-counting upgrades.
-  const existing = await subscriptionsQueries.getSubscriptionByOrgId(orgId, dbAdmin);
-  const alreadyUpgraded =
-    existing?.stripeSubscriptionId === subscriptionId &&
-    existing.status === 'active' &&
-    existing.plan === 'pro';
-
-  await subscriptionsQueries.upsertSubscription({
+  // upsertSubscription is idempotent, but the upgrade analytics is not, so a
+  // redelivered checkout would otherwise count the same upgrade twice. The upsert
+  // skips the write when the row already says exactly this and returns null, which
+  // is the replay signal. Reading the row first and comparing raced: concurrent
+  // deliveries all read before any of them wrote.
+  const written = await subscriptionsQueries.upsertSubscription({
     orgId,
     stripeCustomerId: customerId,
     stripeSubscriptionId: subscriptionId,
@@ -62,7 +58,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     currentPeriodEnd: null,
   }, dbAdmin);
 
-  if (alreadyUpgraded) {
+  if (!written) {
     logger.info({ orgId, userId, sessionId: session.id }, 'Duplicate checkout webhook, org already Pro, skipping upgrade analytics');
     return;
   }
