@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, isNull, ne, or } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, ne, or, sql } from 'drizzle-orm';
 
 import type { SubscriptionTier } from 'shared/types';
 
@@ -99,9 +99,22 @@ export async function upsertSubscription(
         currentPeriodEnd: params.currentPeriodEnd,
         updatedAt: new Date(),
       },
+      // Skip the write when the row already says exactly this, so `returning()`
+      // comes back empty and the caller can tell a real upgrade from a redelivered
+      // webhook. The caller used to read the row first and compare, which raced:
+      // three deliveries 3ms apart all read before any of them wrote, so all three
+      // counted as upgrades. Postgres decides here, under its own row lock.
+      setWhere: sql`
+        ${subscriptions.stripeCustomerId} IS DISTINCT FROM excluded.stripe_customer_id
+        OR ${subscriptions.stripeSubscriptionId} IS DISTINCT FROM excluded.stripe_subscription_id
+        OR ${subscriptions.status} IS DISTINCT FROM excluded.status
+        OR ${subscriptions.plan} IS DISTINCT FROM excluded.plan
+        OR ${subscriptions.currentPeriodEnd} IS DISTINCT FROM excluded.current_period_end
+      `,
     })
     .returning();
-  return result;
+  // null means the row already held these exact values: nothing was written.
+  return result ?? null;
 }
 
 export async function updateSubscriptionPeriod(
