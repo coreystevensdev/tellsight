@@ -3,7 +3,19 @@ import type { ComputedStat } from '../../services/curation/types.js';
 // Exported so Story 11.4's milestone detector shares these boundaries instead of re-hardcoding them.
 export const SIGNIFICANT_RUNWAY_DELTA_MONTHS = 0.2; // runwayMonths change ≥ this is worth narrating
 export const SIGNIFICANT_MARGIN_DELTA_PP = 0.5; // recentMarginPercent change ≥ this is worth narrating
-export const SIGNIFICANT_BURN_DELTA_PERCENT = 5; // relative change vs prior monthlyNet, ≥ this is worth narrating (a burn/surplus sign flip always qualifies)
+export const SIGNIFICANT_BURN_DELTA_PERCENT = 5; // relative change vs prior monthlyNet, ≥ this is worth narrating
+// Absolute floor, checked alongside the percent above. Percent on its own is
+// unbounded at a small base: $1 to $3 is a 200% move and two dollars. The number
+// that governs behaviour is the crossover, F / 0.05, below which the percent is
+// inert and this decides alone. At 100 that is a $2,000 monthly net, which keeps
+// the percent live across the range real customers sit in. Higher floors read as
+// tidier and cost more than they look: at 500 the crossover is $10,000 and a
+// business improving from $2,000 to $2,400 a month gets no line at all, which is
+// the digest failing at the only thing it is for. A missed real move is a worse
+// failure here than a marginal one that gets skimmed. A burn to surplus sign
+// flip no longer qualifies on its own either, since a flip of a few dollars is
+// the same noise.
+export const SIGNIFICANT_BURN_DELTA_USD = 100;
 
 export interface PriorContextEntry {
   statType: ComputedStat['statType'];
@@ -79,12 +91,13 @@ export function buildPriorContext(
   } else if (currentCashFlow && priorCashFlow) {
     const priorNet = priorCashFlow.details.monthlyNet;
     const currentNet = currentCashFlow.details.monthlyNet;
-    // Percent change is undefined at a zero base. Any move off zero counts as
-    // significant instead of dividing by zero; zero-to-zero stays flat.
+    const absDelta = Math.abs(currentNet - priorNet);
+    // Both gates have to clear. Percent change is also undefined at a zero base,
+    // so a move off zero skips the percent and leans on the dollar floor alone;
+    // zero to zero stays flat because the floor rejects a delta of nothing.
     const isSignificant =
-      priorNet === 0
-        ? currentNet !== 0
-        : (Math.abs(currentNet - priorNet) / Math.abs(priorNet)) * 100 >= SIGNIFICANT_BURN_DELTA_PERCENT;
+      absDelta >= SIGNIFICANT_BURN_DELTA_USD &&
+      (priorNet === 0 || (absDelta / Math.abs(priorNet)) * 100 >= SIGNIFICANT_BURN_DELTA_PERCENT);
 
     if (isSignificant) {
       entries.push({

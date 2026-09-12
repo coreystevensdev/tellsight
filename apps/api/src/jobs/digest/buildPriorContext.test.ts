@@ -6,6 +6,7 @@ import {
   SIGNIFICANT_RUNWAY_DELTA_MONTHS,
   SIGNIFICANT_MARGIN_DELTA_PP,
   SIGNIFICANT_BURN_DELTA_PERCENT,
+  SIGNIFICANT_BURN_DELTA_USD,
 } from './buildPriorContext.js';
 
 function runway(runwayMonths: number): ComputedStat {
@@ -136,11 +137,28 @@ describe('buildPriorContext', () => {
     ['cash flow both zero (zero-guard)', [cashFlow(0)], [cashFlow(0)], []],
     ['cash flow change below burn threshold', [cashFlow(-2050)], [cashFlow(-2000)], []],
     [
+      // Rebased off $2,000, where a 5% move is exactly $100 and so is the floor,
+      // which made the case clear both gates simultaneously and isolate neither.
+      // At $20,000 the floor clears with room and only the percent is under test.
       'cash flow change at exact burn threshold (inclusive)',
-      [cashFlow(-2000 * (1 + SIGNIFICANT_BURN_DELTA_PERCENT / 100))],
-      [cashFlow(-2000)],
+      [cashFlow(-20000 * (1 + SIGNIFICANT_BURN_DELTA_PERCENT / 100))],
+      [cashFlow(-20000)],
       [{ statType: 'cash_flow', kind: 'delta' }],
     ],
+    // DW-21. Percent alone made a two-dollar swing off a near-zero base read as
+    // a 200% move. These four isolate the two gates: the first two clear the
+    // percent and fail the dollar floor, the last two clear both.
+    ['cash flow huge percent on a tiny base stays quiet', [cashFlow(3)], [cashFlow(1)], []],
+    ['cash flow off zero but under the dollar floor stays quiet', [cashFlow(50)], [cashFlow(0)], []],
+    [
+      'cash flow at the exact dollar floor clears it',
+      [cashFlow(10 + SIGNIFICANT_BURN_DELTA_USD)],
+      [cashFlow(10)],
+      [{ statType: 'cash_flow', kind: 'delta' }],
+    ],
+    // Clears the floor with room and falls under 5%, so it fails only if the
+    // percent gate stops being checked once the floor is satisfied.
+    ['cash flow under the percent gate above the floor', [cashFlow(-20600)], [cashFlow(-20000)], []],
   ] as const)('%s', (_, current, prior, expected) => {
     expect(buildPriorContext(current, prior)).toMatchObject(expected);
   });
