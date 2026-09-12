@@ -1,3 +1,4 @@
+import { AppError } from './appError.js';
 import { logger } from './logger.js';
 import { circuitBreakerState } from './metrics.js';
 
@@ -34,6 +35,13 @@ export class CircuitBreaker {
       } else {
         throw new CircuitOpenError(this.name);
       }
+    } else if (this.state === 'half-open') {
+      // A probe is already awaiting. Every exit from half-open lands in closed or
+      // open, including the ignored-error arm below, so reaching here means the
+      // first caller has not come back yet. Letting this one through would make
+      // it a second probe against an upstream we still believe is down, which is
+      // the load we are meant to be shedding.
+      throw new CircuitOpenError(this.name);
     }
 
     try {
@@ -41,7 +49,21 @@ export class CircuitBreaker {
       this.onSuccess();
       return result;
     } catch (err) {
-      if (!this.isIgnored(err)) this.onFailure();
+      // An ignored error says nothing either way about the upstream. Left alone it
+      // strands the breaker in half-open, where the gate above rejects nothing, so
+      // a spent probe goes back to open and waits out another cooldown. That costs
+      // recovery latency when the ignored error was a cost refusal, since that one
+      // implies the call did reach Claude, but the breaker cannot tell the two
+      // apart through a single isIgnored predicate.
+      if (this.isIgnored(err)) {
+        if (this.state === 'half-open') {
+          this.state = 'open';
+          this.lastFailure = Date.now();
+          logger.info({ breaker: this.name }, 'circuit re-opened, probe was inconclusive');
+        }
+      } else {
+        this.onFailure();
+      }
       throw err;
     }
   }
@@ -74,9 +96,15 @@ export class CircuitBreaker {
   }
 }
 
-export class CircuitOpenError extends Error {
-  readonly code = 'CIRCUIT_OPEN';
-  constructor(name: string) {
-    super(`Circuit breaker "${name}" is open, service unavailable`);
+// 503 rather than 502: the upstream may be perfectly healthy, we are shedding on
+// purpose. The breaker name is a field instead of part of the message because
+// errorHandler returns an AppError's message to the caller verbatim, and which
+// internal breaker tripped is not the caller's business.
+export class CircuitOpenError extends AppError {
+  readonly breaker: string;
+
+  constructor(breaker: string) {
+    super('Service temporarily unavailable, please retry shortly.', 'CIRCUIT_OPEN', 503);
+    this.breaker = breaker;
   }
 }
