@@ -36,13 +36,14 @@ vi.mock('../../lib/metrics.js', () => ({
 }));
 
 const mockCreate = vi.fn();
+const mockStream = vi.fn();
 
 vi.mock('@anthropic-ai/sdk', () => {
   class AuthenticationError extends Error {}
   class BadRequestError extends Error {}
   const MockAnthropic = Object.assign(
     vi.fn().mockImplementation(() => ({
-      messages: { create: mockCreate, stream: vi.fn() },
+      messages: { create: mockCreate, stream: mockStream },
       models: { list: vi.fn() },
     })),
     { AuthenticationError, BadRequestError },
@@ -78,6 +79,7 @@ describe('breaker isolation across provider paths', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCreate.mockReset();
+    mockStream.mockReset();
     mockComputeCost.mockReturnValue(0.01);
     mockExceedsBudget.mockReturnValue({ exceeded: false, observed: 0.01, cap: null, median: null });
   });
@@ -138,6 +140,54 @@ describe('breaker isolation across provider paths', () => {
     await expect(claudeClient.generateInterpretation({ system: '', user: 'hi' })).resolves.toBe('ok');
     await expect(claudeClient.generateWithTools({ system: '', user: 'hi' }, TOOLS)).resolves.toEqual([]);
     expect(mockCreate.mock.calls.length).toBe(callsWhenOpen + 2);
+  });
+
+  // DW-206. anthropicStream is the other consumer of the shared breaker. Routing
+  // is covered in claudeClient.test.ts, but nothing proved an open shared breaker
+  // sheds the SSE path instead of letting it hang on a dead upstream.
+  it('trips the shared breaker from the stream path and sheds generate with it', async () => {
+    const { claudeClient, CircuitOpenError } = await freshClient();
+
+    mockStream.mockImplementation(() => {
+      throw new Error('upstream boom');
+    });
+    for (let i = 0; i < 3; i++) {
+      await expect(
+        claudeClient.streamInterpretation({ system: '', user: 'hi' }, () => {}),
+      ).rejects.toThrow('upstream boom');
+    }
+
+    // Both sit on `breaker`, so the trip has to shed the stream and generate alike.
+    await expect(
+      claudeClient.streamInterpretation({ system: '', user: 'hi' }, () => {}),
+    ).rejects.toThrow(CircuitOpenError);
+    await expect(claudeClient.generateInterpretation({ system: '', user: 'hi' })).rejects.toThrow(
+      CircuitOpenError,
+    );
+
+    mockCreate.mockResolvedValue(OK_RESPONSE);
+    await expect(claudeClient.generateWithTools({ system: '', user: 'hi' }, TOOLS)).resolves.toEqual([]);
+  });
+
+  // The other half of isIgnored. AbortedByClient was only ever checked as a
+  // captured predicate against a breaker that cannot open, so nothing showed that
+  // one user closing a tab does not spend the budget for everyone else.
+  it('does not let client aborts on the stream open the shared breaker', async () => {
+    const { claudeClient } = await freshClient();
+
+    for (let i = 0; i < 3; i++) {
+      const controller = new AbortController();
+      controller.abort();
+      mockStream.mockImplementation(() => {
+        throw new Error('stream torn down');
+      });
+      await expect(
+        claudeClient.streamInterpretation({ system: '', user: 'hi' }, () => {}, controller.signal),
+      ).rejects.toThrow('aborted by client');
+    }
+
+    mockCreate.mockResolvedValue(OK_RESPONSE);
+    await expect(claudeClient.generateInterpretation({ system: '', user: 'hi' })).resolves.toBe('ok');
   });
 
   // DW-205. buildConversationMessages runs before runConverseInBreaker on purpose:
