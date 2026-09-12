@@ -22,6 +22,7 @@ vi.mock('../lib/logger.js', () => ({
 
 const { createTestApp } = await import('../test/helpers/testApp.js');
 const { ValidationError, ProgrammerError, ExternalServiceError } = await import('../lib/appError.js');
+const { CircuitOpenError } = await import('../lib/circuitBreaker.js');
 
 let server: http.Server;
 let baseUrl: string;
@@ -50,6 +51,9 @@ beforeAll(async () => {
     app.get('/validation-with-details', () => {
       throw new ValidationError('bad field', { field: 'email' });
     });
+    app.get('/circuit-open', () => {
+      throw new CircuitOpenError('claude-api');
+    });
   });
   server = result.server;
   baseUrl = result.baseUrl;
@@ -75,6 +79,21 @@ describe('errorHandler, application errors', () => {
     expect(await res.json()).toMatchObject({
       error: { code: 'VALIDATION_ERROR', message: 'name is required' },
     });
+  });
+
+  // DW-208. Before CircuitOpenError extended AppError it missed every typed
+  // branch here and landed in the unhandled arm, so deliberate load shedding
+  // answered 500 and paged.
+  it('sheds an open circuit as a 503 without paging or naming the breaker', async () => {
+    const res = await fetch(`${baseUrl}/circuit-open`);
+    const body = await res.text();
+
+    expect(res.status).toBe(503);
+    expect(JSON.parse(body)).toEqual({
+      error: { code: 'CIRCUIT_OPEN', message: 'Service temporarily unavailable, please retry shortly.' },
+    });
+    expect(body).not.toContain('claude-api');
+    expect(mockCaptureException).not.toHaveBeenCalled();
   });
 
   it('reports a programmer error to Sentry', async () => {
