@@ -1,4 +1,4 @@
-import { sql, and, eq, lt, isNotNull, gte, exists, or, isNull, ne, desc } from 'drizzle-orm';
+import { sql, and, eq, lt, isNotNull, gte, exists, or, isNull, ne, desc, count } from 'drizzle-orm';
 
 import { dbAdmin } from '../../lib/db.js';
 import { orgs, subscriptions, datasets, userOrgs, digestPreferences, users } from '../schema.js';
@@ -11,9 +11,35 @@ export interface EligibleOrg {
   businessProfile: unknown;
 }
 
+// Every path that brings an org new data mints a new `datasets` row: CSV upload
+// goes through persistUpload -> createDataset, and the QuickBooks and Shopify
+// syncs both call createDataset directly. The table has no updated_at. So the
+// active dataset's created_at is not a row birthday, it is the last time this
+// org received data at all, and this gate reads as "stop sending if nothing new
+// has arrived in 30 days". That is deliberate: the digest narrates what moved
+// week over week, and over an unchanged dataset it would restate identical
+// numbers forever. The cost is that an org crossing this line goes quiet with
+// no signal to the user, which is why countOrgsPausedForStaleData exists below.
 const RECENT_DATASET_INTERVAL = sql`now() - interval '30 days'`;
 
 type DrizzleClient = typeof dbAdmin;
+
+// Shared so the paused-org count cannot drift from the eligibility query it is
+// meant to be the complement of.
+function optedInMemberExists(client: DrizzleClient) {
+  return exists(
+    client
+      .select({ x: sql`1` })
+      .from(userOrgs)
+      .leftJoin(digestPreferences, eq(digestPreferences.userId, userOrgs.userId))
+      .where(
+        and(
+          eq(userOrgs.orgId, orgs.id),
+          or(isNull(digestPreferences.cadence), ne(digestPreferences.cadence, 'off')),
+        ),
+      ),
+  );
+}
 
 /**
  * Builds the eligibility query (without executing it). Exposed so tests can
@@ -29,18 +55,7 @@ export function buildEligibilityQuery(
   pageSize = 500,
   asOf: Date = new Date(),
 ) {
-  const memberOptedIn = exists(
-    client
-      .select({ x: sql`1` })
-      .from(userOrgs)
-      .leftJoin(digestPreferences, eq(digestPreferences.userId, userOrgs.userId))
-      .where(
-        and(
-          eq(userOrgs.orgId, orgs.id),
-          or(isNull(digestPreferences.cadence), ne(digestPreferences.cadence, 'off')),
-        ),
-      ),
-  );
+  const memberOptedIn = optedInMemberExists(client);
 
   const conditions = [
     or(eq(subscriptions.status, 'active'), canceledWithGracePeriod(asOf)),
@@ -99,6 +114,44 @@ export async function findEligibleOrgs(
   const rows = await buildEligibilityQuery(dbAdmin, cursor, pageSize, asOf);
   // activeDatasetId is non-null per the WHERE clause; narrow the type.
   return rows.filter((r): r is EligibleOrg => r.activeDatasetId !== null);
+}
+
+/**
+ * Counts orgs that clear every eligibility gate except data freshness: paying,
+ * active dataset, at least one opted-in member, but nothing new in 30 days.
+ * These are customers whose weekly digest has silently stopped. They are
+ * invisible to findEligibleOrgs by construction, since they simply never appear
+ * in its results, so the only way to see them was a hand-written join against
+ * production. Logged once per sweep to make that a number instead.
+ *
+ * Bypasses RLS via dbAdmin, same as findEligibleOrgs: platform operation.
+ */
+export async function countOrgsPausedForStaleData(asOf: Date = new Date()): Promise<number> {
+  const [row] = await buildPausedForStaleDataQuery(dbAdmin, asOf);
+  return row?.n ?? 0;
+}
+
+/**
+ * Split out for the same reason buildEligibilityQuery is: tests assert the
+ * emitted SQL via `.toSQL()` rather than mocking a client that would accept any
+ * predicate. The one that matters is `lt` on created_at, not `gte`. Getting that
+ * backwards yields a plausible number that counts the wrong orgs.
+ */
+export function buildPausedForStaleDataQuery(client: DrizzleClient, asOf: Date = new Date()) {
+  return client
+    .select({ n: count() })
+    .from(orgs)
+    .innerJoin(subscriptions, eq(subscriptions.orgId, orgs.id))
+    .innerJoin(datasets, eq(datasets.id, orgs.activeDatasetId))
+    .where(
+      and(
+        or(eq(subscriptions.status, 'active'), canceledWithGracePeriod(asOf)),
+        eq(subscriptions.plan, 'pro'),
+        isNotNull(orgs.activeDatasetId),
+        lt(datasets.createdAt, RECENT_DATASET_INTERVAL),
+        optedInMemberExists(client),
+      ),
+    );
 }
 
 export interface DigestRecipient {
