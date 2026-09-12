@@ -19,6 +19,7 @@ import {
   marginTrendMonths,
   hasValidDiscriminatorFields,
   type MonthlyBucketMap,
+  quantile,
 } from './computation.js';
 import type {
   ComputedStat,
@@ -2060,5 +2061,35 @@ describe('monthsBurning counts strictly negative months', () => {
     ]);
 
     expect(stat!.details.monthsBurning).toBe(0);
+  });
+});
+
+// Pins the quantile definition. There are nine standard ones, they disagree most
+// at small n, and simple-statistics changed which it used in a patch release,
+// which moved the IQR fences and therefore which transactions get flagged. These
+// values are R type 2 and were the library's answers at 7.8.8.
+describe('quantile (R type 2)', () => {
+  it('matches the reference values for [1..10]', () => {
+    const d = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    expect(quantile(d, 0.25)).toBe(3);
+    expect(quantile(d, 0.5)).toBe(5.5);
+    expect(quantile(d, 0.75)).toBe(8);
+  });
+
+  // Type 7, the R and numpy default, gives 1.75 and 3.25 here. The difference is
+  // the whole reason this is not a library call.
+  it('averages the straddling pair when the position lands on an order statistic', () => {
+    expect(quantile([1, 2, 3, 4], 0.25)).toBe(1.5);
+    expect(quantile([1, 2, 3, 4], 0.75)).toBe(3.5);
+  });
+
+  it('takes the upper value when the position falls between two', () => {
+    expect(quantile([1, 2, 3], 0.25)).toBe(1);
+    expect(quantile([1, 2, 3], 0.75)).toBe(3);
+  });
+
+  it('clamps at the ends rather than reading past the array', () => {
+    expect(quantile([5, 6, 7], 0)).toBe(5);
+    expect(quantile([5, 6, 7], 1)).toBe(7);
   });
 });
