@@ -106,11 +106,23 @@ export async function handleOrchestratorJob(job: Job): Promise<void> {
     cursor = orgs[orgs.length - 1]!.id;
   }
 
+  // Orgs that went quiet on stale data never appear in findEligibleOrgs, so
+  // without this the only symptom of a paying customer's digest stopping is the
+  // absence of a job nobody was counting. Failing to count them must not fail
+  // the sweep, which has already done its real work by this point.
+  let pausedForStaleData: number | null = null;
+  try {
+    pausedForStaleData = await digestEligibilityQueries.countOrgsPausedForStaleData(asOf);
+  } catch (err) {
+    logger.warn({ correlationId, err }, 'Could not count orgs paused for stale data');
+  }
+
   logger.info(
     {
       correlationId,
       eligibleOrgCount,
       enqueueFailures,
+      pausedForStaleData,
       weekStart,
       weekEnd,
       durationMs: Date.now() - start,

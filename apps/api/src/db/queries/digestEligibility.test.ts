@@ -50,7 +50,7 @@ vi.mock('../../lib/db.js', () => ({
   },
 }));
 
-const { findEligibleOrgs, findOrgRecipients, buildEligibilityQuery } =
+const { findEligibleOrgs, findOrgRecipients, buildEligibilityQuery, buildPausedForStaleDataQuery } =
   await import('./digestEligibility.js');
 
 beforeEach(() => {
@@ -214,5 +214,32 @@ describe('findOrgRecipients: execute path', () => {
     const rows = await findOrgRecipients(42);
 
     expect(rows).toEqual([]);
+  });
+});
+
+describe('buildPausedForStaleDataQuery: the complement of eligibility', () => {
+  it('inverts only the freshness predicate, keeping every other gate', () => {
+    const { sql } = buildPausedForStaleDataQuery(inertDb as never).toSQL();
+
+    // The whole point of the query. gte here counts fresh orgs instead, which
+    // still returns a plausible-looking number nobody would question.
+    expect(sql).toContain('"created_at" <');
+    expect(sql).not.toContain('"created_at" >=');
+
+    expect(sql).toContain('"plan"');
+    expect(sql).toContain('"active_dataset_id" is not null');
+    expect(sql.toLowerCase()).toContain('exists');
+  });
+
+  it('binds "active" and "pro", the same literals eligibility binds', () => {
+    const { params } = buildPausedForStaleDataQuery(inertDb as never).toSQL();
+    expect(params).toContain('active');
+    expect(params).toContain('pro');
+  });
+
+  it('counts instead of selecting org columns, so a large paused set stays cheap', () => {
+    const { sql } = buildPausedForStaleDataQuery(inertDb as never).toSQL();
+    expect(sql.toLowerCase()).toContain('count(');
+    expect(sql).not.toContain('"business_profile"');
   });
 });
