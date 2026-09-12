@@ -199,6 +199,50 @@ describe('webhookHandler', () => {
       );
     });
 
+    // Stripe moved current_period_end onto SubscriptionItem. Which location a
+    // payload uses depends on the API version that produced it, and for webhooks
+    // that is the endpoint's setting, so both shapes have to work.
+    it('reads the period end off the first item when the subscription has none', async () => {
+      await handleWebhookEvent(
+        fakeSubscriptionUpdatedEvent({
+          current_period_end: undefined,
+          items: { data: [{ current_period_end: 1767225600 }] },
+        }),
+      );
+
+      expect(mockUpdateSubscriptionPeriod).toHaveBeenCalledWith(
+        'sub_test_789',
+        new Date(1767225600 * 1000),
+        expect.anything(),
+      );
+    });
+
+    it('prefers the item over the subscription when both carry a period end', async () => {
+      await handleWebhookEvent(
+        fakeSubscriptionUpdatedEvent({
+          current_period_end: 1735689600,
+          items: { data: [{ current_period_end: 1767225600 }] },
+        }),
+      );
+
+      expect(mockUpdateSubscriptionPeriod).toHaveBeenCalledWith(
+        'sub_test_789',
+        new Date(1767225600 * 1000),
+        expect.anything(),
+      );
+    });
+
+    // The old code did new Date(undefined * 1000) here and stored an Invalid
+    // Date, which reads downstream as a subscription that lapsed at the epoch
+    // rather than as a payload the handler could not understand.
+    it('refuses to write a period when neither location carries one', async () => {
+      await handleWebhookEvent(
+        fakeSubscriptionUpdatedEvent({ current_period_end: undefined, items: { data: [{}] } }),
+      );
+
+      expect(mockUpdateSubscriptionPeriod).not.toHaveBeenCalled();
+    });
+
     it('marks subscription as canceled when cancel_at_period_end is true', async () => {
       mockGetOrgOwnerId.mockResolvedValueOnce(1);
 

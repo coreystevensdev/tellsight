@@ -7,11 +7,23 @@ import { trackEvent } from '../analytics/trackEvent.js';
 import { auditSystem } from '../audit/auditService.js';
 import { logger } from '../../lib/logger.js';
 
-// Stripe SDK v20 moved current_period_end to SubscriptionItem,
-// but the webhook event payload still includes it at the subscription level
+// Stripe moved current_period_end off Subscription and onto SubscriptionItem.
+// Which one a given payload carries depends on the API version that produced it,
+// and for webhooks that is the endpoint's configured version, not the SDK's. So
+// the field is optional on both and read with a fallback; see periodEndOf.
 type SubscriptionWebhookPayload = Stripe.Subscription & {
-  current_period_end: number;
+  current_period_end?: number;
 };
+
+// Reads the period end from wherever this payload's API version put it. Absent
+// from both is a real failure: the old code did new Date(undefined * 1000) and
+// stored an Invalid Date, which looks like a subscription that expired at the
+// epoch rather than like an error.
+function periodEndOf(subscription: SubscriptionWebhookPayload): Date | null {
+  const seconds = subscription.items?.data?.[0]?.current_period_end ?? subscription.current_period_end;
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds)) return null;
+  return new Date(seconds * 1000);
+}
 
 export async function handleWebhookEvent(event: Stripe.Event) {
   switch (event.type) {
@@ -86,7 +98,14 @@ async function resolveOrgId(subscription: SubscriptionWebhookPayload): Promise<n
 async function handleSubscriptionUpdated(subscription: SubscriptionWebhookPayload) {
   const stripeSubscriptionId = subscription.id;
   const cancelAtPeriodEnd = subscription.cancel_at_period_end;
-  const currentPeriodEnd = new Date(subscription.current_period_end * 1000);
+  const currentPeriodEnd = periodEndOf(subscription);
+  if (!currentPeriodEnd) {
+    logger.error(
+      { subscriptionId: stripeSubscriptionId },
+      'subscription.updated carried no current_period_end on the subscription or its first item',
+    );
+    return;
+  }
 
   const orgId = await resolveOrgId(subscription);
   if (!orgId) {
