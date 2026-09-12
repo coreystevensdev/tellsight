@@ -10,6 +10,12 @@ let _stripe: Stripe | null = null;
 
 function getStripe(): Stripe {
   if (!_stripe) {
+    // No apiVersion pin. The SDK's types are generated for exactly one version
+    // and its config only accepts that one, so pinning to an older version means
+    // the types describe a different API than the one answering. The field that
+    // actually moved between these versions, current_period_end, is now read
+    // from either location by periodEndOf in webhookHandler, which is what makes
+    // the version safe to inherit rather than something to hold still.
     _stripe = new Stripe(env.STRIPE_SECRET_KEY, { maxNetworkRetries: 2 });
   }
   return _stripe;
