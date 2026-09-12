@@ -47,7 +47,7 @@
     "resend": "^6.17.2",
     "shared": "workspace:*",
     "sharp": "0.35.3",
-    "simple-statistics": "7.8.8",
+    "simple-statistics": "^7.9.3",
     "stripe": "^22.6.1",
     "svix": "^1.98.0",
     "zod": "3.23.8"
