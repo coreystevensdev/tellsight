@@ -34,7 +34,7 @@
     "helmet": "^8.3.0",
     "ioredis": "^5.11.1",
     "jose": "^6.2.3",
-    "jsdom": "^29.1.1",
+    "jsdom": "^30.0.1",
     "multer": "^2.2.0",
     "pino": "^10.3.0",
     "pino-http": "^11.0.0",
@@ -55,7 +55,7 @@
   "devDependencies": {
     "@types/cookie-parser": "^1.4.8",
     "@types/express": "^5.0.0",
-    "@types/jsdom": "^28.0.0",
+    "@types/jsdom": "^30.0.0",
     "@types/multer": "^2.2.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.17",
