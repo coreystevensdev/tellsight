@@ -111,7 +111,7 @@ export default function InviteAccept({ token }: { token: string }) {
 
       <p className="text-center text-xs text-muted-foreground">
         Sign in with your Google account, or{' '}
-        <a href={`/signup?invite=${token}`} className="text-foreground hover:underline">
+        <a href={`/signup?invite=${token}`} className="text-foreground underline underline-offset-4">
           join with email
         </a>
         .
