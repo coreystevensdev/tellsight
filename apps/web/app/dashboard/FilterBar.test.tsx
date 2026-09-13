@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
-import { FilterBar, computeDateRange, type FilterState } from './FilterBar';
+import { FilterBar, computeDateRange } from './FilterBar';
+import type { FilterState } from './filterParams';
 
 // jsdom doesn't implement scrollIntoView
 beforeAll(() => {

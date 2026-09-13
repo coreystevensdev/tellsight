@@ -5,22 +5,7 @@ import { Calendar, Tag, X, RotateCcw, ChevronDown } from 'lucide-react';
 import { trackClientEvent } from '@/lib/analytics';
 import { ANALYTICS_EVENTS } from 'shared/constants';
 import type { Granularity } from 'shared/types';
-
-export interface FilterState {
-  datePreset: string | null;
-  category: string | null;
-  granularity: Granularity;
-}
-
-export const DATE_PRESETS = [
-  { label: 'All time', value: 'all' },
-  { label: 'Last month', value: 'last-month' },
-  { label: 'Last 3 months', value: 'last-3-months' },
-  { label: 'Last 6 months', value: 'last-6-months' },
-  { label: 'Last year', value: 'last-year' },
-] as const;
-
-export type DatePresetValue = (typeof DATE_PRESETS)[number]['value'];
+import { DATE_PRESETS, type FilterState } from './filterParams';
 
 // Clamp the day instead of letting it carry: new Date(2026, 1, 30) is Feb 30,
 // which rolls into March and cost "last 6 months" a month.

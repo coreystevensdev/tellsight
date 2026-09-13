@@ -1,7 +1,7 @@
 'use client';
 
 import { Component, type ReactNode, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import useSWR from 'swr';
 import { Filter } from 'lucide-react';
@@ -22,7 +22,8 @@ import { ProfitMarginChart } from './charts/ProfitMarginChart';
 import { YoyChart } from './charts/YoyChart';
 import { ChartSkeleton } from './charts/ChartSkeleton';
 import { LazyChart } from './charts/LazyChart';
-import { FilterBar, computeDateRange, type FilterState } from './FilterBar';
+import { FilterBar, computeDateRange } from './FilterBar';
+import { EMPTY_FILTERS, filtersFromQuery, filtersToQuery, type FilterState } from './filterParams';
 import { AiSummaryCard } from './AiSummaryCard';
 import { QaAskBox } from './QaAskBox';
 import { AiSummaryErrorBoundary } from './AiSummaryErrorBoundary';
@@ -52,8 +53,6 @@ interface DashboardShellProps {
   tier?: SubscriptionTier;
   needsOnboarding?: boolean;
 }
-
-const EMPTY_FILTERS: FilterState = { datePreset: null, category: null, granularity: 'monthly' };
 
 function buildSwrKey(filters: FilterState): string {
   const params = new URLSearchParams();
@@ -180,7 +179,11 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
     prevTierRef.current = tier;
   }, [tier]);
 
-  const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
+  const searchParams = useSearchParams();
+  // Read once. Filter changes below rewrite the URL with replaceState, which
+  // Next's router does not observe, so there is no second source to sync back
+  // from. A hand-edited URL is a real navigation and remounts this anyway.
+  const [filters, setFilters] = useState<FilterState>(() => filtersFromQuery(searchParams));
   const [transparencyOpen, setTransparencyOpen] = useState(false);
   const [metadata, setMetadata] = useState<TransparencyMetadata | null>(cachedMetadata ?? null);
   const firedRef = useRef(false);
@@ -202,13 +205,19 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
     setOrgName(data.orgName);
   }, [data.orgName, setOrgName]);
 
-  const handleFilterChange = useCallback((next: FilterState) => {
+  // replaceState rather than router.replace: this is the same route with
+  // different params, and a router navigation would re-run the server render for
+  // data SWR already owns. Replace rather than push, so toggling granularity five
+  // times does not cost five presses of back to leave the page.
+  const applyFilters = useCallback((next: FilterState) => {
     setFilters(next);
+    const query = filtersToQuery(next);
+    window.history.replaceState(null, '', query ? `?${query}` : window.location.pathname);
   }, []);
 
   const resetFilters = useCallback(() => {
-    setFilters(EMPTY_FILTERS);
-  }, []);
+    applyFilters(EMPTY_FILTERS);
+  }, [applyFilters]);
 
   const handleUploadClick = useCallback(() => {
     router.push('/upload');
@@ -374,7 +383,7 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
       ) : hasAnyData ? (
         <FilterBar
           filters={filters}
-          onFilterChange={handleFilterChange}
+          onFilterChange={applyFilters}
           availableCategories={data.availableCategories ?? []}
         />
       ) : null}

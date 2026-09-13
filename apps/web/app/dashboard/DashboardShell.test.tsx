@@ -66,8 +66,26 @@ vi.mock('./SidebarContext', () => ({
   useSidebar: () => ({ setOrgName: vi.fn() }),
 }));
 
+// Exposes onFilterChange so a test can drive a filter change. The previous
+// stub rendered a bare div, which meant nothing could reach the URL-writing
+// path at all: deleting the replaceState call passed all 389 tests.
 vi.mock('./FilterBar', () => ({
-  FilterBar: () => <div data-testid="filter-bar">FilterBar</div>,
+  FilterBar: ({ onFilterChange }: { onFilterChange: (f: unknown) => void }) => (
+    <div data-testid="filter-bar">
+      <button
+        type="button"
+        onClick={() => onFilterChange({ datePreset: 'last-3-months', category: 'Payroll', granularity: 'weekly' })}
+      >
+        apply filters
+      </button>
+      <button
+        type="button"
+        onClick={() => onFilterChange({ datePreset: null, category: null, granularity: 'monthly' })}
+      >
+        clear filters
+      </button>
+    </div>
+  ),
   computeDateRange: () => null,
 }));
 
@@ -513,5 +531,56 @@ describe('DashboardShell', () => {
       expect(screen.queryByText('Unable to load charts')).not.toBeInTheDocument();
       expect(screen.getByTestId('revenue-chart')).toBeInTheDocument();
     });
+  });
+});
+
+// Filters used to live only in component state, so a reload lost them and a
+// filtered view could not be sent to anyone. They are in the URL now, which is
+// only true if something actually writes it: deleting the replaceState call
+// passed all 389 tests before these existed.
+describe('DashboardShell filter URL', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    mockSearchParams = new URLSearchParams();
+  });
+
+  it('writes the applied filters to the URL', () => {
+    const replaceState = vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+    render(<DashboardShell initialData={fullData} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'apply filters' }));
+
+    expect(replaceState).toHaveBeenCalledTimes(1);
+    const url = String(replaceState.mock.calls[0]?.[2]);
+    expect(new URLSearchParams(url.replace(/^\?/, ''))).toEqual(
+      new URLSearchParams('date=last-3-months&category=Payroll&granularity=weekly'),
+    );
+  });
+
+  // A bare path rather than a trailing "?", so a shared link of an unfiltered
+  // dashboard is the same string people already have bookmarked. Driven through
+  // the filter bar rather than the filtered empty state, whose render conditions
+  // are about data shape: the first version of this test reached for a reset
+  // button that never rendered and skipped itself.
+  it('clears the query when filters go back to their defaults', () => {
+    const replaceState = vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+    mockSearchParams = new URLSearchParams('date=last-month');
+    render(<DashboardShell initialData={fullData} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'clear filters' }));
+
+    const url = String(replaceState.mock.calls.at(-1)?.[2]);
+    expect(url).not.toContain('?');
+    expect(url).not.toContain('date=');
+  });
+
+  it('starts from the filters already in the URL', () => {
+    mockSearchParams = new URLSearchParams('date=last-year&granularity=weekly');
+    const replaceState = vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+
+    render(<DashboardShell initialData={fullData} />);
+
+    // Reading the URL must not rewrite it, or every page load pushes a history entry.
+    expect(replaceState).not.toHaveBeenCalled();
   });
 });
