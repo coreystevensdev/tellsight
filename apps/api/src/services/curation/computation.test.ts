@@ -129,6 +129,38 @@ describe('computeStats', () => {
     expect(salesTrend!.details).toHaveProperty('growthPercent');
   });
 
+  // DW-212. timeSeries used to hold one point per raw transaction, so "growth"
+  // was the difference between two individual line items and depended on which
+  // one happened to sort last. Four months of flat $28,000 revenue, split into a
+  // $18,400 and a $9,600 row each month, reported -47.8% growth over "8 periods"
+  // while the regression slope sat at -1.5e-07. Both numbers came from the same
+  // stat. Found by walking a real upload through production.
+  it('buckets a category to calendar months before trending, so growth describes periods not receipts', () => {
+    const rows = [];
+    let id = 1;
+    for (const month of ['06', '07', '08', '09']) {
+      rows.push(
+        { id: id++, orgId: 1, datasetId: 1, sourceType: 'csv' as const, category: 'Revenue', parentCategory: 'Income', date: new Date(`2026-${month}-05T00:00:00Z`), amount: '18400.00', label: 'sales' },
+        { id: id++, orgId: 1, datasetId: 1, sourceType: 'csv' as const, category: 'Revenue', parentCategory: 'Income', date: new Date(`2026-${month}-12T00:00:00Z`), amount: '9600.00', label: 'catering' },
+      );
+    }
+
+    const trend = computeStats(rows).find(
+      (s) => s.statType === StatType.Trend && s.category === 'Revenue',
+    );
+    expect(trend).toBeDefined();
+    const d = (trend as { details: { dataPoints: number; firstValue: number; lastValue: number; growthPercent: number } }).details;
+
+    // Four months, not eight transactions.
+    expect(d.dataPoints).toBe(4);
+    // Every month totals $28,000, so first and last agree and growth is flat.
+    expect(d.firstValue).toBe(28000);
+    expect(d.lastValue).toBe(28000);
+    expect(d.growthPercent).toBe(0);
+    // And the headline no longer contradicts the slope beside it.
+    expect(Math.abs(trend!.value)).toBeLessThan(1e-6);
+  });
+
   it('detects anomalies via IQR for categories with ≥3 data points', () => {
     const stats = computeStats(fixture.withAnomaly);
     const anomalies = stats.filter((s) => s.statType === StatType.Anomaly);
