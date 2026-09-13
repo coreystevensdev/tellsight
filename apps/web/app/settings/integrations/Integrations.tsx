@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, Loader2, AlertCircle, X, Link2, Link2Off } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
+import { BackLink } from '@/components/common/BackLink';
 
 interface QbStatus {
   connected: boolean;
@@ -140,6 +141,7 @@ export default function Integrations() {
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
+      <BackLink />
       <div className="mb-6">
         <h1 className="font-serif text-2xl font-medium text-foreground">Integrations</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -310,15 +312,6 @@ export default function Integrations() {
             </div>
           )}
         </section>
-      </div>
-
-      <div className="mt-8 border-t border-border pt-6">
-        <a
-          href="/dashboard"
-          className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          &larr; Back to dashboard
-        </a>
       </div>
     </div>
   );

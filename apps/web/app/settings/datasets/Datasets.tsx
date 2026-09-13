@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Database, Check, Pencil, Trash2, Loader2, AlertCircle, X } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
+import { BackLink } from '@/components/common/BackLink';
 
 interface DatasetItem {
   id: number;
@@ -168,6 +169,7 @@ export default function Datasets() {
   return (
     <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-3xl px-6 py-8">
+        <BackLink />
         <div className="mb-6">
           <h1 className="font-serif text-2xl font-medium text-foreground">Datasets</h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -233,15 +235,6 @@ export default function Datasets() {
             })}
           </div>
         )}
-
-        <div className="mt-8 border-t border-border pt-6">
-          <a
-            href="/dashboard"
-            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            &larr; Back to dashboard
-          </a>
-        </div>
       </div>
     </div>
   );

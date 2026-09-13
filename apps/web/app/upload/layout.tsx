@@ -4,7 +4,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { SidebarProvider } from '@/app/dashboard/SidebarContext';
 import { extractIsAdmin } from '@/lib/auth-utils';
 
-export default async function SettingsLayout({
+export default async function UploadLayout({
   children,
 }: {
   children: React.ReactNode;

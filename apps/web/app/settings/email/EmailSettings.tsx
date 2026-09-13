@@ -5,6 +5,7 @@ import { Mail } from 'lucide-react';
 import type { DigestCadence, EmailPreferencesResponse, UpdateEmailPreferencesInput } from 'shared/schemas';
 import { apiClient } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
+import { BackLink } from '@/components/common/BackLink';
 
 interface Props {
   initial: EmailPreferencesResponse;
@@ -65,6 +66,7 @@ export default function EmailSettings({ initial }: Props) {
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
+      <BackLink />
       <div className="mb-6">
         <h1 className="font-serif text-2xl font-medium text-foreground">Email</h1>
         <p className="mt-1 text-sm text-muted-foreground">

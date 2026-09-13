@@ -6,6 +6,7 @@ import { Sun, Moon, Monitor } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ANALYTICS_EVENTS } from 'shared/constants';
 import { trackClientEvent } from '@/lib/analytics';
+import { BackLink } from '@/components/common/BackLink';
 
 const themes = [
   { value: 'light', label: 'Light', description: 'Always use light mode', icon: Sun },
@@ -27,6 +28,7 @@ export default function Preferences() {
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
+      <BackLink />
       <div className="mb-6">
         <h1 className="font-serif text-2xl font-medium text-foreground">Preferences</h1>
         <p className="mt-1 text-sm text-muted-foreground">Customize your experience.</p>
@@ -57,15 +59,6 @@ export default function Preferences() {
           ))}
         </div>
       </section>
-
-      <div className="mt-8 border-t border-border pt-6">
-        <a
-          href="/dashboard"
-          className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          &larr; Back to dashboard
-        </a>
-      </div>
     </div>
   );
 }
