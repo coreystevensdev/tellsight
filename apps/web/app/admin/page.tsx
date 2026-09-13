@@ -10,6 +10,7 @@ import { AiUsageTile } from './AiUsageTile';
 import { EmailCompliancePanel } from './EmailCompliancePanel';
 import { AlertsCompliancePanel } from './AlertsCompliancePanel';
 import type { AdminOrgRow, AdminUserRow, AdminStats, EmailComplianceMetrics, AlertComplianceMetrics } from './types';
+import { BackLink } from '@/components/common/BackLink';
 
 const EMPTY_STATS: AdminStats = {
   totalOrgs: 0,
@@ -61,6 +62,7 @@ export default async function AdminPage() {
 
   return (
     <div className="space-y-6 p-4 md:p-6 lg:p-8">
+      <BackLink />
       <h1 className="text-2xl font-semibold tracking-tight">Platform Admin</h1>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4" role="group" aria-label="Platform statistics">

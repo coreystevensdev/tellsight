@@ -5,6 +5,7 @@ import { Bell, BellOff, Pencil, Trash2, Loader2, AlertCircle, X, Plus } from 'lu
 import type { AlertRuleKind, AlertRuleInput } from 'shared/schemas';
 import { apiClient, ApiClientError } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
+import { BackLink } from '@/components/common/BackLink';
 
 export type AlertRule = AlertRuleInput & {
   id: number;
@@ -228,6 +229,7 @@ export default function AlertRules({ initial }: Props) {
   return (
     <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-3xl px-6 py-8">
+        <BackLink />
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="font-serif text-2xl font-medium text-foreground">Alerts</h1>
@@ -431,12 +433,6 @@ export default function AlertRules({ initial }: Props) {
             ))}
           </ul>
         )}
-
-        <div className="mt-8 border-t border-border pt-6">
-          <a href="/dashboard" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
-            &larr; Back to dashboard
-          </a>
-        </div>
       </div>
     </div>
   );

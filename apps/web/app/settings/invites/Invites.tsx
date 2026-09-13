@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '@/lib/api-client';
+import { BackLink } from '@/components/common/BackLink';
 
 interface GeneratedInvite {
   url: string;
@@ -87,22 +88,18 @@ export default function Invites() {
   if (forbidden) {
     return (
       <div className="w-full max-w-md space-y-4 border-t-2 border-border bg-card p-8">
+        <BackLink />
         <h1 className="font-serif text-xl font-medium text-foreground">Invite Team Members</h1>
         <p className="text-sm text-muted-foreground">
           Only organization owners can generate invite links. Ask your org owner if you need to invite someone.
         </p>
-        <a
-          href="/dashboard"
-          className="inline-block text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          &larr; Back to dashboard
-        </a>
       </div>
     );
   }
 
   return (
     <div className="w-full max-w-md space-y-6 border-t-2 border-border bg-card p-8">
+      <BackLink />
       <div>
         <h1 className="font-serif text-xl font-medium text-foreground">Invite Team Members</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -171,15 +168,6 @@ export default function Invites() {
           </ul>
         </div>
       )}
-
-      <div className="border-t border-border pt-4">
-        <a
-          href="/dashboard"
-          className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          &larr; Back to dashboard
-        </a>
-      </div>
     </div>
   );
 }
