@@ -3,7 +3,7 @@
 // proxy.ts runs on the server, and jsdom's TextEncoder produces a Uint8Array
 // from a different realm, which jose rejects on an instanceof check.
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { SignJWT } from 'jose';
 import { NextRequest } from 'next/server';
 import { existsSync, readFileSync } from 'node:fs';
@@ -151,9 +151,15 @@ describe('proxy configuration', () => {
 
   // proxy() can be perfectly correct and never run. Next only invokes it for
   // paths the matcher selects, so an empty or trimmed matcher disables route
-  // protection without failing any test that calls proxy() directly.
-  it('has a matcher entry covering every protected route', () => {
-    expect(config.matcher).toEqual(PROTECTED.map((route) => `${route}/:path*`));
+  // protection without failing any test that calls proxy() directly. Exact
+  // equality rather than containment, so a trimmed entry fails here.
+  //
+  // /dashboard is in the matcher to mint a session, never to guard one. It stays
+  // public, which the redirect tests above pin from the other side.
+  it('has a matcher entry covering every protected route, plus the dashboard', () => {
+    expect(config.matcher).toEqual(
+      [...PROTECTED, '/dashboard'].map((route) => `${route}/:path*`),
+    );
   });
 });
 
@@ -180,5 +186,143 @@ describe('protected routes render app chrome', () => {
 
   it.each(routes)('%s has its own layout rather than inheriting the root', (route) => {
     expect(existsSync(join(import.meta.dirname, 'app', route, 'layout.tsx'))).toBe(true);
+  });
+});
+
+// An access cookie whose max-age matches the 15-minute JWT leaves a signed-in
+// owner looking anonymous to the server render, and the charts route answers an
+// unauthenticated request with the seed org. Reproduced in a browser before this
+// was written: drop only the access cookie, reload /dashboard, and the page came
+// back showing Sunrise Cafe's revenue to someone who had never uploaded anything.
+describe('proxy session refresh', () => {
+  const MINTED = [
+    'refresh_token=rotated; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800000; Expires=Sun, 20 Sep 2026 15:00:00 GMT',
+  ];
+
+  function mockRefresh(accessToken: string | null) {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: accessToken !== null,
+      headers: {
+        getSetCookie: () =>
+          accessToken === null
+            ? []
+            : [`access_token=${accessToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=900000`, ...MINTED],
+      },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('mints a session for /dashboard when the access cookie has aged out', async () => {
+    const fetchMock = mockRefresh(await sign({ org_id: 2, sub: '1' }));
+
+    const res = await proxy(request('/dashboard', 'refresh_token=r1'));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/auth/refresh');
+    expect(res.headers.getSetCookie().join(' ')).toContain('access_token=');
+    expect(redirectTarget(res)).toBeNull();
+  });
+
+  // Setting the cookie on the response only tells the browser. The server render
+  // of this same request reads the cookie jar it was handed, so without
+  // NextResponse.next({ request }) it still sees no access token and still serves
+  // the seed org, with a correct Set-Cookie riding along on the response. That is
+  // the bug wearing a fix. Next exposes the rewritten jar as an internal header,
+  // so this asserts against x-middleware-request-cookie on purpose: if an upgrade
+  // renames it, this should fail loudly rather than quietly check nothing.
+  it('hands the minted token to the server render, not only to the browser', async () => {
+    const access = await sign({ org_id: 2, sub: '1' });
+    mockRefresh(access);
+
+    const res = await proxy(request('/dashboard', 'refresh_token=r1'));
+
+    expect(res.headers.get('x-middleware-override-headers')).toContain('cookie');
+    expect(res.headers.get('x-middleware-request-cookie')).toContain(`access_token=${access}`);
+  });
+
+  // The rotated refresh token only exists in the database once the API has minted
+  // it. A response that drops the Set-Cookie leaves the browser holding the
+  // revoked one, and presenting that is what the API reads as reuse, which
+  // revokes every session the user has. So every exit has to carry the cookies,
+  // including the ones that redirect.
+  it('forwards the rotated cookies on a redirect, not just on a rendered page', async () => {
+    mockRefresh(await sign({ org_id: 2, sub: '1', isAdmin: false }));
+
+    const res = await proxy(request('/admin', 'refresh_token=r1'));
+
+    expect(redirectTarget(res)?.pathname).toBe('/dashboard');
+    expect(res.headers.getSetCookie().join(' ')).toContain('refresh_token=rotated');
+  });
+
+  it('lets an expired protected-route session through instead of bouncing it to login', async () => {
+    mockRefresh(await sign({ org_id: 2, sub: '1' }));
+
+    const res = await proxy(request('/upload', 'refresh_token=r1'));
+
+    expect(redirectTarget(res)).toBeNull();
+  });
+
+  // Prefetch fires on hover and on viewport entry. Rotating from one hands the
+  // cookie to a response the router can discard, and two in flight together look
+  // like reuse.
+  it.each(['next-router-prefetch', 'purpose'])('does not mint on a %s request', async (header) => {
+    const fetchMock = mockRefresh(await sign({ org_id: 2, sub: '1' }));
+    const req = new NextRequest('http://localhost:3000/upload', {
+      headers: { cookie: 'refresh_token=r1', [header]: header === 'purpose' ? 'prefetch' : '1' },
+    });
+
+    const res = await proxy(req);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(redirectTarget(res)?.pathname).toBe('/login');
+  });
+
+  it('leaves /dashboard public when the refresh fails', async () => {
+    mockRefresh(null);
+
+    const res = await proxy(request('/dashboard', 'refresh_token=stale'));
+
+    expect(redirectTarget(res)).toBeNull();
+    expect(res.headers.getSetCookie()).toHaveLength(0);
+  });
+
+  it('renders rather than failing when the API is unreachable', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
+
+    const res = await proxy(request('/dashboard', 'refresh_token=r1'));
+
+    expect(redirectTarget(res)).toBeNull();
+    expect(res.status).toBe(200);
+  });
+
+  it('does not call the API for a visitor with no refresh cookie', async () => {
+    const fetchMock = mockRefresh(await sign({ org_id: 2, sub: '1' }));
+
+    await proxy(request('/dashboard'));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('does not call the API when the access token is still good', async () => {
+    const fetchMock = mockRefresh(await sign({ org_id: 2, sub: '1' }));
+    const token = await sign({ org_id: 2, sub: '1' });
+
+    await proxy(request('/dashboard', `access_token=${token}; refresh_token=r1`));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('mints when the access token is present but expired', async () => {
+    const fetchMock = mockRefresh(await sign({ org_id: 2, sub: '1' }));
+    const expired = await sign({ org_id: 2, sub: '1' }, '-1s');
+
+    await proxy(request('/dashboard', `access_token=${expired}; refresh_token=r1`));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
