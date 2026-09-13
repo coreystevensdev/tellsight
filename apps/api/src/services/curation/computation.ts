@@ -134,6 +134,20 @@ function computeAverages(
   return stats;
 }
 
+// Sums a category's transactions into calendar months, returning one point per
+// month keyed to the month's first instant, ascending. UTC throughout, matching
+// monthKey, so the process timezone cannot move a row across a month boundary.
+function bucketSeriesByMonth(series: [number, number][]): [number, number][] {
+  const totals = new Map<string, number>();
+  for (const [ts, amt] of series) {
+    const key = monthKey(new Date(ts));
+    totals.set(key, (totals.get(key) ?? 0) + amt);
+  }
+  return [...totals.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, total]): [number, number] => [Date.parse(`${key}-01T00:00:00Z`), total]);
+}
+
 function computeTrends(
   groups: Map<string, CategoryGroup>,
   minPoints: number,
@@ -141,9 +155,15 @@ function computeTrends(
   const stats: ComputedStat[] = [];
 
   for (const [cat, group] of groups) {
-    if (group.timeSeries.length < minPoints) continue;
+    // Aggregate to calendar months before trending. One point per raw
+    // transaction made growthPercent the gap between two individual line items,
+    // so for a category with several rows a month it came down to which one
+    // sorted last, and it could contradict the slope reported beside it in the
+    // same stat. minPoints now counts months, which is the unit the label in
+    // assembly.ts always claimed it was.
+    const sorted = bucketSeriesByMonth(group.timeSeries);
+    if (sorted.length < minPoints) continue;
 
-    const sorted = [...group.timeSeries].sort((a, b) => a[0] - b[0]);
     const reg = linearRegression(sorted);
 
     const firstVal = sorted[0]![1];
