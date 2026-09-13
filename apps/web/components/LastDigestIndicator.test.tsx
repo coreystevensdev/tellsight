@@ -7,10 +7,10 @@ const fetchMock = vi.fn();
 
 // SWR caches by key globally; wrap each render in a fresh provider with an
 // empty cache so tests don't bleed state into each other.
-function renderFresh() {
+function renderFresh(enabled = true) {
   return render(
     <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-      <LastDigestIndicator />
+      <LastDigestIndicator enabled={enabled} />
     </SWRConfig>,
   );
 }
@@ -86,5 +86,30 @@ describe('LastDigestIndicator (AC #10)', () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith('/api/digest/last-sent');
     });
+  });
+});
+
+// Found by watching the browser console on the public dashboard: every
+// anonymous load fired GET /api/digest/last-sent and took a 401. The component
+// handled it correctly and rendered nothing, so the only visible symptom was a
+// console error on a page anyone can reach without an account.
+describe('LastDigestIndicator when signed out', () => {
+  it('does not call the endpoint at all', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ error: 'unauthorized' }, 401));
+
+    renderFresh(false);
+
+    await waitFor(() => expect(screen.queryByTestId('last-digest-indicator')).toBeNull());
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // The counterpart, so the guard cannot be satisfied by never fetching at all.
+  it('still calls it when signed in', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ data: { lastSentAt: '2026-09-10T12:00:00.000Z' } }));
+
+    renderFresh(true);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe('/api/digest/last-sent');
   });
 });

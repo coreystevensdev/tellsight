@@ -452,7 +452,7 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
                 fetch. SWR dedupe inside the component handles repeated mounts
                 across navigations. */}
             <div className="mt-2 px-1">
-              <LastDigestIndicator />
+              <LastDigestIndicator enabled={hasAuth} />
             </div>
           </AiSummaryErrorBoundary>
 
