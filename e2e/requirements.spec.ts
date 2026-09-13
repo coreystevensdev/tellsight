@@ -51,31 +51,28 @@ test.describe('FR12 correct and re-upload', () => {
   });
 });
 
-// FR24: on mobile viewports the AI summary is above the fold, before charts and
-// filters.
+// FR24, amended 2026-09-13: the AI summary follows the charts it describes.
 //
-// Two of the three clauses are asserted here. The summary does not come before
-// the filter bar, which renders above the dashboard section on every viewport;
-// that gap is recorded in the traceability matrix rather than reinterpreted to
-// make a test pass.
-test.describe('FR24 mobile summary placement', () => {
+// It previously required the summary above the fold and before the charts. The
+// reason it read that way was the Marcus acquisition journey, and that rationale
+// turned out to live somewhere else: a shared link renders /share/[token], whose
+// SharedInsightCard is heading, summary prose, disclaimer and CTA with no charts
+// at all. Dashboard ordering never touched that path.
+//
+// The cost of the change is real and is not asserted here: on a phone the
+// interpretation now sits below six charts, so a returning owner scrolls to
+// reach it.
+test.describe('FR24 summary follows the charts', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
-  test('the AI summary starts above the fold and precedes the charts', async ({ page }) => {
+  test('the AI summary comes after the charts', async ({ page }) => {
     await page.goto('/dashboard');
     await page.locator('#dashboard-heading').waitFor({ timeout: 15_000 });
 
     const summary = page.locator('[aria-label="AI business summary"]').first();
     await summary.waitFor({ timeout: 15_000 });
 
-    const box = await summary.boundingBox();
-    expect(box).not.toBeNull();
-
-    // Above the fold means the card begins inside the first screen. Asserting
-    // the whole card fits would be wrong: it is long-form prose and is meant to
-    // be scrolled.
-    const viewportHeight = page.viewportSize()!.height;
-    expect(box!.y).toBeLessThan(viewportHeight);
+    expect(await summary.boundingBox()).not.toBeNull();
 
     // Charts mount on viewport intersection, so on a phone-sized screen none
     // exist until you scroll. Scroll to bring them in rather than tolerating
@@ -96,15 +93,16 @@ test.describe('FR24 mobile summary placement', () => {
     });
     await page.locator('svg.recharts-surface').first().waitFor({ timeout: 30_000 });
 
-    // DOM order rather than pixel order, because a chart below the fold still
-    // counts as coming after the summary.
-    const summaryPrecedesCharts = await page.evaluate(() => {
+    // DOM order rather than pixel order. null rather than a boolean when either
+    // node is missing, so a broken chart endpoint fails loudly instead of
+    // quietly satisfying the comparison.
+    const chartsPrecedeSummary = await page.evaluate(() => {
       const s = document.querySelector('[aria-label="AI business summary"]');
       const chart = document.querySelector('svg.recharts-surface');
       if (!s || !chart) return null;
-      return Boolean(s.compareDocumentPosition(chart) & Node.DOCUMENT_POSITION_FOLLOWING);
+      return Boolean(chart.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING);
     });
 
-    expect(summaryPrecedesCharts).toBe(true);
+    expect(chartsPrecedeSummary).toBe(true);
   });
 });
