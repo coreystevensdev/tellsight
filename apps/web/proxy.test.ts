@@ -6,6 +6,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { SignJWT } from 'jose';
 import { NextRequest } from 'next/server';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 // proxy.ts is the only thing standing between a signed-out visitor and /upload,
 // /billing, /admin and /settings, and it had no test at all: emptying
@@ -152,5 +154,31 @@ describe('proxy configuration', () => {
   // protection without failing any test that calls proxy() directly.
   it('has a matcher entry covering every protected route', () => {
     expect(config.matcher).toEqual(PROTECTED.map((route) => `${route}/:path*`));
+  });
+});
+
+// A route with no layout.tsx does not error, it silently inherits the nearest
+// ancestor, which for a top-level route is app/layout.tsx: fonts, theme, toaster,
+// no navigation. /upload and /billing shipped that way and rendered with no
+// sidebar, no header and no back link on any viewport, with nothing failing.
+//
+// The route list is read out of proxy.ts rather than imported, because a static
+// import of this module fires the '@/lib/config' mock factory above before its
+// env const initializes, and it.each needs the array at collection time.
+describe('protected routes render app chrome', () => {
+  const source = readFileSync(join(import.meta.dirname, 'proxy.ts'), 'utf8');
+  const declaration = source.match(/PROTECTED_ROUTES = \[([^\]]*)\]/);
+  const routes = (declaration?.[1] ?? '')
+    .split(',')
+    .map((entry) => entry.trim().replace(/'/g, ''))
+    .filter(Boolean);
+
+  // Without this the whole block passes vacuously if the const is ever renamed.
+  it('found the route list to check', () => {
+    expect(routes.length).toBeGreaterThan(0);
+  });
+
+  it.each(routes)('%s has its own layout rather than inheriting the root', (route) => {
+    expect(existsSync(join(import.meta.dirname, 'app', route, 'layout.tsx'))).toBe(true);
   });
 });
