@@ -24,10 +24,7 @@ export class ApiClientError extends Error {
 
 let refreshPromise: Promise<boolean> | null = null;
 
-// Exported so non-JSON requests (multipart uploads via XHR) can trigger the
-// same silent-refresh flow, they can't go through apiClient() directly since
-// XHR is needed for upload progress events.
-export async function attemptRefresh(): Promise<boolean> {
+async function postRefresh(): Promise<boolean> {
   try {
     const response = await fetch(`${API_BASE}/auth/refresh`, {
       method: 'POST',
@@ -37,6 +34,19 @@ export async function attemptRefresh(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// The refresh token rotates on every use, so concurrent 401s have to share one
+// in-flight refresh or the losers present an already-rotated token and get logged
+// out. The dedup lives here rather than in apiClient() because SSE and XHR callers
+// need the same flow and can't route through apiClient().
+export function attemptRefresh(): Promise<boolean> {
+  if (!refreshPromise) {
+    refreshPromise = postRefresh().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
 }
 
 export async function apiClient<T>(
@@ -55,18 +65,8 @@ export async function apiClient<T>(
 
   let response = await fetch(url, fetchOptions);
 
-  if (response.status === 401) {
-    // Deduplicate concurrent refresh attempts
-    if (!refreshPromise) {
-      refreshPromise = attemptRefresh().finally(() => {
-        refreshPromise = null;
-      });
-    }
-
-    const refreshed = await refreshPromise;
-    if (refreshed) {
-      response = await fetch(url, fetchOptions);
-    }
+  if (response.status === 401 && (await attemptRefresh())) {
+    response = await fetch(url, fetchOptions);
   }
 
   if (!response.ok) {
