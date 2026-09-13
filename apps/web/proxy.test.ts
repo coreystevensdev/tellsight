@@ -199,16 +199,19 @@ describe('proxy session refresh', () => {
     'refresh_token=rotated; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800000; Expires=Sun, 20 Sep 2026 15:00:00 GMT',
   ];
 
+  // A real Headers, not an object answering getSetCookie alone: the stand-in
+  // would throw rather than fail usefully the first time proxy.ts read any other
+  // header. It also means MINTED's Expires, which contains a comma, goes through
+  // the same set-cookie handling the runtime uses, so the array getSetCookie
+  // returns is the real one rather than one the fixture asserted into existence.
   function mockRefresh(accessToken: string | null) {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: accessToken !== null,
-      headers: {
-        getSetCookie: () =>
-          accessToken === null
-            ? []
-            : [`access_token=${accessToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=900000`, ...MINTED],
-      },
-    });
+    const headers = new Headers();
+    if (accessToken !== null) {
+      headers.append('set-cookie', `access_token=${accessToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=900000`);
+      for (const line of MINTED) headers.append('set-cookie', line);
+    }
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: accessToken !== null, headers });
     vi.stubGlobal('fetch', fetchMock);
     return fetchMock;
   }
@@ -270,10 +273,13 @@ describe('proxy session refresh', () => {
   // Prefetch fires on hover and on viewport entry. Rotating from one hands the
   // cookie to a response the router can discard, and two in flight together look
   // like reuse.
-  it.each(['next-router-prefetch', 'purpose'])('does not mint on a %s request', async (header) => {
+  it.each([
+    ['next-router-prefetch', '1'],
+    ['purpose', 'prefetch'],
+  ])('does not mint on a %s request', async (header, value) => {
     const fetchMock = mockRefresh(await sign({ org_id: 2, sub: '1' }));
     const req = new NextRequest('http://localhost:3000/upload', {
-      headers: { cookie: 'refresh_token=r1', [header]: header === 'purpose' ? 'prefetch' : '1' },
+      headers: { cookie: 'refresh_token=r1', [header]: value },
     });
 
     const res = await proxy(req);
@@ -310,7 +316,9 @@ describe('proxy session refresh', () => {
 
   it('does not call the API when the access token is still good', async () => {
     const fetchMock = mockRefresh(await sign({ org_id: 2, sub: '1' }));
-    const token = await sign({ org_id: 2, sub: '1' });
+    // Expiry stated rather than inherited from sign()'s default, which could be
+    // changed to something in the past and leave this passing under its old name.
+    const token = await sign({ org_id: 2, sub: '1' }, '1h');
 
     await proxy(request('/dashboard', `access_token=${token}; refresh_token=r1`));
 
@@ -350,7 +358,7 @@ describe('proxy session refresh', () => {
   // request, and rotation plus reuse detection is a logout generator.
   it('leaves a live token alone with no secret, rather than rotating every request', async () => {
     const fetchMock = mockRefresh(await sign({ org_id: 2, sub: '1' }));
-    const live = await sign({ org_id: 2, sub: '1' });
+    const live = await sign({ org_id: 2, sub: '1' }, '1h');
     const original = { ...env };
     Object.assign(env, { JWT_SECRET: undefined });
 
