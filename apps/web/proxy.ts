@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { jwtVerify } from 'jose';
+import { decodeJwt, jwtVerify } from 'jose';
 import { webEnv } from '@/lib/config';
 
 const PROTECTED_ROUTES = ['/upload', '/billing', '/admin', '/settings'];
@@ -56,12 +56,28 @@ function nameValue(setCookie: string): [string, string] | null {
 
 async function isUsable(token: string | undefined, secret: Uint8Array | null) {
   if (!token) return false;
-  // Without a secret there is nothing to check against, so fall back to presence,
-  // which is what the route guard below does in the same situation.
-  if (!secret) return true;
+
+  if (secret) {
+    try {
+      await jwtVerify(token, secret);
+      return true;
+    } catch {
+      // Expired, tampered with, or signed under a rotated-out secret. Minting
+      // fixes all three, so they do not need telling apart here.
+      return false;
+    }
+  }
+
+  // No secret is a local-dev state: production returns 500 below rather than
+  // reaching this, and CI sets one. Authenticity is unanswerable without it and
+  // the guard below falls back to presence for that. Expiry is a different
+  // question and does not need the secret, so read it instead of calling a dead
+  // token good and rendering a signed-in owner as anonymous. This decides only
+  // whether to ask for a fresher token; the refresh itself is authenticated by
+  // the refresh cookie, which the API validates.
   try {
-    await jwtVerify(token, secret);
-    return true;
+    const { exp } = decodeJwt(token);
+    return exp === undefined || exp * 1000 > Date.now();
   } catch {
     return false;
   }

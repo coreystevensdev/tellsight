@@ -325,4 +325,40 @@ describe('proxy session refresh', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  // A local dev server started without JWT_SECRET cannot check authenticity, and
+  // the first version of this answered that by calling any present token usable.
+  // That made dev the one place the expired-token path never ran, which is how
+  // the bug this file fixes stayed invisible in the first place. Expiry is
+  // readable without the secret, so it is read.
+  it('mints an expired token even with no secret to verify against', async () => {
+    const fetchMock = mockRefresh(await sign({ org_id: 2, sub: '1' }));
+    const expired = await sign({ org_id: 2, sub: '1' }, '-1s');
+    const original = { ...env };
+    Object.assign(env, { JWT_SECRET: undefined });
+
+    try {
+      await proxy(request('/dashboard', `access_token=${expired}; refresh_token=r1`));
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      Object.assign(env, original);
+    }
+  });
+
+  // The opposite mistake costs more than the one above. Treating every
+  // unverifiable token as stale would rotate the refresh token on every single
+  // request, and rotation plus reuse detection is a logout generator.
+  it('leaves a live token alone with no secret, rather than rotating every request', async () => {
+    const fetchMock = mockRefresh(await sign({ org_id: 2, sub: '1' }));
+    const live = await sign({ org_id: 2, sub: '1' });
+    const original = { ...env };
+    Object.assign(env, { JWT_SECRET: undefined });
+
+    try {
+      await proxy(request('/dashboard', `access_token=${live}; refresh_token=r1`));
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      Object.assign(env, original);
+    }
+  });
 });
