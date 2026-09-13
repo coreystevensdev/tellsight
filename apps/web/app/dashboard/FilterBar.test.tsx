@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { FilterBar, computeDateRange } from './FilterBar';
-import type { FilterState } from './filterParams';
+import { EMPTY_FILTERS, type FilterState } from './filterParams';
 
 // jsdom doesn't implement scrollIntoView
 beforeAll(() => {
@@ -9,7 +9,7 @@ beforeAll(() => {
 });
 
 const defaultProps = {
-  filters: { datePreset: null, category: null, granularity: 'monthly' } as FilterState,
+  filters: { ...EMPTY_FILTERS, datePreset: null, category: null, granularity: 'monthly' } as FilterState,
   onFilterChange: vi.fn(),
   availableCategories: ['Payroll', 'Rent', 'Marketing'],
 };
@@ -66,6 +66,7 @@ describe('FilterBar', () => {
       fireEvent.click(screen.getByRole('option', { name: 'Last 3 months' }));
 
       expect(defaultProps.onFilterChange).toHaveBeenCalledWith({
+        ...EMPTY_FILTERS,
         datePreset: 'last-3-months',
         category: null,
         granularity: 'monthly',
@@ -76,7 +77,7 @@ describe('FilterBar', () => {
       render(
         <FilterBar
           {...defaultProps}
-          filters={{ datePreset: 'last-3-months', category: null, granularity: 'monthly' }}
+          filters={{ ...EMPTY_FILTERS, datePreset: 'last-3-months', category: null, granularity: 'monthly' }}
         />,
       );
 
@@ -84,6 +85,7 @@ describe('FilterBar', () => {
       fireEvent.click(screen.getByRole('option', { name: 'All time' }));
 
       expect(defaultProps.onFilterChange).toHaveBeenCalledWith({
+        ...EMPTY_FILTERS,
         datePreset: null,
         category: null,
         granularity: 'monthly',
@@ -121,6 +123,7 @@ describe('FilterBar', () => {
       fireEvent.click(screen.getByRole('option', { name: 'Payroll' }));
 
       expect(defaultProps.onFilterChange).toHaveBeenCalledWith({
+        ...EMPTY_FILTERS,
         datePreset: null,
         category: 'Payroll',
         granularity: 'monthly',
@@ -133,7 +136,7 @@ describe('FilterBar', () => {
       render(
         <FilterBar
           {...defaultProps}
-          filters={{ datePreset: 'last-3-months', category: null, granularity: 'monthly' }}
+          filters={{ ...EMPTY_FILTERS, datePreset: 'last-3-months', category: null, granularity: 'monthly' }}
         />,
       );
 
@@ -147,7 +150,7 @@ describe('FilterBar', () => {
       render(
         <FilterBar
           {...defaultProps}
-          filters={{ datePreset: null, category: 'Payroll', granularity: 'monthly' }}
+          filters={{ ...EMPTY_FILTERS, datePreset: null, category: 'Payroll', granularity: 'monthly' }}
         />,
       );
 
@@ -161,7 +164,7 @@ describe('FilterBar', () => {
       render(
         <FilterBar
           {...defaultProps}
-          filters={{ datePreset: 'last-month', category: 'Rent', granularity: 'monthly' }}
+          filters={{ ...EMPTY_FILTERS, datePreset: 'last-month', category: 'Rent', granularity: 'monthly' }}
         />,
       );
 
@@ -170,6 +173,7 @@ describe('FilterBar', () => {
       );
 
       expect(defaultProps.onFilterChange).toHaveBeenCalledWith({
+        ...EMPTY_FILTERS,
         datePreset: null,
         category: 'Rent',
         granularity: 'monthly',
@@ -180,7 +184,7 @@ describe('FilterBar', () => {
       render(
         <FilterBar
           {...defaultProps}
-          filters={{ datePreset: 'last-month', category: 'Rent', granularity: 'monthly' }}
+          filters={{ ...EMPTY_FILTERS, datePreset: 'last-month', category: 'Rent', granularity: 'monthly' }}
         />,
       );
 
@@ -189,6 +193,7 @@ describe('FilterBar', () => {
       );
 
       expect(defaultProps.onFilterChange).toHaveBeenCalledWith({
+        ...EMPTY_FILTERS,
         datePreset: 'last-month',
         category: null,
         granularity: 'monthly',
@@ -201,7 +206,7 @@ describe('FilterBar', () => {
       render(
         <FilterBar
           {...defaultProps}
-          filters={{ datePreset: 'last-year', category: null, granularity: 'monthly' }}
+          filters={{ ...EMPTY_FILTERS, datePreset: 'last-year', category: null, granularity: 'monthly' }}
         />,
       );
 
@@ -212,13 +217,14 @@ describe('FilterBar', () => {
       render(
         <FilterBar
           {...defaultProps}
-          filters={{ datePreset: 'last-year', category: 'Payroll', granularity: 'monthly' }}
+          filters={{ ...EMPTY_FILTERS, datePreset: 'last-year', category: 'Payroll', granularity: 'monthly' }}
         />,
       );
 
       fireEvent.click(screen.getByRole('button', { name: /clear all filters/i }));
 
       expect(defaultProps.onFilterChange).toHaveBeenCalledWith({
+        ...EMPTY_FILTERS,
         datePreset: null,
         category: null,
         granularity: 'monthly',
@@ -273,6 +279,7 @@ describe('FilterBar', () => {
       fireEvent.keyDown(trigger, { key: 'Enter' });
 
       expect(defaultProps.onFilterChange).toHaveBeenCalledWith({
+        ...EMPTY_FILTERS,
         datePreset: 'last-month',
         category: null,
         granularity: 'monthly',

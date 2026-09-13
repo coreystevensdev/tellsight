@@ -5,7 +5,7 @@ import { Calendar, Tag, X, RotateCcw, ChevronDown } from 'lucide-react';
 import { trackClientEvent } from '@/lib/analytics';
 import { ANALYTICS_EVENTS } from 'shared/constants';
 import type { Granularity } from 'shared/types';
-import { DATE_PRESETS, type FilterState } from './filterParams';
+import { CUSTOM_PRESET, DATE_PRESETS, EMPTY_FILTERS, type FilterState } from './filterParams';
 
 // Clamp the day instead of letting it carry: new Date(2026, 1, 30) is Feb 30,
 // which rolls into March and cost "last 6 months" a month.
@@ -276,7 +276,17 @@ export function FilterBar({
     if (value) {
       trackClientEvent(ANALYTICS_EVENTS.CHART_FILTERED, { filterType: 'date_range', value });
     }
-    onFilterChange({ ...filters, datePreset: value });
+    // Leaving custom drops the endpoints with it, so switching to a preset and
+    // back does not silently restore dates that are no longer on screen.
+    onFilterChange(
+      value === CUSTOM_PRESET
+        ? { ...filters, datePreset: value }
+        : { ...filters, datePreset: value, dateFrom: null, dateTo: null },
+    );
+  };
+
+  const setBound = (key: 'dateFrom' | 'dateTo') => (event: { target: { value: string } }) => {
+    onFilterChange({ ...filters, [key]: event.target.value || null });
   };
 
   const handleCategoryChange = (value: string | null) => {
@@ -292,7 +302,7 @@ export function FilterBar({
   };
 
   const handleReset = () => {
-    onFilterChange({ datePreset: null, category: null, granularity: 'monthly' });
+    onFilterChange(EMPTY_FILTERS);
   };
 
   return (
@@ -339,6 +349,35 @@ export function FilterBar({
             onChange={handleDateChange}
             disabled={disabled}
           />
+
+          {filters.datePreset === CUSTOM_PRESET && (
+            <div className="flex flex-nowrap items-center gap-1.5">
+              {/* Native date inputs rather than a calendar component: the
+                  presets were chosen partly to avoid building one, and on a
+                  phone this hands the job to the OS picker. min/max cross-bind
+                  the pair so the browser refuses a backwards range before
+                  customRange has to. */}
+              <input
+                type="date"
+                aria-label="Range start"
+                value={filters.dateFrom ?? ''}
+                max={filters.dateTo ?? undefined}
+                onChange={setBound('dateFrom')}
+                disabled={disabled}
+                className="rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              />
+              <span className="text-xs text-muted-foreground">to</span>
+              <input
+                type="date"
+                aria-label="Range end"
+                value={filters.dateTo ?? ''}
+                min={filters.dateFrom ?? undefined}
+                onChange={setBound('dateTo')}
+                disabled={disabled}
+                className="rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              />
+            </div>
+          )}
 
           <FilterDropdown
             label="Category"

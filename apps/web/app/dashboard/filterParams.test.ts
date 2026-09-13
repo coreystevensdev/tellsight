@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { EMPTY_FILTERS, filtersToQuery, filtersFromQuery, type FilterState } from './filterParams';
+import { EMPTY_FILTERS, customRange, filtersToQuery, filtersFromQuery, type FilterState } from './filterParams';
 
 const parse = (query: string) => filtersFromQuery(new URLSearchParams(query));
 
@@ -16,13 +16,11 @@ describe('filtersToQuery', () => {
   });
 
   it('writes each filter that is set', () => {
-    const query = filtersToQuery({
-      datePreset: 'last-3-months',
+    const query = filtersToQuery({ ...EMPTY_FILTERS, datePreset: 'last-3-months',
       category: 'Payroll',
       granularity: 'weekly',
     });
-    expect(parse(query)).toEqual({
-      datePreset: 'last-3-months',
+    expect(parse(query)).toEqual({ ...EMPTY_FILTERS, datePreset: 'last-3-months',
       category: 'Payroll',
       granularity: 'weekly',
     });
@@ -71,8 +69,7 @@ describe('filtersFromQuery', () => {
   });
 
   it('ignores params it does not own', () => {
-    expect(parse('date=last-month&utm_source=email&page=2')).toEqual({
-      datePreset: 'last-month',
+    expect(parse('date=last-month&utm_source=email&page=2')).toEqual({ ...EMPTY_FILTERS, datePreset: 'last-month',
       category: null,
       granularity: 'monthly',
     });
@@ -82,12 +79,90 @@ describe('filtersFromQuery', () => {
 describe('round trip', () => {
   const cases: FilterState[] = [
     EMPTY_FILTERS,
-    { datePreset: 'all', category: null, granularity: 'monthly' },
-    { datePreset: 'last-year', category: 'Marketing', granularity: 'weekly' },
-    { datePreset: null, category: 'Cost of Goods Sold', granularity: 'monthly' },
+    { ...EMPTY_FILTERS, datePreset: 'all', category: null, granularity: 'monthly' },
+    { ...EMPTY_FILTERS, datePreset: 'last-year', category: 'Marketing', granularity: 'weekly' },
+    { ...EMPTY_FILTERS, datePreset: null, category: 'Cost of Goods Sold', granularity: 'monthly' },
   ];
 
   it.each(cases)('survives a trip through the URL: %j', (filters) => {
     expect(parse(filtersToQuery(filters))).toEqual(filters);
+  });
+});
+
+describe('customRange', () => {
+  const custom = (dateFrom: string | null, dateTo: string | null): FilterState =>
+    ({ ...EMPTY_FILTERS, datePreset: 'custom', dateFrom, dateTo });
+
+  it('returns the endpoints when both are real and in order', () => {
+    expect(customRange(custom('2026-01-01', '2026-03-31'))).toEqual({
+      from: '2026-01-01',
+      to: '2026-03-31',
+    });
+  });
+
+  it('accepts a single-day range', () => {
+    expect(customRange(custom('2026-01-01', '2026-01-01'))?.from).toBe('2026-01-01');
+  });
+
+  // Half a range is not a narrower view, it is an unanswerable question, so it
+  // reads as no date filter rather than as an empty result. The user is still
+  // mid-edit at this point and should not watch their charts blank out.
+  it('returns null while only one endpoint is filled', () => {
+    expect(customRange(custom('2026-01-01', null))).toBeNull();
+    expect(customRange(custom(null, '2026-03-31'))).toBeNull();
+  });
+
+  it('returns null for a backwards range', () => {
+    expect(customRange(custom('2026-03-31', '2026-01-01'))).toBeNull();
+  });
+
+  // Date.parse takes 2026-02-30 and rolls it into March, which would quietly
+  // shift a range the user picked rather than rejecting it.
+  it('rejects a date that looks valid and is not', () => {
+    expect(customRange(custom('2026-02-30', '2026-03-31'))).toBeNull();
+    expect(customRange(custom('2026-13-01', '2026-03-31'))).toBeNull();
+    expect(customRange(custom('not-a-date', '2026-03-31'))).toBeNull();
+  });
+
+  it('ignores the endpoints unless the preset is custom', () => {
+    expect(customRange({ ...EMPTY_FILTERS, datePreset: 'last-month', dateFrom: '2026-01-01', dateTo: '2026-03-31' })).toBeNull();
+  });
+});
+
+describe('custom range in the URL', () => {
+  it('round-trips a complete range', () => {
+    const filters: FilterState = {
+      ...EMPTY_FILTERS,
+      datePreset: 'custom',
+      dateFrom: '2026-01-01',
+      dateTo: '2026-03-31',
+    };
+    expect(filtersFromQuery(new URLSearchParams(filtersToQuery(filters)))).toEqual(filters);
+  });
+
+  // Otherwise a link carries dates that nothing reads, and switching back to
+  // custom would restore a range the user had moved off.
+  it('does not write the endpoints when the preset is not custom', () => {
+    const query = filtersToQuery({
+      ...EMPTY_FILTERS,
+      datePreset: 'last-month',
+      dateFrom: '2026-01-01',
+      dateTo: '2026-03-31',
+    });
+    expect(query).not.toContain('from=');
+    expect(query).not.toContain('to=');
+  });
+
+  it('drops hand-edited endpoints when the preset is not custom', () => {
+    const parsed = filtersFromQuery(new URLSearchParams('date=last-year&from=2026-01-01&to=2026-03-31'));
+    expect(parsed.dateFrom).toBeNull();
+    expect(parsed.dateTo).toBeNull();
+  });
+
+  it('keeps a valid endpoint and drops an invalid one', () => {
+    const parsed = filtersFromQuery(new URLSearchParams('date=custom&from=2026-01-01&to=2026-02-30'));
+    expect(parsed.dateFrom).toBe('2026-01-01');
+    expect(parsed.dateTo).toBeNull();
+    expect(customRange(parsed)).toBeNull();
   });
 });
