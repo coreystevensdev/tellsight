@@ -36,16 +36,49 @@ const summarize = (
 // a disabled rule looks identical to a passing one from the outside.
 const GATED_IMPACTS = new Set(['critical', 'serious']);
 
-for (const route of PUBLIC_ROUTES) {
-  test(`${route.name} passes axe with zero critical or serious violations`, async ({ page }) => {
-    await page.goto(route.path);
-    await page.locator('h1').first().waitFor({ timeout: 15_000 });
+// Until now this ran light mode at the default viewport and nothing else, so the
+// dark palette had never been scanned once. That is the half of the product
+// where contrast is hardest to get right and the only half whose tokens nobody
+// had checked. Mobile is here for the same reason: target size and overlap are
+// viewport-dependent rules that a 1280px scan cannot reach.
+const THEMES = [
+  { name: 'light', colorScheme: 'light' as const },
+  { name: 'dark', colorScheme: 'dark' as const },
+];
 
-    const results = await new AxeBuilder({ page }).analyze();
-    const gated = results.violations.filter((v) => GATED_IMPACTS.has(v.impact ?? ''));
+const VIEWPORTS = [
+  { name: 'desktop', width: 1280, height: 800 },
+  { name: 'mobile', width: 390, height: 844 },
+];
 
-    expect(summarize(gated)).toEqual([]);
-  });
+for (const theme of THEMES) {
+  for (const viewport of VIEWPORTS) {
+    for (const route of PUBLIC_ROUTES) {
+      test(`${route.name} passes axe in ${theme.name} on ${viewport.name}`, async ({ page }) => {
+        await page.emulateMedia({ colorScheme: theme.colorScheme });
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await page.goto(route.path);
+        await page.locator('h1').first().waitFor({ timeout: 15_000 });
+
+        // Assert the theme took before scanning. next-themes applies .dark after
+        // hydration, so a scan that starts too early, or an emulateMedia that
+        // stops working after an upgrade, would scan light twice and report two
+        // passes. A vacuous green here is worse than no test: it would say the
+        // dark palette is clear when nothing had looked at it.
+        const isDark = theme.name === 'dark';
+        await expect
+          .poll(() => page.evaluate(() => document.documentElement.classList.contains('dark')), {
+            timeout: 10_000,
+          })
+          .toBe(isDark);
+
+        const results = await new AxeBuilder({ page }).analyze();
+        const gated = results.violations.filter((v) => GATED_IMPACTS.has(v.impact ?? ''));
+
+        expect(summarize(gated)).toEqual([]);
+      });
+    }
+  }
 }
 
 // NFR24 landmark half, on every public route rather than just the dashboard.

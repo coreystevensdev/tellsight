@@ -55,7 +55,11 @@ export function AppHeader({ isAuthenticated }: AppHeaderProps) {
             className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
             <LogIn className="h-4 w-4" />
-            <span className="hidden md:inline">Sign in</span>
+            {/* sr-only rather than hidden below md: the icon carries no name, so
+                hiding the label left the whole link nameless on a phone. This
+                keeps one copy of the string and keeps it in the accessibility
+                tree at every width. */}
+            <span className="sr-only md:not-sr-only">Sign in</span>
           </Link>
         )}
       </div>
