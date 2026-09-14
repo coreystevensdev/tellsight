@@ -120,8 +120,16 @@
   --color-border: oklch(0.29 0 0);
   --color-accent: oklch(0.25 0.03 190);
   --color-accent-warm: #2DD4BF;
-  --color-destructive: oklch(0.6 0.2 25);
-  --color-destructive-foreground: oklch(1 0 0);
+  /* Lifted from 0.6. At 0.6 this rendered #DE3B3D, which scored 4.13 as 12px text
+     on the card and 3.80 on its own 10% tint, where AA wants 4.5. Both are the
+     shape that caught --color-success in light mode: a colour that nearly clears
+     on the card and fails harder on a tint of itself.
+     The foreground was white, the only one of the four status foregrounds that
+     was. White scored 4.38 on the old value and would have dropped to 3.4 on this
+     one, so it now matches primary, success and warning: a dark label on a bright
+     chip, which is the pattern dark mode already used everywhere else. */
+  --color-destructive: oklch(0.66 0.2 25);
+  --color-destructive-foreground: oklch(0.17 0.016 50);
   --color-success: oklch(0.68 0.16 145);
   --color-success-foreground: oklch(0.17 0.016 50);
   --color-warning: oklch(0.78 0.15 80);

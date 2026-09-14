@@ -361,7 +361,7 @@ function DatasetCard({
                 <button
                   onClick={onDeleteConfirm}
                   disabled={state.saving}
-                  className="rounded-md bg-destructive px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-md bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {state.saving ? 'Deleting...' : 'Yes, delete'}
                 </button>
