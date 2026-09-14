@@ -41,6 +41,28 @@ const GATED_IMPACTS = new Set(['critical', 'serious']);
 // where contrast is hardest to get right and the only half whose tokens nobody
 // had checked. Mobile is here for the same reason: target size and overlap are
 // viewport-dependent rules that a 1280px scan cannot reach.
+// Charts mount on viewport intersection and the AI disclaimer sits below the
+// fold, so a scan of the initial viewport never reaches either. That is not
+// hypothetical: the disclaimer scored 2.56 against AA on the AI surface, in both
+// themes, on three separate screens including the public share page, and this
+// gate could not see it because it never scrolled.
+//
+// Walks to the bottom and stays there. Scrolling back up would be tidier and
+// would risk unmounting whatever only exists while intersecting; axe reads the
+// DOM rather than the viewport, so leaving the page at the bottom costs nothing.
+async function revealLazyContent(page: import('@playwright/test').Page) {
+  await page.evaluate(async () => {
+    const scroller = document.getElementById('main-content') ?? document.scrollingElement ?? document.body;
+    for (let i = 0; i < 25; i += 1) {
+      const before = scroller.scrollTop;
+      scroller.scrollTop += 600;
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      if (scroller.scrollTop === before) break;
+    }
+  });
+  await page.waitForTimeout(400);
+}
+
 const THEMES = [
   { name: 'light', colorScheme: 'light' as const },
   { name: 'dark', colorScheme: 'dark' as const },
@@ -71,6 +93,8 @@ for (const theme of THEMES) {
             timeout: 10_000,
           })
           .toBe(isDark);
+
+        await revealLazyContent(page);
 
         const results = await new AxeBuilder({ page }).analyze();
         const gated = results.violations.filter((v) => GATED_IMPACTS.has(v.impact ?? ''));
