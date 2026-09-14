@@ -121,7 +121,17 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
       }
     : null;
 
-  const insights = await runCurationPipeline(orgId, datasetId, undefined, financials);
+  // dbAdmin, not the default. runCurationPipeline's client parameter defaults to
+  // the RLS-scoped db, which is right inside a request and wrong here: a BullMQ
+  // worker has no request, so app.current_org_id is unset and every row is
+  // filtered out. getRowsByDataset then returns nothing, the pipeline logs
+  // "curation pipeline got 0 rows, dataset may not exist", and the caller below
+  // reports "no computable stats for this week" about a dataset that is full.
+  //
+  // The alerts and agent workers both pass dbAdmin here. This one did not, which
+  // is why no digest has ever been sent. Line 165 of this same file already
+  // passes dbAdmin explicitly for the monthly buckets.
+  const insights = await runCurationPipeline(orgId, datasetId, dbAdmin, financials);
   const currentStats = insights.map((i) => i.stat);
 
   // Nothing computable means nothing to interpret, and interpretation is the
