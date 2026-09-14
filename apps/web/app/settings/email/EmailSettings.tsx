@@ -114,12 +114,16 @@ export default function EmailSettings({ initial }: Props) {
         </section>
 
         <section>
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Timezone</h2>
+          {/* The heading is the visible label, so it is pointed at rather than
+              duplicated into an sr-only one. A heading alone is not a label:
+              axe reported both label and label-title-only against this input. */}
+          <h2 id="tz-label" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Timezone</h2>
           <input
             type="text"
             value={timezone}
             onChange={(e) => setTimezone(e.target.value)}
             className="mt-3 w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+            aria-labelledby="tz-label"
             aria-describedby="tz-help"
             required
           />

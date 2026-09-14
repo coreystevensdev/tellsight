@@ -293,6 +293,20 @@ export function UploadDropzone() {
 
   return (
     <div className="space-y-4">
+      {/* Outside the role="button" element on purpose. Nested inside it, axe
+          reports nested-interactive: a negative tabindex and aria-hidden do not
+          stop assistive tech reaching a control inside an interactive parent.
+          Nothing else changes, this is only a handle for
+          fileInputRef.current.click(). */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv"
+        onChange={handleInputChange}
+        className="sr-only"
+        aria-hidden="true"
+        tabIndex={-1}
+      />
       <div
         ref={dropzoneRef}
         role="button"
@@ -312,15 +326,6 @@ export function UploadDropzone() {
           state === 'error' && 'border-destructive bg-destructive/5',
         )}
       >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".csv"
-          onChange={handleInputChange}
-          className="sr-only"
-          aria-hidden="true"
-          tabIndex={-1}
-        />
 
         {state === 'default' && (
           <DefaultContent isMobile={isTouchDevice} />
@@ -364,6 +369,21 @@ export function UploadDropzone() {
         )}
       </div>
 
+      {/* A sibling of the dropzone, not a child. Inside it this was a link
+          nested in a role="button", which axe reports as nested-interactive and
+          which leaves a keyboard user with two controls in one stop. The
+          stopPropagation handlers it used to carry only ever fixed the mouse
+          case. */}
+      {state === 'default' && (
+        <a
+          href="/templates/sample-data.csv"
+          download="sample-data.csv"
+          className="inline-block text-sm text-primary underline underline-offset-4"
+        >
+          Download sample template
+        </a>
+      )}
+
       {state === 'error' && error && (
         <div ref={alertRef} tabIndex={-1} aria-live="assertive">
           <Alert variant="destructive">
@@ -405,15 +425,6 @@ function DefaultContent({ isMobile }: { isMobile: boolean }) {
         {isMobile ? 'Tap to select your CSV file' : 'Drag your CSV here or click to browse'}
       </p>
       <p className="mt-1 text-sm text-muted-foreground">Accepted: .csv up to 10MB</p>
-      <a
-        href="/templates/sample-data.csv"
-        download="sample-data.csv"
-        className="mt-2 inline-block text-sm text-primary underline underline-offset-4"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
-      >
-        Download sample template
-      </a>
     </div>
   );
 }
