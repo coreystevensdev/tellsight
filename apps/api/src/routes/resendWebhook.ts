@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import express from 'express';
 import { Webhook } from 'svix';
+import { z } from 'zod';
 import { ANALYTICS_EVENTS } from 'shared/constants';
 
 import { env } from '../config.js';
@@ -10,19 +11,28 @@ import { trackEvent, trackEventSystem } from '../services/analytics/trackEvent.j
 
 export const resendWebhookRouter = Router();
 
-interface ResendEvent {
-  type: string;
-  created_at?: string;
-  data?: {
-    email_id?: string;
-    to?: string | string[];
-    from?: string;
-    subject?: string;
-    tags?: { name: string; value: string }[];
-    bounce?: { type?: string; subType?: string; message?: string };
-    complaint?: { complaintFeedbackType?: string };
-  };
-}
+// svix 2 changed Webhook.verify() to return undefined: it checks the signature
+// and tells you nothing about the body. So the body has to be parsed here, and
+// once we are parsing it anyway it may as well be validated. The old code cast
+// the return straight to ResendEvent, which meant a signature-valid payload
+// with, say, a string where tags should be an array reached tags.find and threw.
+const resendEventSchema = z.object({
+  type: z.string(),
+  created_at: z.string().optional(),
+  data: z
+    .object({
+      email_id: z.string().optional(),
+      to: z.union([z.string(), z.array(z.string())]).optional(),
+      from: z.string().optional(),
+      subject: z.string().optional(),
+      tags: z.array(z.object({ name: z.string(), value: z.string() })).optional(),
+      bounce: z.object({ type: z.string().optional(), subType: z.string().optional(), message: z.string().optional() }).optional(),
+      complaint: z.object({ complaintFeedbackType: z.string().optional() }).optional(),
+    })
+    .optional(),
+});
+
+type ResendEvent = z.infer<typeof resendEventSchema>;
 
 function tagValue(tags: { name: string; value: string }[] | undefined, name: string): string | null {
   return tags?.find((t) => t.name === name)?.value ?? null;
@@ -32,6 +42,14 @@ function parseTagInt(value: string | null): number | null {
   if (!value) return null;
   const n = Number.parseInt(value, 10);
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function safeJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
 }
 
 function firstRecipient(to: string | string[] | undefined): string | null {
@@ -69,15 +87,30 @@ resendWebhookRouter.post(
       if (typeof v === 'string') headers[k] = v;
     }
 
+    const raw = req.body.toString('utf8');
     const wh = new Webhook(env.RESEND_WEBHOOK_SECRET);
-    let event: ResendEvent;
     try {
-      event = wh.verify(req.body.toString('utf8'), headers) as ResendEvent;
+      wh.verify(raw, headers);
     } catch (err) {
       logger.warn({ err }, 'Resend webhook signature verification failed');
       res.status(400).json({ error: { code: 'INVALID_SIGNATURE', message: 'Invalid webhook signature' } });
       return;
     }
+
+    const parsed = resendEventSchema.safeParse(safeJson(raw));
+    if (!parsed.success) {
+      // 200, not 400. The signature was good, so this came from Resend, and a
+      // retry of the same body parses exactly the same way. Answering 4xx here
+      // would buy an infinite redelivery loop over a shape we were never going
+      // to act on. Same posture as an event type we do not handle.
+      logger.warn(
+        { provider: 'resend', issues: parsed.error.issues },
+        'Resend webhook passed signature check but did not match the expected shape, ignoring',
+      );
+      res.json({ received: true });
+      return;
+    }
+    const event: ResendEvent = parsed.data;
 
     const data = event.data ?? {};
     const tags = data.tags;

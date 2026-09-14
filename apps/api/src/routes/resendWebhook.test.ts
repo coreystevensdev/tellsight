@@ -289,3 +289,43 @@ describe('POST /webhooks/resend', () => {
     expect(mockTrackEvent).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('POST /webhooks/resend payload validation', () => {
+  // The signature says the body came from Resend. It says nothing about the
+  // body's shape, and svix 2 stopped returning a parsed payload at all, so the
+  // route parses and validates the raw body itself. Before that, a tags value
+  // that was not an array reached tags.find and threw, turning a malformed
+  // delivery into a 500.
+  it('ignores a signed payload whose tags are not an array, without crashing', async () => {
+    const { body, headers } = signedRequest({
+      type: 'email.bounced',
+      data: { email_id: 'msg-bad-tags', to: 'a@b.com', tags: 'org_id=10' },
+    });
+
+    const res = await fetch(`${baseUrl}/webhooks/resend`, { method: 'POST', headers, body });
+
+    expect(res.status).toBe(200);
+    expect(mockTrackEvent).not.toHaveBeenCalled();
+    expect(mockTrackEventSystem).not.toHaveBeenCalled();
+  });
+
+  // 200 rather than 4xx is deliberate. A retry re-sends the same bytes and they
+  // parse the same way, so answering 4xx would only buy an endless redelivery
+  // loop over an event we were never going to act on.
+  it('acks rather than rejects a signed payload that is missing type', async () => {
+    const { body, headers } = signedRequest({ data: { email_id: 'msg-no-type' } });
+
+    const res = await fetch(`${baseUrl}/webhooks/resend`, { method: 'POST', headers, body });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ received: true });
+  });
+
+  it('still rejects a bad signature rather than acking it', async () => {
+    const { body, headers } = signedRequest({ type: 'email.bounced', data: {} }, { tamperSig: true });
+
+    const res = await fetch(`${baseUrl}/webhooks/resend`, { method: 'POST', headers, body });
+
+    expect(res.status).toBe(400);
+  });
+});

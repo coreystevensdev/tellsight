@@ -141,8 +141,8 @@ importers:
         specifier: ^22.6.1
         version: 22.6.2(@types/node@22.19.11)
       svix:
-        specifier: ^1.98.0
-        version: 1.99.1
+        specifier: 2.5.0
+        version: 2.5.0
       zod:
         specifier: 3.23.8
         version: 3.23.8
@@ -6088,8 +6088,9 @@ packages:
     resolution: {integrity: sha512-qsjeeq5YjBZ5eMdFuUa4ZosMLxgr5RZ+F+Y1OrDhuOCEInRMA3x74XdBtggJcj9kOeInz0WE+LgCPDkZFlBYJw==}
     engines: {node: '>=12.0.0'}
 
-  svix@1.99.1:
-    resolution: {integrity: sha512-JfpvbAg5iT5NagDAfOq3e6Ci6NbOMbMm6C3DnfDBB60m2JDK+Z2hXPE9XNAmutb53DCdPoih1V70IbklZnX09A==}
+  svix@2.5.0:
+    resolution: {integrity: sha512-mqcwCPKL6J5yqC2EQy5ZqE5XEJriCZffy49EGBDCsnrQ7RAYF4kZLJhKfXrB0n21S+3M9qYmQ9YjzrNjRlIuCw==}
+    engines: {node: '>=22'}
 
   swr@2.5.1:
     resolution: {integrity: sha512-BRw55e8r0B7SpDN20CAzoQAHl7y1yP7/Zt7oqUjMv0vSt2u2Xnkm88Ws+VypbV9BXHQVuSuyVq7zMjO16wSExw==}
@@ -12530,9 +12531,9 @@ snapshots:
   svg-pathdata@6.0.3:
     optional: true
 
-  svix@1.99.1:
+  svix@2.5.0:
     dependencies:
-      standardwebhooks: 1.0.0
+      standardwebhooks: 1.1.1
 
   swr@2.5.1(react@19.3.0):
     dependencies:
