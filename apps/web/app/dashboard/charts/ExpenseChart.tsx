@@ -17,6 +17,10 @@ import { formatCurrency, formatAbbreviated } from './formatters';
 
 interface ExpenseChartProps {
   data: ExpenseBreakdownItem[];
+// Optional: the dashboard passes this to turn a click on a point into a
+// question about that exact category. Charts stay presentational, they report the
+// label they were clicked on and nothing more.
+  onCategoryClick?: (category: string) => void;
 }
 
 export function ExpenseTooltip({ active, payload, label }: {
@@ -55,7 +59,7 @@ const CATEGORY_COLORS = [
   'var(--color-chart-expense-6)',
 ];
 
-export function ExpenseChart({ data }: ExpenseChartProps) {
+export function ExpenseChart({ data, onCategoryClick }: ExpenseChartProps) {
   const reducedMotion = useReducedMotion();
   const totalExpenses = data.reduce((sum, item) => sum + item.total, 0);
   const topCategory = data[0];
@@ -79,6 +83,7 @@ export function ExpenseChart({ data }: ExpenseChartProps) {
             title="Expense breakdown by category"
             margin={{ top: 5, right: 20, bottom: 5, left: 0 }}
             accessibilityLayer
+            style={onCategoryClick ? { cursor: 'pointer' } : undefined}
           >
             <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
             <XAxis
@@ -98,6 +103,14 @@ export function ExpenseChart({ data }: ExpenseChartProps) {
             />
             <Tooltip content={<ExpenseTooltip />} />
             <Bar
+              // Per-item rather than the chart-level onClick: that one reports
+              // activeLabel, which recharts derives from hover state, so a click
+              // with no preceding mousemove arrives with it undefined. The bar
+              // hands over its own row instead.
+              onClick={onCategoryClick ? (item) => {
+                const category = (item as { payload?: { category?: string } })?.payload?.category;
+                if (category) onCategoryClick(category);
+              } : undefined}
               dataKey="total"
               radius={[4, 4, 0, 0]}
               animationDuration={CHART_CONFIG.ANIMATION_DURATION_MS}

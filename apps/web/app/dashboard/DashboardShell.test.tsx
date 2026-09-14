@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { toast } from 'sonner';
 
@@ -42,14 +42,31 @@ vi.mock('@/lib/api-client', () => ({
 let shouldThrow = false;
 
 vi.mock('./charts/RevenueChart', () => ({
-  RevenueChart: () => {
+  RevenueChart: ({ onPointClick }: { onPointClick?: (m: string) => void }) => {
     if (shouldThrow) throw new Error('Render failed');
-    return <div data-testid="revenue-chart">Revenue</div>;
+    return (
+      <div data-testid="revenue-chart">
+        <button type="button" onClick={() => onPointClick?.('March 2026')}>revenue point</button>
+      </div>
+    );
   },
 }));
 
 vi.mock('./charts/ExpenseChart', () => ({
-  ExpenseChart: () => <div data-testid="expense-chart">Expense</div>,
+  ExpenseChart: ({ onCategoryClick }: { onCategoryClick?: (c: string) => void }) => (
+    <div data-testid="expense-chart">
+      <button type="button" onClick={() => onCategoryClick?.('Payroll')}>expense bar</button>
+    </div>
+  ),
+}));
+
+const mockScrollIntoView = vi.fn();
+let lastAskFromChart: { text: string; nonce: number } | null = null;
+vi.mock('./QaAskBox', () => ({
+  QaAskBox: ({ askFromChart }: { askFromChart?: { text: string; nonce: number } | null }) => {
+    lastAskFromChart = askFromChart ?? null;
+    return <div data-testid="qa-ask-box" />;
+  },
 }));
 
 vi.mock('./charts/ChartSkeleton', () => ({
@@ -585,5 +602,55 @@ describe('DashboardShell filter URL', () => {
 
     // Reading the URL must not rewrite it, or every page load pushes a history entry.
     expect(replaceState).not.toHaveBeenCalled();
+  });
+});
+
+// suggestedQuestions notes that the canned questions have to stay generic
+// because the metadata path carries only stat-type strings. A chart click is the
+// exception: the datum still knows its month or category, so the question can
+// name what was actually pointed at.
+describe('DashboardShell chart click to ask', () => {
+  beforeEach(() => {
+    lastAskFromChart = null;
+    Element.prototype.scrollIntoView = mockScrollIntoView;
+  });
+
+  it('turns a revenue point into a question about that month', () => {
+    render(<DashboardShell initialData={fullData} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'revenue point' }));
+
+    expect(lastAskFromChart?.text).toBe('What happened to revenue in March 2026?');
+  });
+
+  it('turns an expense bar into a question about that category', () => {
+    render(<DashboardShell initialData={fullData} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'expense bar' }));
+
+    expect(lastAskFromChart?.text).toBe("What's driving my Payroll spending?");
+  });
+
+  // The nonce, not the text, is what tells the ask box a click is new. Without
+  // it a second click on the same bar is an unchanged prop and asks nothing.
+  it('raises the nonce so the same point can be asked about twice', () => {
+    render(<DashboardShell initialData={fullData} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'expense bar' }));
+    const first = lastAskFromChart?.nonce;
+    fireEvent.click(screen.getByRole('button', { name: 'expense bar' }));
+
+    expect(first).toBeDefined();
+    expect(lastAskFromChart?.nonce).toBeGreaterThan(first!);
+  });
+
+  // The ask box renders below the charts since #142, so an answer that arrives
+  // off screen looks like the click did nothing.
+  it('scrolls the ask box into view', () => {
+    render(<DashboardShell initialData={fullData} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'revenue point' }));
+
+    expect(mockScrollIntoView).toHaveBeenCalled();
   });
 });

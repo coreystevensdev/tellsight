@@ -33,3 +33,19 @@ export function getSuggestedQuestions(statTypes: string[] | undefined): string[]
   }
   return deduped;
 }
+
+// A click on a chart is the one place in the browser where the concrete
+// dimension does exist. The chart was rendered from chartData, so the month or
+// the category is right there in the datum, which is exactly what the note above
+// says the metadata path cannot supply. Same voice as the canned questions:
+// owner-first, contractions, no jargon.
+export type ChartPoint =
+  | { chart: 'revenue'; month: string }
+  | { chart: 'expense'; category: string };
+
+export function questionForChartPoint(point: ChartPoint): string {
+  if (point.chart === 'revenue') {
+    return `What happened to revenue in ${point.month}?`;
+  }
+  return `What's driving my ${point.category} spending?`;
+}
