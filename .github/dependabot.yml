@@ -19,6 +19,15 @@ updates:
       include: "scope"
     labels:
       - "dependencies"
+    ignore:
+      # Zod 4 is a deliberate hold, not a compatibility block. Measured against
+      # 4.6.2 on 2026-09-14: 4 type errors, all z.record() calls needing an
+      # explicit key type, plus chartFiltersSchema parsing an empty query into
+      # { granularity: 'monthly' }, which would make every unfiltered dashboard
+      # request look filtered. Small enough to do on purpose, too easy to merge
+      # by accident. Drop this entry when someone picks the migration up.
+      - dependency-name: "zod"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
