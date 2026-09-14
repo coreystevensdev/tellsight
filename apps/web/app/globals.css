@@ -25,8 +25,14 @@
   --color-destructive: oklch(0.55 0.2 25);
   --color-destructive-foreground: oklch(1 0 0);
   /* was oklch(0.60 0.15 145), which rendered #3A9742 and scored 3.60 on the
-     card surface. #2F7D37 scores 4.98. */
-  --color-success: #2F7D37;
+     card surface. #2F7D37 scored 4.98 there.
+     Darkened again to #2A6E30 on 2026-09-13. 4.98 was measured against the plain
+     card, but TrendBadge puts this colour on bg-success/10, a 10% tint of itself,
+     and axe measures that composite at #e8efe8 where #2F7D37 scores 4.36 against
+     a 4.5 requirement. #2A6E30 scores 5.27 on the tint and more on the card.
+     Any token that only just clears 4.5 on white will fail on its own tint, so
+     check both surfaces before lightening this back. */
+  --color-success: #2A6E30;
   --color-success-foreground: oklch(1 0 0);
   --color-warning: oklch(0.72 0.15 85);
   --color-warning-foreground: oklch(0.2 0 0);

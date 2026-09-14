@@ -14,9 +14,18 @@ const PUBLIC_ROUTES = [
 ];
 
 // axe returns the full DOM node for each violation, so asserting on the raw
-// array buries the actual problem in a few hundred lines of diff.
-const summarize = (violations: { id: string; impact?: string | null; nodes: unknown[] }[]) =>
-  violations.map((v) => `${v.id} (${v.impact}, ${v.nodes.length} node(s))`);
+// array buries the actual problem in a few hundred lines of diff. The first
+// version of this went too far the other way and printed only a rule name and a
+// count, which told you something broke and not what: a CI failure here could
+// not be acted on without re-running the scan by hand. Each node's target
+// selector is a few characters and is the one thing you actually need.
+const summarize = (
+  violations: { id: string; impact?: string | null; nodes: { target?: unknown[] }[] }[],
+) =>
+  violations.map(
+    (v) =>
+      `${v.id} (${v.impact}): ${v.nodes.map((n) => (n.target ?? []).join(' ')).join(' | ')}`,
+  );
 
 // Gates on critical and serious, with nothing excluded.
 //

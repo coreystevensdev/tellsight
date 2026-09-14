@@ -421,51 +421,6 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
             />
           )}
 
-          <AiSummaryErrorBoundary>
-            {isMobile ? (
-              <div>
-                {aiSummaryCard}
-                <Sheet open={transparencyOpen} onOpenChange={(open) => !open && handleCloseTransparency()}>
-                  <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto rounded-t-xl">
-                    <SheetTitle className="sr-only">How I reached this conclusion</SheetTitle>
-                    <TransparencyPanel
-                      metadata={metadata}
-                      isOpen={transparencyOpen}
-                      onClose={handleCloseTransparency}
-                    />
-                  </SheetContent>
-                </Sheet>
-              </div>
-            ) : (
-              <div>
-                <div
-                  className={cn(
-                    'grid transition-[grid-template-columns] duration-200 ease-in-out motion-reduce:duration-0',
-                    transparencyOpen ? 'grid-cols-[1fr_320px] gap-6' : 'grid-cols-[1fr_0fr]',
-                  )}
-                >
-                  {aiSummaryCard}
-                  <TransparencyPanel
-                    metadata={metadata}
-                    isOpen={transparencyOpen}
-                    onClose={handleCloseTransparency}
-                    className="overflow-hidden min-w-0"
-                  />
-                </div>
-              </div>
-            )}
-            {/* Single mount point, lifted above the mobile/desktop branch so a
-                useIsMobile flip after hydration doesn't double-fire the indicator's
-                fetch. SWR dedupe inside the component handles repeated mounts
-                across navigations. */}
-            <div className="mt-2 px-1">
-              <LastDigestIndicator enabled={hasAuth} />
-            </div>
-          </AiSummaryErrorBoundary>
-
-          <AiSummaryErrorBoundary className="mt-6">
-            <QaAskBox datasetId={data.datasetId} metadata={metadata} />
-          </AiSummaryErrorBoundary>
 
           <ChartErrorBoundary onRetry={() => mutate()}>
             {isLoading && !hasData ? (
@@ -521,6 +476,56 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
               </>
             )}
           </ChartErrorBoundary>
+
+          {/* The summary describes the charts, so it follows them. FR24 was
+              amended for this: its acquisition rationale is the shared-link
+              view at /share/[token], which renders the summary alone with no
+              charts and is untouched by this ordering. */}
+          <AiSummaryErrorBoundary>
+            {isMobile ? (
+              <div>
+                {aiSummaryCard}
+                <Sheet open={transparencyOpen} onOpenChange={(open) => !open && handleCloseTransparency()}>
+                  <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto rounded-t-xl">
+                    <SheetTitle className="sr-only">How I reached this conclusion</SheetTitle>
+                    <TransparencyPanel
+                      metadata={metadata}
+                      isOpen={transparencyOpen}
+                      onClose={handleCloseTransparency}
+                    />
+                  </SheetContent>
+                </Sheet>
+              </div>
+            ) : (
+              <div>
+                <div
+                  className={cn(
+                    'grid transition-[grid-template-columns] duration-200 ease-in-out motion-reduce:duration-0',
+                    transparencyOpen ? 'grid-cols-[1fr_320px] gap-6' : 'grid-cols-[1fr_0fr]',
+                  )}
+                >
+                  {aiSummaryCard}
+                  <TransparencyPanel
+                    metadata={metadata}
+                    isOpen={transparencyOpen}
+                    onClose={handleCloseTransparency}
+                    className="overflow-hidden min-w-0"
+                  />
+                </div>
+              </div>
+            )}
+            {/* Single mount point, lifted above the mobile/desktop branch so a
+                useIsMobile flip after hydration doesn't double-fire the indicator's
+                fetch. SWR dedupe inside the component handles repeated mounts
+                across navigations. */}
+            <div className="mt-2 px-1">
+              <LastDigestIndicator enabled={hasAuth} />
+            </div>
+          </AiSummaryErrorBoundary>
+
+          <AiSummaryErrorBoundary className="mt-6">
+            <QaAskBox datasetId={data.datasetId} metadata={metadata} />
+          </AiSummaryErrorBoundary>
 
           {hasAnyData && hasBalance && (
             <CashBalanceStaleBanner
