@@ -24,6 +24,7 @@ import { ChartSkeleton } from './charts/ChartSkeleton';
 import { LazyChart } from './charts/LazyChart';
 import { FilterBar, computeDateRange } from './FilterBar';
 import { EMPTY_FILTERS, customRange, filtersFromQuery, filtersToQuery, type FilterState } from './filterParams';
+import { questionForChartPoint, type ChartPoint } from './suggestedQuestions';
 import { AiSummaryCard } from './AiSummaryCard';
 import { QaAskBox } from './QaAskBox';
 import { AiSummaryErrorBoundary } from './AiSummaryErrorBoundary';
@@ -184,6 +185,19 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
   // Next's router does not observe, so there is no second source to sync back
   // from. A hand-edited URL is a real navigation and remounts this anyway.
   const [filters, setFilters] = useState<FilterState>(() => filtersFromQuery(searchParams));
+  // A chart click composes a question and hands it to the ask box. The nonce
+  // rises every time so clicking the same bar twice asks twice; the box keys off
+  // it rather than off the text.
+  const [chartAsk, setChartAsk] = useState<{ text: string; nonce: number } | null>(null);
+  const askBoxRef = useRef<HTMLDivElement>(null);
+
+  const askAboutChartPoint = useCallback((point: ChartPoint) => {
+    setChartAsk((prev) => ({ text: questionForChartPoint(point), nonce: (prev?.nonce ?? 0) + 1 }));
+    // The ask box sits below the charts, so without this the answer arrives off
+    // screen and the click looks like it did nothing.
+    askBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, []);
+
   const [transparencyOpen, setTransparencyOpen] = useState(false);
   const [metadata, setMetadata] = useState<TransparencyMetadata | null>(cachedMetadata ?? null);
   const firedRef = useRef(false);
@@ -437,12 +451,18 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
                 <div className="mt-6 grid gap-4 md:grid-cols-2 md:gap-6">
                   {hasRevenue && (
                     <LazyChart skeletonVariant="line">
-                      <RevenueChart data={data.revenueTrend} />
+                      <RevenueChart
+                        data={data.revenueTrend}
+                        onPointClick={(month) => askAboutChartPoint({ chart: 'revenue', month })}
+                      />
                     </LazyChart>
                   )}
                   {hasExpenses && (
                     <LazyChart skeletonVariant="bar">
-                      <ExpenseChart data={data.expenseBreakdown} />
+                      <ExpenseChart
+                        data={data.expenseBreakdown}
+                        onCategoryClick={(category) => askAboutChartPoint({ chart: 'expense', category })}
+                      />
                     </LazyChart>
                   )}
                 </div>
@@ -524,7 +544,9 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
           </AiSummaryErrorBoundary>
 
           <AiSummaryErrorBoundary className="mt-6">
-            <QaAskBox datasetId={data.datasetId} metadata={metadata} />
+            <div ref={askBoxRef}>
+              <QaAskBox datasetId={data.datasetId} metadata={metadata} askFromChart={chartAsk} />
+            </div>
           </AiSummaryErrorBoundary>
 
           {hasAnyData && hasBalance && (

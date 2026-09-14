@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Info } from 'lucide-react';
 
@@ -19,6 +19,10 @@ interface QaAskBoxProps {
   datasetId: number | null;
   metadata?: TransparencyMetadata | null;
   className?: string;
+  // A question composed by a click on a chart. The nonce, not the text, marks it
+  // as new: clicking the same bar twice should ask twice rather than be swallowed
+  // as an unchanged prop.
+  askFromChart?: { text: string; nonce: number } | null;
 }
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -119,7 +123,7 @@ function AnswerText({ rawText, onOpenCite }: { rawText: string; onOpenCite: (sta
   );
 }
 
-export function QaAskBox({ datasetId, metadata, className }: QaAskBoxProps) {
+export function QaAskBox({ datasetId, metadata, className, askFromChart }: QaAskBoxProps) {
   const [question, setQuestion] = useState('');
   const [openCiteId, setOpenCiteId] = useState<string | null>(null);
   const [priorDatasetId, setPriorDatasetId] = useState(datasetId);
@@ -174,6 +178,19 @@ export function QaAskBox({ datasetId, metadata, className }: QaAskBoxProps) {
     setQuestion(text);
     askQuestion(text);
   }
+
+  // Same path a suggestion chip takes, so a chart click cannot ask while one is
+  // in flight, while the tier gate is closed, or with no dataset. The ref holds
+  // the last nonce acted on rather than the last text, so two clicks on the same
+  // point still ask twice; askSuggested is deliberately not a dependency, since
+  // it is rebuilt every render and the ref is what decides whether to fire.
+  const lastChartAsk = useRef<number | null>(null);
+  useEffect(() => {
+    if (!askFromChart || askFromChart.nonce === lastChartAsk.current) return;
+    lastChartAsk.current = askFromChart.nonce;
+    askSuggested(askFromChart.text);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [askFromChart]);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     // isComposing is true while an IME candidate (CJK input) is still being

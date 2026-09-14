@@ -17,6 +17,10 @@ import { TrendBadge } from './TrendBadge';
 
 interface RevenueChartProps {
   data: RevenueTrendPoint[];
+// Optional: the dashboard passes this to turn a click on a point into a
+// question about that exact month. Charts stay presentational, they report the
+// label they were clicked on and nothing more.
+  onPointClick?: (month: string) => void;
 }
 
 export function RevenueTooltip({ active, payload, label }: {
@@ -46,7 +50,7 @@ export function RevenueTooltip({ active, payload, label }: {
   );
 }
 
-export function RevenueChart({ data }: RevenueChartProps) {
+export function RevenueChart({ data, onPointClick }: RevenueChartProps) {
   const reducedMotion = useReducedMotion();
   const trend = computeTrend(data);
   const lastPoint = data[data.length - 1];
@@ -96,7 +100,31 @@ export function RevenueChart({ data }: RevenueChartProps) {
               dataKey="revenue"
               strokeWidth={2}
               stroke="var(--color-chart-revenue)"
-              dot={{ r: 4, fill: 'var(--color-chart-revenue-dot)', stroke: 'var(--color-background)', strokeWidth: 2 }}
+              // A render function rather than the object form, because the object
+              // cannot see which point it is. Line has no per-item onClick, and
+              // the chart-level one reports activeLabel, which recharts derives
+              // from hover: undefined for a tap, so that route was mouse-only.
+              // The transparent circle is the hit target. The visible dot is 4px,
+              // an 8px tap target, and pointer accessibility wants 24.
+              dot={onPointClick
+                ? (props: { cx?: number; cy?: number; index?: number; payload?: { month?: string } }) => {
+                    const { cx, cy, index, payload } = props;
+                    const month = payload?.month;
+                    return (
+                      <g key={index} style={{ cursor: 'pointer' }} onClick={() => month && onPointClick(month)}>
+                        <circle cx={cx} cy={cy} r={12} fill="transparent" />
+                        <circle
+                          cx={cx}
+                          cy={cy}
+                          r={4}
+                          fill="var(--color-chart-revenue-dot)"
+                          stroke="var(--color-background)"
+                          strokeWidth={2}
+                        />
+                      </g>
+                    );
+                  }
+                : { r: 4, fill: 'var(--color-chart-revenue-dot)', stroke: 'var(--color-background)', strokeWidth: 2 }}
               activeDot={{ r: 6, fill: 'var(--color-chart-revenue-dot)', stroke: 'var(--color-background)', strokeWidth: 2 }}
               animationDuration={CHART_CONFIG.ANIMATION_DURATION_MS}
               animationEasing={CHART_CONFIG.ANIMATION_EASING}
