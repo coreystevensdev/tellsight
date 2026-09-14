@@ -250,9 +250,13 @@ interface PostCompletionFooterProps {
 // withhold share, export and transparency. That correctly withheld the features
 // and incorrectly withheld the disclaimer, so a truncated free-tier summary
 // carried none.
+// Full opacity. At /60 this scored 2.56 against AA's 4.5 on the AI surface, and
+// only full opacity clears it in both themes: light at /85 still lands on 4.27.
+// The opacity was there to play legal text down, which is the one kind of text
+// that cannot afford to be unreadable.
 function AiDisclaimer() {
   return (
-    <p className="mt-3 text-[11px] leading-tight text-muted-foreground/60">{AI_DISCLAIMER}</p>
+    <p className="mt-3 text-[11px] leading-tight text-muted-foreground">{AI_DISCLAIMER}</p>
   );
 }
 

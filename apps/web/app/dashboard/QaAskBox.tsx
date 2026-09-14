@@ -117,7 +117,7 @@ function AnswerText({ rawText, onOpenCite }: { rawText: string; onOpenCite: (sta
         ))}
       </div>
       {showFooter && (
-        <p className="mt-3 text-[11px] leading-tight text-muted-foreground/60">{AI_DISCLAIMER}</p>
+        <p className="mt-3 text-[11px] leading-tight text-muted-foreground">{AI_DISCLAIMER}</p>
       )}
     </>
   );
