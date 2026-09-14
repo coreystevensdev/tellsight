@@ -47,7 +47,7 @@ jobs:
           echo "web_image=${ECR_WEB}:sha-${SHORT}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push API image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile.api
@@ -58,7 +58,7 @@ jobs:
             ${{ secrets.ECR_API_REPO }}:latest
 
       - name: Build and push web image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile.web
