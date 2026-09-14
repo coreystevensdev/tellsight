@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import type { ChartData, SubscriptionTier, TransparencyMetadata } from 'shared/types';
+import type { BusinessProfile } from 'shared/schemas';
 import { apiServer, ApiServerError } from '@/lib/api-server';
 import { AUTH } from 'shared/constants';
 import { DashboardShell } from './DashboardShell';
@@ -116,10 +117,14 @@ export default async function DashboardPage() {
   const tier = hasAuth ? await fetchTier(cookieHeader) : undefined;
 
   let needsOnboarding = false;
+  // The same call already ran for needsOnboarding and discarded its body. The
+  // industry benchmark needs one field out of it, so read rather than refetch.
+  let businessType: BusinessProfile['businessType'] | null = null;
   if (hasAuth) {
     try {
-      const res = await apiServer<unknown>('/org/profile', { cookies: cookieHeader });
+      const res = await apiServer<BusinessProfile | null>('/org/profile', { cookies: cookieHeader });
       needsOnboarding = res.data === null;
+      businessType = res.data?.businessType ?? null;
     } catch {
       needsOnboarding = false;
     }
@@ -133,6 +138,7 @@ export default async function DashboardPage() {
       cachedStaleAt={cachedStaleAt}
       tier={tier}
       needsOnboarding={needsOnboarding}
+      businessType={businessType}
     />
   );
 }
