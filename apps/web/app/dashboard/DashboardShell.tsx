@@ -23,7 +23,7 @@ import { YoyChart } from './charts/YoyChart';
 import { ChartSkeleton } from './charts/ChartSkeleton';
 import { LazyChart } from './charts/LazyChart';
 import { FilterBar, computeDateRange } from './FilterBar';
-import { EMPTY_FILTERS, filtersFromQuery, filtersToQuery, type FilterState } from './filterParams';
+import { EMPTY_FILTERS, customRange, filtersFromQuery, filtersToQuery, type FilterState } from './filterParams';
 import { AiSummaryCard } from './AiSummaryCard';
 import { QaAskBox } from './QaAskBox';
 import { AiSummaryErrorBoundary } from './AiSummaryErrorBoundary';
@@ -56,12 +56,12 @@ interface DashboardShellProps {
 
 function buildSwrKey(filters: FilterState): string {
   const params = new URLSearchParams();
-  if (filters.datePreset) {
-    const range = computeDateRange(filters.datePreset);
-    if (range) {
-      params.set('from', range.from);
-      params.set('to', range.to);
-    }
+  // A custom range wins when it is complete and in order; otherwise fall back to
+  // the preset, which is also what a half-filled custom range resolves to.
+  const range = customRange(filters) ?? (filters.datePreset ? computeDateRange(filters.datePreset) : null);
+  if (range) {
+    params.set('from', range.from);
+    params.set('to', range.to);
   }
   if (filters.category) {
     params.set('categories', filters.category);
