@@ -227,6 +227,27 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Show Me Math, the audit drawer behind every stat */}
+      <section className="border-t border-border/40">
+        <div className="mx-auto max-w-4xl px-4 py-14 md:px-6 md:py-20">
+          <h2 className="font-serif text-2xl font-medium tracking-tight text-foreground md:text-3xl">
+            Every figure opens up.
+          </h2>
+          <p className="mt-4 font-serif text-muted-foreground md:text-lg">
+            Claude writes the interpretation, it does not invent the numbers.
+            Each statistic behind a claim carries the method that produced it,
+            named rather than paraphrased: trend analysis, anomaly detection,
+            year-over-year comparison, margin trend, seasonal projection, cash
+            forecast.
+          </p>
+          <p className="mt-3 font-serif text-muted-foreground md:text-lg">
+            From there you can read the rows the number came from, paginated,
+            out of your own data. A figure that looks wrong is something you can
+            check rather than something you have to take on faith.
+          </p>
+        </div>
+      </section>
+
       {/* Proactive alerts, agentic pass with a human-approval gate */}
       <section className="border-t border-border/40">
         <div className="mx-auto max-w-4xl px-4 py-14 md:px-6 md:py-20">
@@ -245,6 +266,26 @@ export default function LandingPage() {
             in-app drawer, and nothing sits there forever, unreviewed
             findings expire after 14 days instead of piling into an inbox
             nobody clears.
+          </p>
+        </div>
+      </section>
+
+      {/* Weekly digest, the retention loop */}
+      <section className="border-t border-border/40">
+        <div className="mx-auto max-w-4xl px-4 py-14 md:px-6 md:py-20">
+          <h2 className="font-serif text-2xl font-medium tracking-tight text-foreground md:text-3xl">
+            It arrives whether or not you log in.
+          </h2>
+          <p className="mt-4 font-serif text-muted-foreground md:text-lg">
+            Weekly, monthly, or off. The digest carries the same computed
+            statistics as the dashboard plus what moved since the last one, so a
+            number arrives meaning something relative to the last time you saw
+            it instead of standing on its own.
+          </p>
+          <p className="mt-3 font-serif text-muted-foreground md:text-lg">
+            A period with nothing computable is skipped rather than sent. An
+            email that exists to say there was nothing to say is worse than no
+            email, and it teaches people not to open the next one.
           </p>
         </div>
       </section>
