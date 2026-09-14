@@ -263,8 +263,15 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
   const hasData = hasRevenue || hasExpenses;
   const hasAnyData = initialData.revenueTrend.length > 0 || initialData.expenseBreakdown.length > 0;
 
+  // hasAuth as well as hasAnyData: the seed dataset makes hasAnyData true for a
+  // signed-out visitor, so this fired /org/financials on every public dashboard
+  // load and took a 401. apiClient then attempted a refresh on that 401, which
+  // also failed, so one ungated read cost two failing requests and spent budget
+  // on the auth rate limiter. Nothing rendered differently, because the flags
+  // below already treat undefined as "do not offer to set this", which is why it
+  // survived until an e2e guard started asserting on failing responses.
   const { data: financials, mutate: refreshFinancials } = useSWR<OrgFinancials>(
-    hasAnyData ? '/org/financials' : null,
+    hasAuth && hasAnyData ? '/org/financials' : null,
     async (key: string) => (await apiClient<OrgFinancials>(key)).data,
     { revalidateOnFocus: false },
   );

@@ -443,6 +443,9 @@ describe('DashboardShell', () => {
     });
   });
 
+  // tier makes hasAuth true. These three all stub mockSwrByKey['/org/financials'],
+  // so they always meant to exercise a signed-in dashboard; without the prop they
+  // ran as anonymous and only passed because the financials read was ungated.
   describe('break-even locked insight', () => {
     const marginSignalData: ChartData = {
       ...fullData,
@@ -454,7 +457,7 @@ describe('DashboardShell', () => {
         '/org/financials': { data: { cashOnHand: 15000, cashAsOfDate: '2026-04-15T00:00:00.000Z' }, mutate: vi.fn() },
       };
 
-      render(<DashboardShell initialData={marginSignalData} />);
+      render(<DashboardShell initialData={marginSignalData} tier="free" />);
 
       expect(screen.getByRole('heading', { name: /enable break-even analysis/i })).toBeInTheDocument();
       expect(screen.getByLabelText(/monthly fixed costs/i)).toBeInTheDocument();
@@ -478,7 +481,7 @@ describe('DashboardShell', () => {
         },
       };
 
-      render(<DashboardShell initialData={marginSignalData} />);
+      render(<DashboardShell initialData={marginSignalData} tier="free" />);
 
       expect(screen.queryByRole('heading', { name: /enable break-even analysis/i })).not.toBeInTheDocument();
     });
@@ -490,7 +493,7 @@ describe('DashboardShell', () => {
       };
       vi.mocked(apiClient).mockResolvedValue({ data: {} as unknown });
 
-      render(<DashboardShell initialData={marginSignalData} />);
+      render(<DashboardShell initialData={marginSignalData} tier="free" />);
 
       const input = screen.getByLabelText(/monthly fixed costs/i);
       fireEvent.change(input, { target: { value: '15000' } });
