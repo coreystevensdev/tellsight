@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { apiClient } from '@/lib/api-client';
+import { useResource } from '@/lib/hooks/useResource';
 import { BackLink } from '@/components/common/BackLink';
 
 interface GeneratedInvite {
@@ -27,28 +28,23 @@ function daysUntil(iso: string, from: number) {
 
 export default function Invites() {
   const [invite, setInvite] = useState<GeneratedInvite | null>(null);
-  const [activeInvites, setActiveInvites] = useState<ActiveInvite[]>([]);
-  const [loadedAt, setLoadedAt] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [forbidden, setForbidden] = useState(false);
 
-  const loadActiveInvites = useCallback(async () => {
-    try {
-      const { data } = await apiClient<ActiveInvite[]>('/invites');
-      setActiveInvites(data);
-      setLoadedAt(Date.now());
-    } catch (err) {
-      if (err instanceof Error && err.message.includes('Owner access required')) {
-        setForbidden(true);
-      }
-    }
-  }, []);
+  // loadedAt travels with the rows rather than in its own state, because the
+  // countdown beside each invite is only true as of the moment they were read.
+  const list = useResource('active-invites', async (signal) => {
+    const { data } = await apiClient<ActiveInvite[]>('/invites', { signal });
+    return { rows: data, loadedAt: Date.now() };
+  });
 
-  useEffect(() => {
-    loadActiveInvites();
-  }, [loadActiveInvites]);
+  const activeInvites = list.data?.rows ?? [];
+  const loadedAt = list.data?.loadedAt ?? 0;
+  // The list request is the only thing that reveals the caller is not an owner,
+  // so its failure message is the signal. Derived rather than stored: it is a
+  // property of how that request went, and there is nothing to remember.
+  const forbidden = list.error?.includes('Owner access required') ?? false;
 
   async function handleGenerate() {
     setLoading(true);
@@ -61,7 +57,7 @@ export default function Invites() {
         body: JSON.stringify({}),
       });
       setInvite(data);
-      await loadActiveInvites();
+      list.refetch();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to generate invite';
       setError(msg);

@@ -1,7 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { StatCorrection } from 'shared/types';
+
+import { useResource } from './useResource';
 
 export type StatCorrectionsStatus = 'idle' | 'loading' | 'error' | 'done';
 export type SubmitStatus = 'idle' | 'submitting' | 'error';
@@ -19,39 +21,29 @@ export interface UseStatCorrectionsResult {
 // statId), the drawer filters to the open citation's rows itself, so
 // re-opening a sibling citation in the same dataset doesn't refetch.
 export function useStatCorrections(datasetId: number | null, statId: string | null): UseStatCorrectionsResult {
-  const [status, setStatus] = useState<StatCorrectionsStatus>('idle');
-  const [corrections, setCorrections] = useState<StatCorrection[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [submitStatus, setSubmitStatus] = useState<SubmitStatus>('idle');
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (datasetId === null) {
-      setStatus('idle');
-      setCorrections([]);
-      setError(null);
-      return;
-    }
+  const fetched = useResource(datasetId === null ? null : `stat-corrections:${datasetId}`, async (signal) => {
+    const res = await fetch(`/api/stat-corrections/${datasetId}`, { signal, credentials: 'same-origin' });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error?.message ?? `Request failed (${res.status})`);
+    return (body.data as StatCorrection[]) ?? [];
+  });
 
-    const controller = new AbortController();
-    setStatus('loading');
-    setError(null);
-
-    fetch(`/api/stat-corrections/${datasetId}`, { signal: controller.signal, credentials: 'same-origin' })
-      .then(async (res) => {
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(body?.error?.message ?? `Request failed (${res.status})`);
-        setCorrections((body.data as StatCorrection[]) ?? []);
-        setStatus('done');
-      })
-      .catch((err) => {
-        if (err instanceof DOMException && err.name === 'AbortError') return;
-        setError(err instanceof Error ? err.message : 'Something went wrong');
-        setStatus('error');
-      });
-
-    return () => controller.abort();
-  }, [datasetId]);
+  // Rows this session has submitted, tagged with the dataset they belong to.
+  // They sit on top of the fetched list instead of being merged into it: a
+  // correction is additive, and refetching the whole list to show one the user
+  // just wrote would make their own note take a round trip to appear. The tag is
+  // what stops them leaking onto a different dataset when the drawer moves.
+  const [submitted, setSubmitted] = useState<{ datasetId: number | null; rows: StatCorrection[] }>({
+    datasetId: null,
+    rows: [],
+  });
+  const mine = submitted.datasetId === datasetId ? submitted.rows : [];
+  const corrections = [...mine, ...(fetched.data ?? [])];
+  const status: StatCorrectionsStatus = fetched.status;
+  const error = fetched.error;
 
   const submitCorrection = useCallback(
     async (note: string, appliesGoingForward: boolean) => {
@@ -70,7 +62,10 @@ export function useStatCorrections(datasetId: number | null, statId: string | nu
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body?.error?.message ?? `Request failed (${res.status})`);
 
-        setCorrections((prev) => [body.data as StatCorrection, ...prev]);
+        const row = body.data as StatCorrection;
+        setSubmitted((prev) =>
+          prev.datasetId === datasetId ? { datasetId, rows: [row, ...prev.rows] } : { datasetId, rows: [row] },
+        );
         setSubmitStatus('idle');
         return true;
       } catch (err) {

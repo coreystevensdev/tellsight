@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   Table,
   TableBody,
@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { ANALYTICS_EVENTS } from 'shared/constants';
 import { apiClient } from '@/lib/api-client';
+import { useResource } from '@/lib/hooks/useResource';
 import type { AnalyticsEventRow, AnalyticsEventsMeta, AdminOrgRow } from './types';
 import { dateTimeFmt } from './formatters';
 
@@ -84,58 +85,58 @@ interface Filters {
   datePreset: string;
 }
 
+function buildParams(page: number, f: Filters): URLSearchParams {
+  const params = new URLSearchParams();
+
+  if (f.eventName) params.set('eventName', f.eventName);
+  if (f.orgId) params.set('orgId', f.orgId);
+
+  if (f.datePreset) {
+    const days = Number(f.datePreset);
+    const start = new Date();
+    if (days === 0) {
+      start.setHours(0, 0, 0, 0);
+    } else {
+      start.setDate(start.getDate() - days);
+    }
+    params.set('startDate', start.toISOString());
+    params.set('endDate', new Date().toISOString());
+  }
+
+  params.set('limit', String(PAGE_SIZE));
+  params.set('offset', String((page - 1) * PAGE_SIZE));
+  return params;
+}
+
 export function AnalyticsEventsTable() {
-  const [events, setEvents] = useState<AnalyticsEventRow[]>([]);
-  const [meta, setMeta] = useState<AnalyticsEventsMeta | null>(null);
-  const [orgs, setOrgs] = useState<AdminOrgRow[]>([]);
-  const [orgsFailed, setOrgsFailed] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState<Filters>({ eventName: '', orgId: '', datePreset: '' });
 
-  const fetchEvents = useCallback(async (pg: number, f: Filters) => {
-    setLoading(true);
-    const params = new URLSearchParams();
+  // Page and filters together are the request, so they are the key. Changing
+  // either drops the previous page's rows in the same render that starts the
+  // new request, which is what keeps the table from showing page 1 under a
+  // "page 2" header for a frame.
+  const key = JSON.stringify({ page, filters });
+  const result = useResource(key, async (signal) => {
+    const res = await apiClient<AnalyticsEventRow[]>(`/admin/analytics-events?${buildParams(page, filters)}`, {
+      signal,
+    });
+    return { rows: res.data, meta: res.meta as unknown as AnalyticsEventsMeta };
+  });
 
-    if (f.eventName) params.set('eventName', f.eventName);
-    if (f.orgId) params.set('orgId', f.orgId);
+  const orgList = useResource('admin-orgs', async (signal) => {
+    const res = await apiClient<AdminOrgRow[]>('/admin/orgs', { signal });
+    return res.data;
+  });
 
-    if (f.datePreset) {
-      const days = Number(f.datePreset);
-      const start = new Date();
-      if (days === 0) {
-        start.setHours(0, 0, 0, 0);
-      } else {
-        start.setDate(start.getDate() - days);
-      }
-      params.set('startDate', start.toISOString());
-      params.set('endDate', new Date().toISOString());
-    }
-
-    params.set('limit', String(PAGE_SIZE));
-    params.set('offset', String((pg - 1) * PAGE_SIZE));
-
-    try {
-      const res = await apiClient<AnalyticsEventRow[]>(`/admin/analytics-events?${params}`);
-      setEvents(res.data);
-      setMeta(res.meta as unknown as AnalyticsEventsMeta);
-    } catch {
-      setEvents([]);
-      setMeta(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    apiClient<AdminOrgRow[]>('/admin/orgs')
-      .then((res) => setOrgs(res.data))
-      .catch(() => setOrgsFailed(true));
-  }, []);
-
-  useEffect(() => {
-    fetchEvents(page, filters);
-  }, [page, filters, fetchEvents]);
+  // A failed page reads as an empty one, which is what this table did before and
+  // is the right answer for an admin view: the filter controls stay usable so the
+  // reader can try a narrower query rather than staring at a dead page.
+  const events = result.data?.rows ?? [];
+  const meta = result.data?.meta ?? null;
+  const loading = result.status === 'loading';
+  const orgs = orgList.data ?? [];
+  const orgsFailed = orgList.status === 'error';
 
   function handleFilterChange(key: keyof Filters, value: string) {
     setFilters((prev) => ({ ...prev, [key]: value }));

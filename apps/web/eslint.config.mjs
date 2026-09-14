@@ -33,12 +33,9 @@ const eslintConfig = defineConfig([
     // shared data-fetching shape, not six local rewrites. Listed by name on
     // purpose, so a seventh file tripping this still fails the build.
     files: [
-      'app/admin/AnalyticsEventsTable.tsx',
       'app/settings/datasets/Datasets.tsx',
       'app/settings/integrations/Integrations.tsx',
-      'app/settings/invites/Invites.tsx',
       'lib/hooks/useAgentProposals.ts',
-      'lib/hooks/useStatCorrections.ts',
     ],
     rules: { 'react-hooks/set-state-in-effect': 'off' },
   },
