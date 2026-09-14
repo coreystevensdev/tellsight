@@ -28,7 +28,7 @@
     "@sentry/node": "^10.67.0",
     "bullmq": "^5.80.9",
     "cookie-parser": "^1.4.7",
-    "csv-parse": "^6.1.0",
+    "csv-parse": "^7.0.2",
     "drizzle-orm": "^0.45.2",
     "express": "^5.1.0",
     "helmet": "^8.3.0",
