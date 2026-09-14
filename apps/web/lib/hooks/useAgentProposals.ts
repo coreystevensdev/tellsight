@@ -28,10 +28,14 @@ export function useAgentProposals(enabled: boolean): UseAgentProposalsResult {
   const pendingIdsRef = useRef<Set<number>>(new Set());
   const enabledRef = useRef(enabled);
   const mountedRef = useRef(true);
-  // Synced during render, not inside the effect below -- a passive effect
-  // runs after commit, leaving a window where a settling fetch could still
-  // read a stale value.
-  enabledRef.current = enabled;
+  // Tracks the committed value, not the rendering one. React can start a
+  // render and throw it away, and a ref written during that render keeps a
+  // value the UI never showed, for good. The cost is a microtask-wide window
+  // after a commit where a settling fetch still reads the previous value,
+  // which is the lesser of the two: it resolves itself on the next tick.
+  useEffect(() => {
+    enabledRef.current = enabled;
+  });
 
   useEffect(() => {
     if (!enabled) {

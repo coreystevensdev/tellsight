@@ -11,13 +11,15 @@ export default function CallbackHandler({
   state?: string;
 }) {
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
+  const [exchangeError, setExchangeError] = useState<string | null>(null);
+
+  // Missing params are a property of the URL we were handed, so there is
+  // nothing to remember. Storing it meant the first render painted a spinner
+  // for a request that was never going to be made.
+  const error = !code || !state ? 'Missing authentication parameters' : exchangeError;
 
   useEffect(() => {
-    if (!code || !state) {
-      setError('Missing authentication parameters');
-      return;
-    }
+    if (!code || !state) return;
 
     let cancelled = false;
 
@@ -47,7 +49,7 @@ export default function CallbackHandler({
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Authentication failed');
+          setExchangeError(err instanceof Error ? err.message : 'Authentication failed');
         }
       }
     }
