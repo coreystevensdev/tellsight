@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { authenticateAs } from './helpers/auth';
+import { ensureTestUser, TEST_USER } from './helpers/fixtures';
 
 // Every route reachable without a session or a signed token. proxy.ts guards
 // /upload, /billing, /admin and /settings, and the token routes (/share,
@@ -177,4 +179,59 @@ test('dashboard uses semantic landmarks', async ({ page }) => {
   // "not div-for-everything": the controls have to be real buttons, since a
   // div with a click handler is invisible to keyboard and screen reader users.
   expect(await page.locator('button').count()).toBeGreaterThan(5);
+});
+
+// Everything above scans signed-out routes, which is five screens out of the
+// product. /upload, /billing, the seven settings pages and the two admin pages
+// had never been scanned at all, and that is where a signed-in owner spends
+// their time. It is also the gap that let the industry benchmark panel ship
+// hand-checked: the gate could not reach it, so a person had to remember.
+const AUTHENTICATED_ROUTES = [
+  { path: '/upload', name: 'upload' },
+  { path: '/billing', name: 'billing' },
+  { path: '/settings/datasets', name: 'settings datasets' },
+  { path: '/settings/alerts', name: 'settings alerts' },
+  { path: '/settings/integrations', name: 'settings integrations' },
+  { path: '/settings/preferences', name: 'settings preferences' },
+  { path: '/settings/email', name: 'settings email' },
+  { path: '/settings/financials', name: 'settings financials' },
+  { path: '/settings/invites', name: 'settings invites' },
+  { path: '/admin', name: 'admin' },
+  { path: '/admin/analytics', name: 'admin analytics' },
+];
+
+test.describe('authenticated routes', () => {
+  let user: { userId: number; orgId: number };
+
+  test.beforeAll(async () => {
+    user = await ensureTestUser(TEST_USER);
+  });
+
+  for (const theme of THEMES) {
+    for (const route of AUTHENTICATED_ROUTES) {
+      test(`${route.name} passes axe in ${theme.name}`, async ({ page, context }) => {
+        // Owner and admin for every route: the point is reaching the markup, and
+        // a non-admin is redirected off /admin before anything can be scanned.
+        await authenticateAs(context, { ...user, role: 'owner', isAdmin: true });
+        await page.emulateMedia({ colorScheme: theme.colorScheme });
+        await page.goto(route.path);
+        await page.locator('h1').first().waitFor({ timeout: 15_000 });
+
+        // Same guard as the public scans: a theme that silently stopped applying
+        // would scan light twice and report two passes.
+        await expect
+          .poll(() => page.evaluate(() => document.documentElement.classList.contains('dark')), {
+            timeout: 10_000,
+          })
+          .toBe(theme.name === 'dark');
+
+        await revealLazyContent(page);
+
+        const results = await new AxeBuilder({ page }).analyze();
+        const gated = results.violations.filter((v) => GATED_IMPACTS.has(v.impact ?? ''));
+
+        expect(summarize(gated)).toEqual([]);
+      });
+    }
+  }
 });
