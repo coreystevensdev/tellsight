@@ -111,10 +111,17 @@
 }
 
 .dark {
-  --color-background: oklch(0.17 0.01 50);
+  /* Charcoal, not the warm near-black this was. At hue 50 it rendered #130E0C,
+     a brown cast, while --color-card sat on it at a perfectly neutral #161616:
+     neutral cards on a warm ground. Hue 190 puts the canvas in the same family
+     as --color-accent (190) and --color-ai-surface (185), so the teal accent
+     reads as native to the surface rather than applied over it. Chroma 0.006 is
+     a whisper, enough that a large dark field has some depth without reading as
+     blue. Contrast is unchanged: foreground 15.60, muted 6.63, teal 10.27. */
+  --color-background: oklch(0.17 0.006 190);
   --color-foreground: oklch(0.93 0 0);
   --color-primary: #2DD4BF;
-  --color-primary-foreground: oklch(0.17 0.016 50);
+  --color-primary-foreground: oklch(0.17 0.016 190);
   --color-muted: oklch(0.23 0 0);
   --color-muted-foreground: oklch(0.68 0 0);
   --color-border: oklch(0.29 0 0);
@@ -129,11 +136,11 @@
      one, so it now matches primary, success and warning: a dark label on a bright
      chip, which is the pattern dark mode already used everywhere else. */
   --color-destructive: oklch(0.66 0.2 25);
-  --color-destructive-foreground: oklch(0.17 0.016 50);
+  --color-destructive-foreground: oklch(0.17 0.016 190);
   --color-success: oklch(0.68 0.16 145);
-  --color-success-foreground: oklch(0.17 0.016 50);
+  --color-success-foreground: oklch(0.17 0.016 190);
   --color-warning: oklch(0.78 0.15 80);
-  --color-warning-foreground: oklch(0.17 0.016 50);
+  --color-warning-foreground: oklch(0.17 0.016 190);
   --color-info: oklch(0.65 0.1 230);
   --color-ring: #2DD4BF;
   --color-card: oklch(0.20 0 0);
