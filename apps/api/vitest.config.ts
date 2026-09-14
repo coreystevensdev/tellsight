@@ -51,6 +51,7 @@ export default defineConfig({
       // dev loop, pnpm -C apps/api test, was.
       'shared/agent': new URL('../../packages/shared/src/agent/index.ts', import.meta.url).pathname,
       'shared/formatting': new URL('../../packages/shared/src/formatting/index.ts', import.meta.url).pathname,
+      'shared/benchmarks': new URL('../../packages/shared/src/benchmarks/index.ts', import.meta.url).pathname,
     },
   },
 });

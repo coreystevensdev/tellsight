@@ -30,6 +30,10 @@
     "./formatting": {
       "types": "./dist/formatting/index.d.ts",
       "import": "./dist/formatting/index.js"
+    },
+    "./benchmarks": {
+      "types": "./dist/benchmarks/index.d.ts",
+      "import": "./dist/benchmarks/index.js"
     }
   },
   "scripts": {
