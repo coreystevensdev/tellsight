@@ -194,7 +194,19 @@ describe('cache miss path', () => {
 
     await handlePerOrgJob({ id: 'org-1', data: baseJobData } as never);
 
-    expect(mockRunCurationPipeline).toHaveBeenCalledWith(42, 100, undefined, null);
+    // dbAdmin, not undefined. This line asserted undefined until 2026-09-14, which
+    // pinned the reason no digest had ever sent: the client parameter defaults to
+    // the RLS-scoped db, a worker has no request context, and every row was
+    // filtered out. The mock above is branded precisely so a call using the
+    // default client is visible here, and then this assertion locked the default
+    // in. The brand is what makes the fix checkable rather than a matter of
+    // reading the source.
+    expect(mockRunCurationPipeline).toHaveBeenCalledWith(
+      42,
+      100,
+      expect.objectContaining({ __brand: 'dbAdmin' }),
+      null,
+    );
     // No prior digest, so priorContext is '' and promptVersion stays v1-digest.
     expect(mockAssemblePrompt).toHaveBeenCalledWith(
       [{ stat: { statType: 'Total' } }],
@@ -245,7 +257,7 @@ describe('cache miss path', () => {
     expect(mockRunCurationPipeline).toHaveBeenCalledWith(
       42,
       100,
-      undefined,
+      expect.objectContaining({ __brand: 'dbAdmin' }),
       expect.objectContaining({
         cashOnHand: 50000,
         cashAsOfDate: '2026-05-01',
