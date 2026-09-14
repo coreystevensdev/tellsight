@@ -25,6 +25,8 @@ import { LazyChart } from './charts/LazyChart';
 import { FilterBar, computeDateRange } from './FilterBar';
 import { EMPTY_FILTERS, customRange, filtersFromQuery, filtersToQuery, type FilterState } from './filterParams';
 import { questionForChartPoint, type ChartPoint } from './suggestedQuestions';
+import { IndustryBenchmark } from '@/components/IndustryBenchmark';
+import type { BusinessProfile } from 'shared/schemas';
 import { AiSummaryCard } from './AiSummaryCard';
 import { QaAskBox } from './QaAskBox';
 import { AiSummaryErrorBoundary } from './AiSummaryErrorBoundary';
@@ -53,6 +55,7 @@ interface DashboardShellProps {
   cachedStaleAt?: string | null;
   tier?: SubscriptionTier;
   needsOnboarding?: boolean;
+  businessType?: BusinessProfile['businessType'] | null;
 }
 
 function buildSwrKey(filters: FilterState): string {
@@ -164,7 +167,7 @@ function FilteredEmptyState({ onReset }: { onReset: () => void }) {
   );
 }
 
-export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cachedStaleAt, tier: serverTier, needsOnboarding }: DashboardShellProps) {
+export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cachedStaleAt, tier: serverTier, needsOnboarding, businessType }: DashboardShellProps) {
   const router = useRouter();
   const [showOnboarding, setShowOnboarding] = useState(needsOnboarding ?? false);
   const { setOrgName } = useSidebar();
@@ -547,6 +550,10 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
             <div ref={askBoxRef}>
               <QaAskBox datasetId={data.datasetId} metadata={metadata} askFromChart={chartAsk} />
             </div>
+
+            {/* After the interpretation, not beside the KPIs: these are someone
+                else's numbers and should not read as one of yours. */}
+            <IndustryBenchmark businessType={businessType} className="mt-6" />
           </AiSummaryErrorBoundary>
 
           {hasAnyData && hasBalance && (
