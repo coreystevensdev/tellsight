@@ -25,6 +25,11 @@ const mockCountExpiredUnfoldedProposals = vi.fn();
 const mockMarkNotified = vi.fn();
 const mockGetAgentEnabled = vi.fn();
 
+const mockTrackEventOrg = vi.fn();
+vi.mock('../../../services/analytics/trackEvent.js', () => ({
+  trackEventOrg: mockTrackEventOrg,
+}));
+
 vi.mock('bullmq', () => ({
   Queue: class { constructor(public name: string, public opts: unknown) {} },
 }));
@@ -1099,6 +1104,11 @@ describe('defensive paths', () => {
 
     expect(mockFindOrgById).not.toHaveBeenCalled();
     expect(mockSendQueueAdd).not.toHaveBeenCalled();
+    expect(mockTrackEventOrg).toHaveBeenCalledWith(
+      42,
+      'digest.skipped',
+      expect.objectContaining({ reason: 'no_active_dataset' }),
+    );
   });
 
   it('skips the send entirely when the week has no computable stats', async () => {
@@ -1116,6 +1126,13 @@ describe('defensive paths', () => {
       expect.objectContaining({ orgId: 42, outcome: 'skipped' }),
       'Per-org digest skipped: no computable stats for this week',
     );
+    // The logger line is the one a deploy erases. This is the durable half, and
+    // it is the reason the 2026-09-13 skip took a queue replay to diagnose.
+    expect(mockTrackEventOrg).toHaveBeenCalledWith(
+      42,
+      'digest.skipped',
+      expect.objectContaining({ reason: 'no_computable_stats', datasetId: 100 }),
+    );
   });
 
   it('exits cleanly when the org row is missing', async () => {
@@ -1126,6 +1143,11 @@ describe('defensive paths', () => {
 
     expect(mockGetCachedDigest).not.toHaveBeenCalled();
     expect(mockSendQueueAdd).not.toHaveBeenCalled();
+    expect(mockTrackEventOrg).toHaveBeenCalledWith(
+      42,
+      'digest.skipped',
+      expect.objectContaining({ reason: 'org_missing' }),
+    );
   });
 
   it('lets DB errors during pipeline propagate so BullMQ retries', async () => {
@@ -1135,6 +1157,9 @@ describe('defensive paths', () => {
     mockRunCurationPipeline.mockRejectedValueOnce(err);
 
     await expect(handlePerOrgJob({ id: 'org-8', data: baseJobData } as never)).rejects.toBe(err);
+    // A thrown error is BullMQ's to record, and it already survives a deploy in
+    // Redis. Emitting a skip here too would double-count it as both.
+    expect(mockTrackEventOrg).not.toHaveBeenCalled();
   });
 });
 

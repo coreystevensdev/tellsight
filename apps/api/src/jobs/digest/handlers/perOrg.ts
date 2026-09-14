@@ -1,7 +1,9 @@
 import type { Job } from 'bullmq';
 import type { BusinessProfile } from 'shared/types';
 
+import { ANALYTICS_EVENTS } from 'shared/constants';
 import { logger } from '../../../lib/logger.js';
+import { trackEventOrg } from '../../../services/analytics/trackEvent.js';
 import { dbAdmin } from '../../../lib/db.js';
 import {
   aiSummariesQueries,
@@ -90,6 +92,7 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
       { correlationId, orgId, jobId: job.id, outcome: 'skipped', durationMs: Date.now() - start },
       'Per-org digest skipped: org has no active dataset (lost between orchestrator + processing)',
     );
+    trackEventOrg(orgId, ANALYTICS_EVENTS.DIGEST_SKIPPED, { reason: 'no_active_dataset', weekStart: weekStart.toISOString() });
     return;
   }
 
@@ -99,6 +102,7 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
       { correlationId, orgId, jobId: job.id, outcome: 'skipped', durationMs: Date.now() - start },
       'Per-org digest skipped: org row missing (deleted between orchestrator + processing)',
     );
+    trackEventOrg(orgId, ANALYTICS_EVENTS.DIGEST_SKIPPED, { reason: 'org_missing', weekStart: weekStart.toISOString() });
     return;
   }
 
@@ -132,6 +136,7 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
       { correlationId, orgId, datasetId, weekStart, jobId: job.id, outcome: 'skipped', durationMs: Date.now() - start },
       'Per-org digest skipped: no computable stats for this week',
     );
+    trackEventOrg(orgId, ANALYTICS_EVENTS.DIGEST_SKIPPED, { reason: 'no_computable_stats', datasetId, weekStart: weekStart.toISOString() });
     return;
   }
 

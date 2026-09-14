@@ -17,6 +17,21 @@ export function trackEvent(
     });
 }
 
+// Org context without a user. The per-org digest stage runs before fan-out, so
+// there is no single user the outcome belongs to, and passing an arbitrary member
+// would attribute an org-level decision to whichever row sorted first.
+export function trackEventOrg(
+  orgId: number,
+  eventName: AnalyticsEventName,
+  metadata?: Record<string, unknown>,
+): void {
+  analyticsEventsQueries
+    .recordEvent(orgId, null, eventName, metadata, dbAdmin)
+    .catch((err) => {
+      logger.error({ err, orgId, eventName }, 'Failed to record org analytics event');
+    });
+}
+
 // NULL org/user: RLS excludes these rows from tenant reads; visible only via
 // dbAdmin (compliance dashboard, admin feed). Used when webhook context is lost.
 export function trackEventSystem(
