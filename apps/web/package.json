@@ -52,7 +52,7 @@
     "jsdom": "^30.0.1",
     "pino-pretty": "^13.0.0",
     "tailwindcss": "^4",
-    "typescript": "^5",
+    "typescript": "^6",
     "vitest": "^3"
   }
 }
