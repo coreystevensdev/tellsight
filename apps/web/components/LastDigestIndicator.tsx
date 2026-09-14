@@ -5,7 +5,8 @@ import { formatDistanceToNow } from 'date-fns';
 
 // Low-visibility metadata next to the AI summary card. Render nothing for the
 // anonymous + never-digested cases (silence is the correct UX); the indicator
-// is non-critical and never blocks the card render.
+// is non-critical and never blocks the card render. Anonymous is handled by not
+// fetching at all rather than by discarding the 401 that came back.
 //
 // SWR (vs raw fetch) gives us per-session dedupe, no double-fire when this
 // component remounts on mobile/desktop layout flips, and a focus-revalidation
@@ -23,8 +24,18 @@ async function fetchLastSent(key: string): Promise<string | null> {
   return json.data?.lastSentAt ?? null;
 }
 
-export function LastDigestIndicator() {
-  const { data: lastSentAt } = useSWR<string | null>(SWR_KEY, fetchLastSent, {
+interface LastDigestIndicatorProps {
+  // Required rather than defaulted, so a new call site has to decide. Matches
+  // useAgentProposals(enabled), which gates the same way for the same reason.
+  enabled: boolean;
+}
+
+export function LastDigestIndicator({ enabled }: LastDigestIndicatorProps) {
+  // A null key tells SWR not to fetch. The endpoint is auth-gated, so a
+  // signed-out visitor spent a request to be told 401 and logged a console error
+  // on every load of the public dashboard. Rendering nothing was already right;
+  // this stops the asking too.
+  const { data: lastSentAt } = useSWR<string | null>(enabled ? SWR_KEY : null, fetchLastSent, {
     revalidateOnFocus: true,
     revalidateOnReconnect: false,
     shouldRetryOnError: false,
