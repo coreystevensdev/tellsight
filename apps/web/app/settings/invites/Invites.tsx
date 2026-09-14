@@ -16,9 +16,19 @@ interface ActiveInvite {
   createdBy: number;
 }
 
+// Counted from when the list was fetched rather than from render time. Reading
+// the clock during render makes the output depend on when React happens to
+// render, so the server and the browser can disagree about the day and the
+// hydrated markup no longer matches.
+function daysUntil(iso: string, from: number) {
+  const diff = new Date(iso).getTime() - from;
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+}
+
 export default function Invites() {
   const [invite, setInvite] = useState<GeneratedInvite | null>(null);
   const [activeInvites, setActiveInvites] = useState<ActiveInvite[]>([]);
+  const [loadedAt, setLoadedAt] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -28,6 +38,7 @@ export default function Invites() {
     try {
       const { data } = await apiClient<ActiveInvite[]>('/invites');
       setActiveInvites(data);
+      setLoadedAt(Date.now());
     } catch (err) {
       if (err instanceof Error && err.message.includes('Owner access required')) {
         setForbidden(true);
@@ -78,11 +89,6 @@ export default function Invites() {
       day: 'numeric',
       year: 'numeric',
     });
-  }
-
-  function daysUntil(iso: string) {
-    const diff = new Date(iso).getTime() - Date.now();
-    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
   }
 
   if (forbidden) {
@@ -161,7 +167,7 @@ export default function Invites() {
               <li key={inv.id} className="flex items-center justify-between px-4 py-3">
                 <span className="text-xs text-muted-foreground">Invite #<span className="font-mono">{inv.id}</span></span>
                 <span className="font-mono text-xs text-muted-foreground">
-                  {daysUntil(inv.expiresAt)}d left
+                  {daysUntil(inv.expiresAt, loadedAt)}d left
                 </span>
               </li>
             ))}

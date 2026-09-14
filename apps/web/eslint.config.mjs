@@ -17,13 +17,30 @@ const eslintConfig = defineConfig([
     "coverage/**",
   ]),
   {
-    rules: {
-      // React Compiler auto-memoization is not yet enabled for this app.
-      // eslint-config-next 16.2+ ships this rule as an error; turn it off
-      // until we opt in. The patterns it flags (setState in effects,
-      // Date.now() in lazy initialisers) are all intentional.
-      'react-compiler/react-compiler': 'off',
-    },
+    // Reading storage or the clock during render is what breaks hydration here,
+    // so the effect is the fix rather than the problem. Both components paint
+    // the server's answer first and correct it once on the client.
+    files: [
+      'app/dashboard/AiSummaryCard.tsx',
+      'app/dashboard/CashBalanceStaleBanner.tsx',
+    ],
+    rules: { 'react-hooks/set-state-in-effect': 'off' },
+  },
+  {
+    // Fetch-on-mount, one hand-rolled loading flag per component. The rule is
+    // right that each costs a render pass before paint, and wrong that it is a
+    // correctness problem: every setState below runs after an await. Worth one
+    // shared data-fetching shape, not six local rewrites. Listed by name on
+    // purpose, so a seventh file tripping this still fails the build.
+    files: [
+      'app/admin/AnalyticsEventsTable.tsx',
+      'app/settings/datasets/Datasets.tsx',
+      'app/settings/integrations/Integrations.tsx',
+      'app/settings/invites/Invites.tsx',
+      'lib/hooks/useAgentProposals.ts',
+      'lib/hooks/useStatCorrections.ts',
+    ],
+    rules: { 'react-hooks/set-state-in-effect': 'off' },
   },
 ]);
 

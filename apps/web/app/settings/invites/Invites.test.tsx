@@ -122,3 +122,27 @@ describe('Invites copying', () => {
     expect(await screen.findByText(/select and copy the link manually/)).toBeInTheDocument();
   });
 });
+
+describe('Invites expiry countdown', () => {
+  // The countdown describes the list that was fetched, so it has to be measured
+  // from the fetch. Reading the clock while rendering instead makes the number
+  // depend on when React happens to re-render: the server and the browser can
+  // land on different days and the hydrated markup stops matching, and a tab
+  // left open overnight silently disagrees with itself.
+  it('does not move when the clock crosses a day and the list has not been refetched', async () => {
+    const clock = vi.spyOn(Date, 'now');
+    clock.mockReturnValue(Date.parse('2026-09-14T10:00:00Z'));
+    apiClient.mockResolvedValue({
+      data: [{ id: 1, expiresAt: '2026-09-21T10:00:00Z', createdBy: 1 }],
+    });
+
+    const { rerender } = render(<Invites />);
+    expect(await screen.findByText(/7d left/)).toBeInTheDocument();
+
+    clock.mockReturnValue(Date.parse('2026-09-15T10:00:00Z'));
+    rerender(<Invites />);
+
+    expect(screen.getByText(/7d left/)).toBeInTheDocument();
+    clock.mockRestore();
+  });
+});
