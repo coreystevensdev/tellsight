@@ -2,6 +2,10 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
+    // TypeScript 6 will not infer this when emitting (TS5011), and `tsc --noEmit`
+    // never asks, so the type-check job cannot see it missing. Only the Docker
+    // build, which actually emits, fails.
+    "rootDir": "src",
     "declaration": false,
     "declarationMap": false,
     "jsx": "react-jsx",
