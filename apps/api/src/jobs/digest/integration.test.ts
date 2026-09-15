@@ -109,6 +109,12 @@ vi.mock('../../lib/logger.js', () => ({
 vi.mock('../../lib/db.js', () => ({ dbAdmin: { __admin: true } }));
 
 vi.mock('../../db/queries/index.js', () => ({
+  datasetsQueries: {
+    // Fresh, so the no-new-data skip stays out of this suite's way. These cases
+    // are about the three-queue choreography, not about when a digest is worth
+    // sending, and a stale fixture here would silently stop testing the fan-out.
+    getDatasetById: vi.fn().mockResolvedValue({ id: 100, createdAt: new Date('2030-01-01T00:00:00Z') }),
+  },
   digestEligibilityQueries: {
     findEligibleOrgs: mockFindEligibleOrgs,
     findOrgRecipients: mockFindOrgRecipients,
