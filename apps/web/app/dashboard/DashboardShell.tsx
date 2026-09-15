@@ -43,6 +43,7 @@ import { DatasetChip } from '@/components/DatasetChip';
 import { QbReturnToast } from './QbReturnToast';
 import { LockedInsightCard } from './LockedInsightCard';
 import { CashBalanceStaleBanner } from './CashBalanceStaleBanner';
+import { DigestPausingBanner } from './DigestPausingBanner';
 import { DigestClickTracker } from './DigestClickTracker';
 import { AlertClickTracker } from './AlertClickTracker';
 import { LastDigestIndicator } from '@/components/LastDigestIndicator';
@@ -563,6 +564,10 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
               className="mt-6"
             />
           )}
+
+          {/* Signed-in only: the digest is a Pro feature and the seed dashboard
+              has no org whose digest could pause. */}
+          {hasAuth && <DigestPausingBanner digestPausesAt={data.digestPausesAt} className="mt-6" />}
 
           {needsCashBalance && (
             <LockedInsightCard

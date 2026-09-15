@@ -7,6 +7,7 @@ import { verifyAccessToken } from '../services/auth/tokenService.js';
 import { AuthenticationError } from '../lib/appError.js';
 import { aiSummariesQueries, chartsQueries, dataRowsQueries, datasetsQueries, orgsQueries } from '../db/queries/index.js';
 import { dbAdmin } from '../lib/db.js';
+import { DATASET_FRESHNESS_DAYS } from '../db/queries/digestEligibility.js';
 import { withRlsContext } from '../lib/rls.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
 import { logger } from '../lib/logger.js';
@@ -98,6 +99,19 @@ dashboardRouter.get('/dashboard/charts', async (req: Request, res: Response) => 
       const resolvedDataset = datasets.find((d) => d.id === activeDatasetId) ?? datasets[0] ?? null;
       const datasetId = resolvedDataset?.id ?? null;
       const datasetName = resolvedDataset?.name ?? null;
+      // When the weekly digest stops, computed here rather than in the browser so
+      // the date can only come from the same constant the eligibility gate uses.
+      // datasets has no updated_at, so the active dataset's created_at is the last
+      // time this org received data at all, which is exactly what the gate reads.
+      // Guarded rather than trusting the type. created_at is NOT NULL so this
+      // cannot be missing from a real row, but this is an advisory banner field
+      // on the product's main surface: a query that ever selects a narrower set
+      // of columns should cost the warning, not the whole dashboard.
+      const createdAt = resolvedDataset?.createdAt;
+      const digestPausesAt =
+        createdAt instanceof Date && !Number.isNaN(createdAt.getTime())
+          ? new Date(createdAt.getTime() + DATASET_FRESHNESS_DAYS * 86_400_000).toISOString()
+          : null;
 
       trackEvent(orgId, userId, ANALYTICS_EVENTS.DASHBOARD_VIEWED, {
         isDemo: false,
@@ -109,7 +123,7 @@ dashboardRouter.get('/dashboard/charts', async (req: Request, res: Response) => 
       logger.info({ orgId, isDemo: false, filtered: hasFilters(filters) }, 'Dashboard charts served');
 
       res.json({
-        data: { ...chartData, orgName, isDemo: false, demoState, datasetId, datasetName, datasetRowCount, hasMarginSignal },
+        data: { ...chartData, orgName, isDemo: false, demoState, datasetId, datasetName, datasetRowCount, hasMarginSignal, digestPausesAt },
       });
       return;
     } catch (err) {

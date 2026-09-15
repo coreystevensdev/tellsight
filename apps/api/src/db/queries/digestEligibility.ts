@@ -20,7 +20,13 @@ export interface EligibleOrg {
 // week over week, and over an unchanged dataset it would restate identical
 // numbers forever. The cost is that an org crossing this line goes quiet with
 // no signal to the user, which is why countOrgsPausedForStaleData exists below.
-const RECENT_DATASET_INTERVAL = sql`now() - interval '30 days'`;
+export const DATASET_FRESHNESS_DAYS = 30;
+
+// Built from the constant rather than written twice, so the dashboard warning
+// that tells a user their digest is about to pause cannot drift from the gate
+// that actually pauses it. sql.raw is safe here: the input is this module's own
+// integer, never anything a request supplies. The emitted SQL is unchanged.
+const RECENT_DATASET_INTERVAL = sql`now() - ${sql.raw(`interval '${DATASET_FRESHNESS_DAYS} days'`)}`;
 
 type DrizzleClient = typeof dbAdmin;
 

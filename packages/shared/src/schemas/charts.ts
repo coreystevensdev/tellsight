@@ -53,4 +53,8 @@ export const chartDataSchema = z.object({
   // decide whether to show the "Enable Break-Even" locked card without waiting
   // on the AI summary to stream.
   hasMarginSignal: z.boolean().optional(),
+  // When the weekly digest stops, because nothing new has arrived. Computed
+  // server-side from the same constant the eligibility gate uses, so the
+  // browser never carries a second copy of the rule.
+  digestPausesAt: z.string().nullable().optional(),
 });
