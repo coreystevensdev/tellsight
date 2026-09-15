@@ -112,6 +112,13 @@ jobs:
           QUICKBOOKS_CLIENT_SECRET: ${{ secrets.QUICKBOOKS_CLIENT_SECRET }}
           QUICKBOOKS_REDIRECT_URI: ${{ secrets.QUICKBOOKS_REDIRECT_URI }}
           QUICKBOOKS_ENVIRONMENT: ${{ secrets.QUICKBOOKS_ENVIRONMENT }}
+          SHOPIFY_CLIENT_ID: ${{ secrets.SHOPIFY_CLIENT_ID }}
+          SHOPIFY_CLIENT_SECRET: ${{ secrets.SHOPIFY_CLIENT_SECRET }}
+          SHOPIFY_REDIRECT_URI: ${{ secrets.SHOPIFY_REDIRECT_URI }}
+          SQUARE_CLIENT_ID: ${{ secrets.SQUARE_CLIENT_ID }}
+          SQUARE_CLIENT_SECRET: ${{ secrets.SQUARE_CLIENT_SECRET }}
+          SQUARE_REDIRECT_URI: ${{ secrets.SQUARE_REDIRECT_URI }}
+          SQUARE_ENVIRONMENT: ${{ secrets.SQUARE_ENVIRONMENT }}
           ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
           ECR_API_REPO: ${{ secrets.ECR_API_REPO }}
           ECR_WEB_REPO: ${{ secrets.ECR_WEB_REPO }}
@@ -164,14 +171,26 @@ jobs:
               ("RESEND_WEBHOOK_SECRET", os.environ['RESEND_WEBHOOK_SECRET']),
               ("METRICS_TOKEN", os.environ['METRICS_TOKEN']),
               ("QUICKBOOKS_ENVIRONMENT", os.environ.get('QUICKBOOKS_ENVIRONMENT') or 'sandbox'),
+              ("SQUARE_ENVIRONMENT", os.environ.get('SQUARE_ENVIRONMENT') or 'sandbox'),
           ]
 
-          # QuickBooks is fully optional (isQbConfigured() gates the connector
-          # off when any is missing). config.ts's .optional() only skips
-          # validation when the key is absent entirely -- an empty string from
-          # an unset GitHub secret still fails z.string().url()/.length(64), so
-          # these are omitted rather than written as blank lines.
-          for key in ("QUICKBOOKS_CLIENT_ID", "QUICKBOOKS_CLIENT_SECRET", "QUICKBOOKS_REDIRECT_URI", "ENCRYPTION_KEY"):
+          # Every connector is fully optional (isQbConfigured / isShopifyConfigured
+          # / isSquareConfigured gate each one off when any of its keys is
+          # missing). config.ts's .optional() only skips validation when the key
+          # is absent entirely -- an empty string from an unset GitHub secret
+          # still fails z.string().url()/.length(64), so these are omitted rather
+          # than written as blank lines.
+          #
+          # Shopify and Square were absent from this list until 2026-09-15, which
+          # meant both connectors could ship, deploy and still never be turned on:
+          # the secrets had nowhere to travel. ENCRYPTION_KEY is shared by all
+          # three, since it encrypts the stored tokens.
+          for key in (
+              "QUICKBOOKS_CLIENT_ID", "QUICKBOOKS_CLIENT_SECRET", "QUICKBOOKS_REDIRECT_URI",
+              "SHOPIFY_CLIENT_ID", "SHOPIFY_CLIENT_SECRET", "SHOPIFY_REDIRECT_URI",
+              "SQUARE_CLIENT_ID", "SQUARE_CLIENT_SECRET", "SQUARE_REDIRECT_URI",
+              "ENCRYPTION_KEY",
+          ):
               value = os.environ.get(key, "")
               if value:
                   env_pairs.append((key, value))
@@ -236,6 +255,15 @@ jobs:
           # list baked into browser binaries, and getting back off it takes
           # months, so it is a decision to make on purpose rather than a default
           # to inherit from a snippet.
+          # The connector callbacks are the one browser-facing path that has to
+          # reach Express directly: the provider redirects the browser here and
+          # Next.js has no route file for it. This was pinned to quickbooks until
+          # 2026-09-15, so Shopify and Square both shipped with a callback that
+          # 404'd in production while returning 501 correctly everywhere else.
+          # A prefix rather than three literals, since the next connector would
+          # otherwise fail the same silent way. Safe as a prefix because Express
+          # mounts nothing but the callbacks at /integrations, and Next.js owns
+          # /settings/integrations rather than the bare prefix.
           caddyfile = f"""{domain} {{
               header {{
                   Strict-Transport-Security "max-age=31536000; includeSubDomains"
@@ -243,7 +271,7 @@ jobs:
               handle /webhooks/* {{
                   reverse_proxy api:3001
               }}
-              handle /integrations/quickbooks/callback {{
+              handle /integrations/* {{
                   reverse_proxy api:3001
               }}
               reverse_proxy web:3000
