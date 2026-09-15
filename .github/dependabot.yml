@@ -28,6 +28,14 @@ updates:
       # by accident. Drop this entry when someone picks the migration up.
       - dependency-name: "zod"
         update-types: ["version-update:semver-major"]
+      # ESLint 10 is blocked upstream. eslint-plugin-react, which arrives via
+      # eslint-config-next, still calls context.getFilename() inside its
+      # display-name rule, and ESLint 10 removed it:
+      #   TypeError: contextOrFilename.getFilename is not a function
+      # Nothing here fixes that. Drop this when eslint-config-next ships a
+      # plugin set that runs on 10.
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
