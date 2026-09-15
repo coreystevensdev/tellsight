@@ -32,18 +32,16 @@ const eslintConfig = defineConfig([
     // correctness problem: every setState below runs after an await. Listed by
     // name on purpose, so a new file tripping this still fails the build.
     //
-    // Three of the original six moved to useResource. These did not, and each was
-    // tried rather than assumed. Datasets and Integrations are not read-only
-    // resources; they are locally edited lists synced from a server, and putting
-    // the read behind a hook leaves the writes needing an override layer longer
-    // than the useState it replaced. Datasets also ends up with an undismissable
-    // error banner, because the dismiss button cannot clear a derived error.
-    // Both have a test covering that. useAgentProposals owns optimistic removal
-    // with rollback plus its own abort bookkeeping.
+    // Four of the original six moved to useResource. These two did not, and both
+    // were tried rather than assumed. Neither is a read-only resource; they are
+    // locally edited lists synced from a server, so putting the read behind a
+    // hook leaves the writes needing an override layer longer than the useState
+    // it replaced. Datasets also ends up with an undismissable error banner,
+    // because the dismiss button cannot clear a derived error, and there is a
+    // test for exactly that.
     files: [
       'app/settings/datasets/Datasets.tsx',
       'app/settings/integrations/Integrations.tsx',
-      'lib/hooks/useAgentProposals.ts',
     ],
     rules: { 'react-hooks/set-state-in-effect': 'off' },
   },

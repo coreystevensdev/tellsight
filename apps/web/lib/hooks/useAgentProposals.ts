@@ -1,6 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+
+import { useResource } from './useResource';
 import type { AgentProposalResponse } from 'shared/agent';
 
 export type AgentProposalsStatus = 'idle' | 'loading' | 'error' | 'done';
@@ -20,9 +22,7 @@ const SILENT_STATUSES = new Set([401, 403]);
 // enabled is false for logged-out dashboard visits, skipping the request
 // entirely rather than firing it and discarding a guaranteed 401.
 export function useAgentProposals(enabled: boolean): UseAgentProposalsResult {
-  const [status, setStatus] = useState<AgentProposalsStatus>('idle');
-  const [proposals, setProposals] = useState<AgentProposalResponse[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [resolveError, setResolveError] = useState<string | null>(null);
 
   const resolveControllers = useRef<Set<AbortController>>(new Set());
   const pendingIdsRef = useRef<Set<number>>(new Set());
@@ -37,38 +37,35 @@ export function useAgentProposals(enabled: boolean): UseAgentProposalsResult {
     enabledRef.current = enabled;
   });
 
+  const fetched = useResource(enabled ? 'agent-proposals' : null, async (signal) => {
+    const res = await fetch('/api/proposals', { signal, credentials: 'same-origin' });
+    if (SILENT_STATUSES.has(res.status)) return [];
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error?.message ?? `Request failed (${res.status})`);
+    return (body.data as AgentProposalResponse[]) ?? [];
+  });
+
+  // Ids this session has resolved, hidden from the list rather than spliced out
+  // of it. Filtering keeps the remaining rows in the order the server sent them,
+  // which is why a rollback does not have to re-sort anything to put one back.
+  // Tagged with the fetched array it was built against, so a reload starts clean.
+  const [resolved, setResolved] = useState<{ base: AgentProposalResponse[] | null; ids: number[] }>({
+    base: null,
+    ids: [],
+  });
+  const hidden = resolved.base === fetched.data ? resolved.ids : [];
+  const proposals = (fetched.data ?? []).filter((p) => !hidden.includes(p.id));
+  const status: AgentProposalsStatus = fetched.status;
+  const error = resolveError ?? fetched.error;
+
+  const hide = (id: number) => setResolved({ base: fetched.data, ids: [...hidden, id] });
+  const unhide = (id: number) => setResolved({ base: fetched.data, ids: hidden.filter((x) => x !== id) });
+
+  // enabled flipping false has to stop the in-flight resolves too. The fetch
+  // itself is already aborted by useResource's own cleanup.
   useEffect(() => {
-    if (!enabled) {
-      setStatus('idle');
-      setProposals([]);
-      setError(null);
-      resolveControllers.current.forEach((controller) => controller.abort());
-      return;
-    }
-
-    const controller = new AbortController();
-    setStatus('loading');
-    setError(null);
-
-    fetch('/api/proposals', { signal: controller.signal, credentials: 'same-origin' })
-      .then(async (res) => {
-        if (SILENT_STATUSES.has(res.status)) {
-          setProposals([]);
-          setStatus('done');
-          return;
-        }
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(body?.error?.message ?? `Request failed (${res.status})`);
-        setProposals((body.data as AgentProposalResponse[]) ?? []);
-        setStatus('done');
-      })
-      .catch((err) => {
-        if (err instanceof DOMException && err.name === 'AbortError') return;
-        setError(err instanceof Error ? err.message : 'Something went wrong');
-        setStatus('error');
-      });
-
-    return () => controller.abort();
+    if (enabled) return;
+    resolveControllers.current.forEach((controller) => controller.abort());
   }, [enabled]);
 
   useEffect(() => {
@@ -86,13 +83,15 @@ export function useAgentProposals(enabled: boolean): UseAgentProposalsResult {
     };
   }, []);
 
-  const resolveProposal = useCallback(async (id: number, nextStatus: 'approved' | 'rejected') => {
+  // Not memoised. It only ever reaches click handlers, never a dependency array,
+  // and the old useCallback listed [proposals] so it was rebuilt on nearly every
+  // render anyway.
+  async function resolveProposal(id: number, nextStatus: 'approved' | 'rejected') {
     // Dedup key is id alone: only one PATCH can ever resolve a proposal, so
     // a second call for this id is rejected outright, not collapsed by status.
     if (pendingIdsRef.current.has(id)) return false;
 
-    const removed = proposals.find((p) => p.id === id);
-    setProposals((cur) => cur.filter((p) => p.id !== id));
+    hide(id);
 
     const controller = new AbortController();
     resolveControllers.current.add(controller);
@@ -126,16 +125,14 @@ export function useAgentProposals(enabled: boolean): UseAgentProposalsResult {
       if (err instanceof DOMException && err.name === 'AbortError') return false;
       if (!enabledRef.current || !mountedRef.current) return false;
 
-      if (removed) {
-        setProposals((cur) => [...cur, removed].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)));
-      }
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      unhide(id);
+      setResolveError(err instanceof Error ? err.message : 'Something went wrong');
       return false;
     } finally {
       resolveControllers.current.delete(controller);
       pendingIdsRef.current.delete(id);
     }
-  }, [proposals]);
+  }
 
   return { status, proposals, error, resolveProposal };
 }
