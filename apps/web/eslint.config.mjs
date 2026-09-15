@@ -29,9 +29,17 @@ const eslintConfig = defineConfig([
   {
     // Fetch-on-mount, one hand-rolled loading flag per component. The rule is
     // right that each costs a render pass before paint, and wrong that it is a
-    // correctness problem: every setState below runs after an await. Worth one
-    // shared data-fetching shape, not six local rewrites. Listed by name on
-    // purpose, so a seventh file tripping this still fails the build.
+    // correctness problem: every setState below runs after an await. Listed by
+    // name on purpose, so a new file tripping this still fails the build.
+    //
+    // Three of the original six moved to useResource. These did not, and each was
+    // tried rather than assumed. Datasets and Integrations are not read-only
+    // resources; they are locally edited lists synced from a server, and putting
+    // the read behind a hook leaves the writes needing an override layer longer
+    // than the useState it replaced. Datasets also ends up with an undismissable
+    // error banner, because the dismiss button cannot clear a derived error.
+    // Both have a test covering that. useAgentProposals owns optimistic removal
+    // with rollback plus its own abort bookkeeping.
     files: [
       'app/settings/datasets/Datasets.tsx',
       'app/settings/integrations/Integrations.tsx',
