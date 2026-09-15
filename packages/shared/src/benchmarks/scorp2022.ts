@@ -21,8 +21,15 @@ export const SCORP_SOURCE = {
 // here; health care is 34.9% against 11.4%. That difference is the owner's pay,
 // and an S-corp owner measured against 39.7% would conclude something untrue
 // about their own business.
+//
+// Partnerships and multi-member LLCs file Form 1065 and get no table of their
+// own here. Checked against SOI partnership Table 1 for TY2023: they land beside
+// these figures rather than between them (services 18.8%, health care 9.6%,
+// construction 5.9%), because guaranteed payments to partners are deducted the
+// same way a salary is. A third table would restate this one, and teamSize
+// cannot tell a partnership from an S-corp anyway.
 export const SCORP_ENTITY_CAVEAT =
-  'These are S-corporations, whose owners are paid a salary that is already deducted here. If you do not pay yourself through payroll, your own margin is not measuring the same thing.';
+  'These are S-corporations, including LLCs taxed as one, whose owners are paid a salary that is already deducted here. If you take draws instead of payroll, your own margin is not measuring the same thing.';
 
 export interface EmployerBenchmark {
   // The exact column label in the published table, so any figure can be checked

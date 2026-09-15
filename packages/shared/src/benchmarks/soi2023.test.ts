@@ -83,5 +83,10 @@ describe('SOI 2023 benchmarks', () => {
   it('carries the owner-compensation caveat with the data', () => {
     expect(SOI_MARGIN_CAVEAT).toMatch(/owner/i);
     expect(SOI_MARGIN_CAVEAT).toMatch(/salary|pay/i);
+    // An LLC is a tax election, not a population of its own, so the caveat has
+    // to name it. And it hedges rather than asserts: teamSize is a proxy, so a
+    // reader can be routed to the wrong table without anything knowing.
+    expect(SOI_MARGIN_CAVEAT).toMatch(/single-member LLC/i);
+    expect(SOI_MARGIN_CAVEAT).toMatch(/if you/i);
   });
 });
