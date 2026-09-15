@@ -281,6 +281,13 @@
       "when": 1783209600000,
       "tag": "0039_add-analytics-ai-usage-index",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1783296000000,
+      "tag": "0040_add-stale-nudge-sent-at",
+      "breakpoints": true
     }
   ]
 }

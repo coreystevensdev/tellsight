@@ -16,10 +16,12 @@ import { env } from '../../config.js';
 export const QUEUE_ORCHESTRATOR = 'digest-orchestrator';
 export const QUEUE_ORG = 'digest-org';
 export const QUEUE_SEND = 'digest-send';
+export const QUEUE_NUDGE = 'digest-nudge';
 
 export const JOB_ORCHESTRATOR = 'digest-orchestrator';
 export const JOB_PREFIX_ORG = 'digest-org';
 export const JOB_PREFIX_SEND = 'digest-send';
+export const JOB_PREFIX_NUDGE = 'digest-nudge';
 
 export interface OrchestratorJobData {
   correlationId: string;
@@ -43,6 +45,19 @@ const FALLBACK_SUBJECT_LINE = 'Your weekly digest';
 // against the same rule sendJobDataSchema uses, instead of re-deriving it.
 export const subjectLineSchema = z.string().trim().min(1);
 
+// One job per paused org, fanned out to its members inside the handler. The
+// dataset timestamp travels with the job so the email can say how long it has
+// been, without the handler going back to the database for a row the sweep
+// already read.
+export const nudgeJobDataSchema = z.object({
+  orgId: z.number().int().finite(),
+  orgName: z.string(),
+  datasetCreatedAt: z.union([z.string(), z.date()]).transform((v) => new Date(v)),
+  correlationId: z.string(),
+});
+
+export type NudgeJobData = z.infer<typeof nudgeJobDataSchema>;
+
 export const sendJobDataSchema = z.object({
   userId: z.number().int().finite(),
   orgId: z.number().int().finite(),
@@ -65,6 +80,7 @@ export type SendJobData = z.infer<typeof sendJobDataSchema>;
 let orchestratorQueue: Queue | null = null;
 let orgQueue: Queue | null = null;
 let sendQueue: Queue | null = null;
+let nudgeQueue: Queue | null = null;
 
 export function connectionOptions(): ConnectionOptions {
   const url = new URL(env.REDIS_URL);
@@ -99,17 +115,26 @@ export function getSendQueue(): Queue {
   return sendQueue;
 }
 
+export function getNudgeQueue(): Queue {
+  if (!nudgeQueue) {
+    nudgeQueue = new Queue(QUEUE_NUDGE, { connection: connectionOptions() });
+  }
+  return nudgeQueue;
+}
+
 // Test-only: drop singletons so suite teardown can re-init with fresh mocks.
 export function resetQueues(): void {
   orchestratorQueue = null;
   orgQueue = null;
   sendQueue = null;
+  nudgeQueue = null;
 }
 
 export async function closeQueues(): Promise<void> {
   const tasks: Promise<unknown>[] = [];
   if (orchestratorQueue) tasks.push(orchestratorQueue.close());
   if (orgQueue) tasks.push(orgQueue.close());
+  if (nudgeQueue) tasks.push(nudgeQueue.close());
   if (sendQueue) tasks.push(sendQueue.close());
   await Promise.allSettled(tasks);
   resetQueues();

@@ -31,6 +31,7 @@ import {
   initDigestOrchestratorWorker,
   initDigestOrgWorker,
   initDigestSendWorker,
+  initDigestNudgeWorker,
   shutdownDigestCron,
   shutdownDigestWorkers,
   closeDigestQueues,
@@ -159,6 +160,7 @@ async function start() {
   initDigestOrchestratorWorker();
   initDigestOrgWorker();
   initDigestSendWorker();
+  initDigestNudgeWorker();
   await initDigestCronJob();
 
   // Alerts pipeline: same three-queue shape as digest (orchestrator, evaluate-org,

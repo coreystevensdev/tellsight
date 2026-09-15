@@ -137,11 +137,25 @@ export async function countOrgsPausedForStaleData(asOf: Date = new Date()): Prom
   return row?.n ?? 0;
 }
 
+// Shared by the count and the nudge sweep for the same reason optedInMemberExists
+// is shared: these two must describe the same population, or the number reported
+// and the orgs emailed drift apart with nothing to catch it. The one that matters
+// is `lt` on created_at, not `gte`. Backwards yields a plausible number over the
+// wrong orgs.
+function pausedForStaleData(client: DrizzleClient, asOf: Date) {
+  return and(
+    or(eq(subscriptions.status, 'active'), canceledWithGracePeriod(asOf)),
+    eq(subscriptions.plan, 'pro'),
+    isNotNull(orgs.activeDatasetId),
+    lt(datasets.createdAt, RECENT_DATASET_INTERVAL),
+    optedInMemberExists(client),
+  );
+}
+
 /**
  * Split out for the same reason buildEligibilityQuery is: tests assert the
  * emitted SQL via `.toSQL()` rather than mocking a client that would accept any
- * predicate. The one that matters is `lt` on created_at, not `gte`. Getting that
- * backwards yields a plausible number that counts the wrong orgs.
+ * predicate.
  */
 export function buildPausedForStaleDataQuery(client: DrizzleClient, asOf: Date = new Date()) {
   return client
@@ -149,15 +163,56 @@ export function buildPausedForStaleDataQuery(client: DrizzleClient, asOf: Date =
     .from(orgs)
     .innerJoin(subscriptions, eq(subscriptions.orgId, orgs.id))
     .innerJoin(datasets, eq(datasets.id, orgs.activeDatasetId))
+    .where(pausedForStaleData(client, asOf));
+}
+
+/**
+ * The paused orgs that have not been told yet. Same population as the count
+ * above plus one condition: either they have never been nudged, or the nudge
+ * predates the dataset they are currently sitting on.
+ *
+ * That comparison is what makes this self-resetting. Uploading mints a new
+ * datasets row with a newer created_at, so an org that recovers and goes stale
+ * again months later is nudged again, and nothing has to clear the column in
+ * between. A bare boolean flag would need a reset hook on every ingest path.
+ */
+export function buildStaleNudgeQuery(client: DrizzleClient, asOf: Date = new Date(), limit = 500) {
+  return client
+    .select({ id: orgs.id, name: orgs.name, datasetCreatedAt: datasets.createdAt })
+    .from(orgs)
+    .innerJoin(subscriptions, eq(subscriptions.orgId, orgs.id))
+    .innerJoin(datasets, eq(datasets.id, orgs.activeDatasetId))
     .where(
       and(
-        or(eq(subscriptions.status, 'active'), canceledWithGracePeriod(asOf)),
-        eq(subscriptions.plan, 'pro'),
-        isNotNull(orgs.activeDatasetId),
-        lt(datasets.createdAt, RECENT_DATASET_INTERVAL),
-        optedInMemberExists(client),
+        pausedForStaleData(client, asOf),
+        or(isNull(orgs.staleNudgeSentAt), lt(orgs.staleNudgeSentAt, datasets.createdAt)),
       ),
-    );
+    )
+    .orderBy(desc(orgs.id))
+    .limit(limit);
+}
+
+export interface StaleNudgeOrg {
+  id: number;
+  name: string;
+  datasetCreatedAt: Date;
+}
+
+/** Paying orgs whose digest has stopped and who have not been told about it. */
+export async function findOrgsNeedingStaleNudge(
+  asOf: Date = new Date(),
+  limit = 500,
+): Promise<StaleNudgeOrg[]> {
+  return buildStaleNudgeQuery(dbAdmin, asOf, limit);
+}
+
+/**
+ * Stamped after the sends for an org resolve, not before. A crash mid-fan-out
+ * leaves the column untouched, so next week's sweep retries the whole org: a
+ * duplicate nudge is a far better failure than a silent one.
+ */
+export async function markStaleNudgeSent(orgId: number, at: Date = new Date()): Promise<void> {
+  await dbAdmin.update(orgs).set({ staleNudgeSentAt: at }).where(eq(orgs.id, orgId));
 }
 
 export interface DigestRecipient {
@@ -217,4 +272,31 @@ export async function findOrgRecipients(orgId: number): Promise<DigestRecipient[
     );
 
   return rows;
+}
+
+/**
+ * Members to tell that the digest has stopped. Cadence is respected, since a
+ * user who turned the digest off did not ask to hear about it pausing.
+ *
+ * Deliberately not findOrgRecipients. That one carries the digest's own
+ * last_sent_at dedupe windows, and borrowing them here would skip a member of
+ * this org because some other org sent them a digest three days ago, which has
+ * nothing to do with whether this org's data went stale.
+ */
+export function buildNudgeRecipientsQuery(client: DrizzleClient, orgId: number) {
+  return client
+    .select({ userId: users.id, email: users.email, name: users.name })
+    .from(userOrgs)
+    .innerJoin(users, eq(users.id, userOrgs.userId))
+    .leftJoin(digestPreferences, eq(digestPreferences.userId, userOrgs.userId))
+    .where(
+      and(
+        eq(userOrgs.orgId, orgId),
+        or(isNull(digestPreferences.cadence), ne(digestPreferences.cadence, 'off')),
+      ),
+    );
+}
+
+export async function findOrgNudgeRecipients(orgId: number): Promise<DigestRecipient[]> {
+  return buildNudgeRecipientsQuery(dbAdmin, orgId);
 }

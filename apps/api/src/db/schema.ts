@@ -36,6 +36,10 @@ export const orgs = pgTable('orgs', {
   businessProfile: jsonb('business_profile'),
   // Circular FK with datasets, constraint lives in the migration, not here
   activeDatasetId: integer('active_dataset_id'),
+  // When this org was last told its weekly digest had stopped. Read against the
+  // active dataset's created_at rather than as a bare flag, so uploading resets
+  // it without anything having to clear the column.
+  staleNudgeSentAt: timestamp('stale_nudge_sent_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
