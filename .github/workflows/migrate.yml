@@ -21,6 +21,12 @@ on:
         required: true
         type: string
 
+# Shares deploy-aws-production's group. A migration running while a deploy is
+# rewriting /opt/tellsight is the same race with worse consequences.
+concurrency:
+  group: deploy-aws-production
+  cancel-in-progress: false
+
 permissions:
   id-token: write
   contents: read
