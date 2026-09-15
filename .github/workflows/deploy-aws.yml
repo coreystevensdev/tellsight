@@ -6,6 +6,19 @@ on:
     branches: [main]
     types: [completed]
 
+# One deploy at a time, per instance. Without this, merging a few PRs in quick
+# succession starts a deploy per CI run and they race on the same box: on
+# 2026-09-14 seven runs for the same sha started inside 106 seconds, five died
+# on `mv: cannot move '.deploy-history.new'` because another run had already
+# moved it, and production ended up pinned to an older build than main.
+#
+# cancel-in-progress stays false on purpose. Cancelling a run mid-SSM would
+# leave the instance half-written. GitHub keeps only one pending run per group,
+# so a burst collapses to "the one running plus the newest" by itself.
+concurrency:
+  group: deploy-aws-production
+  cancel-in-progress: false
+
 permissions:
   id-token: write
   contents: read
@@ -268,7 +281,7 @@ jobs:
               # because ECR's lifecycle policy keeps 10 tagged images: recording
               # more would promise a rollback the registry cannot serve.
               "cd /opt/tellsight && ([ -f deploy-history ] || grep -o 'sha-[0-9a-f]*' docker-compose.override.yml | head -1 > deploy-history || true)",
-              f"cd /opt/tellsight && printf '%s\\n' 'sha-{short}' | cat - deploy-history 2>/dev/null | awk 'NF && !seen[$0]++' | head -10 > .deploy-history.new && mv .deploy-history.new deploy-history",
+              f"cd /opt/tellsight && printf '%s\\n' 'sha-{short}' | cat - deploy-history 2>/dev/null | awk 'NF && !seen[$0]++' | head -10 > .deploy-history.$$ && mv .deploy-history.$$ deploy-history",
               f"printf '%s' '{override_b64}' | base64 -d > /opt/tellsight/docker-compose.override.yml",
               f"aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin {ecr_host}",
               # No age filter. Pinning to sha tags means superseded images stay
