@@ -4,7 +4,7 @@ import express from 'express';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import pinoHttp from 'pino-http';
-import { env, isQbConfigured, isShopifyConfigured } from './config.js';
+import { env, isQbConfigured, isShopifyConfigured, isSquareConfigured } from './config.js';
 import { logger } from './lib/logger.js';
 import { correlationId } from './middleware/correlationId.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -26,6 +26,8 @@ import { initSyncWorker, shutdownWorker } from './services/integrations/worker.j
 import { initScheduler } from './services/integrations/scheduler.js';
 import { initSyncWorker as initShopifySyncWorker, shutdownWorker as shutdownShopifyWorker } from './services/integrations/shopify/worker.js';
 import { initScheduler as initShopifyScheduler } from './services/integrations/shopify/scheduler.js';
+import { initSyncWorker as initSquareSyncWorker, shutdownWorker as shutdownSquareWorker } from './services/integrations/square/worker.js';
+import { initScheduler as initSquareScheduler } from './services/integrations/square/scheduler.js';
 import {
   initDigestCronJob,
   initDigestOrchestratorWorker,
@@ -154,6 +156,13 @@ async function start() {
     logger.info({}, 'Shopify integration not configured, sync worker disabled');
   }
 
+  if (isSquareConfigured(env)) {
+    initSquareSyncWorker();
+    await initSquareScheduler();
+  } else {
+    logger.info({}, 'Square integration not configured, sync worker disabled');
+  }
+
   // Email digest pipeline: cron registration is unconditional once the email
   // provider is wired (validated at boot by config.ts refines). Three workers
   // bind to three queues (orchestrator, org, send) with their own concurrency.
@@ -217,6 +226,7 @@ async function start() {
         await closeStatCorrectionsQueue();
         await shutdownWorker();
         await shutdownShopifyWorker();
+        await shutdownSquareWorker();
         await redis.quit();
         await queryClient.end({ timeout: 5 });
         await adminClient.end({ timeout: 5 });

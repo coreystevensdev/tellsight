@@ -12,14 +12,23 @@ vi.mock('@/lib/api-client', () => ({ apiClient: (...args: unknown[]) => apiClien
 import Integrations from './Integrations';
 
 function status(path: string) {
-  return String(path).includes('quickbooks') ? 'quickbooks' : 'shopify';
+  const p = String(path);
+  if (p.includes('quickbooks')) return 'quickbooks';
+  if (p.includes('square')) return 'square';
+  return 'shopify';
 }
 
-/** Answers both status calls, then hands later calls to `then`. */
-function respondWith(qb: unknown, shopify: unknown, then?: (path: string) => unknown) {
+/** Answers every status call, then hands later calls to `then`. */
+function respondWith(
+  qb: unknown,
+  shopify: unknown,
+  then?: (path: string) => unknown,
+  square: unknown = { connected: false },
+) {
   apiClient.mockImplementation(async (path: string) => {
     if (path.endsWith('/status')) {
-      return { data: status(path) === 'quickbooks' ? qb : shopify };
+      const which = status(path);
+      return { data: which === 'quickbooks' ? qb : which === 'square' ? square : shopify };
     }
     if (then) return then(path);
     return { data: {} };
@@ -48,7 +57,7 @@ describe('Integrations loading', () => {
 
     render(<Integrations />);
 
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(3));
   });
 
   // Each status call has its own catch returning { connected: false }. Without
@@ -63,10 +72,12 @@ describe('Integrations loading', () => {
     render(<Integrations />);
 
     await waitFor(() => expect(screen.getByRole('heading', { name: /Shopify/ })).toBeInTheDocument());
-    // Shopify is connected, so it offers Sync and Disconnect; QuickBooks fell
-    // back to disconnected and offers Connect.
-    expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Sync now' })).toBeInTheDocument();
+    // Scoped per section rather than globally: the others are connected and
+    // offer Sync, QuickBooks fell back to disconnected and offers Connect, and
+    // the point is that its failure did not take them with it.
+    expect(within(section(/QuickBooks/)).getByRole('button', { name: 'Connect' })).toBeInTheDocument();
+    expect(within(section(/Shopify/)).getByRole('button', { name: 'Sync now' })).toBeInTheDocument();
+    expect(within(section(/^Square$/)).getByRole('button', { name: 'Sync now' })).toBeInTheDocument();
   });
 
   it('offers sync and disconnect for a connected provider', async () => {
@@ -100,7 +111,7 @@ describe('Integrations actions', () => {
 
     const user = userEvent.setup();
     render(<Integrations />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(3));
     await user.click(within(section(/QuickBooks/)).getByRole('button', { name: 'Connect' }));
 
     await waitFor(() =>
@@ -117,7 +128,7 @@ describe('Integrations actions', () => {
 
     const user = userEvent.setup();
     render(<Integrations />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(3));
     await user.type(screen.getByPlaceholderText('your-store.myshopify.com'), '  my-store.myshopify.com  ');
     await user.click(within(section(/Shopify/)).getByRole('button', { name: 'Connect' }));
 
@@ -171,7 +182,7 @@ describe('Integrations actions', () => {
 
     const user = userEvent.setup();
     render(<Integrations />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(3));
     await user.click(within(section(/QuickBooks/)).getByRole('button', { name: 'Connect' }));
 
     expect(await screen.findByText('Intuit is unavailable')).toBeInTheDocument();
