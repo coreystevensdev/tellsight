@@ -29,22 +29,32 @@ jobs:
         with:
           fetch-depth: 1
 
-      # A deploy mid-flight legitimately shows an older sha for a couple of
-      # minutes. Skipping is the whole reason this does not share the deploy's
-      # concurrency group: queueing behind a deploy would let a drift check
-      # displace a pending one.
-      - name: Skip while a deploy is running
+      # Only compare once main's newest commit has actually finished deploying.
+      # The first version of this gate only skipped while a deploy was running,
+      # which reported drift in the window between the merge and the deploy
+      # starting: CI still had to pass first. Asking for a completed deploy run
+      # for this exact sha covers all three states at once, no deploy created
+      # yet, one in flight, or one finished.
+      #
+      # A deploy that finished and failed is not skipped. Production really is
+      # behind in that case, which is the thing worth saying out loud.
+      #
+      # Skipping is also why this does not share the deploy's concurrency group:
+      # queueing behind a deploy would let a drift check displace a pending one.
+      - name: Wait for this commit to have finished deploying
         id: gate
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          running=$(gh run list --workflow=deploy-aws.yml --status in_progress --limit 1 --json databaseId -q 'length')
-          queued=$(gh run list --workflow=deploy-aws.yml --status queued --limit 1 --json databaseId -q 'length')
-          if [ "$running" != "0" ] || [ "$queued" != "0" ]; then
-            echo "a deploy is in flight, nothing to compare yet"
+          status=$(gh run list --workflow=deploy-aws.yml --limit 20 \
+            --json headSha,status \
+            -q "[.[] | select(.headSha == \"$GITHUB_SHA\")] | first | .status // \"none\"")
+          if [ "$status" != "completed" ]; then
+            echo "no completed deploy for ${GITHUB_SHA:0:7} yet (status: $status), nothing to compare"
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
+            echo "deploy for ${GITHUB_SHA:0:7} has finished, comparing"
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
