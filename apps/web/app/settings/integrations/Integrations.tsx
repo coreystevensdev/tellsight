@@ -16,6 +16,16 @@ interface QbStatus {
   connectedAt?: string;
 }
 
+interface SquareStatus {
+  connected: boolean;
+  provider?: string;
+  merchantId?: string;
+  syncStatus?: string;
+  lastSyncedAt?: string;
+  syncError?: string;
+  connectedAt?: string;
+}
+
 interface ShopifyStatus {
   connected: boolean;
   provider?: string;
@@ -29,24 +39,32 @@ interface ShopifyStatus {
 export default function Integrations() {
   const [qb, setQb] = useState<QbStatus | null>(null);
   const [shopify, setShopify] = useState<ShopifyStatus | null>(null);
+  const [square, setSquare] = useState<SquareStatus | null>(null);
   const [shopDomain, setShopDomain] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [qbAction, setQbAction] = useState<'connecting' | 'syncing' | 'disconnecting' | null>(null);
   const [shopifyAction, setShopifyAction] = useState<'connecting' | 'syncing' | 'disconnecting' | null>(null);
+  const [squareAction, setSquareAction] = useState<'connecting' | 'syncing' | 'disconnecting' | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [qbRes, shopifyRes] = await Promise.all([
+      const [qbRes, shopifyRes, squareRes] = await Promise.all([
         apiClient<QbStatus>('/integrations/quickbooks/status').catch(() => ({
           data: { connected: false } as QbStatus,
         })),
         apiClient<ShopifyStatus>('/integrations/shopify/status').catch(() => ({
           data: { connected: false } as ShopifyStatus,
         })),
+        // An unconfigured provider answers 501, which is not an error worth
+        // showing: it just means this deployment has no Square credentials.
+        apiClient<SquareStatus>('/integrations/square/status').catch(() => ({
+          data: { connected: false } as SquareStatus,
+        })),
       ]);
       setQb(qbRes.data);
       setShopify(shopifyRes.data);
+      setSquare(squareRes.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load integrations');
     } finally {
@@ -90,6 +108,45 @@ export default function Integrations() {
       setError(err instanceof Error ? err.message : 'Failed to disconnect');
     } finally {
       setQbAction(null);
+    }
+  }
+
+  // No input to collect, unlike Shopify: a Square authorize URL is the same for
+  // every seller and the merchant only becomes known at the callback.
+  async function connectSquare() {
+    setSquareAction('connecting');
+    try {
+      const { data } = await apiClient<{ authUrl: string }>('/integrations/square/connect', {
+        method: 'POST',
+      });
+      window.location.assign(data.authUrl);
+    } catch (err) {
+      setSquareAction(null);
+      setError(err instanceof Error ? err.message : 'Failed to start Square connection');
+    }
+  }
+
+  async function syncSquare() {
+    setSquareAction('syncing');
+    try {
+      await apiClient('/integrations/square/sync', { method: 'POST' });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start Square sync');
+    } finally {
+      setSquareAction(null);
+    }
+  }
+
+  async function disconnectSquare() {
+    setSquareAction('disconnecting');
+    try {
+      await apiClient('/integrations/square', { method: 'DELETE' });
+      setSquare({ connected: false });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to disconnect Square');
+    } finally {
+      setSquareAction(null);
     }
   }
 
@@ -308,6 +365,76 @@ export default function Integrations() {
               )}
               {shopify.syncError && (
                 <span className="text-destructive">Error: {shopify.syncError}</span>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* Square */}
+        <section className="border-t-2 border-border bg-card px-5 py-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800">
+                {square?.connected ? (
+                  <Link2 className="h-4.5 w-4.5 text-foreground" />
+                ) : (
+                  <Link2Off className="h-4.5 w-4.5 text-muted-foreground" />
+                )}
+              </div>
+              <div className="flex-1">
+                <h2 className="font-serif text-sm font-medium text-foreground">Square</h2>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  {square?.connected
+                    ? `Connected to merchant ${square.merchantId ?? 'account'}`
+                    : 'Sync sales and refunds from every location you run.'}
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {square?.connected ? (
+                <>
+                  <button
+                    onClick={syncSquare}
+                    disabled={!!squareAction || square.syncStatus === 'syncing'}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <RefreshCw className={cn('h-3.5 w-3.5', (squareAction === 'syncing' || square.syncStatus === 'syncing') && 'animate-spin')} />
+                    {squareAction === 'syncing' ? 'Syncing...' : 'Sync now'}
+                  </button>
+                  <button
+                    onClick={disconnectSquare}
+                    disabled={!!squareAction}
+                    className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-destructive transition-colors hover:border-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {squareAction === 'disconnecting' ? 'Disconnecting...' : 'Disconnect'}
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={connectSquare}
+                  disabled={!!squareAction}
+                  className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {squareAction === 'connecting' ? 'Connecting...' : 'Connect'}
+                </button>
+              )}
+            </div>
+          </div>
+          {square?.connected && (
+            <div className="mt-3 ml-12 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              {square.lastSyncedAt && (
+                <span>Last synced: {new Date(square.lastSyncedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+              )}
+              {square.syncStatus && (
+                <span className={cn(
+                  'inline-flex items-center gap-1',
+                  square.syncStatus === 'error' && 'text-destructive',
+                )}>
+                  Status: {square.syncStatus}
+                </span>
+              )}
+              {square.syncError && (
+                <span className="text-destructive">Error: {square.syncError}</span>
               )}
             </div>
           )}

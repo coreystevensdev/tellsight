@@ -20,6 +20,11 @@ import {
   removeDailySync as removeShopifyDailySync,
 } from '../services/integrations/shopify/scheduler.js';
 import * as squareOAuth from '../services/integrations/square/oauth.js';
+import { enqueueSyncJob as enqueueSquareSyncJob } from '../services/integrations/square/worker.js';
+import {
+  registerDailySync as registerSquareDailySync,
+  removeDailySync as removeSquareDailySync,
+} from '../services/integrations/square/scheduler.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
 import { audit, auditAuth } from '../services/audit/auditService.js';
 import { sessionCookieOptions } from '../lib/cookies.js';
@@ -308,6 +313,21 @@ integrationsRouter.get('/square/status', async (req: Request, res: Response) => 
   });
 });
 
+integrationsRouter.post('/square/sync', async (req: Request, res: Response) => {
+  const user = requireUser(req);
+  const connection = await integrationConnectionsQueries.getByOrgAndProvider(user.org_id, 'square');
+
+  if (!connection) {
+    res.status(404).json({
+      error: { code: 'NOT_CONNECTED', message: 'No Square connection found' },
+    });
+    return;
+  }
+
+  await enqueueSquareSyncJob(connection.id, 'manual');
+  res.json({ data: { message: 'Sync started' } });
+});
+
 integrationsRouter.delete('/square', roleGuard('owner'), async (req: Request, res: Response) => {
   const user = requireUser(req);
   const connection = await integrationConnectionsQueries.getByOrgAndProvider(user.org_id, 'square');
@@ -320,6 +340,7 @@ integrationsRouter.delete('/square', roleGuard('owner'), async (req: Request, re
   }
 
   await squareOAuth.revokeToken(decrypt(connection.encryptedAccessToken));
+  await removeSquareDailySync(user.org_id);
   await integrationConnectionsQueries.deleteByOrgAndProvider(user.org_id, 'square');
 
   trackEvent(user.org_id, Number(user.sub), ANALYTICS_EVENTS.INTEGRATION_DISCONNECTED, {
@@ -559,7 +580,7 @@ integrationsCallbackRouter.get('/square/callback', async (req: Request, res: Res
 
     // Square hands back a real refresh token and a real deadline, so this row
     // needs none of the sentinel values the Shopify one does.
-    await integrationConnectionsQueries.upsert({
+    const connection = await integrationConnectionsQueries.upsert({
       orgId,
       provider: 'square',
       providerTenantId: tokens.merchantId,
@@ -571,6 +592,9 @@ integrationsCallbackRouter.get('/square/callback', async (req: Request, res: Res
 
     res.clearCookie('square_oauth_org_id', { path: '/' });
     res.clearCookie('square_oauth_user_id', { path: '/' });
+
+    await enqueueSquareSyncJob(connection.id, 'initial');
+    await registerSquareDailySync(orgId, connection.id);
 
     trackEvent(orgId, Number(userId), ANALYTICS_EVENTS.INTEGRATION_CONNECTED, {
       provider: 'square',
