@@ -50,7 +50,7 @@ for (const route of PUBLIC_ROUTES) {
 // Signed-out was only ever half of it. A signed-in owner spends their time on
 // /upload, /billing and the settings pages, and none of those were covered.
 //
-// Three responses here are allowed, and the distinction is the whole point of
+// Four responses here are allowed, and the distinction is the whole point of
 // this file. A 401 on the public dashboard was a defect because the client knew
 // perfectly well nobody was signed in and asked anyway. These three are the
 // opposite: the response IS how the client learns the answer, because nothing
@@ -59,13 +59,14 @@ for (const route of PUBLIC_ROUTES) {
 // connector gate answers 501 precisely so a caller can tell a switched-off
 // integration from a broken one.
 //
-// The list is deliberately three exact pairs rather than a rule. A new failing
+// The list is deliberately exact pairs rather than a rule. A new failing
 // request still fails, which is the only property that makes this gate worth
-// having.
+// having, and adding a connector is the one thing that legitimately extends it.
 const EXPECTED_FAILURES = new Map<string, Set<number>>([
   ['/api/proposals', new Set([403])],
   ['/api/integrations/quickbooks/status', new Set([501])],
   ['/api/integrations/shopify/status', new Set([501])],
+  ['/api/integrations/square/status', new Set([501])],
 ]);
 
 const AUTHENTICATED_ROUTES = [
