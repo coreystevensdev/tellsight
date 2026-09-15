@@ -14,7 +14,7 @@ Internet
     v (80/443, Let's Encrypt via Caddy)
 EC2 t3.micro (1 vCPU/1 GB RAM + 1 GB swap)
     caddy  (Docker, official image, only service published beyond 127.0.0.1)
-        |-- /webhooks/*, /integrations/quickbooks/callback --> api:3001 (Docker Compose internal DNS)
+        |-- /webhooks/*, /integrations/* --> api:3001 (Docker Compose internal DNS)
         |-- everything else, including /api/*               --> web:3000 (Docker Compose internal DNS)
     redis  (redis:7-alpine, 127.0.0.1 only)
     api    (ECR image, 127.0.0.1:3001)
@@ -23,7 +23,7 @@ EC2 t3.micro (1 vCPU/1 GB RAM + 1 GB swap)
 EC2 --> RDS db.t3.micro (PostgreSQL 18, private security group)
 ```
 
-Caddy does not intercept `/api/*`, that prefix belongs to Next.js's own BFF route files (auth/login, datasets, etc). `next.config.ts`'s `rewrite()` then proxies anything without a matching `route.ts` to Express, same as local dev. Sending `/api/*` straight to Express from Caddy broke Google sign-in the first time this was tried (`/api/auth/login` never reached its Next.js route, see commit `0405b43`). Only the Stripe/Resend webhooks and the QuickBooks OAuth callback bypass Next.js on purpose, both are hit by external services rather than the browser's own session, and Express registers them unprefixed.
+Caddy does not intercept `/api/*`, that prefix belongs to Next.js's own BFF route files (auth/login, datasets, etc). `next.config.ts`'s `rewrite()` then proxies anything without a matching `route.ts` to Express, same as local dev. Sending `/api/*` straight to Express from Caddy broke Google sign-in the first time this was tried (`/api/auth/login` never reached its Next.js route, see commit `0405b43`). Only the Stripe/Resend webhooks and the connector OAuth callbacks bypass Next.js on purpose, both are hit by external services rather than the browser's own session, and Express registers them unprefixed. The callback rule is the whole `/integrations/*` prefix rather than one path per provider: it was pinned to quickbooks until 2026-09-15, so Shopify and Square each shipped with a callback that 404'd in production while working locally.
 
 No ALB, no NAT Gateway, no ElastiCache, no Prometheus/Grafana on this instance. This is a deliberate trade-off: zero HA and no live observability, for zero infra cost.
 
@@ -123,11 +123,20 @@ In the repo Settings > Secrets > Actions, add:
 | `QUICKBOOKS_CLIENT_SECRET` | optional, same Intuit app |
 | `QUICKBOOKS_REDIRECT_URI` | optional, `https://<PRODUCTION_DOMAIN>/integrations/quickbooks/callback`, must also be registered as an authorized redirect URI in the Intuit app |
 | `QUICKBOOKS_ENVIRONMENT` | optional, `production` once you have live Intuit keys, defaults to `sandbox` if unset |
-| `ENCRYPTION_KEY` | optional, `openssl rand -hex 32`, encrypts QuickBooks OAuth tokens at rest |
+| `SHOPIFY_CLIENT_ID` | optional, Shopify app's client ID |
+| `SHOPIFY_CLIENT_SECRET` | optional, same Shopify app |
+| `SHOPIFY_REDIRECT_URI` | optional, `https://<PRODUCTION_DOMAIN>/integrations/shopify/callback`, must also be registered in the Shopify app |
+| `SQUARE_CLIENT_ID` | optional, Square application ID, **Production** credentials not Sandbox |
+| `SQUARE_CLIENT_SECRET` | optional, same Square application |
+| `SQUARE_REDIRECT_URI` | optional, `https://<PRODUCTION_DOMAIN>/integrations/square/callback`, must match the Redirect URL registered in the Square app character for character |
+| `SQUARE_ENVIRONMENT` | optional, `production` once you have live Square keys, defaults to `sandbox` if unset |
+| `ENCRYPTION_KEY` | optional, `openssl rand -hex 32`, encrypts every connector's OAuth tokens at rest |
 
 `DATABASE_URL` and `DATABASE_ADMIN_URL` must point at different roles (`app_user` vs `app_admin`), not the same connection string, otherwise every query bypasses RLS.
 
-QuickBooks is fully optional, the app boots and runs fine with none of the five QuickBooks/`ENCRYPTION_KEY` secrets set, `isQbConfigured()` just gates the connector off. Set all five together or none, a partial set (e.g. client ID without `ENCRYPTION_KEY`) also leaves the connector disabled.
+Every connector is fully optional and gated independently (`isQbConfigured()`, `isShopifyConfigured()`, `isSquareConfigured()`), so the app boots and runs fine with none of them set. Set a provider's keys all together or not at all, a partial set (e.g. client ID without `ENCRYPTION_KEY`) leaves that connector disabled and looks identical to never having configured it.
+
+`ENCRYPTION_KEY` is shared by all three. See `docs/square-setup.md` for the Square walkthrough end to end.
 
 ## Step 6: First deploy
 
