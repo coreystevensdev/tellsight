@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -13,6 +13,34 @@ interface CashBalanceStaleBannerProps {
 
 const DISMISS_KEY = 'cashBalanceStaleBanner:dismissed';
 
+// sessionStorage fires no event for same-document writes, so the store keeps its
+// own listener set and dismissBanner notifies it. Every access is guarded:
+// storage throws outright in some privacy modes, and a banner is not worth
+// taking the dashboard down over.
+const dismissListeners = new Set<() => void>();
+
+function subscribeDismissed(onChange: () => void) {
+  dismissListeners.add(onChange);
+  return () => dismissListeners.delete(onChange);
+}
+
+function readDismissed() {
+  try {
+    return window.sessionStorage.getItem(DISMISS_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function dismissBanner() {
+  try {
+    window.sessionStorage.setItem(DISMISS_KEY, '1');
+  } catch {
+    // Nothing to persist, but the banner still closes for this render pass.
+  }
+  dismissListeners.forEach((notify) => notify());
+}
+
 function ageInDays(asOf: Date, now: Date): number {
   return Math.floor((now.getTime() - asOf.getTime()) / (24 * 60 * 60 * 1000));
 }
@@ -23,16 +51,13 @@ export function CashBalanceStaleBanner({
   onUpdate,
   className,
 }: CashBalanceStaleBannerProps) {
-  // Starts false on both server and client's first render, sessionStorage
-  // isn't available server-side, so reading it during render (even lazily)
-  // makes the first client render diverge from the server's whenever the
-  // banner was dismissed earlier in the session, a real hydration mismatch,
-  // not just a flash. Corrected here, after hydration, client-only.
-  const [dismissed, setDismissed] = useState(false);
-
-  useEffect(() => {
-    if (window.sessionStorage.getItem(DISMISS_KEY) === '1') setDismissed(true);
-  }, []);
+  // getServerSnapshot is what makes this hydration-safe: the server always says
+  // "not dismissed", so the markup React renders on the server and the markup it
+  // hydrates against agree, and the real answer arrives right after. Reading
+  // sessionStorage during render instead (even lazily) diverges the two whenever
+  // the banner was dismissed earlier in the session, which is a mismatch rather
+  // than a flash.
+  const dismissed = useSyncExternalStore(subscribeDismissed, readDismissed, () => false);
   const [inlineOpen, setInlineOpen] = useState(false);
   const [raw, setRaw] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -70,8 +95,7 @@ export function CashBalanceStaleBanner({
   }
 
   function handleDismiss() {
-    window.sessionStorage.setItem(DISMISS_KEY, '1');
-    setDismissed(true);
+    dismissBanner();
   }
 
   return (

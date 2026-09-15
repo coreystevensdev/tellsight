@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, act, waitFor } from '@testing-library/react';
+import { renderToString } from 'react-dom/server';
 import { AiSummaryCard, truncateAtWordBoundary } from './AiSummaryCard';
 import { AiSummaryErrorBoundary } from './AiSummaryErrorBoundary';
 
@@ -464,6 +465,23 @@ describe('AiSummaryCard', () => {
 
       expect(screen.queryByText('Your data has been updated')).toBeNull();
       expect(screen.getByText('Prior summary')).toBeTruthy();
+    });
+
+    // Staleness is a comparison against the clock, and the clock has moved by the
+    // time the browser hydrates what the server rendered. getServerSnapshot pins
+    // the server to "not stale" so both sides agree; without it the server can
+    // emit the banner and the client can decide not to, which is a hydration
+    // mismatch rather than a flash. Every other test here runs client-side and
+    // cannot see that half.
+    it('omits the staleness banner server-side even when the summary is stale', () => {
+      mockUseAiStream.mockReturnValue(defaultHookReturn());
+      const past = new Date(Date.now() - 60_000).toISOString();
+
+      const html = renderToString(
+        <AiSummaryCard datasetId={42} cachedContent="Prior summary" cachedStaleAt={past} />,
+      );
+
+      expect(html).not.toContain('Your data has been updated');
     });
 
     it('renders banner with Refresh button when cachedStaleAt is in the past', () => {
