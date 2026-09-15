@@ -153,6 +153,7 @@ export const sourceTypeEnum = pgEnum('source_type', [
   'stripe',
   'plaid',
   'shopify',
+  'square',
 ]);
 
 export const digestValenceEnum = pgEnum('digest_valence', [

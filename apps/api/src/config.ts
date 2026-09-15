@@ -64,6 +64,11 @@ export const envSchema = z
     SHOPIFY_CLIENT_SECRET: z.string().min(1).optional(),
     SHOPIFY_REDIRECT_URI: z.string().url().optional(),
 
+    SQUARE_CLIENT_ID: z.string().min(1).optional(),
+    SQUARE_CLIENT_SECRET: z.string().min(1).optional(),
+    SQUARE_REDIRECT_URI: z.string().url().optional(),
+    SQUARE_ENVIRONMENT: z.enum(['sandbox', 'production']).default('sandbox'),
+
     // Only for CI / E2E, set to 'true' to bypass rate limiters entirely.
     // Parallel Playwright workers blow the 60/min public limit otherwise.
     DISABLE_RATE_LIMIT: z.enum(['true', 'false']).default('false'),
@@ -162,6 +167,15 @@ export function isShopifyConfigured(cfg: Env): boolean {
     cfg.SHOPIFY_CLIENT_ID &&
     cfg.SHOPIFY_CLIENT_SECRET &&
     cfg.SHOPIFY_REDIRECT_URI &&
+    cfg.ENCRYPTION_KEY
+  );
+}
+
+export function isSquareConfigured(cfg: Env): boolean {
+  return !!(
+    cfg.SQUARE_CLIENT_ID &&
+    cfg.SQUARE_CLIENT_SECRET &&
+    cfg.SQUARE_REDIRECT_URI &&
     cfg.ENCRYPTION_KEY
   );
 }
