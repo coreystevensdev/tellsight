@@ -33,6 +33,36 @@ describe('IndustryBenchmark', () => {
     expect(screen.getByText(/do not pay themselves a salary/i)).toBeInTheDocument();
   });
 
+  // The reason the second source exists. A business with employees is almost
+  // certainly an S-corp, whose owner salary is already deducted, so showing it
+  // the sole-proprietor figure tells it something untrue about itself.
+  it.each(['2_5', '6_20', 'over_20'] as const)(
+    'reads the employer table when teamSize is %s',
+    (teamSize) => {
+      render(<IndustryBenchmark businessType="services" teamSize={teamSize} />);
+
+      expect(screen.getByText('12.9%')).toBeInTheDocument();
+      expect(screen.getByText(/Table 6.1/)).toBeInTheDocument();
+      expect(screen.getByText(/already deducted/i)).toBeInTheDocument();
+    },
+  );
+
+  it('reads the sole-proprietor table for a one-person business', () => {
+    render(<IndustryBenchmark businessType="services" teamSize="solo" />);
+
+    expect(screen.getByText('39.7%')).toBeInTheDocument();
+    expect(screen.getByText(/do not pay themselves a salary/i)).toBeInTheDocument();
+  });
+
+  // A missing answer is not evidence of employees, and this was the behaviour
+  // before the split, so an unknown teamSize must not silently change what an
+  // existing user sees.
+  it('keeps the sole-proprietor table when teamSize is unknown', () => {
+    render(<IndustryBenchmark businessType="services" teamSize={null} />);
+
+    expect(screen.getByText('39.7%')).toBeInTheDocument();
+  });
+
   // SOI cannot separate technology from professional services, so there is no
   // figure to show. Rendering nothing is the point: the alternative is showing
   // the services number under a technology label.

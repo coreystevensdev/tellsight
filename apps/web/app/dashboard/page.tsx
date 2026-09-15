@@ -120,11 +120,15 @@ export default async function DashboardPage() {
   // The same call already ran for needsOnboarding and discarded its body. The
   // industry benchmark needs one field out of it, so read rather than refetch.
   let businessType: BusinessProfile['businessType'] | null = null;
+  // teamSize decides which industry table the benchmark reads, sole proprietor
+  // or S-corp, and it comes out of the same response rather than a second call.
+  let teamSize: BusinessProfile['teamSize'] | null = null;
   if (hasAuth) {
     try {
       const res = await apiServer<BusinessProfile | null>('/org/profile', { cookies: cookieHeader });
       needsOnboarding = res.data === null;
       businessType = res.data?.businessType ?? null;
+      teamSize = res.data?.teamSize ?? null;
     } catch {
       needsOnboarding = false;
     }
@@ -139,6 +143,7 @@ export default async function DashboardPage() {
       tier={tier}
       needsOnboarding={needsOnboarding}
       businessType={businessType}
+      teamSize={teamSize}
     />
   );
 }
