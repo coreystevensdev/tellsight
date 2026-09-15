@@ -9,6 +9,8 @@ import {
   employerRentSharePercent,
   employerDepreciationSharePercent,
   employerInterestSharePercent,
+  employerAdvertisingSharePercent,
+  employerRepairsSharePercent,
 } from './scorp2022.js';
 import { SOI_BENCHMARKS, netMarginPercent } from './soi2023.js';
 
@@ -105,5 +107,25 @@ describe('why a second source exists', () => {
     expect(employerRentSharePercent(b!)).toBe(rent);
     expect(employerDepreciationSharePercent(b!)).toBe(deprec);
     expect(employerInterestSharePercent(b!)).toBe(interest);
+  });
+
+  // Taxes is not here on purpose: see the note in soi2023.ts. Schedule C and
+  // Form 1120-S do not put the same thing under that word, so there is nothing
+  // to transcribe that would be safe to show next to the sole-proprietor figure.
+  it.each([
+    ['restaurant', 1.5, 1.6],
+    ['retail', 0.9, 0.4],
+    ['services', 1.4, 0.4],
+    ['construction', 0.4, 0.4],
+    ['healthcare', 0.8, 0.8],
+    ['manufacturing', 0.7, 0.5],
+    ['real_estate', 2.4, 1.6],
+    ['transportation', 0.3, 2.6],
+    ['other', 0.8, 0.7],
+  ] as const)('derives %s advertising and repairs from the stored raw figures', (key, ad, rep) => {
+    const b = SCORP_BENCHMARKS[key];
+    expect(b).toBeDefined();
+    expect(employerAdvertisingSharePercent(b!)).toBe(ad);
+    expect(employerRepairsSharePercent(b!)).toBe(rep);
   });
 });

@@ -48,7 +48,9 @@ export interface EmployerBenchmark {
   salariesAndWages: number;
   rentsPaid: number;
   depreciation: number;
-  interestPaid: number; // row 50
+  interestPaid: number;
+  advertising: number;
+  repairs: number; // row 50
   returns: number; // row 9, sample size behind the estimate
 }
 
@@ -60,15 +62,15 @@ export type EmployerBenchmarks = Partial<Record<(typeof BUSINESS_TYPES)[number],
 // technical services, so publishing Information under a technology label would
 // be a different industry's number wearing the wrong name.
 export const SCORP_BENCHMARKS: EmployerBenchmarks = {
-  restaurant: { sector: 'Food services and drinking places', businessReceipts: 362_077_956, netIncomeLessDeficit: 15_703_202, compensationOfOfficers: 10_846_381, salariesAndWages: 72_507_809, returns: 249_020, rentsPaid: 23_775_369, depreciation: 8_720_293, interestPaid: 1_971_684 },
-  retail: { sector: 'Retail trade', businessReceipts: 2_025_349_298, netIncomeLessDeficit: 90_152_733, compensationOfOfficers: 23_638_436, salariesAndWages: 145_288_726, returns: 424_367, rentsPaid: 36_732_061, depreciation: 19_162_977, interestPaid: 6_791_789 },
-  services: { sector: 'Professional, scientific, and technical services', businessReceipts: 830_357_657, netIncomeLessDeficit: 106_870_087, compensationOfOfficers: 66_094_466, salariesAndWages: 162_185_438, returns: 863_664, rentsPaid: 21_028_452, depreciation: 10_082_196, interestPaid: 5_365_726 },
-  construction: { sector: 'Construction', businessReceipts: 1_844_259_491, netIncomeLessDeficit: 97_571_091, compensationOfOfficers: 46_455_220, salariesAndWages: 113_740_216, returns: 690_444, rentsPaid: 29_050_085, depreciation: 36_484_808, interestPaid: 6_036_543 },
-  healthcare: { sector: 'Health care and social assistance', businessReceipts: 497_871_955, netIncomeLessDeficit: 56_627_013, compensationOfOfficers: 53_994_172, salariesAndWages: 138_733_096, returns: 487_580, rentsPaid: 24_158_969, depreciation: 8_920_080, interestPaid: 2_870_554 },
-  manufacturing: { sector: 'Manufacturing', businessReceipts: 1_083_781_824, netIncomeLessDeficit: 88_041_078, compensationOfOfficers: 22_242_226, salariesAndWages: 81_040_427, returns: 162_216, rentsPaid: 17_621_958, depreciation: 27_637_402, interestPaid: 5_138_372 },
-  real_estate: { sector: 'Real estate and rental and leasing', businessReceipts: 202_179_543, netIncomeLessDeficit: 30_470_620, compensationOfOfficers: 17_150_557, salariesAndWages: 43_833_232, returns: 595_687, rentsPaid: 11_911_965, depreciation: 13_152_384, interestPaid: 3_786_970 },
-  transportation: { sector: 'Transportation and warehousing', businessReceipts: 418_504_611, netIncomeLessDeficit: 25_627_323, compensationOfOfficers: 8_601_005, salariesAndWages: 49_729_068, returns: 269_711, rentsPaid: 15_557_586, depreciation: 21_339_247, interestPaid: 2_405_707 },
-  other: { sector: 'All industries', businessReceipts: 10_429_590_929, netIncomeLessDeficit: 763_268_999, compensationOfOfficers: 349_956_774, salariesAndWages: 1_164_295_039, returns: 5_266_702, rentsPaid: 249_866_093, depreciation: 207_673_956, interestPaid: 56_958_435 },
+  restaurant: { sector: 'Food services and drinking places', businessReceipts: 362_077_956, netIncomeLessDeficit: 15_703_202, compensationOfOfficers: 10_846_381, salariesAndWages: 72_507_809, returns: 249_020, rentsPaid: 23_775_369, depreciation: 8_720_293, interestPaid: 1_971_684, advertising: 5_498_447, repairs: 5_719_034 },
+  retail: { sector: 'Retail trade', businessReceipts: 2_025_349_298, netIncomeLessDeficit: 90_152_733, compensationOfOfficers: 23_638_436, salariesAndWages: 145_288_726, returns: 424_367, rentsPaid: 36_732_061, depreciation: 19_162_977, interestPaid: 6_791_789, advertising: 17_724_796, repairs: 8_514_180 },
+  services: { sector: 'Professional, scientific, and technical services', businessReceipts: 830_357_657, netIncomeLessDeficit: 106_870_087, compensationOfOfficers: 66_094_466, salariesAndWages: 162_185_438, returns: 863_664, rentsPaid: 21_028_452, depreciation: 10_082_196, interestPaid: 5_365_726, advertising: 11_853_343, repairs: 3_302_608 },
+  construction: { sector: 'Construction', businessReceipts: 1_844_259_491, netIncomeLessDeficit: 97_571_091, compensationOfOfficers: 46_455_220, salariesAndWages: 113_740_216, returns: 690_444, rentsPaid: 29_050_085, depreciation: 36_484_808, interestPaid: 6_036_543, advertising: 6_516_576, repairs: 7_785_093 },
+  healthcare: { sector: 'Health care and social assistance', businessReceipts: 497_871_955, netIncomeLessDeficit: 56_627_013, compensationOfOfficers: 53_994_172, salariesAndWages: 138_733_096, returns: 487_580, rentsPaid: 24_158_969, depreciation: 8_920_080, interestPaid: 2_870_554, advertising: 4_018_100, repairs: 3_864_354 },
+  manufacturing: { sector: 'Manufacturing', businessReceipts: 1_083_781_824, netIncomeLessDeficit: 88_041_078, compensationOfOfficers: 22_242_226, salariesAndWages: 81_040_427, returns: 162_216, rentsPaid: 17_621_958, depreciation: 27_637_402, interestPaid: 5_138_372, advertising: 7_176_426, repairs: 5_881_848 },
+  real_estate: { sector: 'Real estate and rental and leasing', businessReceipts: 202_179_543, netIncomeLessDeficit: 30_470_620, compensationOfOfficers: 17_150_557, salariesAndWages: 43_833_232, returns: 595_687, rentsPaid: 11_911_965, depreciation: 13_152_384, interestPaid: 3_786_970, advertising: 4_884_792, repairs: 3_203_500 },
+  transportation: { sector: 'Transportation and warehousing', businessReceipts: 418_504_611, netIncomeLessDeficit: 25_627_323, compensationOfOfficers: 8_601_005, salariesAndWages: 49_729_068, returns: 269_711, rentsPaid: 15_557_586, depreciation: 21_339_247, interestPaid: 2_405_707, advertising: 1_096_663, repairs: 10_762_622 },
+  other: { sector: 'All industries', businessReceipts: 10_429_590_929, netIncomeLessDeficit: 763_268_999, compensationOfOfficers: 349_956_774, salariesAndWages: 1_164_295_039, returns: 5_266_702, rentsPaid: 249_866_093, depreciation: 207_673_956, interestPaid: 56_958_435, advertising: 83_085_960, repairs: 71_414_113 },
 };
 
 export function employerNetMarginPercent(b: EmployerBenchmark): number | null {
@@ -100,4 +102,12 @@ export function employerDepreciationSharePercent(b: EmployerBenchmark): number |
 
 export function employerInterestSharePercent(b: EmployerBenchmark): number | null {
   return share(b.interestPaid, b.businessReceipts);
+}
+
+export function employerAdvertisingSharePercent(b: EmployerBenchmark): number | null {
+  return share(b.advertising, b.businessReceipts);
+}
+
+export function employerRepairsSharePercent(b: EmployerBenchmark): number | null {
+  return share(b.repairs, b.businessReceipts);
 }

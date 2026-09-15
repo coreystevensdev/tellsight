@@ -98,6 +98,32 @@ describe('IndustryBenchmark', () => {
     expect(screen.getByText('0.6%')).toBeInTheDocument();
   });
 
+  it('shows advertising and repairs from whichever table was picked', () => {
+    const { unmount } = render(<IndustryBenchmark businessType="services" teamSize="solo" />);
+    expect(screen.getByText('Advertising')).toBeInTheDocument();
+    expect(screen.getByText('1.7%')).toBeInTheDocument();
+    expect(screen.getByText('0.6%')).toBeInTheDocument();
+    unmount();
+
+    render(<IndustryBenchmark businessType="services" teamSize="2_5" />);
+    expect(screen.getByText('1.4%')).toBeInTheDocument();
+    expect(screen.getByText('0.4%')).toBeInTheDocument();
+  });
+
+  // Schedule C's "Taxes paid" excludes the owner's self-employment tax, which is
+  // paid on the 1040; Form 1120-S's "Taxes and licenses" includes employer
+  // payroll tax on the owner's salary. Services reads 1.0% against 3.2% for that
+  // reason alone. Showing it would put the owner-pay distortion back into a row
+  // that looks directly comparable, so this pins its absence.
+  it('shows no taxes row, because the two tables do not mean the same thing by it', () => {
+    const { unmount } = render(<IndustryBenchmark businessType="services" teamSize="solo" />);
+    expect(screen.queryByText(/^Taxes/i)).toBeNull();
+    unmount();
+
+    render(<IndustryBenchmark businessType="services" teamSize="2_5" />);
+    expect(screen.queryByText(/^Taxes/i)).toBeNull();
+  });
+
   // SOI cannot separate technology from professional services, so there is no
   // figure to show. Rendering nothing is the point: the alternative is showing
   // the services number under a technology label.

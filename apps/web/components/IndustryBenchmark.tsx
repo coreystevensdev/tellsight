@@ -15,6 +15,10 @@ import {
   employerRentSharePercent,
   employerDepreciationSharePercent,
   employerInterestSharePercent,
+  advertisingSharePercent,
+  repairsSharePercent,
+  employerAdvertisingSharePercent,
+  employerRepairsSharePercent,
 } from 'shared/benchmarks';
 import type { BusinessProfile } from 'shared/schemas';
 
@@ -56,6 +60,8 @@ function pickBenchmark(
       rent: rentSharePercent(b),
       depreciation: depreciationSharePercent(b),
       interest: interestSharePercent(b),
+      advertising: advertisingSharePercent(b),
+      repairs: repairsSharePercent(b),
       caveat: SOI_MARGIN_CAVEAT,
       source: SOI_SOURCE,
     };
@@ -69,6 +75,8 @@ function pickBenchmark(
     rent: employerRentSharePercent(b),
     depreciation: employerDepreciationSharePercent(b),
     interest: employerInterestSharePercent(b),
+    advertising: employerAdvertisingSharePercent(b),
+    repairs: employerRepairsSharePercent(b),
     caveat: SCORP_ENTITY_CAVEAT,
     source: SCORP_SOURCE,
   };
@@ -84,13 +92,16 @@ export function IndustryBenchmark({ businessType, teamSize, className }: Industr
   const picked = pickBenchmark(businessType, teamSize);
   if (!picked || picked.margin === null || picked.payroll === null) return null;
 
-  // Rent, depreciation and interest are paid the same way whether or not the
-  // owner is on payroll, so unlike the margin above they mean the same thing in
-  // both tables. Kept smaller than the two headline figures rather than given
-  // equal weight, because interest in particular runs under 1% for most sectors
-  // and carries almost no signal at that size.
+  // These are paid the same way whether or not the owner is on payroll, so
+  // unlike the margin above they mean the same thing in both tables. Kept
+  // smaller than the two headline figures rather than given equal weight,
+  // because interest in particular runs under 1% for most sectors and carries
+  // almost no signal at that size. Cash outlays first, then the non-cash and
+  // financing lines.
   const costs = [
     { label: 'Rent', value: picked.rent },
+    { label: 'Advertising', value: picked.advertising },
+    { label: 'Repairs', value: picked.repairs },
     { label: 'Depreciation', value: picked.depreciation },
     { label: 'Interest', value: picked.interest },
   ].filter((c): c is { label: string; value: number } => c.value !== null);

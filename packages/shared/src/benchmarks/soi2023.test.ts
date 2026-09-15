@@ -9,6 +9,8 @@ import {
   rentSharePercent,
   depreciationSharePercent,
   interestSharePercent,
+  advertisingSharePercent,
+  repairsSharePercent,
 } from './soi2023.js';
 
 describe('SOI 2023 benchmarks', () => {
@@ -16,7 +18,7 @@ describe('SOI 2023 benchmarks', () => {
     expect(SOI_SOURCE.url).toMatch(/^https:\/\/www\.irs\.gov\//);
     expect(SOI_SOURCE.taxYear).toBe(2023);
     expect(SOI_SOURCE.retrievedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(SOI_SOURCE.table).toBe('Table 1');
+    expect(SOI_SOURCE.table).toBe('Tables 1 and 2');
   });
 
   // Every row names the exact label it came from, so a figure can be traced back
@@ -113,5 +115,25 @@ describe('SOI 2023 benchmarks', () => {
     expect(rentSharePercent(b!)).toBe(rent);
     expect(depreciationSharePercent(b!)).toBe(deprec);
     expect(interestSharePercent(b!)).toBe(interest);
+  });
+
+  // Third transcription, for the two columns that come from Table 2 rather than
+  // Table 1. Both tables publish the same receipts per sector, which is what was
+  // checked first and what lets one denominator serve every percentage here.
+  it.each([
+    ['restaurant', 1.2, 1.9],
+    ['retail', 1.5, 0.8],
+    ['services', 1.7, 0.6],
+    ['construction', 0.5, 1.2],
+    ['healthcare', 1.0, 1.1],
+    ['manufacturing', 1.3, 1.5],
+    ['real_estate', 2.7, 1.8],
+    ['transportation', 0.3, 5.3],
+    ['other', 1.2, 1.6],
+  ] as const)('derives %s advertising and repairs from the stored raw figures', (key, ad, rep) => {
+    const b = SOI_BENCHMARKS[key];
+    expect(b).toBeDefined();
+    expect(advertisingSharePercent(b!)).toBe(ad);
+    expect(repairsSharePercent(b!)).toBe(rep);
   });
 });
