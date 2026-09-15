@@ -326,10 +326,16 @@ jobs:
               # Compare against the pinned sha tag, not :latest. compose pulls
               # only what it references, so :latest on the box is now whatever
               # the previous deploy left there and would never match.
-              f"running=$(docker inspect --format='{{{{.Image}}}}' tellsight-api-1)"
-              f" && expected=$(docker image inspect --format='{{{{.Id}}}}' {os.environ['ECR_API_REPO']}:sha-{short})"
-              f" && [ \"$running\" = \"$expected\" ]"
-              f" || (echo 'DEPLOY DID NOT LAND: container image != pulled image' >&2; exit 1)",
+              # Both services, not just the API. The web image is pinned in the
+              # override the same way and was never checked, so a web container
+              # that failed to come up on the new image passed this step.
+              f"for svc in api web; do"
+              f" case $svc in api) repo={os.environ['ECR_API_REPO']};; web) repo={os.environ['ECR_WEB_REPO']};; esac;"
+              f" running=$(docker inspect --format='{{{{.Image}}}}' tellsight-$svc-1);"
+              f" expected=$(docker image inspect --format='{{{{.Id}}}}' $repo:sha-{short});"
+              f" [ \"$running\" = \"$expected\" ]"
+              f" || {{ echo \"DEPLOY DID NOT LAND: tellsight-$svc-1 is not on sha-{short}\" >&2; exit 1; }};"
+              f" done",
               # caddy's own image/config never change between deploys, so
               # `up -d` won't recreate it just because the bind-mounted
               # Caddyfile's contents changed on disk -- reload explicitly.

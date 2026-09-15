@@ -1,0 +1,93 @@
+name: Deployed SHA Drift
+
+# Asks the box what it is running and compares it to main, rather than trusting
+# that a green deploy means the deploy landed. On 2026-09-14 seven deploys raced
+# for the same commit, one won, and production sat two commits behind main with
+# nothing red left on the board to say so. The per-deploy image assertion cannot
+# catch that: every run correctly verified its own sha, and the newest one simply
+# lost. This is the independent oracle for the same question.
+on:
+  schedule:
+    # Every six hours. Drift that matters persists; drift that resolves itself
+    # inside six hours was a deploy still in flight.
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  drift:
+    name: Compare production against main
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      # A deploy mid-flight legitimately shows an older sha for a couple of
+      # minutes. Skipping is the whole reason this does not share the deploy's
+      # concurrency group: queueing behind a deploy would let a drift check
+      # displace a pending one.
+      - name: Skip while a deploy is running
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          running=$(gh run list --workflow=deploy-aws.yml --status in_progress --limit 1 --json databaseId -q 'length')
+          queued=$(gh run list --workflow=deploy-aws.yml --status queued --limit 1 --json databaseId -q 'length')
+          if [ "$running" != "0" ] || [ "$queued" != "0" ]; then
+            echo "a deploy is in flight, nothing to compare yet"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure AWS credentials via OIDC
+        if: steps.gate.outputs.skip != 'true'
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Read the running sha off the instance
+        if: steps.gate.outputs.skip != 'true'
+        id: running
+        env:
+          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+        run: |
+          set -euo pipefail
+          cid=$(aws ssm send-command \
+            --instance-ids "$EC2_INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --parameters 'commands=["grep -o sha-[0-9a-f]* /opt/tellsight/docker-compose.override.yml | sort -u | head -1"]' \
+            --query 'Command.CommandId' --output text)
+          aws ssm wait command-executed --command-id "$cid" --instance-id "$EC2_INSTANCE_ID" || true
+          out=$(aws ssm get-command-invocation --command-id "$cid" --instance-id "$EC2_INSTANCE_ID" --query 'StandardOutputContent' --output text | tr -d '[:space:]')
+          echo "sha=${out#sha-}" >> "$GITHUB_OUTPUT"
+          echo "production is pinned to ${out:-<nothing>}"
+
+      - name: Fail if production is not on main
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          RUNNING: ${{ steps.running.outputs.sha }}
+        run: |
+          set -euo pipefail
+          expected="${GITHUB_SHA:0:7}"
+          if [ -z "$RUNNING" ]; then
+            echo "Could not read a pinned sha off the instance." >&2
+            exit 1
+          fi
+          if [ "$RUNNING" = "$expected" ]; then
+            echo "production is on $expected, matching main"
+            exit 0
+          fi
+          echo "DRIFT: production is on sha-$RUNNING, main is $expected" >&2
+          echo "The last deploy that actually landed was not for the newest commit." >&2
+          echo "Check for a red deploy run, or a green one that lost a race." >&2
+          exit 1
