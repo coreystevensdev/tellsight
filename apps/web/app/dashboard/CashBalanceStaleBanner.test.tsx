@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { renderToString } from 'react-dom/server';
 import { CashBalanceStaleBanner } from './CashBalanceStaleBanner';
 
 const NOW = new Date('2026-05-01T00:00:00.000Z');
@@ -14,6 +15,23 @@ function daysAgoISO(days: number): string {
 describe('CashBalanceStaleBanner', () => {
   beforeEach(() => {
     window.sessionStorage.clear();
+  });
+
+  // The reason this reads through useSyncExternalStore rather than a useState
+  // corrected in an effect. sessionStorage does not exist on the server, so the
+  // server has to render the banner whether or not this browser dismissed it
+  // earlier, or the markup React hydrates against does not match the markup it
+  // just produced. getServerSnapshot returning false is that guarantee, and this
+  // is the only test that can see it: every other one runs client-side, where
+  // the real snapshot is the one being read.
+  it('renders the banner server-side even when this session dismissed it', () => {
+    window.sessionStorage.setItem('cashBalanceStaleBanner:dismissed', '1');
+
+    const html = renderToString(
+      <CashBalanceStaleBanner cashAsOfDate={daysAgoISO(45)} now={NOW} onUpdate={vi.fn()} />,
+    );
+
+    expect(html).toContain('role="status"');
   });
 
   it('hides when cashAsOfDate is missing', () => {

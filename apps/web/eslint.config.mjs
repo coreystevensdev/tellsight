@@ -17,16 +17,6 @@ const eslintConfig = defineConfig([
     "coverage/**",
   ]),
   {
-    // Reading storage or the clock during render is what breaks hydration here,
-    // so the effect is the fix rather than the problem. Both components paint
-    // the server's answer first and correct it once on the client.
-    files: [
-      'app/dashboard/AiSummaryCard.tsx',
-      'app/dashboard/CashBalanceStaleBanner.tsx',
-    ],
-    rules: { 'react-hooks/set-state-in-effect': 'off' },
-  },
-  {
     // Fetch-on-mount, one hand-rolled loading flag per component. The rule is
     // right that each costs a render pass before paint, and wrong that it is a
     // correctness problem: every setState below runs after an await. Listed by
