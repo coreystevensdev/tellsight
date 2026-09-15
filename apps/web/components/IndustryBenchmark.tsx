@@ -115,6 +115,13 @@ export function IndustryBenchmark({ businessType, teamSize, className }: Industr
         How your industry reported
       </h2>
       <p className="mt-1 text-xs text-muted-foreground">{picked.sector}</p>
+      {/* Tax-return statistics run two to three years behind by construction, and
+          the two tables are not even on the same year. The vintage belongs next to
+          the figures rather than only in the source line, because the claim is
+          about what was filed then, not about the reader's business now. */}
+      <p className="mt-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+        Tax year {picked.source.taxYear}
+      </p>
 
       <dl className="mt-3 flex flex-wrap gap-x-8 gap-y-3">
         <div>

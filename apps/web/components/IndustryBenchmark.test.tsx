@@ -124,6 +124,22 @@ describe('IndustryBenchmark', () => {
     expect(screen.queryByText(/^Taxes/i)).toBeNull();
   });
 
+  // The two tables are on different tax years, so switching population also
+  // switches vintage. A reader scanning the figures should not have to reach the
+  // source line to find out which year they are looking at.
+  it('dates the figures, and the date follows the table that was picked', () => {
+    const { unmount } = render(<IndustryBenchmark businessType="services" teamSize="solo" />);
+    // Twice on purpose: once beside the figures, once in the source line that
+    // makes the figure checkable against the published workbook.
+    expect(screen.getAllByText(/tax year 2023/i)).toHaveLength(2);
+    expect(screen.queryByText(/tax year 2022/i)).toBeNull();
+    unmount();
+
+    render(<IndustryBenchmark businessType="services" teamSize="2_5" />);
+    expect(screen.getAllByText(/tax year 2022/i)).toHaveLength(2);
+    expect(screen.queryByText(/tax year 2023/i)).toBeNull();
+  });
+
   // SOI cannot separate technology from professional services, so there is no
   // figure to show. Rendering nothing is the point: the alternative is showing
   // the services number under a technology label.
