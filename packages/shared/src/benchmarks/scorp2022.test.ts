@@ -75,6 +75,11 @@ describe('why a second source exists', () => {
 
   it('says so in the caveat rather than leaving it to be inferred', () => {
     expect(SCORP_ENTITY_CAVEAT).toMatch(/salary/i);
+    // An LLC is a tax election, not a population of its own, so the caveat has
+    // to name it. And it hedges rather than asserts: teamSize is a proxy, so a
+    // reader can be routed to the wrong table without anything knowing.
+    expect(SCORP_ENTITY_CAVEAT).toMatch(/LLCs taxed as one/i);
+    expect(SCORP_ENTITY_CAVEAT).toMatch(/if you/i);
     expect(SCORP_ENTITY_CAVEAT).toMatch(/deducted/i);
   });
 });

@@ -13,12 +13,27 @@ import type {
 
 const ALL_KNOWN_COLUMNS = [...CSV_REQUIRED_COLUMNS, ...CSV_OPTIONAL_COLUMNS];
 
-// Common column names from other tools' exports (QuickBooks, Shopify, generic
-// e-commerce dumps) that map onto our canonical schema. Checked only when the
-// canonical name itself isn't present.
+// Common column names from other tools' exports (QuickBooks, Square, Shopify,
+// generic e-commerce dumps) that map onto our canonical schema. Checked only
+// when the canonical name itself isn't present.
 const COLUMN_ALIASES: Record<string, readonly string[]> = {
   date: ['invoice_date', 'order_date', 'transaction_date', 'txn_date', 'posted_date'],
-  amount: ['total', 'total_amount', 'price', 'cost', 'value', 'line_amount'],
+  // A Square export carries four money columns at once, so the order here is
+  // what picks one. Net sales is revenue after discounts and refunds but before
+  // tax, which is what the charts mean by amount; total collected includes tax
+  // and tips, and net total is after Square's fees.
+  amount: [
+    'net_sales',
+    'gross_sales',
+    'total_collected',
+    'net_total',
+    'total',
+    'total_amount',
+    'price',
+    'cost',
+    'value',
+    'line_amount',
+  ],
   category: ['product', 'product_name', 'item', 'sku', 'stock_code', 'expense_category'],
   label: ['description', 'memo', 'notes', 'name'],
   parent_category: ['group', 'account_type'],
@@ -33,8 +48,10 @@ function stripBom(content: string): string {
   return content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
 }
 
+// Real exports label columns "Invoice Date", not "invoice_date". Until
+// separators collapsed here, every multi-word alias above was unreachable.
 function normalizeHeader(header: string): string {
-  return header.trim().toLowerCase();
+  return header.trim().toLowerCase().replace(/[\s-]+/g, '_');
 }
 
 // Reject garbage that V8's Date constructor would accept (e.g. "hello 1", "true")

@@ -20,7 +20,7 @@ export const SOI_SOURCE = {
 // given margin is good, and any wording that implies it would be inventing a
 // comparison the data does not support.
 export const SOI_MARGIN_CAVEAT =
-  'Sole proprietors do not pay themselves a salary, so this net income still includes the owner’s own pay. A business that treats owner pay as an expense is not measuring the same thing.';
+  'These are sole proprietors and single-member LLCs, who take draws rather than a salary, so this net income still includes the owner pay. If you pay yourself through payroll, your own margin is not measuring the same thing.';
 
 export interface IndustryBenchmark {
   // The exact row label in the source table, so any figure here can be checked

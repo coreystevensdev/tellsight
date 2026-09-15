@@ -30,7 +30,7 @@ describe('IndustryBenchmark', () => {
   // conclusion from a single glance.
   it('shows the owner-compensation caveat', () => {
     render(<IndustryBenchmark businessType="construction" />);
-    expect(screen.getByText(/do not pay themselves a salary/i)).toBeInTheDocument();
+    expect(screen.getByText(/sole proprietors and single-member LLCs/i)).toBeInTheDocument();
   });
 
   // The reason the second source exists. A business with employees is almost
@@ -51,7 +51,7 @@ describe('IndustryBenchmark', () => {
     render(<IndustryBenchmark businessType="services" teamSize="solo" />);
 
     expect(screen.getByText('39.7%')).toBeInTheDocument();
-    expect(screen.getByText(/do not pay themselves a salary/i)).toBeInTheDocument();
+    expect(screen.getByText(/sole proprietors and single-member LLCs/i)).toBeInTheDocument();
   });
 
   // A missing answer is not evidence of employees, and this was the behaviour
@@ -61,6 +61,23 @@ describe('IndustryBenchmark', () => {
     render(<IndustryBenchmark businessType="services" teamSize={null} />);
 
     expect(screen.getByText('39.7%')).toBeInTheDocument();
+  });
+
+  // Most small businesses are an LLC, and an LLC is a tax election rather than a
+  // population: single-member files Schedule C and sits in the sole-proprietor
+  // figures, one that elected S-corp sits in the employer figures. Both caveats
+  // have to say the word, or the reader is shown two populations and recognises
+  // themselves in neither. Both hedge, too: teamSize routes a solo S-corp owner
+  // to the sole-proprietor table, so that caveat cannot assert how they are paid.
+  it('names LLCs in both tables and hedges both', () => {
+    const { unmount } = render(<IndustryBenchmark businessType="services" teamSize="solo" />);
+    expect(screen.getByText(/single-member LLCs/i)).toBeInTheDocument();
+    expect(screen.getByText(/if you pay yourself through payroll/i)).toBeInTheDocument();
+    unmount();
+
+    render(<IndustryBenchmark businessType="services" teamSize="2_5" />);
+    expect(screen.getByText(/LLCs taxed as one/i)).toBeInTheDocument();
+    expect(screen.getByText(/if you take draws instead of payroll/i)).toBeInTheDocument();
   });
 
   // SOI cannot separate technology from professional services, so there is no

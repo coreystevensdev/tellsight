@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { csvAdapter, stripBom, normalizeHeader, isValidDate, isValidAmount, detectDayFirst, parseDate, hasClassificationSignal, normalizeParentCategory } from './csvAdapter.js';
+import { csvAdapter, stripBom, normalizeHeader, buildHeaderMap, isValidDate, isValidAmount, detectDayFirst, parseDate, hasClassificationSignal, normalizeParentCategory } from './csvAdapter.js';
 import {
   validCsv,
   validCsvWithOptionals,
@@ -48,6 +48,21 @@ describe('csvAdapter.parse', () => {
     const result = csvAdapter.parse(toBuffer(aliasedColumns));
     expect(result.rows).toHaveLength(2);
     expect(result.rows[0]).toMatchObject({ invoice_date: '2025-01-15', total: '1200.00', product: 'Widget' });
+  });
+
+  it('resolves aliases from real export headers, which use spaces not underscores', () => {
+    const headers = ['Transaction Date', 'Total Amount', 'Product Name'];
+    expect(csvAdapter.validate(headers).valid).toBe(true);
+
+    const result = csvAdapter.parse(toBuffer('Transaction Date,Total Amount,Product Name\n2025-01-15,1200.00,Widget\n2025-01-16,850.50,Gadget\n'));
+    expect(result.rows).toHaveLength(2);
+  });
+
+  it('picks net sales over the other money columns a Square export carries', () => {
+    const map = buildHeaderMap(['Date', 'Gross Sales', 'Net Sales', 'Total Collected', 'Net Total', 'Category']);
+    expect(map.get('amount')).toBe('Net Sales');
+    expect(map.get('date')).toBe('Date');
+    expect(map.get('category')).toBe('Category');
   });
 
   it('accepts day-first (European) dates instead of rejecting most of the file', () => {
@@ -204,9 +219,11 @@ describe('helper functions', () => {
     expect(stripBom('hello')).toBe('hello');
   });
 
-  it('normalizeHeader trims and lowercases', () => {
+  it('normalizeHeader trims, lowercases, and collapses separators', () => {
     expect(normalizeHeader(' Date ')).toBe('date');
     expect(normalizeHeader('AMOUNT')).toBe('amount');
+    expect(normalizeHeader('Invoice Date')).toBe('invoice_date');
+    expect(normalizeHeader('Sub-Total')).toBe('sub_total');
   });
 
   it('isValidDate recognizes ISO dates', () => {
