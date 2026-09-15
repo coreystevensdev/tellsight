@@ -101,6 +101,9 @@ export const ANALYTICS_EVENTS = {
   DIGEST_SENT: 'digest.sent',
   DIGEST_FAILED: 'digest.failed',
   DIGEST_SKIPPED: 'digest.skipped',
+  // The one-time notice that an org's digest has stopped on stale data. Distinct
+  // from digest.skipped, which fires on every tick a send is passed over.
+  DIGEST_PAUSED_NOTICE_SENT: 'digest.paused_notice_sent',
   DIGEST_PREFERENCE_CHANGED: 'digest.preference_changed',
   DIGEST_OPENED: 'digest.opened',
   DIGEST_CLICKED: 'digest.clicked',

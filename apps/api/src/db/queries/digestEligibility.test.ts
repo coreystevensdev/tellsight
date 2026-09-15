@@ -50,11 +50,62 @@ vi.mock('../../lib/db.js', () => ({
   },
 }));
 
-const { findEligibleOrgs, findOrgRecipients, buildEligibilityQuery, buildPausedForStaleDataQuery } =
-  await import('./digestEligibility.js');
+const {
+  findEligibleOrgs,
+  findOrgRecipients,
+  buildEligibilityQuery,
+  buildPausedForStaleDataQuery,
+  buildStaleNudgeQuery,
+  buildNudgeRecipientsQuery,
+} = await import('./digestEligibility.js');
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+describe('buildStaleNudgeQuery: SQL shape', () => {
+  // This and buildPausedForStaleDataQuery have to describe the same population
+  // or the number reported and the orgs emailed drift apart, which is why the
+  // shared predicate is a function and not copy-paste. These assertions are what
+  // would catch someone inlining it again.
+  it('carries every predicate the paused count carries', () => {
+    const { sql } = buildStaleNudgeQuery(inertDb as never).toSQL();
+
+    expect(sql).toMatch(/"subscriptions"\."plan"\s*=/);
+    expect(sql).toMatch(/"orgs"\."active_dataset_id"\s+is\s+not\s+null/i);
+    expect(sql).toMatch(/"datasets"\."created_at"\s*<\s*now\(\)\s*-\s*interval\s*'30 days'/);
+    expect(sql).toMatch(/exists/i);
+  });
+
+  // The condition that makes this self-resetting. Comparing the nudge against
+  // the dataset's created_at rather than treating it as a boolean is what lets
+  // an org that recovers and goes stale again months later be told a second
+  // time, with nothing having to clear the column in between.
+  it('re-nudges once the active dataset is newer than the last notice', () => {
+    const { sql } = buildStaleNudgeQuery(inertDb as never).toSQL();
+
+    expect(sql).toMatch(/"orgs"\."stale_nudge_sent_at"\s+is\s+null/i);
+    expect(sql).toMatch(/"orgs"\."stale_nudge_sent_at"\s*<\s*"datasets"\."created_at"/);
+  });
+
+  // lt, not gte. Backwards here selects the orgs whose digest is working and
+  // emails them to say it has stopped.
+  it('selects stale datasets, not fresh ones', () => {
+    const { sql } = buildStaleNudgeQuery(inertDb as never).toSQL();
+    expect(sql).not.toMatch(/"datasets"\."created_at"\s*>=/);
+  });
+});
+
+describe('findOrgNudgeRecipients: SQL shape', () => {
+  // Deliberately not findOrgRecipients, which carries the digest's own
+  // last_sent_at dedupe. Borrowing it here would skip a member because some
+  // other org sent them a digest three days ago.
+  it('filters on cadence and nothing about last_sent_at', () => {
+    const { sql } = buildNudgeRecipientsQuery(inertDb as never, 42).toSQL();
+
+    expect(sql).toMatch(/"digest_preferences"\."cadence"/);
+    expect(sql).not.toMatch(/last_sent_at/);
+  });
 });
 
 describe('buildEligibilityQuery: SQL shape (AC #2, AC #14b)', () => {

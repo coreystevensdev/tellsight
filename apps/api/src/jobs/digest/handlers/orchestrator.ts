@@ -5,7 +5,9 @@ import { logger } from '../../../lib/logger.js';
 import { dbAdmin } from '../../../lib/db.js';
 import { agentProposalsQueries, digestEligibilityQueries } from '../../../db/queries/index.js';
 import {
+  getNudgeQueue,
   getOrgQueue,
+  JOB_PREFIX_NUDGE,
   JOB_PREFIX_ORG,
   type OrgJobData,
 } from '../queue.js';
@@ -117,12 +119,45 @@ export async function handleOrchestratorJob(job: Job): Promise<void> {
     logger.warn({ correlationId, err }, 'Could not count orgs paused for stale data');
   }
 
+  // Of the paused orgs counted above, the ones that have not been told. Runs
+  // after the digest fan-out so a failure here cannot cost anyone their actual
+  // digest, which is the thing they are paying for.
+  let nudgesEnqueued = 0;
+  try {
+    const needNudge = await digestEligibilityQueries.findOrgsNeedingStaleNudge(asOf);
+    const nudgeQueue = getNudgeQueue();
+    for (const org of needNudge) {
+      try {
+        await nudgeQueue.add(
+          `${JOB_PREFIX_NUDGE}-${org.id}`,
+          { orgId: org.id, orgName: org.name, datasetCreatedAt: org.datasetCreatedAt, correlationId },
+          {
+            // Keyed on the dataset, not the week. The nudge is once per staleness
+            // episode, so a retry on the same stale dataset must collapse onto
+            // the same job rather than queueing a second identical email.
+            jobId: `${JOB_PREFIX_NUDGE}-${org.id}-${org.datasetCreatedAt.getTime()}`,
+            attempts: ORG_JOB_ATTEMPTS,
+            backoff: { type: 'exponential', delay: ORG_JOB_BACKOFF_MS },
+            removeOnComplete: { count: 100 },
+            removeOnFail: { age: 30 * 86_400 },
+          },
+        );
+        nudgesEnqueued += 1;
+      } catch (err) {
+        logger.error({ correlationId, orgId: org.id, err }, 'Could not enqueue stale nudge');
+      }
+    }
+  } catch (err) {
+    logger.error({ correlationId, err }, 'Stale nudge sweep failed, digests were unaffected');
+  }
+
   logger.info(
     {
       correlationId,
       eligibleOrgCount,
       enqueueFailures,
       pausedForStaleData,
+      nudgesEnqueued,
       weekStart,
       weekEnd,
       durationMs: Date.now() - start,

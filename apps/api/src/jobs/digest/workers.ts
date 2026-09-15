@@ -4,16 +4,11 @@ import { ANALYTICS_EVENTS } from 'shared/constants';
 
 import { logger } from '../../lib/logger.js';
 import { trackEvent } from '../../services/analytics/trackEvent.js';
-import {
-  connectionOptions,
-  QUEUE_ORCHESTRATOR,
-  QUEUE_ORG,
-  QUEUE_SEND,
-  sendJobDataSchema,
-} from './queue.js';
+import { QUEUE_NUDGE, QUEUE_ORCHESTRATOR, QUEUE_ORG, QUEUE_SEND, connectionOptions, sendJobDataSchema } from './queue.js';
 import { handleOrchestratorJob } from './handlers/orchestrator.js';
 import { handlePerOrgJob } from './handlers/perOrg.js';
 import { handlePerSendJob } from './handlers/perSend.js';
+import { handleStaleNudgeJob } from './handlers/staleNudge.js';
 
 const ORCHESTRATOR_CONCURRENCY = 1;
 const ORG_CONCURRENCY = 3;
@@ -29,6 +24,7 @@ const SEND_LIMITER_DURATION_MS = 1_000;
 let orchestratorWorker: Worker | null = null;
 let orgWorker: Worker | null = null;
 let sendWorker: Worker | null = null;
+let nudgeWorker: Worker | null = null;
 
 function attachStandardListeners(worker: Worker, label: string): void {
   worker.on('failed', (job, err) => {
@@ -131,6 +127,23 @@ export function initDigestSendWorker(): Worker {
   return sendWorker;
 }
 
+// Low concurrency on purpose. This fires at most once per org per staleness
+// episode, so it is never the hot path, and sharing the send worker's limiter
+// budget would let a burst of nudges delay the digests themselves.
+const NUDGE_CONCURRENCY = 3;
+
+export function initDigestNudgeWorker(): Worker {
+  if (nudgeWorker) return nudgeWorker;
+
+  nudgeWorker = new Worker(QUEUE_NUDGE, async (job: Job) => handleStaleNudgeJob(job), {
+    connection: connectionOptions(),
+    concurrency: NUDGE_CONCURRENCY,
+  });
+  attachStandardListeners(nudgeWorker, 'nudge');
+  logger.info({ concurrency: NUDGE_CONCURRENCY }, 'Digest nudge worker started');
+  return nudgeWorker;
+}
+
 export async function shutdownDigestWorkers(): Promise<void> {
   const tasks: Promise<unknown>[] = [];
   if (orchestratorWorker) {
@@ -145,8 +158,13 @@ export async function shutdownDigestWorkers(): Promise<void> {
     logger.info({}, 'Closing digest send worker');
     tasks.push(sendWorker.close());
   }
+  if (nudgeWorker) {
+    logger.info({}, 'Closing digest nudge worker');
+    tasks.push(nudgeWorker.close());
+  }
   await Promise.allSettled(tasks);
   orchestratorWorker = null;
   orgWorker = null;
+  nudgeWorker = null;
   sendWorker = null;
 }
