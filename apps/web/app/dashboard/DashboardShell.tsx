@@ -57,6 +57,7 @@ interface DashboardShellProps {
   tier?: SubscriptionTier;
   needsOnboarding?: boolean;
   businessType?: BusinessProfile['businessType'] | null;
+  teamSize?: BusinessProfile['teamSize'] | null;
 }
 
 function buildSwrKey(filters: FilterState): string {
@@ -168,7 +169,7 @@ function FilteredEmptyState({ onReset }: { onReset: () => void }) {
   );
 }
 
-export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cachedStaleAt, tier: serverTier, needsOnboarding, businessType }: DashboardShellProps) {
+export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cachedStaleAt, tier: serverTier, needsOnboarding, businessType, teamSize }: DashboardShellProps) {
   const router = useRouter();
   const [showOnboarding, setShowOnboarding] = useState(needsOnboarding ?? false);
   const { setOrgName } = useSidebar();
@@ -554,7 +555,7 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
 
             {/* After the interpretation, not beside the KPIs: these are someone
                 else's numbers and should not read as one of yours. */}
-            <IndustryBenchmark businessType={businessType} className="mt-6" />
+            <IndustryBenchmark businessType={businessType} teamSize={teamSize} className="mt-6" />
           </AiSummaryErrorBoundary>
 
           {hasAnyData && hasBalance && (
