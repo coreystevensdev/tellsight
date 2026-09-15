@@ -15,6 +15,7 @@ const mockGenerateInterpretation = vi.fn();
 const mockValidateStatRefs = vi.fn();
 const mockValidateCiteRefs = vi.fn();
 const mockGetLastDigest = vi.fn();
+const mockGetDatasetById = vi.fn();
 const mockSaveDigestHistory = vi.fn();
 const mockGetMonthlyBucketsByDataset = vi.fn();
 const mockGetAwardedKinds = vi.fn();
@@ -58,6 +59,9 @@ vi.mock('../../../lib/db.js', () => ({
 }));
 
 vi.mock('../../../db/queries/index.js', () => ({
+  datasetsQueries: {
+    getDatasetById: mockGetDatasetById,
+  },
   aiSummariesQueries: {
     getCachedDigest: mockGetCachedDigest,
     storeSummary: mockStoreSummary,
@@ -171,6 +175,9 @@ beforeEach(() => {
     metadata: { promptVersion: 'v1-digest', statTypes: ['Total', 'Trend'] },
   });
   mockGetLastDigest.mockResolvedValue(undefined);
+  // Fresh by default: created after any weekStart these tests use, so the
+  // no-new-data skip stays out of the way of every case that predates it.
+  mockGetDatasetById.mockResolvedValue({ id: 100, createdAt: new Date('2030-01-01T00:00:00Z') });
   mockSaveDigestHistory.mockResolvedValue(undefined);
   mockGetMonthlyBucketsByDataset.mockResolvedValue(new Map());
   mockGetAwardedKinds.mockResolvedValue(new Set());
@@ -340,6 +347,130 @@ describe('cache miss path', () => {
       { orgId: 42, datasetId: 100, invalidRefs: ['ghost', 'phantom'], promptVersion: 'v1-digest' },
       'AI summary referenced unknown stat instance IDs, stripped before cache',
     );
+  });
+});
+
+describe('no new data since the prior digest', () => {
+  const PRIOR_WEEK = new Date('2026-04-26T00:00:00Z');
+
+  /**
+   * Prior digest a week back, and a dataset that predates it.
+   *
+   * Deliberately does not queue getCachedDigest. The skip returns before that
+   * call, so a mockResolvedValueOnce placed here is never consumed and stays at
+   * the head of the queue for whichever later test calls it first. That test
+   * then reads undefined, takes the cache-miss branch it was written to avoid,
+   * and fails somewhere unrelated. A bare vi.fn() already returns undefined,
+   * which is the cache miss the send cases below want anyway.
+   */
+  function unchangedSince(datasetCreatedAt: Date) {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce([
+      { stat: runwayStat(4.0), score: 1, breakdown: { novelty: 1, actionability: 1, specificity: 1 } },
+    ]);
+    mockGetLastDigest.mockResolvedValueOnce({
+      keyStats: [runwayStat(4.0)],
+      stateSentence: 'Runway was holding steady.',
+      weekStart: PRIOR_WEEK,
+    });
+    mockGetDatasetById.mockResolvedValue({ id: 100, createdAt: datasetCreatedAt });
+  }
+
+  // A monthly uploader on a weekly cadence gets four emails per data change,
+  // three of them restating the same numbers, which is what teaches someone to
+  // stop opening the digest.
+  it('skips, and does not pay for a Claude call to say nothing', async () => {
+    unchangedSince(new Date('2026-04-01T00:00:00Z'));
+
+    await handlePerOrgJob({ id: 'org-10', data: baseJobData } as never);
+
+    expect(mockGenerateInterpretation).not.toHaveBeenCalled();
+    expect(mockFindOrgRecipients).not.toHaveBeenCalled();
+    expect(mockTrackEventOrg).toHaveBeenCalledWith(
+      42,
+      'digest.skipped',
+      expect.objectContaining({ reason: 'no_new_data_since_prior' }),
+    );
+  });
+
+  // The boundary. A dataset minted after the prior digest is new data by
+  // definition, whatever the tracked stats did or did not do.
+  it('sends when the dataset is newer than the prior digest', async () => {
+    unchangedSince(new Date('2026-04-28T00:00:00Z'));
+    mockGenerateInterpretation.mockResolvedValueOnce('- a week');
+    mockStoreSummary.mockResolvedValueOnce({ id: 9 });
+    mockFindOrgRecipients.mockResolvedValueOnce([]);
+
+    await handlePerOrgJob({ id: 'org-10', data: baseJobData } as never);
+
+    expect(mockGenerateInterpretation).toHaveBeenCalled();
+  });
+
+  // Nobody has ever received one, so there is nothing to repeat.
+  it('sends the first digest even with nothing to compare against', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockGetCachedDigest.mockResolvedValueOnce(undefined);
+    mockRunCurationPipeline.mockResolvedValueOnce([
+      { stat: runwayStat(4.0), score: 1, breakdown: { novelty: 1, actionability: 1, specificity: 1 } },
+    ]);
+    mockGetLastDigest.mockResolvedValueOnce(undefined);
+    mockGetDatasetById.mockResolvedValue({ id: 100, createdAt: new Date('2026-01-01T00:00:00Z') });
+    mockGenerateInterpretation.mockResolvedValueOnce('- first');
+    mockStoreSummary.mockResolvedValueOnce({ id: 10 });
+    mockFindOrgRecipients.mockResolvedValueOnce([]);
+
+    await handlePerOrgJob({ id: 'org-10', data: baseJobData } as never);
+
+    expect(mockGenerateInterpretation).toHaveBeenCalled();
+  });
+
+  // The exact boundary. A dataset minted at the same instant as the prior
+  // digest's weekStart arrived before it, not after, so it is not new data.
+  // Flipping <= to < here sends a duplicate digest to anyone who happens to land
+  // on it, which is the case nobody constructs by hand.
+  it('skips when the dataset is exactly as old as the prior digest', async () => {
+    unchangedSince(PRIOR_WEEK);
+
+    await handlePerOrgJob({ id: 'org-10', data: baseJobData } as never);
+
+    expect(mockGenerateInterpretation).not.toHaveBeenCalled();
+  });
+
+  // The milestone guard, and it is load-bearing rather than belt and braces.
+  // detectFirstTimeMilestones only considers months strictly before the current
+  // one, so the clock rolling into a new month makes a previously ineligible
+  // month eligible and fires a milestone on data that has not changed at all.
+  // Without this guard that milestone is computed and then thrown away.
+  it('sends when a milestone fires despite unchanged data', async () => {
+    unchangedSince(new Date('2026-04-01T00:00:00Z'));
+    mockGetMonthlyBucketsByDataset.mockResolvedValueOnce(
+      new Map([['2026-03', { revenue: 20000, expenses: 9000 }]]),
+    );
+    mockGetAwardedKinds.mockResolvedValueOnce(new Set<string>());
+    mockGenerateInterpretation.mockResolvedValueOnce('- a milestone');
+    mockStoreSummary.mockResolvedValueOnce({ id: 12 });
+    mockFindOrgRecipients.mockResolvedValueOnce([]);
+
+    await handlePerOrgJob({ id: 'org-10', data: baseJobData } as never);
+
+    expect(mockGenerateInterpretation).toHaveBeenCalled();
+  });
+
+  // A dataset row the worker cannot read reads as "cannot tell", and cannot-tell
+  // has to send. The RLS-scoped client returns undefined inside a worker, so the
+  // wrong default here would disable this skip silently and permanently.
+  it('sends when the dataset row cannot be read', async () => {
+    unchangedSince(new Date('2026-04-01T00:00:00Z'));
+    mockGetDatasetById.mockResolvedValue(undefined);
+    mockGenerateInterpretation.mockResolvedValueOnce('- a week');
+    mockStoreSummary.mockResolvedValueOnce({ id: 11 });
+    mockFindOrgRecipients.mockResolvedValueOnce([]);
+
+    await handlePerOrgJob({ id: 'org-10', data: baseJobData } as never);
+
+    expect(mockGenerateInterpretation).toHaveBeenCalled();
   });
 });
 

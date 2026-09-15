@@ -6,9 +6,10 @@ import { logger } from '../../../lib/logger.js';
 import { trackEventOrg } from '../../../services/analytics/trackEvent.js';
 import { dbAdmin } from '../../../lib/db.js';
 import {
-  aiSummariesQueries,
   agentProposalsQueries,
+  aiSummariesQueries,
   dataRowsQueries,
+  datasetsQueries,
   digestEligibilityQueries,
   digestHistoryQueries,
   milestoneAwardsQueries,
@@ -190,6 +191,52 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
     : transitionMilestones;
 
   const milestones = [...firstTimeMilestones, ...dedupedTransitionMilestones];
+
+  // A monthly uploader on a weekly digest gets four emails per data change,
+  // three of them restating the same numbers. That is the same failure the
+  // 30-day staleness gate exists to prevent (FR58), one grain finer, and the
+  // gate cannot see it because the data is not stale, it is merely unchanged.
+  //
+  // The test is whether new data arrived, not whether the tracked stats moved.
+  // buildPriorContext compares four stat types out of the pipeline's full set,
+  // so an empty deltaEntries means "none of those four moved", not "nothing to
+  // say": a new expense category or a shifted forecast would produce no delta
+  // and still be worth sending. Datasets are immutable, every ingest path mints
+  // a new row, so created_at older than the last digest means nothing has come
+  // in since, and nothing computed from it can have changed either.
+  //
+  // dbAdmin explicitly. getDatasetById defaults to the RLS-scoped client, which
+  // in a worker has no app.current_org_id and returns undefined, and undefined
+  // here reads as "cannot tell" and sends. Safe, but it would silently disable
+  // this skip forever.
+  const activeDataset = await datasetsQueries.getDatasetById(orgId, datasetId, dbAdmin);
+  const priorWeekStart = lastDigest?.weekStart;
+  const noNewDataSincePrior =
+    priorWeekStart instanceof Date &&
+    activeDataset?.createdAt instanceof Date &&
+    activeDataset.createdAt.getTime() <= priorWeekStart.getTime();
+
+  // Milestones are belt and braces. They are derived from the same data, so an
+  // unchanged dataset should not produce new ones, and detectFirstTimeMilestones
+  // takes the wall clock as an argument. Cheap enough to not have to be sure.
+  if (noNewDataSincePrior && deltaEntries.length === 0 && milestones.length === 0) {
+    logger.info(
+      {
+        correlationId, orgId, datasetId, weekStart, jobId: job.id,
+        outcome: 'skipped',
+        datasetCreatedAt: activeDataset!.createdAt.toISOString(),
+        priorDigestWeekStart: priorWeekStart!.toISOString(),
+        durationMs: Date.now() - start,
+      },
+      'Per-org digest skipped: no new data since the last digest',
+    );
+    trackEventOrg(orgId, ANALYTICS_EVENTS.DIGEST_SKIPPED, {
+      reason: 'no_new_data_since_prior',
+      datasetId,
+      weekStart: weekStart.toISOString(),
+    });
+    return;
+  }
   // getLastDigest returns the most recent digest, not the adjacent week, and
   // skipped weeks now make gaps ordinary. Pass the real distance so the lead-in
   // cannot call a three-week-old snapshot "last week".
