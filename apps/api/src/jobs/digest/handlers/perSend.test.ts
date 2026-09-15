@@ -323,6 +323,39 @@ describe('per-user dedupe race', () => {
 
     expect(mockSendEmail).toHaveBeenCalled();
   });
+
+  // The two cases above sit a day either side of the line, which says nothing
+  // about where the line is. It matters: the cron runs Sunday 18:00 UTC, so a
+  // send that happened any time after Monday 18:00 of the previous week lands
+  // inside this window and suppresses the scheduled digest. That is not
+  // hypothetical, it happened on 2026-09-14, when verifying the digest fix by
+  // hand set last_sent_at 5.90 days before the next tick and would have
+  // silently skipped the first real scheduled send by 2.35 hours.
+  it('skips just inside the window, at 5 days 23 hours', async () => {
+    const justInside = new Date(Date.now() - (6 * 86_400_000 - 60 * 60 * 1000));
+    mockUpsertDefaults.mockResolvedValueOnce({ userId: 7, cadence: 'weekly', lastSentAt: justInside });
+
+    await handlePerSendJob({ id: 'send-edge-1', data: baseJobData } as never);
+
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockTrackEvent).toHaveBeenCalledWith(
+      42,
+      7,
+      'digest.skipped',
+      expect.objectContaining({ reason: 'within_dedupe_window' }),
+    );
+  });
+
+  it('sends just outside the window, at 6 days 1 minute', async () => {
+    const justOutside = new Date(Date.now() - (6 * 86_400_000 + 60 * 1000));
+    mockUpsertDefaults.mockResolvedValueOnce({ userId: 7, cadence: 'weekly', lastSentAt: justOutside });
+    mockGetById.mockResolvedValueOnce(okSummary);
+    mockSendEmail.mockResolvedValueOnce({ status: 'sent', providerMessageId: 'msg', durationMs: 50 });
+
+    await handlePerSendJob({ id: 'send-edge-2', data: baseJobData } as never);
+
+    expect(mockSendEmail).toHaveBeenCalled();
+  });
 });
 
 describe('cadence safeguard', () => {
