@@ -80,6 +80,24 @@ describe('IndustryBenchmark', () => {
     expect(screen.getByText(/if you take draws instead of payroll/i)).toBeInTheDocument();
   });
 
+  // Rent, depreciation and interest are outlays regardless of how the owner is
+  // paid, so they are the figures that mean the same thing in both tables. The
+  // employer row has to actually differ from the sole-proprietor one, or the
+  // second table is not being read and nothing else here would notice.
+  it('shows the cost structure from whichever table was picked', () => {
+    const { unmount } = render(<IndustryBenchmark businessType="services" teamSize="solo" />);
+    expect(screen.getByText('Rent')).toBeInTheDocument();
+    expect(screen.getByText('2.6%')).toBeInTheDocument();
+    expect(screen.getByText('2.7%')).toBeInTheDocument();
+    expect(screen.getByText('0.5%')).toBeInTheDocument();
+    unmount();
+
+    render(<IndustryBenchmark businessType="services" teamSize="2_5" />);
+    expect(screen.getByText('2.5%')).toBeInTheDocument();
+    expect(screen.getByText('1.2%')).toBeInTheDocument();
+    expect(screen.getByText('0.6%')).toBeInTheDocument();
+  });
+
   // SOI cannot separate technology from professional services, so there is no
   // figure to show. Rendering nothing is the point: the alternative is showing
   // the services number under a technology label.

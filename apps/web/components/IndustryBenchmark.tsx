@@ -9,6 +9,12 @@ import {
   SCORP_ENTITY_CAVEAT,
   employerNetMarginPercent,
   employerPayrollSharePercent,
+  rentSharePercent,
+  depreciationSharePercent,
+  interestSharePercent,
+  employerRentSharePercent,
+  employerDepreciationSharePercent,
+  employerInterestSharePercent,
 } from 'shared/benchmarks';
 import type { BusinessProfile } from 'shared/schemas';
 
@@ -47,6 +53,9 @@ function pickBenchmark(
       sector: b.sector,
       margin: netMarginPercent(b),
       payroll: payrollSharePercent(b),
+      rent: rentSharePercent(b),
+      depreciation: depreciationSharePercent(b),
+      interest: interestSharePercent(b),
       caveat: SOI_MARGIN_CAVEAT,
       source: SOI_SOURCE,
     };
@@ -57,6 +66,9 @@ function pickBenchmark(
     sector: b.sector,
     margin: employerNetMarginPercent(b),
     payroll: employerPayrollSharePercent(b),
+    rent: employerRentSharePercent(b),
+    depreciation: employerDepreciationSharePercent(b),
+    interest: employerInterestSharePercent(b),
     caveat: SCORP_ENTITY_CAVEAT,
     source: SCORP_SOURCE,
   };
@@ -71,6 +83,17 @@ export function IndustryBenchmark({ businessType, teamSize, className }: Industr
   if (!businessType) return null;
   const picked = pickBenchmark(businessType, teamSize);
   if (!picked || picked.margin === null || picked.payroll === null) return null;
+
+  // Rent, depreciation and interest are paid the same way whether or not the
+  // owner is on payroll, so unlike the margin above they mean the same thing in
+  // both tables. Kept smaller than the two headline figures rather than given
+  // equal weight, because interest in particular runs under 1% for most sectors
+  // and carries almost no signal at that size.
+  const costs = [
+    { label: 'Rent', value: picked.rent },
+    { label: 'Depreciation', value: picked.depreciation },
+    { label: 'Interest', value: picked.interest },
+  ].filter((c): c is { label: string; value: number } => c.value !== null);
 
   return (
     <section
@@ -92,6 +115,17 @@ export function IndustryBenchmark({ businessType, teamSize, className }: Industr
           <dd className="font-mono text-lg text-foreground">{picked.payroll}%</dd>
         </div>
       </dl>
+
+      {costs.length > 0 && (
+        <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-2 border-t border-border pt-3">
+          {costs.map(({ label, value }) => (
+            <div key={label}>
+              <dt className="text-xs text-muted-foreground">{label}</dt>
+              <dd className="font-mono text-sm text-foreground">{value}%</dd>
+            </div>
+          ))}
+        </dl>
+      )}
 
       <p className="mt-3 text-[11px] leading-tight text-muted-foreground">{picked.caveat}</p>
 

@@ -32,6 +32,13 @@ export interface IndustryBenchmark {
   businessReceipts: number;
   netIncomeLessDeficit: number;
   payroll: number;
+  // Rent arrives split across two columns in this table. Both are kept so the
+  // total is checkable against the source instead of being a number only this
+  // file knows how to reproduce.
+  rentOnMachinery: number;
+  rentOnProperty: number;
+  depreciation: number;
+  interestPaid: number;
 }
 
 // businessType from onboarding to a sector in the table. 'technology' is absent
@@ -39,15 +46,15 @@ export interface IndustryBenchmark {
 // professional/scientific/technical services alongside 'services', so any figure
 // shown for it would be the other category's number wearing a different label.
 export const SOI_BENCHMARKS: Partial<Record<(typeof BUSINESS_TYPES)[number], IndustryBenchmark>> = {
-  restaurant: { sector: 'Restaurants (full & limited service) and drinking places', businessReceipts: 77_216_690, netIncomeLessDeficit: 2_610_484, payroll: 14_501_567 },
-  retail: { sector: 'Retail trade', businessReceipts: 199_487_939, netIncomeLessDeficit: 8_219_358, payroll: 13_137_339 },
-  services: { sector: 'Professional, scientific, and technical services', businessReceipts: 250_227_539, netIncomeLessDeficit: 99_328_388, payroll: 19_929_703 },
-  construction: { sector: 'Construction', businessReceipts: 382_517_598, netIncomeLessDeficit: 56_728_544, payroll: 42_198_457 },
-  healthcare: { sector: 'Health care and social assistance', businessReceipts: 147_497_660, netIncomeLessDeficit: 51_474_275, payroll: 20_652_555 },
-  manufacturing: { sector: 'Manufacturing', businessReceipts: 46_156_294, netIncomeLessDeficit: 3_259_834, payroll: 6_111_269 },
-  real_estate: { sector: 'Real estate and rental and leasing', businessReceipts: 109_020_119, netIncomeLessDeficit: 26_440_210, payroll: 4_903_571 },
-  transportation: { sector: 'Transportation and warehousing', businessReceipts: 200_084_105, netIncomeLessDeficit: 16_493_885, payroll: 8_396_222 },
-  other: { sector: 'All nonfarm industries', businessReceipts: 2_063_191_945, netIncomeLessDeficit: 377_210_993, payroll: 175_013_634 },
+  restaurant: { sector: 'Restaurants (full & limited service) and drinking places', businessReceipts: 77_216_690, netIncomeLessDeficit: 2_610_484, payroll: 14_501_567, rentOnMachinery: 635_724, rentOnProperty: 4_213_600, depreciation: 2_345_007, interestPaid: 648_089 },
+  retail: { sector: 'Retail trade', businessReceipts: 199_487_939, netIncomeLessDeficit: 8_219_358, payroll: 13_137_339, rentOnMachinery: 743_226, rentOnProperty: 6_210_708, depreciation: 3_774_546, interestPaid: 1_168_787 },
+  services: { sector: 'Professional, scientific, and technical services', businessReceipts: 250_227_539, netIncomeLessDeficit: 99_328_388, payroll: 19_929_703, rentOnMachinery: 1_090_457, rentOnProperty: 5_306_271, depreciation: 6_747_717, interestPaid: 1_287_365 },
+  construction: { sector: 'Construction', businessReceipts: 382_517_598, netIncomeLessDeficit: 56_728_544, payroll: 42_198_457, rentOnMachinery: 2_701_386, rentOnProperty: 2_923_716, depreciation: 15_410_656, interestPaid: 1_764_868 },
+  healthcare: { sector: 'Health care and social assistance', businessReceipts: 147_497_660, netIncomeLessDeficit: 51_474_275, payroll: 20_652_555, rentOnMachinery: 943_114, rentOnProperty: 5_957_142, depreciation: 3_977_617, interestPaid: 909_963 },
+  manufacturing: { sector: 'Manufacturing', businessReceipts: 46_156_294, netIncomeLessDeficit: 3_259_834, payroll: 6_111_269, rentOnMachinery: 380_116, rentOnProperty: 1_598_385, depreciation: 1_879_743, interestPaid: 366_167 },
+  real_estate: { sector: 'Real estate and rental and leasing', businessReceipts: 109_020_119, netIncomeLessDeficit: 26_440_210, payroll: 4_903_571, rentOnMachinery: 486_500, rentOnProperty: 2_066_250, depreciation: 7_022_923, interestPaid: 1_767_036 },
+  transportation: { sector: 'Transportation and warehousing', businessReceipts: 200_084_105, netIncomeLessDeficit: 16_493_885, payroll: 8_396_222, rentOnMachinery: 5_167_455, rentOnProperty: 2_151_376, depreciation: 12_706_775, interestPaid: 1_431_133 },
+  other: { sector: 'All nonfarm industries', businessReceipts: 2_063_191_945, netIncomeLessDeficit: 377_210_993, payroll: 175_013_634, rentOnMachinery: 16_903_495, rentOnProperty: 51_396_884, depreciation: 79_465_351, interestPaid: 15_138_785 },
 };
 
 function ratio(part: number, whole: number): number | null {
@@ -61,4 +68,18 @@ export function netMarginPercent(b: IndustryBenchmark): number | null {
 
 export function payrollSharePercent(b: IndustryBenchmark): number | null {
   return ratio(b.payroll, b.businessReceipts);
+}
+
+// Unlike net margin, these three are outlays whatever the owner's pay
+// arrangement, so they stay comparable across both source tables.
+export function rentSharePercent(b: IndustryBenchmark): number | null {
+  return ratio(b.rentOnMachinery + b.rentOnProperty, b.businessReceipts);
+}
+
+export function depreciationSharePercent(b: IndustryBenchmark): number | null {
+  return ratio(b.depreciation, b.businessReceipts);
+}
+
+export function interestSharePercent(b: IndustryBenchmark): number | null {
+  return ratio(b.interestPaid, b.businessReceipts);
 }

@@ -6,6 +6,9 @@ import {
   SCORP_ENTITY_CAVEAT,
   employerNetMarginPercent,
   employerPayrollSharePercent,
+  employerRentSharePercent,
+  employerDepreciationSharePercent,
+  employerInterestSharePercent,
 } from './scorp2022.js';
 import { SOI_BENCHMARKS, netMarginPercent } from './soi2023.js';
 
@@ -81,5 +84,26 @@ describe('why a second source exists', () => {
     expect(SCORP_ENTITY_CAVEAT).toMatch(/LLCs taxed as one/i);
     expect(SCORP_ENTITY_CAVEAT).toMatch(/if you/i);
     expect(SCORP_ENTITY_CAVEAT).toMatch(/deducted/i);
+  });
+
+  // Second transcription for the expense columns. These three are the figures
+  // that stay comparable across both tables, because rent, depreciation and
+  // interest are paid the same way whether or not the owner draws a salary.
+  it.each([
+    ['restaurant', 6.6, 2.4, 0.5],
+    ['retail', 1.8, 0.9, 0.3],
+    ['services', 2.5, 1.2, 0.6],
+    ['construction', 1.6, 2.0, 0.3],
+    ['healthcare', 4.9, 1.8, 0.6],
+    ['manufacturing', 1.6, 2.6, 0.5],
+    ['real_estate', 5.9, 6.5, 1.9],
+    ['transportation', 3.7, 5.1, 0.6],
+    ['other', 2.4, 2.0, 0.5],
+  ] as const)('derives %s cost structure from the stored raw figures', (key, rent, deprec, interest) => {
+    const b = SCORP_BENCHMARKS[key];
+    expect(b).toBeDefined();
+    expect(employerRentSharePercent(b!)).toBe(rent);
+    expect(employerDepreciationSharePercent(b!)).toBe(deprec);
+    expect(employerInterestSharePercent(b!)).toBe(interest);
   });
 });
