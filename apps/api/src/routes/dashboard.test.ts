@@ -273,6 +273,42 @@ describe('GET /dashboard/charts', () => {
   });
 });
 
+describe('digestPausesAt', () => {
+  // The dashboard warns a user before their weekly digest goes quiet, and the
+  // date it warns about has to be the same one the eligibility gate enforces.
+  // Computed server-side from DATASET_FRESHNESS_DAYS so the browser is never
+  // holding a second copy of the rule.
+  it('is the active dataset created_at plus the freshness window', async () => {
+    const created = new Date('2026-09-13T14:18:02.000Z');
+    mockVerifyAccessToken.mockResolvedValueOnce({ sub: '42', org_id: 10, role: 'owner', isAdmin: false });
+    mockFindOrgById.mockResolvedValueOnce({ id: 10, name: 'Acme Corp', slug: 'acme' });
+    mockGetUserOrgDemoState.mockResolvedValueOnce('user_only');
+    mockGetActiveDatasetId.mockResolvedValueOnce(1);
+    mockGetDatasetsByOrg.mockResolvedValue([{ id: 1, name: 'Data', isSeedData: false, createdAt: created }]);
+
+    const res = await fetch(`${baseUrl}/dashboard/charts`, { headers: { Cookie: 'access_token=t' } });
+    const body = await res.json();
+
+    expect(body.data.digestPausesAt).toBe('2026-10-13T14:18:02.000Z');
+  });
+
+  // The banner is advisory and sits on the product's main surface. A dataset row
+  // arriving without created_at should cost the warning, not the dashboard.
+  it('is null rather than a 500 when created_at is missing', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce({ sub: '42', org_id: 10, role: 'owner', isAdmin: false });
+    mockFindOrgById.mockResolvedValueOnce({ id: 10, name: 'Acme Corp', slug: 'acme' });
+    mockGetUserOrgDemoState.mockResolvedValueOnce('user_only');
+    mockGetActiveDatasetId.mockResolvedValueOnce(1);
+    mockGetDatasetsByOrg.mockResolvedValue([{ id: 1, name: 'Data', isSeedData: false }]);
+
+    const res = await fetch(`${baseUrl}/dashboard/charts`, { headers: { Cookie: 'access_token=t' } });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.digestPausesAt).toBeNull();
+  });
+});
+
 describe('dataset query param', () => {
   function authSetup(orgId = 10) {
     mockVerifyAccessToken.mockResolvedValueOnce({
