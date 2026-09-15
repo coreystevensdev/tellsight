@@ -6,6 +6,9 @@ import {
   SOI_MARGIN_CAVEAT,
   netMarginPercent,
   payrollSharePercent,
+  rentSharePercent,
+  depreciationSharePercent,
+  interestSharePercent,
 } from './soi2023.js';
 
 describe('SOI 2023 benchmarks', () => {
@@ -88,5 +91,27 @@ describe('SOI 2023 benchmarks', () => {
     // reader can be routed to the wrong table without anything knowing.
     expect(SOI_MARGIN_CAVEAT).toMatch(/single-member LLC/i);
     expect(SOI_MARGIN_CAVEAT).toMatch(/if you/i);
+  });
+
+  // Second transcription for the expense columns, same reason as the margin
+  // table above. Rent is summed from two source columns here and is a single
+  // row in the employer table, so this is also what pins the two as the same
+  // quantity rather than one of them quietly meaning something narrower.
+  it.each([
+    ['restaurant', 6.3, 3.0, 0.8],
+    ['retail', 3.5, 1.9, 0.6],
+    ['services', 2.6, 2.7, 0.5],
+    ['construction', 1.5, 4.0, 0.5],
+    ['healthcare', 4.7, 2.7, 0.6],
+    ['manufacturing', 4.3, 4.1, 0.8],
+    ['real_estate', 2.3, 6.4, 1.6],
+    ['transportation', 3.7, 6.4, 0.7],
+    ['other', 3.3, 3.9, 0.7],
+  ] as const)('derives %s cost structure from the stored raw figures', (key, rent, deprec, interest) => {
+    const b = SOI_BENCHMARKS[key];
+    expect(b).toBeDefined();
+    expect(rentSharePercent(b!)).toBe(rent);
+    expect(depreciationSharePercent(b!)).toBe(deprec);
+    expect(interestSharePercent(b!)).toBe(interest);
   });
 });
