@@ -56,7 +56,8 @@ export type ExternalService =
   | 'Google OAuth'
   | 'Intuit OAuth'
   | 'Intuit OAuth, token revoked'
-  | 'Shopify OAuth';
+  | 'Shopify OAuth'
+  | 'Square OAuth';
 
 export class ExternalServiceError extends AppError {
   readonly service: ExternalService;

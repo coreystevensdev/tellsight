@@ -3,7 +3,7 @@ import type { Response, Request } from 'express';
 
 import { ANALYTICS_EVENTS } from 'shared/constants';
 
-import { env, isQbConfigured, isShopifyConfigured } from '../config.js';
+import { env, isQbConfigured, isShopifyConfigured, isSquareConfigured } from '../config.js';
 import { logger } from '../lib/logger.js';
 import { requireUser } from '../lib/requireUser.js';
 import { roleGuard } from '../middleware/roleGuard.js';
@@ -19,6 +19,7 @@ import {
   registerDailySync as registerShopifyDailySync,
   removeDailySync as removeShopifyDailySync,
 } from '../services/integrations/shopify/scheduler.js';
+import * as squareOAuth from '../services/integrations/square/oauth.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
 import { audit, auditAuth } from '../services/audit/auditService.js';
 import { sessionCookieOptions } from '../lib/cookies.js';
@@ -44,12 +45,23 @@ function shopifyGuard(_req: Request, res: Response, next: () => void) {
   next();
 }
 
+function squareGuard(_req: Request, res: Response, next: () => void) {
+  if (!isSquareConfigured(env)) {
+    res.status(501).json({
+      error: { code: 'INTEGRATION_NOT_CONFIGURED', message: 'Square integration is not configured' },
+    });
+    return;
+  }
+  next();
+}
+
 // Protected routes (require auth). Guards are scoped per prefix, not
 // blanket-applied to the router, /quickbooks/* and /shopify/* are gated
 // independently so one provider being unconfigured doesn't 501 the other.
 export const integrationsRouter = Router();
 integrationsRouter.use('/quickbooks', qbGuard);
 integrationsRouter.use('/shopify', shopifyGuard);
+integrationsRouter.use('/square', squareGuard);
 
 integrationsRouter.post('/quickbooks/connect', async (req: Request, res: Response) => {
   const user = requireUser(req);
@@ -249,10 +261,85 @@ integrationsRouter.delete('/shopify', roleGuard('owner'), async (req: Request, r
   res.json({ data: { message: 'Shopify disconnected' } });
 });
 
+// Unlike Shopify, a Square authorize URL is the same for every seller, so
+// /connect needs nothing from the caller: which merchant is connecting only
+// becomes known when the callback returns a merchant_id.
+integrationsRouter.post('/square/connect', async (req: Request, res: Response) => {
+  const user = requireUser(req);
+  const orgId = user.org_id;
+
+  const existing = await integrationConnectionsQueries.getByOrgAndProvider(orgId, 'square');
+  if (existing) {
+    res.status(409).json({
+      error: { code: 'ALREADY_CONNECTED', message: 'Square is already connected' },
+    });
+    return;
+  }
+
+  const { authUrl, state } = squareOAuth.generateAuthUrl();
+  const cookieOpts = sessionCookieOptions(10 * 60);
+
+  res.cookie('square_oauth_state', state, cookieOpts);
+  res.cookie('square_oauth_org_id', String(orgId), cookieOpts);
+  res.cookie('square_oauth_user_id', user.sub, cookieOpts);
+
+  res.json({ data: { authUrl } });
+});
+
+integrationsRouter.get('/square/status', async (req: Request, res: Response) => {
+  const user = requireUser(req);
+  const connection = await integrationConnectionsQueries.getByOrgAndProvider(user.org_id, 'square');
+
+  if (!connection) {
+    res.json({ data: { connected: false } });
+    return;
+  }
+
+  res.json({
+    data: {
+      connected: true,
+      provider: 'square',
+      merchantId: connection.providerTenantId,
+      syncStatus: connection.syncStatus,
+      lastSyncedAt: connection.lastSyncedAt,
+      syncError: connection.syncError,
+      connectedAt: connection.createdAt,
+    },
+  });
+});
+
+integrationsRouter.delete('/square', roleGuard('owner'), async (req: Request, res: Response) => {
+  const user = requireUser(req);
+  const connection = await integrationConnectionsQueries.getByOrgAndProvider(user.org_id, 'square');
+
+  if (!connection) {
+    res.status(404).json({
+      error: { code: 'NOT_CONNECTED', message: 'No Square connection found' },
+    });
+    return;
+  }
+
+  await squareOAuth.revokeToken(decrypt(connection.encryptedAccessToken));
+  await integrationConnectionsQueries.deleteByOrgAndProvider(user.org_id, 'square');
+
+  trackEvent(user.org_id, Number(user.sub), ANALYTICS_EVENTS.INTEGRATION_DISCONNECTED, {
+    provider: 'square',
+  });
+
+  auditAuth(req, AUDIT_ACTIONS.INTEGRATION_DISCONNECTED, {
+    targetType: 'integration',
+    targetId: 'square',
+  });
+
+  logger.info({ orgId: user.org_id }, 'Square disconnected');
+  res.json({ data: { message: 'Square disconnected' } });
+});
+
 // Public callback routes (providers redirect the browser here, no auth cookies)
 export const integrationsCallbackRouter = Router();
 integrationsCallbackRouter.use('/quickbooks', qbGuard);
 integrationsCallbackRouter.use('/shopify', shopifyGuard);
+integrationsCallbackRouter.use('/square', squareGuard);
 
 integrationsCallbackRouter.get('/quickbooks/callback', async (req: Request, res: Response) => {
   const { code, realmId, state, error } = req.query as Record<string, string | undefined>;
@@ -426,5 +513,82 @@ integrationsCallbackRouter.get('/shopify/callback', async (req: Request, res: Re
   } catch (err) {
     logger.error({ err }, 'Shopify OAuth callback failed');
     res.redirect(`${dashboardUrl}?shopify=error`);
+  }
+});
+
+// Square signs nothing on the callback, so unlike Shopify there is no HMAC to
+// check and the state cookie is the only thing standing between this and a
+// forged redirect.
+integrationsCallbackRouter.get('/square/callback', async (req: Request, res: Response) => {
+  const { code, state, error } = req.query as Record<string, string | undefined>;
+  const dashboardUrl = `${env.APP_URL}/dashboard`;
+
+  if (error) {
+    logger.warn({ error }, 'Square OAuth denied by user');
+    res.redirect(`${dashboardUrl}?square=denied`);
+    return;
+  }
+
+  const storedState = req.cookies?.square_oauth_state;
+  if (!storedState || storedState !== state) {
+    logger.warn({ storedState: !!storedState, state: !!state }, 'Square OAuth state mismatch');
+    res.redirect(`${dashboardUrl}?square=error`);
+    return;
+  }
+
+  res.clearCookie('square_oauth_state', { path: '/' });
+
+  if (!code) {
+    logger.warn({}, 'Square OAuth callback missing code');
+    res.redirect(`${dashboardUrl}?square=error`);
+    return;
+  }
+
+  try {
+    const orgIdCookie = req.cookies?.square_oauth_org_id;
+    const userId = req.cookies?.square_oauth_user_id;
+
+    if (!orgIdCookie || !userId) {
+      logger.error({}, 'Square OAuth callback missing org/user identity cookies');
+      res.redirect(`${dashboardUrl}?square=error`);
+      return;
+    }
+
+    const tokens = await squareOAuth.exchangeCode(code);
+    const orgId = Number(orgIdCookie);
+
+    // Square hands back a real refresh token and a real deadline, so this row
+    // needs none of the sentinel values the Shopify one does.
+    await integrationConnectionsQueries.upsert({
+      orgId,
+      provider: 'square',
+      providerTenantId: tokens.merchantId,
+      encryptedRefreshToken: encrypt(tokens.refreshToken),
+      encryptedAccessToken: encrypt(tokens.accessToken),
+      accessTokenExpiresAt: tokens.expiresAt,
+      scope: tokens.scope,
+    });
+
+    res.clearCookie('square_oauth_org_id', { path: '/' });
+    res.clearCookie('square_oauth_user_id', { path: '/' });
+
+    trackEvent(orgId, Number(userId), ANALYTICS_EVENTS.INTEGRATION_CONNECTED, {
+      provider: 'square',
+      merchantId: tokens.merchantId,
+    });
+
+    audit(req, {
+      orgId,
+      userId: Number(userId),
+      action: AUDIT_ACTIONS.INTEGRATION_CONNECTED,
+      targetType: 'integration',
+      targetId: 'square',
+    });
+
+    logger.info({ orgId, merchantId: tokens.merchantId }, 'Square connected');
+    res.redirect(`${dashboardUrl}?square=connected`);
+  } catch (err) {
+    logger.error({ err }, 'Square OAuth callback failed');
+    res.redirect(`${dashboardUrl}?square=error`);
   }
 });

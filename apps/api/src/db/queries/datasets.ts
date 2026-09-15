@@ -40,7 +40,7 @@ export async function createDataset(
   orgId: number,
   data: {
     name: string;
-    sourceType?: 'csv' | 'quickbooks' | 'xero' | 'stripe' | 'plaid' | 'shopify';
+    sourceType?: 'csv' | 'quickbooks' | 'xero' | 'stripe' | 'plaid' | 'shopify' | 'square';
     isSeedData?: boolean;
     uploadedBy?: number | null;
   },

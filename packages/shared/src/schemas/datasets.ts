@@ -7,6 +7,7 @@ export const sourceTypeSchema = z.enum([
   'stripe',
   'plaid',
   'shopify',
+  'square',
 ]);
 
 export const demoModeStateSchema = z.enum([
