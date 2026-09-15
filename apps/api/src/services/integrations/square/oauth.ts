@@ -3,6 +3,8 @@ import { randomBytes } from 'node:crypto';
 import { env } from '../../../config.js';
 import { logger } from '../../../lib/logger.js';
 import { ExternalServiceError } from '../../../lib/appError.js';
+import { integrationConnectionsQueries } from '../../../db/queries/index.js';
+import { encrypt, decrypt } from '../encryption.js';
 
 // Read-only, same posture as the other connectors: nothing here writes back to
 // the seller's account. MERCHANT_PROFILE_READ is not about the profile, it is
@@ -160,4 +162,48 @@ export async function revokeToken(accessToken: string): Promise<void> {
   } catch (err) {
     logger.warn({ err }, 'Square token revocation failed, best effort');
   }
+}
+
+/**
+ * Refreshes a stored connection in place and returns the new material.
+ *
+ * Square rotates the refresh token on every exchange, so writing both tokens
+ * back is not optional: keeping the old one would work until the next refresh
+ * and then strand the connection.
+ */
+export async function refreshAccessToken(connectionId: number): Promise<{
+  encryptedAccessToken: string;
+  encryptedRefreshToken: string;
+  accessTokenExpiresAt: Date;
+}> {
+  const connection = await integrationConnectionsQueries.getByIdAndProvider(connectionId, 'square');
+  if (!connection) throw new Error(`Connection ${connectionId} not found`);
+
+  let tokens;
+  try {
+    tokens = await refreshTokens(decrypt(connection.encryptedRefreshToken));
+  } catch (err) {
+    // A refresh token Square no longer honours means the seller revoked the
+    // application. Nothing retries out of that, so the row is marked rather
+    // than left looking healthy.
+    await integrationConnectionsQueries.updateSyncStatus(
+      connection.id,
+      'error',
+      'Square access was revoked, please reconnect',
+    );
+    throw err;
+  }
+
+  const encryptedAccessToken = encrypt(tokens.accessToken);
+  const encryptedRefreshToken = encrypt(tokens.refreshToken);
+
+  await integrationConnectionsQueries.updateTokens(
+    connection.id,
+    encryptedAccessToken,
+    encryptedRefreshToken,
+    tokens.expiresAt,
+  );
+
+  logger.info({ connectionId }, 'Refreshed Square access token');
+  return { encryptedAccessToken, encryptedRefreshToken, accessTokenExpiresAt: tokens.expiresAt };
 }
