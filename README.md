@@ -202,6 +202,8 @@ The weekly digest pipeline illustrates several patterns that come up in high-thr
 
 A few honest gaps:
 
+- **Every external integration runs on test credentials, deliberately.** Stripe is in test mode, and the QuickBooks, Shopify and Square connectors default to their sandbox environments. The code paths are the production ones: real webhook signature verification, real OAuth with state and HMAC checks, real token refresh against the provider's live token endpoint. Only the credentials differ, and `SQUARE_ENVIRONMENT` / `QUICKBOOKS_ENVIRONMENT` switch it with no code change. A public demo that charged a visitor's card would need business registration, tax handling and refund obligations to be real too, and a connector pointed at a live seller account would put actual business revenue on a single free-tier instance for a benefit no visitor could see, since signed-out visitors are served synthetic seed data regardless.
+
 - **Synthetic seed data only.** The 12 months of demo data are generated to exercise the pipeline; real CSVs with unusual category mixes or column names may surface edge cases the seed doesn't cover.
 - **Curation pipeline scoring is heuristic.** The "rank by relevance" step uses hand-tuned weights, not a learned model. Fine for the demo dataset; real datasets may need re-weighting per industry.
 - **Free-tier AI preview is capped at ~150 words.** Enough to evaluate quality, but a hard ceiling that Pro tier removes.
