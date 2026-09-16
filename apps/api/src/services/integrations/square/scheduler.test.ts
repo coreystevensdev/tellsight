@@ -5,7 +5,9 @@ const removeJobScheduler = vi.fn();
 const getAllByProvider = vi.fn();
 
 vi.mock('./worker.js', () => ({ getSyncQueue: () => ({ add, removeJobScheduler }) }));
-vi.mock('../../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
+vi.mock('../../../lib/logger.js', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
 vi.mock('../../../lib/db.js', () => ({ dbAdmin: {} }));
 vi.mock('../../../db/queries/index.js', () => ({
   integrationConnectionsQueries: { getAllByProvider: (...a: unknown[]) => getAllByProvider(...a) },

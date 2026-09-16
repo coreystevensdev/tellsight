@@ -41,7 +41,9 @@ function order(over: Partial<SquareOrder> = {}): SquareOrder {
     created_at: '2026-03-01T10:00:00Z',
     closed_at: '2026-03-02T18:30:00Z',
     state: 'COMPLETED',
-    line_items: [{ name: 'Flat white', quantity: '2', total_money: { amount: 900, currency: 'USD' } }],
+    line_items: [
+      { name: 'Flat white', quantity: '2', total_money: { amount: 900, currency: 'USD' } },
+    ],
     net_amounts: { total_money: { amount: 900, currency: 'USD' } },
     ...over,
   };
@@ -57,7 +59,11 @@ describe('normalizeOrders', () => {
       category: 'Flat white',
       parentCategory: 'Income',
     });
-    expect(row!.metadata).toMatchObject({ resourceType: 'order', locationId: 'LOC1', currency: 'USD' });
+    expect(row!.metadata).toMatchObject({
+      resourceType: 'order',
+      locationId: 'LOC1',
+      currency: 'USD',
+    });
   });
 
   // closed_at is when the sale completed; created_at is when the tab opened,
@@ -71,7 +77,9 @@ describe('normalizeOrders', () => {
   });
 
   it('drops an order with no usable date rather than inventing one', () => {
-    expect(normalizeOrders([order({ closed_at: undefined, created_at: undefined })])).toHaveLength(0);
+    expect(normalizeOrders([order({ closed_at: undefined, created_at: undefined })])).toHaveLength(
+      0,
+    );
   });
 
   // net_amounts is after discounts and refunds, which is the revenue the
@@ -92,7 +100,12 @@ describe('normalizeOrders', () => {
     const rows = normalizeOrders([
       order({
         refunds: [
-          { id: 'ref_1', created_at: '2026-03-05T09:00:00Z', amount_money: { amount: -450, currency: 'USD' }, reason: 'Spilled' },
+          {
+            id: 'ref_1',
+            created_at: '2026-03-05T09:00:00Z',
+            amount_money: { amount: -450, currency: 'USD' },
+            reason: 'Spilled',
+          },
         ],
       }),
     ]);
@@ -125,7 +138,21 @@ describe('normalizeOrders', () => {
     expect(row!.label).toBe('Flat white and 1 more');
   });
 
+  // Seen on real sandbox data: refunding a payment makes Square write a second
+  // order carrying the negative net, while the refund is already on the original
+  // order's refunds[]. Keeping it filed the same $2 twice, once as negative
+  // Income and once as an Expense, and a negative Income row also corrupts the
+  // revenue total on the dashboard.
+  it('skips the negative-net order Square writes for a refund', () => {
+    const rows = normalizeOrders([
+      order({ line_items: [], net_amounts: { total_money: { amount: -200, currency: 'USD' } } }),
+    ]);
+    expect(rows).toHaveLength(0);
+  });
+
   it('skips a zero-value order', () => {
-    expect(normalizeOrders([order({ net_amounts: { total_money: { amount: 0, currency: 'USD' } } })])).toHaveLength(0);
+    expect(
+      normalizeOrders([order({ net_amounts: { total_money: { amount: 0, currency: 'USD' } } })]),
+    ).toHaveLength(0);
   });
 });

@@ -27,9 +27,12 @@ function signQuery(params: Record<string, string>, secret = 'test-client-secret'
 }
 
 describe('isValidShopDomain', () => {
-  it.each(['my-store.myshopify.com', 'store123.myshopify.com'])('accepts a real shop domain: %s', (shop) => {
-    expect(isValidShopDomain(shop)).toBe(true);
-  });
+  it.each(['my-store.myshopify.com', 'store123.myshopify.com'])(
+    'accepts a real shop domain: %s',
+    (shop) => {
+      expect(isValidShopDomain(shop)).toBe(true);
+    },
+  );
 
   it.each([
     'my-store.com',
@@ -64,7 +67,12 @@ describe('generateAuthUrl', () => {
 
 describe('verifyHmac', () => {
   it('accepts a correctly signed query', () => {
-    const params = { code: 'abc123', shop: 'my-store.myshopify.com', state: 'xyz', timestamp: '1700000000' };
+    const params = {
+      code: 'abc123',
+      shop: 'my-store.myshopify.com',
+      state: 'xyz',
+      timestamp: '1700000000',
+    };
     const hmac = signQuery(params);
     expect(verifyHmac({ ...params, hmac })).toBe(true);
   });

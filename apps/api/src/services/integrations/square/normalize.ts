@@ -1,9 +1,4 @@
-import type {
-  NormalizedSquareRow,
-  SquareMoney,
-  SquareOrder,
-  SquareResourceType,
-} from './types.js';
+import type { NormalizedSquareRow, SquareMoney, SquareOrder, SquareResourceType } from './types.js';
 
 // ISO 4217 currencies with no minor unit: the amount Square sends is already
 // whole units. Everything else Square settles in has two, so 2 is the default.
@@ -11,8 +6,22 @@ import type {
 // out because Square does not onboard sellers in those countries; if that
 // changes this set needs a sibling rather than a nudge.
 const ZERO_DECIMAL = new Set([
-  'BIF', 'CLP', 'DJF', 'GNF', 'JPY', 'KMF', 'KRW', 'MGA',
-  'PYG', 'RWF', 'UGX', 'VND', 'VUV', 'XAF', 'XOF', 'XPF',
+  'BIF',
+  'CLP',
+  'DJF',
+  'GNF',
+  'JPY',
+  'KMF',
+  'KRW',
+  'MGA',
+  'PYG',
+  'RWF',
+  'UGX',
+  'VND',
+  'VUV',
+  'XAF',
+  'XOF',
+  'XPF',
 ]);
 
 /**
@@ -30,7 +39,9 @@ export function moneyToDecimal(money: SquareMoney | undefined): string | null {
 
   const exponent = ZERO_DECIMAL.has(money.currency) ? 0 : 2;
   const sign = money.amount < 0 ? '-' : '';
-  const digits = Math.abs(Math.trunc(money.amount)).toString().padStart(exponent + 1, '0');
+  const digits = Math.abs(Math.trunc(money.amount))
+    .toString()
+    .padStart(exponent + 1, '0');
   const whole = digits.slice(0, digits.length - exponent);
   const fraction = exponent === 0 ? '' : `.${digits.slice(digits.length - exponent)}`;
 
@@ -104,9 +115,23 @@ export function normalizeOrders(orders: SquareOrder[]): NormalizedSquareRow[] {
     const money = order.net_amounts?.total_money ?? order.total_money;
     const amount = moneyToDecimal(money);
 
-    if (amount !== null && amount !== '0' && amount !== '0.00') {
+    // Refunding a payment makes Square write a second order whose net is
+    // negative, and the refund itself already arrives on the original order's
+    // refunds[]. Taking both files the same event twice, once as negative
+    // revenue and once as an expense. Only positive nets are sales.
+    if (amount !== null && Number(amount) > 0) {
       out.push(
-        row(order, 'order', order.id, date, amount, orderCategory(order), 'Income', orderLabel(order), money!.currency),
+        row(
+          order,
+          'order',
+          order.id,
+          date,
+          amount,
+          orderCategory(order),
+          'Income',
+          orderLabel(order),
+          money!.currency,
+        ),
       );
     }
 

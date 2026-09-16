@@ -47,7 +47,9 @@ export function normalizeOrder(order: ShopifyOrder): NormalizedShopifyRow[] {
   // breakdown, not as a negative Income row, DataRow amounts are always
   // positive (see types.ts).
   const refundRows: NormalizedShopifyRow[] = (order.refunds ?? [])
-    .filter((refund) => refund.totalRefundedSet && Number(refund.totalRefundedSet.shopMoney.amount) > 0)
+    .filter(
+      (refund) => refund.totalRefundedSet && Number(refund.totalRefundedSet.shopMoney.amount) > 0,
+    )
     .map((refund) => ({
       sourceType: 'shopify' as const,
       sourceId: `refund-${refund.id}`,
@@ -102,6 +104,9 @@ export function normalizeProduct(product: ShopifyProduct, syncedAt: Date): Norma
     });
 }
 
-export function normalizeProducts(products: ShopifyProduct[], syncedAt: Date): NormalizedShopifyRow[] {
+export function normalizeProducts(
+  products: ShopifyProduct[],
+  syncedAt: Date,
+): NormalizedShopifyRow[] {
   return products.flatMap((product) => normalizeProduct(product, syncedAt));
 }

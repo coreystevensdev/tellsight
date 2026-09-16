@@ -135,8 +135,10 @@ describe('encryption segment lengths', () => {
   it.each([
     ['truncated to 4 bytes', (b: Buffer) => b.subarray(0, 4)],
     ['empty', () => Buffer.alloc(0)],
-    ['padded to 16 bytes, which GCM would otherwise accept', (b: Buffer) =>
-      Buffer.concat([b, Buffer.alloc(4)])],
+    [
+      'padded to 16 bytes, which GCM would otherwise accept',
+      (b: Buffer) => Buffer.concat([b, Buffer.alloc(4)]),
+    ],
   ])('rejects an IV %s', (_label, mangle) => {
     const encrypted = encrypt('quickbooks-refresh-token');
 

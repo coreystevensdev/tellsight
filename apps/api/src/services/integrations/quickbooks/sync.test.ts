@@ -26,7 +26,12 @@ vi.mock('../../../lib/db.js', () => ({
         return {
           onConflictDoUpdate: (c: unknown) => {
             mockOnConflict(c);
-            return { returning: () => { mockReturning(); return mockReturning._result; } };
+            return {
+              returning: () => {
+                mockReturning();
+                return mockReturning._result;
+              },
+            };
           },
         };
       },
@@ -126,7 +131,13 @@ function normalizedRow(overrides: Partial<NormalizedQbRow> = {}): NormalizedQbRo
     category: 'Office Supplies',
     parentCategory: 'Expenses',
     label: 'Acme Supplies',
-    metadata: { qb_id: 'tx-1', txnType: 'Purchase', docNumber: 'P-001', memo: null, accountCode: 'acc-1' },
+    metadata: {
+      qb_id: 'tx-1',
+      txnType: 'Purchase',
+      docNumber: 'P-001',
+      memo: null,
+      accountCode: 'acc-1',
+    },
     ...overrides,
   };
 }
@@ -159,7 +170,7 @@ describe('runSync', () => {
     await runSync(1, 'initial');
 
     // The connection is fetched by its own id (1), not treated as an org id.
-    expect(mockGetByIdAndProvider).toHaveBeenCalledWith(1, 'quickbooks');
+    expect(mockGetByIdAndProvider).toHaveBeenCalledWith(1, 'quickbooks', expect.anything());
 
     expect(mockCreateDataset).toHaveBeenCalledWith(
       10,
@@ -182,7 +193,12 @@ describe('runSync', () => {
     await runSync(1, 'scheduled');
 
     expect(mockCreateDataset).not.toHaveBeenCalled();
-    expect(mockUpdateDatasetName).toHaveBeenCalledWith(10, 400, 'QuickBooks, Sunrise Cafe', expect.anything());
+    expect(mockUpdateDatasetName).toHaveBeenCalledWith(
+      10,
+      400,
+      'QuickBooks, Sunrise Cafe',
+      expect.anything(),
+    );
   });
 
   it('sets activeDatasetId only on initial sync', async () => {
@@ -201,7 +217,9 @@ describe('runSync', () => {
   it('does not set activeDatasetId on scheduled sync', async () => {
     mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection({ lastSyncedAt: new Date() }));
     mockCreateQbClient.mockResolvedValueOnce(mockQbClient());
-    mockGetDatasetsByOrg.mockResolvedValueOnce([{ id: 400, sourceType: 'quickbooks', name: 'QuickBooks, Sunrise Cafe' }]);
+    mockGetDatasetsByOrg.mockResolvedValueOnce([
+      { id: 400, sourceType: 'quickbooks', name: 'QuickBooks, Sunrise Cafe' },
+    ]);
     mockNormalizeTransactions.mockReturnValue([]);
 
     const { runSync } = await import('./sync.js');
@@ -215,7 +233,9 @@ describe('runSync', () => {
     mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection({ lastSyncedAt }));
     const client = mockQbClient();
     mockCreateQbClient.mockResolvedValueOnce(client);
-    mockGetDatasetsByOrg.mockResolvedValueOnce([{ id: 400, sourceType: 'quickbooks', name: 'QuickBooks, Sunrise Cafe' }]);
+    mockGetDatasetsByOrg.mockResolvedValueOnce([
+      { id: 400, sourceType: 'quickbooks', name: 'QuickBooks, Sunrise Cafe' },
+    ]);
     mockNormalizeTransactions.mockReturnValue([]);
 
     const { runSync } = await import('./sync.js');
@@ -316,7 +336,12 @@ describe('runSync', () => {
       expect.objectContaining({ status: 'failed', error: 'Token revoked' }),
       expect.anything(),
     );
-    expect(mockUpdateSyncStatus).toHaveBeenCalledWith(1, 'error', 'Token revoked', expect.anything());
+    expect(mockUpdateSyncStatus).toHaveBeenCalledWith(
+      1,
+      'error',
+      'Token revoked',
+      expect.anything(),
+    );
   });
 
   it('fires integration.synced event with owner userId', async () => {
@@ -331,7 +356,9 @@ describe('runSync', () => {
     await runSync(1, 'manual');
 
     expect(mockTrackEvent).toHaveBeenCalledWith(
-      10, 42, 'integration.synced',
+      10,
+      42,
+      'integration.synced',
       expect.objectContaining({ provider: 'quickbooks', trigger: 'manual' }),
     );
   });
@@ -345,7 +372,9 @@ describe('runSync', () => {
     await expect(runSync(1, 'scheduled')).rejects.toThrow('API timeout');
 
     expect(mockTrackEvent).toHaveBeenCalledWith(
-      10, 42, 'integration.sync_failed',
+      10,
+      42,
+      'integration.sync_failed',
       expect.objectContaining({ error: 'API timeout' }),
     );
   });

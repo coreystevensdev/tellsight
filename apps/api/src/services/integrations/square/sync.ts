@@ -45,7 +45,11 @@ function datasetNameFor(locations: SquareLocation[], merchantId: string): string
 }
 
 export async function runSync(connectionId: number, trigger: SyncTrigger): Promise<SyncResult> {
-  const connection = await integrationConnectionsQueries.getByIdAndProvider(connectionId, 'square');
+  const connection = await integrationConnectionsQueries.getByIdAndProvider(
+    connectionId,
+    'square',
+    dbAdmin,
+  );
   if (!connection) throw new ConnectionNotFoundError(connectionId);
 
   const orgId = connection.orgId;
@@ -55,7 +59,9 @@ export async function runSync(connectionId: number, trigger: SyncTrigger): Promi
   const since =
     !isInitial && connection.lastSyncedAt
       ? connection.lastSyncedAt
-      : new Date(Date.UTC(syncedAt.getUTCFullYear(), syncedAt.getUTCMonth() - INITIAL_LOOKBACK_MONTHS, 1));
+      : new Date(
+          Date.UTC(syncedAt.getUTCFullYear(), syncedAt.getUTCMonth() - INITIAL_LOOKBACK_MONTHS, 1),
+        );
 
   const job = await syncJobsQueries.create(
     { orgId, connectionId: connection.id, trigger, status: 'running', startedAt: syncedAt },
@@ -117,7 +123,11 @@ export async function runSync(connectionId: number, trigger: SyncTrigger): Promi
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown sync error';
 
-    await syncJobsQueries.update(job.id, { status: 'failed', completedAt: new Date(), error: message }, dbAdmin);
+    await syncJobsQueries.update(
+      job.id,
+      { status: 'failed', completedAt: new Date(), error: message },
+      dbAdmin,
+    );
     await integrationConnectionsQueries.updateSyncStatus(connection.id, 'error', message, dbAdmin);
 
     const ownerId = await userOrgsQueries.getOrgOwnerId(orgId, dbAdmin).catch(() => null);

@@ -13,7 +13,10 @@ class FakeQueue {
   add = mockQueueAdd;
   close = mockQueueClose;
   removeJobScheduler = mockQueueRemoveJobScheduler;
-  constructor(public name: string, public opts: unknown) {}
+  constructor(
+    public name: string,
+    public opts: unknown,
+  ) {}
 }
 
 class FakeWorker {
@@ -119,7 +122,10 @@ describe('worker', () => {
       initSyncWorker();
 
       expect(capturedProcessor).toBeTruthy();
-      const result = await capturedProcessor!({ id: 'job-1', data: { connectionId: 10, trigger: 'manual' } });
+      const result = await capturedProcessor!({
+        id: 'job-1',
+        data: { connectionId: 10, trigger: 'manual' },
+      });
 
       expect(mockRunSync).toHaveBeenCalledWith(10, 'manual');
       expect(result).toEqual({ rowsSynced: 47, datasetId: 99 });
@@ -132,7 +138,10 @@ describe('worker', () => {
       const { initSyncWorker } = await import('./worker.js');
       initSyncWorker();
 
-      const caught = await capturedProcessor!({ id: 'job-2', data: { connectionId: 20, trigger: 'scheduled' } })
+      const caught = await capturedProcessor!({
+        id: 'job-2',
+        data: { connectionId: 20, trigger: 'scheduled' },
+      })
         .then(() => null)
         .catch((e: Error) => e);
 
@@ -147,7 +156,10 @@ describe('worker', () => {
       const { initSyncWorker } = await import('./worker.js');
       initSyncWorker();
 
-      const caught = await capturedProcessor!({ id: 'job-4', data: { connectionId: 20, trigger: 'scheduled' } })
+      const caught = await capturedProcessor!({
+        id: 'job-4',
+        data: { connectionId: 20, trigger: 'scheduled' },
+      })
         .then(() => null)
         .catch((e: Error) => e);
 

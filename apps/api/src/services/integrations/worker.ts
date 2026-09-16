@@ -37,10 +37,7 @@ export function getSyncQueue(): Queue {
   return queue;
 }
 
-export async function enqueueSyncJob(
-  connectionId: number,
-  trigger: SyncTrigger,
-): Promise<void> {
+export async function enqueueSyncJob(connectionId: number, trigger: SyncTrigger): Promise<void> {
   const q = getSyncQueue();
   await q.add(
     `qb-${trigger}-${connectionId}`,
@@ -76,11 +73,17 @@ export function initSyncWorker(): Worker {
         // connection row is gone for good, so retrying either wastes MAX_ATTEMPTS.
         // UnrecoverableError tells BullMQ to fail the job now instead of backing off.
         if (err instanceof TokenRevokedError) {
-          logger.warn({ jobId: job.id, connectionId }, 'QB token revoked, marking job unrecoverable');
+          logger.warn(
+            { jobId: job.id, connectionId },
+            'QB token revoked, marking job unrecoverable',
+          );
           throw new UnrecoverableError(`Token revoked: ${err.message}`);
         }
         if (err instanceof ConnectionNotFoundError) {
-          logger.warn({ jobId: job.id, connectionId }, 'QB connection not found, marking job unrecoverable');
+          logger.warn(
+            { jobId: job.id, connectionId },
+            'QB connection not found, marking job unrecoverable',
+          );
           throw new UnrecoverableError(err.message);
         }
         throw err;
@@ -93,10 +96,7 @@ export function initSyncWorker(): Worker {
   );
 
   worker.on('failed', (job, err) => {
-    logger.error(
-      { jobId: job?.id, attemptsMade: job?.attemptsMade, err },
-      'QB sync job failed',
-    );
+    logger.error({ jobId: job?.id, attemptsMade: job?.attemptsMade, err }, 'QB sync job failed');
   });
 
   worker.on('error', (err) => {

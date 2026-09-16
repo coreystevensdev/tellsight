@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 
 import { env } from '../../../config.js';
 import { logger } from '../../../lib/logger.js';
+import { dbAdmin } from '../../../lib/db.js';
 import { ExternalServiceError } from '../../../lib/appError.js';
 import { integrationConnectionsQueries } from '../../../db/queries/index.js';
 import { encrypt, decrypt } from '../encryption.js';
@@ -176,7 +177,11 @@ export async function refreshAccessToken(connectionId: number): Promise<{
   encryptedRefreshToken: string;
   accessTokenExpiresAt: Date;
 }> {
-  const connection = await integrationConnectionsQueries.getByIdAndProvider(connectionId, 'square');
+  const connection = await integrationConnectionsQueries.getByIdAndProvider(
+    connectionId,
+    'square',
+    dbAdmin,
+  );
   if (!connection) throw new Error(`Connection ${connectionId} not found`);
 
   let tokens;
@@ -190,6 +195,7 @@ export async function refreshAccessToken(connectionId: number): Promise<{
       connection.id,
       'error',
       'Square access was revoked, please reconnect',
+      dbAdmin,
     );
     throw err;
   }
@@ -202,6 +208,7 @@ export async function refreshAccessToken(connectionId: number): Promise<{
     encryptedAccessToken,
     encryptedRefreshToken,
     tokens.expiresAt,
+    dbAdmin,
   );
 
   logger.info({ connectionId }, 'Refreshed Square access token');

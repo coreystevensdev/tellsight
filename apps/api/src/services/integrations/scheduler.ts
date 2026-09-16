@@ -9,10 +9,7 @@ function jobIdFor(orgId: number): string {
   return `qb-daily-${orgId}`;
 }
 
-export async function registerDailySync(
-  orgId: number,
-  connectionId: number,
-): Promise<void> {
+export async function registerDailySync(orgId: number, connectionId: number): Promise<void> {
   const queue = getSyncQueue();
   const jobId = jobIdFor(orgId);
 

@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 
-import { normalizeOrder, normalizeOrders, normalizeProduct, normalizeProducts } from './normalize.js';
+import {
+  normalizeOrder,
+  normalizeOrders,
+  normalizeProduct,
+  normalizeProducts,
+} from './normalize.js';
 import type { ShopifyOrder, ShopifyProduct } from './types.js';
 
 function makeOrder(overrides: Partial<ShopifyOrder> = {}): ShopifyOrder {
@@ -123,7 +128,14 @@ function makeProduct(overrides: Partial<ShopifyProduct> = {}): ShopifyProduct {
     totalInventory: 50,
     variants: {
       edges: [
-        { node: { id: 'gid://shopify/ProductVariant/1', title: 'Default', price: '20.00', inventoryQuantity: 50 } },
+        {
+          node: {
+            id: 'gid://shopify/ProductVariant/1',
+            title: 'Default',
+            price: '20.00',
+            inventoryQuantity: 50,
+          },
+        },
       ],
     },
     ...overrides,
@@ -170,7 +182,13 @@ describe('normalizeProduct', () => {
 
   it('skips a variant with no inventory tracking (inventoryQuantity is null)', () => {
     const rows = normalizeProduct(
-      makeProduct({ variants: { edges: [{ node: { id: 'v1', title: 'Default', price: '20.00', inventoryQuantity: null } }] } }),
+      makeProduct({
+        variants: {
+          edges: [
+            { node: { id: 'v1', title: 'Default', price: '20.00', inventoryQuantity: null } },
+          ],
+        },
+      }),
       syncedAt,
     );
     expect(rows).toHaveLength(0);
@@ -185,7 +203,10 @@ describe('normalizeProduct', () => {
 
 describe('normalizeProducts', () => {
   it('flattens multiple products into one row array', () => {
-    const rows = normalizeProducts([makeProduct({ id: 'a' }), makeProduct({ id: 'b' })], new Date());
+    const rows = normalizeProducts(
+      [makeProduct({ id: 'a' }), makeProduct({ id: 'b' })],
+      new Date(),
+    );
     expect(rows).toHaveLength(2);
   });
 });

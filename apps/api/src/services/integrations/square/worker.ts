@@ -72,11 +72,17 @@ export function initSyncWorker(): Worker {
         // A revoked token needs the seller to reconnect and a missing row is
         // gone for good, so retrying either just burns MAX_ATTEMPTS.
         if (err instanceof TokenRevokedError) {
-          logger.warn({ jobId: job.id, connectionId }, 'Square token revoked, marking job unrecoverable');
+          logger.warn(
+            { jobId: job.id, connectionId },
+            'Square token revoked, marking job unrecoverable',
+          );
           throw new UnrecoverableError(`Token revoked: ${err.message}`);
         }
         if (err instanceof ConnectionNotFoundError) {
-          logger.warn({ jobId: job.id, connectionId }, 'Square connection not found, marking job unrecoverable');
+          logger.warn(
+            { jobId: job.id, connectionId },
+            'Square connection not found, marking job unrecoverable',
+          );
           throw new UnrecoverableError(err.message);
         }
         throw err;
@@ -89,7 +95,10 @@ export function initSyncWorker(): Worker {
   );
 
   worker.on('failed', (job, err) => {
-    logger.error({ jobId: job?.id, attemptsMade: job?.attemptsMade, err }, 'Square sync job failed');
+    logger.error(
+      { jobId: job?.id, attemptsMade: job?.attemptsMade, err },
+      'Square sync job failed',
+    );
   });
 
   worker.on('error', (err) => {

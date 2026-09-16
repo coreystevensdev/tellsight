@@ -22,15 +22,22 @@ vi.mock('../../../lib/db.js', () => ({
     }),
   },
 }));
-vi.mock('../../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
-vi.mock('../../../db/schema.js', () => ({ dataRows: { id: 'id', orgId: 'org_id', sourceId: 'source_id', parentCategory: 'parent_category' } }));
+vi.mock('../../../lib/logger.js', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+vi.mock('../../../db/schema.js', () => ({
+  dataRows: { id: 'id', orgId: 'org_id', sourceId: 'source_id', parentCategory: 'parent_category' },
+}));
 vi.mock('../../../db/queries/index.js', () => ({
   integrationConnectionsQueries: {
     getByIdAndProvider: (...a: unknown[]) => getByIdAndProvider(...a),
     updateSyncStatus: (...a: unknown[]) => updateSyncStatus(...a),
     updateLastSyncedAt: (...a: unknown[]) => updateLastSyncedAt(...a),
   },
-  syncJobsQueries: { create: (...a: unknown[]) => syncJobCreate(...a), update: (...a: unknown[]) => syncJobUpdate(...a) },
+  syncJobsQueries: {
+    create: (...a: unknown[]) => syncJobCreate(...a),
+    update: (...a: unknown[]) => syncJobUpdate(...a),
+  },
   datasetsQueries: {
     getDatasetsByOrg: (...a: unknown[]) => getDatasetsByOrg(...a),
     createDataset: (...a: unknown[]) => createDataset(...a),
@@ -40,7 +47,9 @@ vi.mock('../../../db/queries/index.js', () => ({
   aiSummariesQueries: { markStale: (...a: unknown[]) => markStale(...a) },
   userOrgsQueries: { getOrgOwnerId: (...a: unknown[]) => getOrgOwnerId(...a) },
 }));
-vi.mock('../../analytics/trackEvent.js', () => ({ trackEvent: (...a: unknown[]) => trackEvent(...a) }));
+vi.mock('../../analytics/trackEvent.js', () => ({
+  trackEvent: (...a: unknown[]) => trackEvent(...a),
+}));
 vi.mock('./api.js', () => ({ createSquareClient: (...a: unknown[]) => createSquareClient(...a) }));
 
 const { runSync } = await import('./sync.js');
@@ -72,11 +81,16 @@ describe('runSync', () => {
     await runSync(7, 'initial');
     expect(listLocations).toHaveBeenCalled();
     expect(searchOrders).toHaveBeenCalled();
-    expect(listLocations.mock.invocationCallOrder[0]!).toBeLessThan(searchOrders.mock.invocationCallOrder[0]!);
+    expect(listLocations.mock.invocationCallOrder[0]!).toBeLessThan(
+      searchOrders.mock.invocationCallOrder[0]!,
+    );
   });
 
   it('passes every location into the one order query', async () => {
-    listLocations.mockResolvedValue([{ id: 'L1', name: 'A' }, { id: 'L2', name: 'B' }]);
+    listLocations.mockResolvedValue([
+      { id: 'L1', name: 'A' },
+      { id: 'L2', name: 'B' },
+    ]);
     await runSync(7, 'initial');
     expect(searchOrders).toHaveBeenCalledWith(['L1', 'L2'], expect.any(Date));
   });
@@ -100,12 +114,22 @@ describe('runSync', () => {
 
   it.each([
     [[{ id: 'L1', name: 'Main St' }], 'Square, Main St'],
-    [[{ id: 'L1', name: 'A' }, { id: 'L2', name: 'B' }], 'Square, 2 locations'],
+    [
+      [
+        { id: 'L1', name: 'A' },
+        { id: 'L2', name: 'B' },
+      ],
+      'Square, 2 locations',
+    ],
     [[], 'Square, MERCHANT1'],
   ])('names the dataset from the locations it found', async (locations, expected) => {
     listLocations.mockResolvedValue(locations);
     await runSync(7, 'initial');
-    expect(createDataset).toHaveBeenCalledWith(3, { name: expected, sourceType: 'square' }, expect.anything());
+    expect(createDataset).toHaveBeenCalledWith(
+      3,
+      { name: expected, sourceType: 'square' },
+      expect.anything(),
+    );
   });
 
   // Only the first sync may seize the dashboard. A scheduled run stealing the
@@ -144,7 +168,11 @@ describe('runSync', () => {
     await expect(runSync(7, 'initial')).rejects.toThrow('Square 500');
 
     expect(updateSyncStatus).toHaveBeenLastCalledWith(7, 'error', 'Square 500', expect.anything());
-    expect(syncJobUpdate).toHaveBeenCalledWith(99, expect.objectContaining({ status: 'failed', error: 'Square 500' }), expect.anything());
+    expect(syncJobUpdate).toHaveBeenCalledWith(
+      99,
+      expect.objectContaining({ status: 'failed', error: 'Square 500' }),
+      expect.anything(),
+    );
     expect(updateLastSyncedAt).not.toHaveBeenCalled();
   });
 
