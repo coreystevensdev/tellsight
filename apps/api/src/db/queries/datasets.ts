@@ -64,17 +64,22 @@ export async function getDatasetsByOrg(
   });
 }
 
-/** User orgs only: returns 'empty' or 'user_only'. 'seed_plus_user' is intentionally
- *  unreachable, under Option C, user orgs never contain seed data. Seed org states
- *  ('seed_only') are handled at the view layer, not here. */
+/** A new org is seeded with demo data at sign-up, so 'seed_only' is reachable here
+ *  and not just at the view layer for signed-out visitors. 'seed_plus_user' stays
+ *  unreachable: persistUpload deletes the seed datasets before inserting the user's,
+ *  so the two never coexist. 'empty' now means the sign-up seed failed or the user
+ *  deleted their only upload. */
 export async function getUserOrgDemoState(
   orgId: number,
   client: typeof db | DbTransaction = db,
 ): Promise<DemoModeState> {
-  const userDataset = await client.query.datasets.findFirst({
-    where: and(eq(datasets.orgId, orgId), eq(datasets.isSeedData, false)),
-  });
-  return userDataset ? 'user_only' : 'empty';
+  const found = await client
+    .select({ isSeedData: datasets.isSeedData })
+    .from(datasets)
+    .where(eq(datasets.orgId, orgId));
+
+  if (found.some((d) => !d.isSeedData)) return 'user_only';
+  return found.length > 0 ? 'seed_only' : 'empty';
 }
 
 export async function getSeedDataset(
