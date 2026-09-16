@@ -40,7 +40,7 @@ import { useExportPdf } from '@/lib/hooks/useExportPdf';
 import { KpiCards } from './KpiCards';
 import { OnboardingModal } from './OnboardingModal';
 import { DatasetChip } from '@/components/DatasetChip';
-import { QbReturnToast } from './QbReturnToast';
+import { ConnectorReturnToast } from './ConnectorReturnToast';
 import { LockedInsightCard } from './LockedInsightCard';
 import { CashBalanceStaleBanner } from './CashBalanceStaleBanner';
 import { DigestPausingBanner } from './DigestPausingBanner';
@@ -388,7 +388,7 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
           downstream (QaAskBox's label/input pair) even though none of these
           three ever render visible DOM themselves. */}
       <Suspense fallback={null}>
-        <QbReturnToast />
+        <ConnectorReturnToast />
         <DigestClickTracker />
         <AlertClickTracker />
       </Suspense>
