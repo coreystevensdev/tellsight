@@ -79,7 +79,9 @@ describe('QB API client', () => {
     it('fetches single page of transactions', async () => {
       mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
       const purchases = Array.from({ length: 5 }, (_, i) => ({ Id: String(i + 1) }));
-      mockFetch.mockResolvedValueOnce(jsonResponse({ QueryResponse: { Purchase: purchases } }));
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse({ QueryResponse: { Purchase: purchases } }),
+      );
 
       const { createQbClient } = await import('./api.js');
       const client = await createQbClient(1);
@@ -123,9 +125,7 @@ describe('QB API client', () => {
       await client.query('Bill', since);
 
       const url = mockFetch.mock.calls[0]![0] as string;
-      expect(url).toContain(
-        encodeURIComponent("MetaData.LastUpdatedTime > '2026-04-10T03:00:00.000Z'"),
-      );
+      expect(url).toContain(encodeURIComponent("MetaData.LastUpdatedTime > '2026-04-10T03:00:00.000Z'"));
     });
 
     it('returns empty array when no results', async () => {
@@ -143,9 +143,7 @@ describe('QB API client', () => {
   describe('token refresh', () => {
     it('refreshes token when near expiry', async () => {
       const nearExpiry = new Date(Date.now() + 2 * 60 * 1000); // 2 min from now (< 5 min buffer)
-      mockGetByIdAndProvider.mockResolvedValueOnce(
-        mockConnection({ accessTokenExpiresAt: nearExpiry }),
-      );
+      mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection({ accessTokenExpiresAt: nearExpiry }));
       mockRefreshAccessToken.mockResolvedValueOnce({
         encryptedAccessToken: 'new-enc-access',
         encryptedRefreshToken: 'new-enc-refresh',

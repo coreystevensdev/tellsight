@@ -28,12 +28,7 @@ vi.mock('../../../lib/db.js', () => ({
         return {
           onConflictDoUpdate: (c: unknown) => {
             mockOnConflict(c);
-            return {
-              returning: () => {
-                mockReturning();
-                return mockReturning._result;
-              },
-            };
+            return { returning: () => { mockReturning(); return mockReturning._result; } };
           },
         };
       },
@@ -161,9 +156,7 @@ describe('runSync', () => {
   it('reuses an existing Shopify dataset instead of creating a second one', async () => {
     mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
     mockCreateShopifyClient.mockResolvedValueOnce(mockShopifyClient());
-    mockGetDatasetsByOrg.mockResolvedValueOnce([
-      { id: 500, name: 'Shopify, My Store', sourceType: 'shopify' },
-    ]);
+    mockGetDatasetsByOrg.mockResolvedValueOnce([{ id: 500, name: 'Shopify, My Store', sourceType: 'shopify' }]);
 
     const { runSync } = await import('./sync.js');
     await runSync(1, 'manual');
@@ -189,9 +182,7 @@ describe('runSync', () => {
       mockConnection({ lastSyncedAt: new Date('2026-04-01T00:00:00Z') }),
     );
     mockCreateShopifyClient.mockResolvedValueOnce(mockShopifyClient());
-    mockGetDatasetsByOrg.mockResolvedValueOnce([
-      { id: 500, name: 'Shopify, My Store', sourceType: 'shopify' },
-    ]);
+    mockGetDatasetsByOrg.mockResolvedValueOnce([{ id: 500, name: 'Shopify, My Store', sourceType: 'shopify' }]);
 
     const { runSync } = await import('./sync.js');
     await runSync(1, 'scheduled');
@@ -203,35 +194,13 @@ describe('runSync', () => {
   it('syncs both orders and products, summing their upserted row counts', async () => {
     mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
     mockCreateShopifyClient.mockResolvedValueOnce(mockShopifyClient());
-    mockGetDatasetsByOrg.mockResolvedValueOnce([
-      { id: 500, name: 'Shopify, My Store', sourceType: 'shopify' },
-    ]);
-    mockPaginateAll
-      .mockResolvedValueOnce([{ id: 'order-1' }])
-      .mockResolvedValueOnce([{ id: 'product-1' }]);
+    mockGetDatasetsByOrg.mockResolvedValueOnce([{ id: 500, name: 'Shopify, My Store', sourceType: 'shopify' }]);
+    mockPaginateAll.mockResolvedValueOnce([{ id: 'order-1' }]).mockResolvedValueOnce([{ id: 'product-1' }]);
     mockNormalizeOrders.mockReturnValueOnce([
-      {
-        sourceType: 'shopify',
-        sourceId: 'order-1-line-1',
-        date: new Date(),
-        amount: '10',
-        category: 'Mug',
-        parentCategory: 'Income',
-        label: null,
-        metadata: {},
-      },
+      { sourceType: 'shopify', sourceId: 'order-1-line-1', date: new Date(), amount: '10', category: 'Mug', parentCategory: 'Income', label: null, metadata: {} },
     ]);
     mockNormalizeProducts.mockReturnValueOnce([
-      {
-        sourceType: 'shopify',
-        sourceId: 'product-1',
-        date: new Date(),
-        amount: '50',
-        category: 'Drinkware',
-        parentCategory: 'Other',
-        label: null,
-        metadata: {},
-      },
+      { sourceType: 'shopify', sourceId: 'product-1', date: new Date(), amount: '50', category: 'Drinkware', parentCategory: 'Other', label: null, metadata: {} },
     ]);
     mockReturning._result = Promise.resolve([{ id: 1 }]);
 
@@ -255,11 +224,6 @@ describe('runSync', () => {
       expect.objectContaining({ status: 'failed', error: 'boom' }),
       expect.anything(),
     );
-    expect(mockTrackEvent).toHaveBeenCalledWith(
-      10,
-      1,
-      'integration.sync_failed',
-      expect.anything(),
-    );
+    expect(mockTrackEvent).toHaveBeenCalledWith(10, 1, 'integration.sync_failed', expect.anything());
   });
 });

@@ -63,7 +63,10 @@ describe('normalizeTransaction', () => {
   });
 
   it('maps Bill to Expenses', () => {
-    const [row] = normalizeTransaction(makePurchase({ Id: 'tx-bill' }), 'Bill');
+    const [row] = normalizeTransaction(
+      makePurchase({ Id: 'tx-bill' }),
+      'Bill',
+    );
     expect(row!.parentCategory).toBe('Expenses');
   });
 
@@ -284,16 +287,8 @@ describe('normalizeTransactions', () => {
   it('expands multi-line transactions when flattening', () => {
     const multiLine = makePurchase({
       Line: [
-        {
-          Id: 'a',
-          Amount: 10,
-          AccountBasedExpenseLineDetail: { AccountRef: { value: '1', name: 'A' } },
-        },
-        {
-          Id: 'b',
-          Amount: 20,
-          AccountBasedExpenseLineDetail: { AccountRef: { value: '2', name: 'B' } },
-        },
+        { Id: 'a', Amount: 10, AccountBasedExpenseLineDetail: { AccountRef: { value: '1', name: 'A' } } },
+        { Id: 'b', Amount: 20, AccountBasedExpenseLineDetail: { AccountRef: { value: '2', name: 'B' } } },
       ],
     });
     const rows = normalizeTransactions([multiLine], 'Purchase');

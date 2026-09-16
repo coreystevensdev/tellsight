@@ -1,4 +1,9 @@
-import type { NormalizedQbRow, QbLine, QbTransaction, QbTransactionType } from './types.js';
+import type {
+  NormalizedQbRow,
+  QbLine,
+  QbTransaction,
+  QbTransactionType,
+} from './types.js';
 
 const EXPENSE_TYPES = new Set<QbTransactionType>([
   'Purchase',
@@ -41,7 +46,8 @@ function getAccountRef(line: QbLine) {
 }
 
 function getLabel(tx: QbTransaction): string | null {
-  const entityName = tx.CustomerRef?.name ?? tx.VendorRef?.name ?? tx.EntityRef?.name;
+  const entityName =
+    tx.CustomerRef?.name ?? tx.VendorRef?.name ?? tx.EntityRef?.name;
   if (entityName) return entityName;
   if (tx.PrivateNote) return tx.PrivateNote;
   if (tx.DocNumber) return tx.DocNumber;

@@ -76,21 +76,9 @@ describe('scheduler', () => {
       await initScheduler();
 
       expect(mockQueueAdd).toHaveBeenCalledTimes(3);
-      expect(mockQueueAdd).toHaveBeenCalledWith(
-        'qb-daily-100',
-        expect.any(Object),
-        expect.any(Object),
-      );
-      expect(mockQueueAdd).toHaveBeenCalledWith(
-        'qb-daily-200',
-        expect.any(Object),
-        expect.any(Object),
-      );
-      expect(mockQueueAdd).toHaveBeenCalledWith(
-        'qb-daily-300',
-        expect.any(Object),
-        expect.any(Object),
-      );
+      expect(mockQueueAdd).toHaveBeenCalledWith('qb-daily-100', expect.any(Object), expect.any(Object));
+      expect(mockQueueAdd).toHaveBeenCalledWith('qb-daily-200', expect.any(Object), expect.any(Object));
+      expect(mockQueueAdd).toHaveBeenCalledWith('qb-daily-300', expect.any(Object), expect.any(Object));
     });
 
     it('no-ops when no connections exist', async () => {
