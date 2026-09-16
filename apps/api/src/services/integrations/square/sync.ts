@@ -93,7 +93,14 @@ export async function runSync(connectionId: number, trigger: SyncTrigger): Promi
       'Square orders synced',
     );
 
-    if (isInitial) {
+    // The initial sync claims the dashboard. A scheduled or manual one does not,
+    // so a background run cannot swap the dataset out from under someone
+    // mid-session. But if the org has no active dataset there is nothing to
+    // protect, and without this an org whose initial sync failed can never
+    // display the data it now holds: only an initial run sets this, and only
+    // reconnecting produces another one.
+    const org = await orgsQueries.findOrgById(orgId, dbAdmin);
+    if (isInitial || !org?.activeDatasetId) {
       await orgsQueries.setActiveDataset(orgId, dataset.id, dbAdmin);
     }
 

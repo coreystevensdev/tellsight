@@ -9,6 +9,7 @@ const getDatasetsByOrg = vi.fn();
 const createDataset = vi.fn();
 const updateDatasetName = vi.fn();
 const setActiveDataset = vi.fn();
+const findOrgById = vi.fn();
 const markStale = vi.fn();
 const getOrgOwnerId = vi.fn();
 const createSquareClient = vi.fn();
@@ -43,7 +44,10 @@ vi.mock('../../../db/queries/index.js', () => ({
     createDataset: (...a: unknown[]) => createDataset(...a),
     updateDatasetName: (...a: unknown[]) => updateDatasetName(...a),
   },
-  orgsQueries: { setActiveDataset: (...a: unknown[]) => setActiveDataset(...a) },
+  orgsQueries: {
+    setActiveDataset: (...a: unknown[]) => setActiveDataset(...a),
+    findOrgById: (...a: unknown[]) => findOrgById(...a),
+  },
   aiSummariesQueries: { markStale: (...a: unknown[]) => markStale(...a) },
   userOrgsQueries: { getOrgOwnerId: (...a: unknown[]) => getOrgOwnerId(...a) },
 }));
@@ -68,6 +72,7 @@ beforeEach(() => {
   getDatasetsByOrg.mockResolvedValue([]);
   createDataset.mockResolvedValue({ id: 42, sourceType: 'square', name: 'Square, Main St' });
   getOrgOwnerId.mockResolvedValue(5);
+  findOrgById.mockResolvedValue({ id: 3, activeDatasetId: 99 });
   returning.mockResolvedValue([{ id: 1 }]);
   listLocations.mockResolvedValue([{ id: 'L1', name: 'Main St' }]);
   searchOrders.mockResolvedValue([]);
@@ -134,6 +139,18 @@ describe('runSync', () => {
 
   // Only the first sync may seize the dashboard. A scheduled run stealing the
   // active dataset would move the ground under someone mid-session.
+  // An org whose initial sync failed holds rows nothing can display: only an
+  // initial run sets the active dataset, and only reconnecting produces another
+  // one. Claiming it when the slot is empty costs nothing, because there is no
+  // session to pull the ground out from under.
+  it('claims the dashboard on a later sync when the org has none', async () => {
+    getByIdAndProvider.mockResolvedValue(connection({ lastSyncedAt: new Date() }));
+    findOrgById.mockResolvedValue({ id: 3, activeDatasetId: null });
+
+    await runSync(7, 'manual');
+    expect(setActiveDataset).toHaveBeenCalledWith(3, 42, expect.anything());
+  });
+
   it('claims the active dataset on the first sync only', async () => {
     await runSync(7, 'initial');
     expect(setActiveDataset).toHaveBeenCalled();
@@ -143,6 +160,7 @@ describe('runSync', () => {
     syncJobCreate.mockResolvedValue({ id: 99 });
     getDatasetsByOrg.mockResolvedValue([{ id: 42, sourceType: 'square', name: 'Square, Main St' }]);
     getOrgOwnerId.mockResolvedValue(5);
+    findOrgById.mockResolvedValue({ id: 3, activeDatasetId: 99 });
     returning.mockResolvedValue([]);
     createSquareClient.mockResolvedValue({ listLocations, searchOrders });
     await runSync(7, 'scheduled');
