@@ -7,6 +7,7 @@ node_modules/
 # DATABASE_URL and was committable.
 .env*
 !.env.example
+!.env.ci
 
 # Next.js
 .next/
