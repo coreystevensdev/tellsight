@@ -141,6 +141,43 @@ describe('Integrations actions', () => {
 
   // Disconnect flips local state rather than refetching, so the card has to
   // return to its connect affordance without another round trip.
+  // A provider with no credentials answers 501 INTEGRATION_NOT_CONFIGURED. Before
+  // this, that collapsed into connected:false and the card drew a Connect button
+  // that could only fail, so a visitor was invited to start an OAuth flow this
+  // deployment cannot finish. Switched off and broken are different things.
+  it('offers no Connect button for a provider this deployment has not configured', async () => {
+    apiClient.mockImplementation(async (path: string) => {
+      if (String(path).endsWith('/status')) {
+        throw Object.assign(new Error('API error: 501'), { status: 501, code: 'INTEGRATION_NOT_CONFIGURED' });
+      }
+      return { data: {} };
+    });
+
+    render(<Integrations />);
+
+    await waitFor(() =>
+      expect(screen.getAllByText(/not available in this deployment/i)).toHaveLength(3),
+    );
+    expect(screen.queryByRole('button', { name: 'Connect' })).toBeNull();
+  });
+
+  // Only a 501 means unconfigured. Any other failure is a provider that exists
+  // and is briefly unreachable, and hiding Connect then strands someone who
+  // could otherwise just retry.
+  it('still offers Connect when the status call fails for any other reason', async () => {
+    apiClient.mockImplementation(async (path: string) => {
+      if (String(path).endsWith('/status')) {
+        throw Object.assign(new Error('API error: 503'), { status: 503, code: 'UPSTREAM_UNAVAILABLE' });
+      }
+      return { data: {} };
+    });
+
+    render(<Integrations />);
+
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(3));
+    expect(screen.queryByText(/not available in this deployment/i)).toBeNull();
+  });
+
   it('shows the provider as disconnected immediately after disconnecting', async () => {
     respondWith({ connected: true, syncStatus: 'idle' }, { connected: false });
 

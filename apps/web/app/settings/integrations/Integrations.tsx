@@ -8,6 +8,7 @@ import { BackLink } from '@/components/common/BackLink';
 
 interface QbStatus {
   connected: boolean;
+  configured?: boolean;
   provider?: string;
   companyName?: string;
   syncStatus?: string;
@@ -18,6 +19,7 @@ interface QbStatus {
 
 interface SquareStatus {
   connected: boolean;
+  configured?: boolean;
   provider?: string;
   merchantId?: string;
   syncStatus?: string;
@@ -28,6 +30,7 @@ interface SquareStatus {
 
 interface ShopifyStatus {
   connected: boolean;
+  configured?: boolean;
   provider?: string;
   shopDomain?: string;
   syncStatus?: string;
@@ -49,22 +52,34 @@ export default function Integrations() {
 
   const load = useCallback(async () => {
     try {
+      // A provider with no credentials answers 501 INTEGRATION_NOT_CONFIGURED.
+      // Collapsing that into connected:false draws a Connect button that cannot
+      // work, so a visitor is invited to try and then shown an error. Switched
+      // off and broken are different things and the card should say which.
+      // Read the code rather than instanceof ApiClientError. Any test that mocks
+      // @/lib/api-client without re-exporting the class turns the check into
+      // `instanceof undefined`, which throws inside the very catch meant to
+      // handle the failure.
+      const notConfigured = (err: unknown) =>
+        (err as { code?: string } | null)?.code === 'INTEGRATION_NOT_CONFIGURED';
+
       const [qbRes, shopifyRes, squareRes] = await Promise.all([
-        apiClient<QbStatus>('/integrations/quickbooks/status').catch(() => ({
-          data: { connected: false } as QbStatus,
+        apiClient<QbStatus>('/integrations/quickbooks/status').catch((err: unknown) => ({
+          data: { connected: false, configured: !notConfigured(err) } as QbStatus,
         })),
-        apiClient<ShopifyStatus>('/integrations/shopify/status').catch(() => ({
-          data: { connected: false } as ShopifyStatus,
+        apiClient<ShopifyStatus>('/integrations/shopify/status').catch((err: unknown) => ({
+          data: { connected: false, configured: !notConfigured(err) } as ShopifyStatus,
         })),
         // An unconfigured provider answers 501, which is not an error worth
         // showing: it just means this deployment has no Square credentials.
-        apiClient<SquareStatus>('/integrations/square/status').catch(() => ({
-          data: { connected: false } as SquareStatus,
+        apiClient<SquareStatus>('/integrations/square/status').catch((err: unknown) => ({
+          data: { connected: false, configured: !notConfigured(err) } as SquareStatus,
         })),
       ]);
-      setQb(qbRes.data);
-      setShopify(shopifyRes.data);
-      setSquare(squareRes.data);
+      // A 200 means the gate let it through, so the provider is configured.
+      setQb({ configured: true, ...qbRes.data });
+      setShopify({ configured: true, ...shopifyRes.data });
+      setSquare({ configured: true, ...squareRes.data });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load integrations');
     } finally {
@@ -260,6 +275,8 @@ export default function Integrations() {
                     {qbAction === 'disconnecting' ? 'Disconnecting...' : 'Disconnect'}
                   </button>
                 </>
+              ) : qb?.configured === false ? (
+                <span className="text-xs text-muted-foreground">Not available in this deployment</span>
               ) : (
                 <button
                   onClick={connectQb}
@@ -339,6 +356,8 @@ export default function Integrations() {
                     {shopifyAction === 'disconnecting' ? 'Disconnecting...' : 'Disconnect'}
                   </button>
                 </>
+              ) : shopify?.configured === false ? (
+                <span className="text-xs text-muted-foreground">Not available in this deployment</span>
               ) : (
                 <button
                   onClick={connectShopify}
@@ -409,6 +428,8 @@ export default function Integrations() {
                     {squareAction === 'disconnecting' ? 'Disconnecting...' : 'Disconnect'}
                   </button>
                 </>
+              ) : square?.configured === false ? (
+                <span className="text-xs text-muted-foreground">Not available in this deployment</span>
               ) : (
                 <button
                   onClick={connectSquare}
