@@ -42,6 +42,12 @@ export async function createCheckoutSession(
       // and the lifecycle webhooks arrive carrying the subscription, not the
       // session. Without this every renewal and cancellation lands with no org.
       subscription_data: { metadata: { orgId: String(orgId), userId: String(userId) } },
+      // Shows the promotion-code field on the Stripe-hosted page. A reviewer with
+      // a 100%-off code then walks the real checkout, the real webhook and the
+      // real tier transition without a card being charged, which is the part
+      // worth showing. Activation runs off checkout.session.completed and reads
+      // no amount, so a zero-total subscription lands the same as a paid one.
+      allow_promotion_codes: true,
       ...customerParam,
     });
 

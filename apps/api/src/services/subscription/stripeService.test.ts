@@ -88,6 +88,24 @@ describe('stripeService', () => {
 
       await expect(createCheckoutSession(10, 1)).rejects.toThrow('External service error: Stripe');
     });
+
+    // Without this the Stripe-hosted page shows no promotion-code field, so a
+    // 100%-off reviewer code cannot be redeemed and the only way to see Pro is
+    // to pay for it. Easy to drop in a refactor and invisible until someone
+    // reaches checkout, since nothing else in the flow changes.
+    it('shows the promotion-code field, which is how a reviewer reaches Pro free', async () => {
+      mockGetSubscriptionByOrgId.mockResolvedValueOnce(null);
+      mockSessionsCreate.mockResolvedValueOnce({
+        id: 'cs_test_promo',
+        url: 'https://checkout.stripe.com/session/cs_test_promo',
+      });
+
+      await createCheckoutSession(10, 1);
+
+      expect(mockSessionsCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ allow_promotion_codes: true }),
+      );
+    });
   });
 
   describe('createPortalSession', () => {
