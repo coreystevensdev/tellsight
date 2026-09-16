@@ -5,6 +5,8 @@ const mockFindFirst = vi.fn();
 const mockReturning = vi.fn();
 const mockValues = vi.fn(() => ({ returning: mockReturning }));
 const mockDeleteWhere = vi.fn();
+const mockSelectWhere = vi.fn();
+const mockSelect = vi.fn(() => ({ from: () => ({ where: mockSelectWhere }) }));
 
 vi.mock('../../lib/db.js', () => ({
   db: {
@@ -16,6 +18,7 @@ vi.mock('../../lib/db.js', () => ({
     },
     insert: vi.fn().mockReturnValue({ values: mockValues }),
     delete: vi.fn().mockReturnValue({ where: mockDeleteWhere }),
+    select: mockSelect,
   },
 }));
 
@@ -68,31 +71,28 @@ describe('datasets queries', () => {
   });
 
   describe('getUserOrgDemoState', () => {
-    it('returns "empty" when org has no user datasets', async () => {
-      mockFindFirst.mockResolvedValueOnce(undefined);
+    it.each([
+      ['empty', []],
+      ['seed_only', [{ isSeedData: true }]],
+      ['user_only', [{ isSeedData: false }]],
+      // The sign-up seed is cleared by persistUpload before a user dataset lands,
+      // so this pair should not occur. It still must not read as seed_only.
+      ['user_only', [{ isSeedData: true }, { isSeedData: false }]],
+    ])('returns "%s" for %j', async (expected, rows) => {
+      mockSelectWhere.mockResolvedValueOnce(rows);
 
-      const state = await getUserOrgDemoState(10);
-
-      expect(state).toBe('empty');
-    });
-
-    it('returns "user_only" when org has a non-seed dataset', async () => {
-      mockFindFirst.mockResolvedValueOnce({ id: 1, isSeedData: false });
-
-      const state = await getUserOrgDemoState(10);
-
-      expect(state).toBe('user_only');
+      expect(await getUserOrgDemoState(10)).toBe(expected);
     });
 
     it('uses a custom transaction client when provided', async () => {
-      const txFindFirst = vi.fn().mockResolvedValueOnce({ id: 1, isSeedData: false });
-      const txClient = { query: { datasets: { findFirst: txFindFirst } } };
+      const txWhere = vi.fn().mockResolvedValueOnce([{ isSeedData: true }]);
+      const txClient = { select: vi.fn(() => ({ from: () => ({ where: txWhere }) })) };
 
       const state = await getUserOrgDemoState(10, txClient as never);
 
-      expect(state).toBe('user_only');
-      expect(txFindFirst).toHaveBeenCalledOnce();
-      expect(mockFindFirst).not.toHaveBeenCalled();
+      expect(state).toBe('seed_only');
+      expect(txWhere).toHaveBeenCalledOnce();
+      expect(mockSelect).not.toHaveBeenCalled();
     });
   });
 

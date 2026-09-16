@@ -10,6 +10,7 @@ import postgres from 'postgres';
 import { SEED_ORG } from 'shared/constants';
 
 import * as schema from './schema.js';
+import { buildSeedRows, SEED_DATASET_NAME } from './seedData.js';
 
 const dbUrl = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 if (!dbUrl) {
@@ -19,108 +20,6 @@ if (!dbUrl) {
 
 const client = postgres(dbUrl, { max: 1 });
 const db = drizzle(client, { schema });
-
-// 12 months of demo data for Sunrise Cafe, a fictional coffee shop.
-// Ends at the current month so date presets always show recent data.
-// Anomalies baked in so the curation pipeline has something to interpret.
-function buildSeedRows(orgId: number, datasetId: number) {
-  const rows: Array<{
-    orgId: number;
-    datasetId: number;
-    sourceType: 'csv';
-    category: string;
-    parentCategory: string;
-    date: Date;
-    amount: string;
-    label: string | null;
-  }> = [];
-
-  const WEEKS_PER_MONTH = 4;
-  const now = new Date();
-  const endYear = now.getUTCFullYear();
-  const endMonth = now.getUTCMonth();
-
-  // 12 months back from current month
-  const startDate = new Date(Date.UTC(endYear, endMonth - 11, 1));
-  const startYear = startDate.getUTCFullYear();
-  const startMonth = startDate.getUTCMonth();
-
-  for (let year = startYear; year <= endYear; year++) {
-    const yoyGrowth = 1.0;
-    const firstM = year === startYear ? startMonth : 0;
-    const lastM = year === endYear ? endMonth : 11;
-    const months = Array.from({ length: lastM - firstM + 1 }, (_, i) => firstM + i);
-
-    for (const m of months) {
-      // Revenue: $12k-$18k monthly baseline in 2024, +12% in 2025. December spike both years.
-      const monthlyRevenue = m === 11 ? 28000 : parseFloat(lerp('12000.00', '18000.00', m));
-      const monthlyPayroll = (year >= 2025 && m === 9) ? 9200 : parseFloat(lerp('5500.00', '6500.00', m));
-      const isQ3Dip = year >= 2025 && m >= 6 && m <= 8;
-      const monthlyMarketing = isQ3Dip
-        ? parseFloat(lerp('200.00', '300.00', m - 6))
-        : parseFloat(lerp('800.00', '1200.00', m));
-      const monthlyRent = 3000;
-      const monthlySupplies = parseFloat(lerp('1500.00', '2500.00', m));
-      const monthlyUtilities = parseFloat(lerp('600.00', '400.00', m));
-
-      for (let w = 0; w < WEEKS_PER_MONTH; w++) {
-        const day = 1 + w * 7;
-        const date = new Date(Date.UTC(year, m, day));
-        const jitter = () => 0.9 + Math.random() * 0.2;
-
-        rows.push({
-          orgId, datasetId, sourceType: 'csv',
-          category: 'Revenue', parentCategory: 'Income',
-          date, amount: ((monthlyRevenue / WEEKS_PER_MONTH) * yoyGrowth * jitter()).toFixed(2), label: null,
-        });
-
-        rows.push({
-          orgId, datasetId, sourceType: 'csv',
-          category: 'Payroll', parentCategory: 'Expenses',
-          date, amount: ((monthlyPayroll / WEEKS_PER_MONTH) * jitter()).toFixed(2), label: null,
-        });
-
-        rows.push({
-          orgId, datasetId, sourceType: 'csv',
-          category: 'Marketing', parentCategory: 'Expenses',
-          date, amount: ((monthlyMarketing / WEEKS_PER_MONTH) * jitter()).toFixed(2), label: null,
-        });
-
-        // Rent: paid once per month on the 1st
-        if (w === 0) {
-          rows.push({
-            orgId, datasetId, sourceType: 'csv',
-            category: 'Rent', parentCategory: 'Expenses',
-            date, amount: monthlyRent.toFixed(2), label: null,
-          });
-        }
-
-        rows.push({
-          orgId, datasetId, sourceType: 'csv',
-          category: 'Supplies', parentCategory: 'Expenses',
-          date, amount: ((monthlySupplies / WEEKS_PER_MONTH) * jitter()).toFixed(2), label: null,
-        });
-
-        rows.push({
-          orgId, datasetId, sourceType: 'csv',
-          category: 'Utilities', parentCategory: 'Expenses',
-          date, amount: ((monthlyUtilities / WEEKS_PER_MONTH) * jitter()).toFixed(2), label: null,
-        });
-      }
-    }
-  }
-
-  return rows;
-}
-
-// Linear interpolation across 12 months, returns string amount.
-// monthIndex 0 → minVal, monthIndex 11 → maxVal.
-function lerp(minVal: string, maxVal: string, monthIndex: number): string {
-  const min = parseFloat(minVal);
-  const max = parseFloat(maxVal);
-  const t = monthIndex / 11;
-  return (min + (max - min) * t).toFixed(2);
-}
 
 const FALLBACK_SEED_SUMMARY = `Revenue grew 12% year-over-year, from $187K in 2024 to $210K in 2025. December remained the standout month both years, hitting $31K in 2025 versus $28K the year before. The growth is real but concentrated in seasonal peaks.
 
@@ -169,7 +68,7 @@ async function seed() {
       .insert(schema.datasets)
       .values({
         orgId,
-        name: 'Sunrise Cafe 2024-2025 Financials',
+        name: SEED_DATASET_NAME,
         sourceType: 'csv',
         isSeedData: true,
       })
@@ -177,8 +76,10 @@ async function seed() {
 
     if (!dataset) throw new Error('Failed to create seed dataset');
 
-    const rows = buildSeedRows(orgId, dataset.id);
-    await tx.insert(schema.dataRows).values(rows);
+    const rows = buildSeedRows();
+    await tx.insert(schema.dataRows).values(
+      rows.map((r) => ({ ...r, orgId, datasetId: dataset.id })),
+    );
 
     console.info(`Seeded "${SEED_ORG.name}" org (id=${orgId}) with ${rows.length} data rows`);
 
@@ -228,8 +129,8 @@ async function seed() {
 
         const dbRows = rows.map((r, i) => ({
           id: i + 1,
-          orgId: r.orgId,
-          datasetId: r.datasetId,
+          orgId,
+          datasetId: dataset.id,
           sourceType: r.sourceType as 'csv',
           category: r.category,
           parentCategory: r.parentCategory,
