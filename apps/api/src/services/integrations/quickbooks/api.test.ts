@@ -10,6 +10,9 @@ vi.mock('../../../config.js', () => ({
   env: { QUICKBOOKS_ENVIRONMENT: 'sandbox' },
 }));
 
+// lib/db.ts opens two postgres clients at module load, and this subject now
+// imports dbAdmin. Without this the suite leaks a pool per test file.
+vi.mock('../../../lib/db.js', () => ({ dbAdmin: {}, db: {} }));
 vi.mock('../../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));

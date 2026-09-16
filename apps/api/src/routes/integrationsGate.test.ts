@@ -14,6 +14,14 @@ import type { AddressInfo } from 'node:net';
 // Separate file rather than a module-registry dance inside the other one: the
 // whole point is the opposite configuration.
 
+// lib/db.ts opens two postgres clients at module load, and this graph now
+// reaches it. Without the mock every such test file leaks a pool.
+// Same shape the other route tests use: run the callback with a stub tx, so
+// the test exercises the handler rather than a real transaction.
+vi.mock('../lib/rls.js', () => ({
+  withRlsContext: vi.fn((_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({})),
+}));
+vi.mock('../lib/db.js', () => ({ dbAdmin: {}, db: {} }));
 vi.mock('../config.js', () => ({
   env: { APP_URL: 'http://localhost:3000', NODE_ENV: 'test' },
   isQbConfigured: () => false,

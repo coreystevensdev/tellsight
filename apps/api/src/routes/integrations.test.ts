@@ -56,6 +56,14 @@ const mockShopifyExchangeCode = vi.fn();
 const mockShopifyRevokeToken = vi.fn();
 const mockShopifyVerifyHmac = vi.fn();
 
+// lib/db.ts opens two postgres clients at module load, and this graph now
+// reaches it. Without the mock every such test file leaks a pool.
+// Same shape the other route tests use: run the callback with a stub tx, so
+// the test exercises the handler rather than a real transaction.
+vi.mock('../lib/rls.js', () => ({
+  withRlsContext: vi.fn((_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({})),
+}));
+vi.mock('../lib/db.js', () => ({ dbAdmin: {}, db: {} }));
 vi.mock('../config.js', () => ({
   env: {
     APP_URL: 'http://localhost:3000',
@@ -296,7 +304,7 @@ describe('integrations routes', () => {
       await handler(req, res, vi.fn());
 
       expect(mockRevokeToken).toHaveBeenCalledWith('enc-token');
-      expect(mockDeleteByOrgAndProvider).toHaveBeenCalledWith(10, 'quickbooks');
+      expect(mockDeleteByOrgAndProvider).toHaveBeenCalledWith(10, 'quickbooks', expect.anything());
       expect(mockTrackEvent).toHaveBeenCalledWith(
         10, 1, 'integration.disconnected',
         expect.objectContaining({ provider: 'quickbooks' }),
@@ -360,6 +368,7 @@ describe('integrations routes', () => {
           provider: 'quickbooks',
           providerTenantId: 'realm789',
         }),
+        expect.anything(),
       );
       expect(mockTrackEvent).toHaveBeenCalled();
     });
@@ -564,7 +573,7 @@ describe('integrations routes', () => {
       await handler(req, res, vi.fn());
 
       expect(mockShopifyRevokeToken).toHaveBeenCalledWith('my-store.myshopify.com', 'decrypted-token');
-      expect(mockDeleteByOrgAndProvider).toHaveBeenCalledWith(10, 'shopify');
+      expect(mockDeleteByOrgAndProvider).toHaveBeenCalledWith(10, 'shopify', expect.anything());
       expect(mockTrackEvent).toHaveBeenCalledWith(
         10, 1, 'integration.disconnected',
         expect.objectContaining({ provider: 'shopify' }),
@@ -629,6 +638,7 @@ describe('integrations routes', () => {
           encryptedRefreshToken: 'enc-access',
           encryptedAccessToken: 'enc-access',
         }),
+        expect.anything(),
       );
       expect(mockTrackEvent).toHaveBeenCalled();
     });
