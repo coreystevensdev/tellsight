@@ -1,5 +1,7 @@
 'use client';
 
+import { PRO_PRICE_DISPLAY } from 'shared/constants';
+
 import { cn } from '@/lib/utils';
 
 interface UpgradeCtaProps {
@@ -24,11 +26,11 @@ export function UpgradeCta({ variant, onUpgrade, disabled, disabledTooltip }: Up
         Unlock full analysis
       </h3>
       <p className="mt-1 text-sm text-muted-foreground">
-        Full AI insights, no word limits, <span className="font-medium text-foreground">$29/mo</span>
+        Full AI insights, no word limits, <span className="font-medium text-foreground">{PRO_PRICE_DISPLAY}/mo</span>
       </p>
       <button
         type="button"
-        aria-label="Upgrade to Pro subscription for $29 per month"
+        aria-label={`Upgrade to Pro subscription for ${PRO_PRICE_DISPLAY} per month`}
         aria-disabled={disabled || undefined}
         aria-describedby={disabled && disabledTooltip ? 'upgrade-tooltip' : undefined}
         title={disabled ? disabledTooltip : undefined}
