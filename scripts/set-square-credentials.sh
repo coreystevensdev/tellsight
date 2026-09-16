@@ -18,7 +18,10 @@ read -r -s -p "Application Secret: " APP_SECRET
 echo
 [ -n "$APP_ID" ] && [ -n "$APP_SECRET" ] || { echo "Both values are required."; exit 1; }
 
-cp "$ENV_FILE" "$ENV_FILE.bak"
+# Backup goes outside the repo. Leaving a .env.bak next to .env puts a file
+# holding JWT_SECRET and DATABASE_URL one `git add -A` away from a commit.
+BACKUP="${TMPDIR:-/tmp}/tellsight-env-$(date +%Y%m%d-%H%M%S).bak"
+cp "$ENV_FILE" "$BACKUP"
 
 # Drop any existing Square lines, commented or not, then write a clean block.
 # Rewriting beats sed-in-place on four separate lines, which is how a stray
@@ -39,7 +42,7 @@ INNER
 
 mv "$ENV_FILE.tmp" "$ENV_FILE"
 
-echo "Written. Previous file kept at .env.bak"
+echo "Written. Previous file kept at $BACKUP"
 echo
 echo "Register this exact redirect URL on the same Square OAuth page:"
 echo "  http://localhost:3001/integrations/square/callback"
