@@ -1,8 +1,8 @@
 import { eq, sql } from 'drizzle-orm';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 
-import { subscriptionsQueries } from '../db/queries/index.js';
-import { orgs, subscriptions, users } from '../db/schema.js';
+import { integrationConnectionsQueries, subscriptionsQueries } from '../db/queries/index.js';
+import { integrationConnections, orgs, subscriptions, users } from '../db/schema.js';
 import { db, dbAdmin, type DbTransaction } from './db.js';
 import { withRlsContext, withUserRlsContext } from './rls.js';
 
@@ -72,6 +72,7 @@ beforeAll(async () => {
 afterAll(async () => {
   if (orgA) await dbAdmin.delete(orgs).where(eq(orgs.id, orgA.id));
   if (orgB) await dbAdmin.delete(orgs).where(eq(orgs.id, orgB.id));
+  if (orgA) await dbAdmin.delete(integrationConnections).where(eq(integrationConnections.orgId, orgA.id));
   if (userA) await dbAdmin.delete(users).where(eq(users.id, userA.id));
 });
 
@@ -105,6 +106,38 @@ describe('RLS context helpers against real Postgres', () => {
     const rows = await dbAdmin.select().from(subscriptions).where(eq(subscriptions.orgId, orgB.id));
     expect(rows).toHaveLength(1);
     expect(rows[0]?.orgId).toBe(orgB.id);
+  });
+
+  // An OAuth callback is a public route: the provider redirects the browser
+  // there with no session, so nothing has set app.current_org_id. Storing the
+  // connection on the default client is therefore refused outright, and the
+  // seller sees a failed connection after having already authorized.
+  //
+  // This is the write half of the asymmetry that keeps biting: an unscoped read
+  // returns zero rows and looks like empty data, an unscoped write raises. Both
+  // of the tests above cover the read side.
+  it('refuses a connector upsert with no RLS context, which is what a callback has', async () => {
+    const row = {
+      orgId: orgA.id,
+      provider: 'square',
+      providerTenantId: 'MERCHANT_RLS_TEST',
+      encryptedRefreshToken: 'enc-refresh',
+      encryptedAccessToken: 'enc-access',
+      accessTokenExpiresAt: futurePeriodEnd,
+      scope: 'ORDERS_READ',
+    };
+
+    // Asserted as "refused", not by message. Postgres reports this two ways
+    // depending on what the pooled connection last held: a clean "new row
+    // violates row-level security policy" when app.current_org_id carries a
+    // stale value from an earlier request, and "invalid input syntax for type
+    // integer" when it is genuinely unset, because the policy casts an empty
+    // string. Production showed the first, a fresh connection shows the second.
+    const err = await integrationConnectionsQueries.upsert(row, db).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+
+    const stored = await integrationConnectionsQueries.upsert(row, dbAdmin);
+    expect(stored.providerTenantId).toBe('MERCHANT_RLS_TEST');
   });
 
   it('does not leak SET LOCAL context past a committed transaction on a reused connection', async () => {

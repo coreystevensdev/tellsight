@@ -9,6 +9,7 @@ import { requireUser } from '../lib/requireUser.js';
 import { roleGuard } from '../middleware/roleGuard.js';
 import { ValidationError } from '../lib/appError.js';
 import { integrationConnectionsQueries } from '../db/queries/index.js';
+import { dbAdmin } from '../lib/db.js';
 import { encrypt, decrypt } from '../services/integrations/encryption.js';
 import * as qbOAuth from '../services/integrations/quickbooks/oauth.js';
 import { enqueueSyncJob } from '../services/integrations/worker.js';
@@ -362,6 +363,11 @@ integrationsCallbackRouter.use('/quickbooks', qbGuard);
 integrationsCallbackRouter.use('/shopify', shopifyGuard);
 integrationsCallbackRouter.use('/square', squareGuard);
 
+// Callback routes are public: the provider redirects the browser here with no
+// session, so RLS has no app.current_org_id to match and every write is refused.
+// The org comes from the signed cookie set during /connect, which is why these
+// pass dbAdmin with an explicit orgId, the same shape alertMute uses for its
+// token-authenticated write.
 integrationsCallbackRouter.get('/quickbooks/callback', async (req: Request, res: Response) => {
   const { code, realmId, state, error } = req.query as Record<string, string | undefined>;
   const dashboardUrl = `${env.APP_URL}/dashboard`;
@@ -416,7 +422,9 @@ integrationsCallbackRouter.get('/quickbooks/callback', async (req: Request, res:
       encryptedAccessToken,
       accessTokenExpiresAt,
       scope: 'com.intuit.quickbooks.accounting',
-    });
+    },
+      dbAdmin,
+    );
 
     res.clearCookie('qb_oauth_org_id', { path: '/' });
     res.clearCookie('qb_oauth_user_id', { path: '/' });
@@ -507,7 +515,9 @@ integrationsCallbackRouter.get('/shopify/callback', async (req: Request, res: Re
       encryptedAccessToken,
       accessTokenExpiresAt: new Date('9999-12-31T23:59:59Z'),
       scope: 'read_orders,read_products,read_inventory',
-    });
+    },
+      dbAdmin,
+    );
 
     res.clearCookie('shopify_oauth_org_id', { path: '/' });
     res.clearCookie('shopify_oauth_user_id', { path: '/' });
@@ -588,7 +598,9 @@ integrationsCallbackRouter.get('/square/callback', async (req: Request, res: Res
       encryptedAccessToken: encrypt(tokens.accessToken),
       accessTokenExpiresAt: tokens.expiresAt,
       scope: tokens.scope,
-    });
+    },
+      dbAdmin,
+    );
 
     res.clearCookie('square_oauth_org_id', { path: '/' });
     res.clearCookie('square_oauth_user_id', { path: '/' });
