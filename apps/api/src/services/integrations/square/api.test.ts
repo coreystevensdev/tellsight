@@ -13,10 +13,16 @@ const connection = {
 const getByIdAndProvider = vi.fn();
 const refreshAccessToken = vi.fn();
 
+vi.mock('../../../lib/db.js', () => ({ dbAdmin: {}, db: {} }));
 vi.mock('../../../db/queries/index.js', () => ({
-  integrationConnectionsQueries: { getByIdAndProvider: (...a: unknown[]) => getByIdAndProvider(...a) },
+  integrationConnectionsQueries: {
+    getByIdAndProvider: (...a: unknown[]) => getByIdAndProvider(...a),
+  },
 }));
-vi.mock('../encryption.js', () => ({ decrypt: (v: string) => `dec(${v})`, encrypt: (v: string) => `enc(${v})` }));
+vi.mock('../encryption.js', () => ({
+  decrypt: (v: string) => `dec(${v})`,
+  encrypt: (v: string) => `enc(${v})`,
+}));
 vi.mock('./oauth.js', () => ({
   apiHost: () => 'https://connect.squareupsandbox.com',
   refreshAccessToken: (...a: unknown[]) => refreshAccessToken(...a),
@@ -26,12 +32,18 @@ vi.mock('../../../lib/logger.js', () => ({
 }));
 
 const { createSquareClient } = await import('./api.js');
-const { TokenRevokedError, RetryableError, ConnectionNotFoundError, SquareApiError } = await import('./errors.js');
+const { TokenRevokedError, RetryableError, ConnectionNotFoundError, SquareApiError } =
+  await import('./errors.js');
 
 function respond(bodies: unknown[]) {
   const fetchMock = vi.fn();
   for (const body of bodies) {
-    fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => body, text: async () => '' });
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => body,
+      text: async () => '',
+    });
   }
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
@@ -52,7 +64,11 @@ describe('createSquareClient', () => {
 
 describe('listLocations', () => {
   it('drops inactive locations, which cannot produce orders', async () => {
-    respond([{ locations: [{ id: 'L1', status: 'ACTIVE' }, { id: 'L2', status: 'INACTIVE' }, { id: 'L3' }] }]);
+    respond([
+      {
+        locations: [{ id: 'L1', status: 'ACTIVE' }, { id: 'L2', status: 'INACTIVE' }, { id: 'L3' }],
+      },
+    ]);
     const client = await createSquareClient(7);
     expect((await client.listLocations()).map((l) => l.id)).toEqual(['L1', 'L3']);
   });
@@ -101,17 +117,30 @@ describe('searchOrders', () => {
 
 describe('failure modes', () => {
   it('treats 401 as revoked, because tokens are refreshed before they lapse', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401, text: async () => '' }));
-    await expect((await createSquareClient(7)).listLocations()).rejects.toBeInstanceOf(TokenRevokedError);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: false, status: 401, text: async () => '' }),
+    );
+    await expect((await createSquareClient(7)).listLocations()).rejects.toBeInstanceOf(
+      TokenRevokedError,
+    );
   });
 
   it.each([429, 500, 503])('treats %s as retryable rather than fatal', async (status) => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status, text: async () => 'busy' }));
-    await expect((await createSquareClient(7)).listLocations()).rejects.toBeInstanceOf(RetryableError);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: false, status, text: async () => 'busy' }),
+    );
+    await expect((await createSquareClient(7)).listLocations()).rejects.toBeInstanceOf(
+      RetryableError,
+    );
   });
 
   it('does not retry a 400, which retrying cannot fix', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 400, text: async () => 'bad' }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: false, status: 400, text: async () => 'bad' }),
+    );
     const err = await (await createSquareClient(7)).listLocations().catch((e: unknown) => e);
     expect(err).toBeInstanceOf(SquareApiError);
     expect(err).not.toBeInstanceOf(RetryableError);
@@ -124,7 +153,10 @@ describe('token freshness', () => {
   // access token still holds a valid refresh token, so this is ordinary rather
   // than an error to recover from.
   it('refreshes before calling when the token is at or past expiry', async () => {
-    getByIdAndProvider.mockResolvedValue({ ...connection, accessTokenExpiresAt: new Date(Date.now() - 1000) });
+    getByIdAndProvider.mockResolvedValue({
+      ...connection,
+      accessTokenExpiresAt: new Date(Date.now() - 1000),
+    });
     refreshAccessToken.mockResolvedValue({
       encryptedAccessToken: 'enc-new',
       encryptedRefreshToken: 'enc-new-refresh',
@@ -149,16 +181,20 @@ describe('token freshness', () => {
   // the refresh token, so the second exchange would present one Square has
   // already replaced.
   it('refreshes once when two calls race on the same expired token', async () => {
-    getByIdAndProvider.mockResolvedValue({ ...connection, accessTokenExpiresAt: new Date(Date.now() - 1000) });
+    getByIdAndProvider.mockResolvedValue({
+      ...connection,
+      accessTokenExpiresAt: new Date(Date.now() - 1000),
+    });
     refreshAccessToken.mockImplementation(
       () =>
         new Promise((resolve) =>
           setTimeout(
-            () => resolve({
-              encryptedAccessToken: 'enc-new',
-              encryptedRefreshToken: 'enc-new-refresh',
-              accessTokenExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-            }),
+            () =>
+              resolve({
+                encryptedAccessToken: 'enc-new',
+                encryptedRefreshToken: 'enc-new-refresh',
+                accessTokenExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+              }),
             5,
           ),
         ),

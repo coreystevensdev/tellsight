@@ -5,6 +5,7 @@ import { RetryableError, TokenRevokedError, ConnectionNotFoundError } from './er
 const mockGetByIdAndProvider = vi.fn();
 const mockDecrypt = vi.fn();
 
+vi.mock('../../../lib/db.js', () => ({ dbAdmin: {}, db: {} }));
 vi.mock('../../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
@@ -85,7 +86,9 @@ describe('Shopify API client', () => {
       expect(mockFetch).toHaveBeenCalledOnce();
       const [url, init] = mockFetch.mock.calls[0]!;
       expect(url).toBe('https://my-store.myshopify.com/admin/api/2025-01/graphql.json');
-      expect((init as RequestInit).headers).toMatchObject({ 'X-Shopify-Access-Token': 'decrypted-access-token' });
+      expect((init as RequestInit).headers).toMatchObject({
+        'X-Shopify-Access-Token': 'decrypted-access-token',
+      });
     });
 
     it('maps a 401 to TokenRevokedError', async () => {
@@ -111,7 +114,9 @@ describe('Shopify API client', () => {
     it('maps a MAX_COST_EXCEEDED GraphQL error to RetryableError', async () => {
       mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
       mockFetch.mockResolvedValueOnce(
-        graphqlResponse({ errors: [{ message: 'Cost exceeded', extensions: { code: 'MAX_COST_EXCEEDED' } }] }),
+        graphqlResponse({
+          errors: [{ message: 'Cost exceeded', extensions: { code: 'MAX_COST_EXCEEDED' } }],
+        }),
       );
 
       const { createShopifyClient } = await import('./api.js');
@@ -122,7 +127,9 @@ describe('Shopify API client', () => {
     it('maps an ACCESS_DENIED GraphQL error to TokenRevokedError', async () => {
       mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
       mockFetch.mockResolvedValueOnce(
-        graphqlResponse({ errors: [{ message: 'Access denied', extensions: { code: 'ACCESS_DENIED' } }] }),
+        graphqlResponse({
+          errors: [{ message: 'Access denied', extensions: { code: 'ACCESS_DENIED' } }],
+        }),
       );
 
       const { createShopifyClient } = await import('./api.js');
@@ -171,7 +178,15 @@ describe('Shopify API client', () => {
       const results = await paginateAll(
         client,
         'query { orders { edges { node { id } } pageInfo { hasNextPage endCursor } } }',
-        (data) => (data as { orders: { edges: { node: unknown }[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } } }).orders,
+        (data) =>
+          (
+            data as {
+              orders: {
+                edges: { node: unknown }[];
+                pageInfo: { hasNextPage: boolean; endCursor: string | null };
+              };
+            }
+          ).orders,
       );
 
       expect(results).toEqual([{ id: '1' }, { id: '2' }]);
@@ -182,7 +197,12 @@ describe('Shopify API client', () => {
       mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
       mockFetch.mockResolvedValueOnce(
         graphqlResponse({
-          data: { orders: { edges: [{ node: { id: '1' } }], pageInfo: { hasNextPage: false, endCursor: null } } },
+          data: {
+            orders: {
+              edges: [{ node: { id: '1' } }],
+              pageInfo: { hasNextPage: false, endCursor: null },
+            },
+          },
         }),
       );
 
@@ -191,7 +211,15 @@ describe('Shopify API client', () => {
       const results = await paginateAll(
         client,
         'query { orders { edges { node { id } } pageInfo { hasNextPage endCursor } } }',
-        (data) => (data as { orders: { edges: { node: unknown }[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } } }).orders,
+        (data) =>
+          (
+            data as {
+              orders: {
+                edges: { node: unknown }[];
+                pageInfo: { hasNextPage: boolean; endCursor: string | null };
+              };
+            }
+          ).orders,
       );
 
       expect(results).toHaveLength(1);

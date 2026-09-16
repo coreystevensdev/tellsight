@@ -77,11 +77,17 @@ const PRODUCTS_QUERY = `
 `;
 
 interface OrdersConnection {
-  orders: { edges: { node: ShopifyOrder }[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } };
+  orders: {
+    edges: { node: ShopifyOrder }[];
+    pageInfo: { hasNextPage: boolean; endCursor: string | null };
+  };
 }
 
 interface ProductsConnection {
-  products: { edges: { node: ShopifyProduct }[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } };
+  products: {
+    edges: { node: ShopifyProduct }[];
+    pageInfo: { hasNextPage: boolean; endCursor: string | null };
+  };
 }
 
 /**
@@ -91,12 +97,16 @@ interface ProductsConnection {
  * kinds worth syncing here, not thirteen).
  */
 export async function runSync(connectionId: number, trigger: SyncTrigger): Promise<SyncResult> {
-  const connection = await integrationConnectionsQueries.getByIdAndProvider(connectionId, 'shopify');
+  const connection = await integrationConnectionsQueries.getByIdAndProvider(
+    connectionId,
+    'shopify',
+    dbAdmin,
+  );
   if (!connection) throw new ConnectionNotFoundError(connectionId);
 
   const orgId = connection.orgId;
   const isInitial = trigger === 'initial';
-  const since = isInitial ? undefined : connection.lastSyncedAt ?? undefined;
+  const since = isInitial ? undefined : (connection.lastSyncedAt ?? undefined);
   const syncedAt = new Date();
 
   const job = await syncJobsQueries.create(
@@ -169,7 +179,11 @@ export async function runSync(connectionId: number, trigger: SyncTrigger): Promi
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown sync error';
 
-    await syncJobsQueries.update(job.id, { status: 'failed', completedAt: new Date(), error: message }, dbAdmin);
+    await syncJobsQueries.update(
+      job.id,
+      { status: 'failed', completedAt: new Date(), error: message },
+      dbAdmin,
+    );
     await integrationConnectionsQueries.updateSyncStatus(connection.id, 'error', message, dbAdmin);
 
     const ownerId = await userOrgsQueries.getOrgOwnerId(orgId, dbAdmin).catch(() => null);
@@ -199,7 +213,11 @@ async function findOrCreateShopifyDataset(orgId: number, shopName: string) {
     return existing;
   }
 
-  return datasetsQueries.createDataset(orgId, { name: datasetName, sourceType: 'shopify' }, dbAdmin);
+  return datasetsQueries.createDataset(
+    orgId,
+    { name: datasetName, sourceType: 'shopify' },
+    dbAdmin,
+  );
 }
 
 /**

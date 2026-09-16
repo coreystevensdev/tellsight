@@ -1,8 +1,14 @@
 import { logger } from '../../../lib/logger.js';
+import { dbAdmin } from '../../../lib/db.js';
 import { integrationConnectionsQueries } from '../../../db/queries/index.js';
 import { decrypt } from '../encryption.js';
 import { apiHost, refreshAccessToken } from './oauth.js';
-import { ConnectionNotFoundError, RetryableError, SquareApiError, TokenRevokedError } from './errors.js';
+import {
+  ConnectionNotFoundError,
+  RetryableError,
+  SquareApiError,
+  TokenRevokedError,
+} from './errors.js';
 import type { SquareLocation, SquareOrder } from './types.js';
 
 const SQUARE_VERSION = '2026-08-19';
@@ -22,7 +28,11 @@ export interface SquareClient {
 }
 
 export async function createSquareClient(connectionId: number): Promise<SquareClient> {
-  const connection = await integrationConnectionsQueries.getByIdAndProvider(connectionId, 'square');
+  const connection = await integrationConnectionsQueries.getByIdAndProvider(
+    connectionId,
+    'square',
+    dbAdmin,
+  );
   if (!connection) throw new ConnectionNotFoundError(connectionId);
 
   let accessToken = decrypt(connection.encryptedAccessToken);
@@ -63,11 +73,19 @@ export async function createSquareClient(connectionId: number): Promise<SquareCl
     if (res.status === 401) throw new TokenRevokedError();
 
     if (res.status === 429 || res.status >= 500) {
-      throw new RetryableError(`Square ${path} returned ${res.status}`, res.status, await res.text());
+      throw new RetryableError(
+        `Square ${path} returned ${res.status}`,
+        res.status,
+        await res.text(),
+      );
     }
 
     if (!res.ok) {
-      throw new SquareApiError(`Square ${path} returned ${res.status}`, res.status, await res.text());
+      throw new SquareApiError(
+        `Square ${path} returned ${res.status}`,
+        res.status,
+        await res.text(),
+      );
     }
 
     return res.json();
@@ -117,7 +135,10 @@ export async function createSquareClient(connectionId: number): Promise<SquareCl
 
       if (cursor) {
         // Silently returning a partial window would look like a quiet month.
-        logger.warn({ connectionId, pages, orders: orders.length }, 'Square order paging hit its cap');
+        logger.warn(
+          { connectionId, pages, orders: orders.length },
+          'Square order paging hit its cap',
+        );
       }
 
       return orders;

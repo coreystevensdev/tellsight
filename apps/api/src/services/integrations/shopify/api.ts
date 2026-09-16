@@ -1,7 +1,13 @@
 import { logger } from '../../../lib/logger.js';
+import { dbAdmin } from '../../../lib/db.js';
 import { decrypt } from '../encryption.js';
 import { integrationConnectionsQueries } from '../../../db/queries/index.js';
-import { RetryableError, TokenRevokedError, ShopifyApiError, ConnectionNotFoundError } from './errors.js';
+import {
+  RetryableError,
+  TokenRevokedError,
+  ShopifyApiError,
+  ConnectionNotFoundError,
+} from './errors.js';
 
 const API_VERSION = '2025-01';
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -26,7 +32,11 @@ interface ShopifyClient {
 // see oauth.ts, so the token decrypted at client construction is valid for
 // the client's whole lifetime.
 export async function createShopifyClient(connectionId: number): Promise<ShopifyClient> {
-  const connection = await integrationConnectionsQueries.getByIdAndProvider(connectionId, 'shopify');
+  const connection = await integrationConnectionsQueries.getByIdAndProvider(
+    connectionId,
+    'shopify',
+    dbAdmin,
+  );
   if (!connection) throw new ConnectionNotFoundError(connectionId);
 
   const shop = connection.providerTenantId;
@@ -82,9 +92,7 @@ export async function createShopifyClient(connectionId: number): Promise<Shopify
     query: shopifyFetch,
 
     async getShopInfo(): Promise<{ shopName: string }> {
-      const data = await shopifyFetch<{ shop: { name: string } }>(
-        `query { shop { name } }`,
-      );
+      const data = await shopifyFetch<{ shop: { name: string } }>(`query { shop { name } }`);
       return { shopName: data.shop?.name ?? shop };
     },
   };
@@ -97,7 +105,10 @@ export async function createShopifyClient(connectionId: number): Promise<Shopify
 export async function paginateAll<TNode>(
   client: ShopifyClient,
   gql: string,
-  extract: (data: unknown) => { edges: { node: TNode }[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } },
+  extract: (data: unknown) => {
+    edges: { node: TNode }[];
+    pageInfo: { hasNextPage: boolean; endCursor: string | null };
+  },
   baseVariables: Record<string, unknown> = {},
 ): Promise<TNode[]> {
   const results: TNode[] = [];

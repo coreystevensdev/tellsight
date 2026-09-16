@@ -49,27 +49,28 @@ export interface SyncResult {
  * throughout so the UI can show progress. Errors update the job
  * and connection status and re-throw for BullMQ retry handling.
  */
-export async function runSync(
-  connectionId: number,
-  trigger: SyncTrigger,
-): Promise<SyncResult> {
+export async function runSync(connectionId: number, trigger: SyncTrigger): Promise<SyncResult> {
   const connection = await integrationConnectionsQueries.getByIdAndProvider(
     connectionId,
     'quickbooks',
+    dbAdmin,
   );
   if (!connection) throw new ConnectionNotFoundError(connectionId);
 
   const orgId = connection.orgId;
   const isInitial = trigger === 'initial';
-  const since = isInitial ? undefined : connection.lastSyncedAt ?? undefined;
+  const since = isInitial ? undefined : (connection.lastSyncedAt ?? undefined);
 
-  const job = await syncJobsQueries.create({
-    orgId,
-    connectionId: connection.id,
-    trigger,
-    status: 'running',
-    startedAt: new Date(),
-  }, dbAdmin);
+  const job = await syncJobsQueries.create(
+    {
+      orgId,
+      connectionId: connection.id,
+      trigger,
+      status: 'running',
+      startedAt: new Date(),
+    },
+    dbAdmin,
+  );
 
   await integrationConnectionsQueries.updateSyncStatus(connection.id, 'syncing', null, dbAdmin);
 
@@ -102,11 +103,15 @@ export async function runSync(
 
     await aiSummariesQueries.markStale(orgId, dbAdmin);
 
-    await syncJobsQueries.update(job.id, {
-      status: 'completed',
-      completedAt: new Date(),
-      rowsSynced: totalRows,
-    }, dbAdmin);
+    await syncJobsQueries.update(
+      job.id,
+      {
+        status: 'completed',
+        completedAt: new Date(),
+        rowsSynced: totalRows,
+      },
+      dbAdmin,
+    );
 
     await integrationConnectionsQueries.updateSyncStatus(connection.id, 'idle', null, dbAdmin);
     await integrationConnectionsQueries.updateLastSyncedAt(connection.id, dbAdmin);
@@ -126,11 +131,15 @@ export async function runSync(
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown sync error';
 
-    await syncJobsQueries.update(job.id, {
-      status: 'failed',
-      completedAt: new Date(),
-      error: message,
-    }, dbAdmin);
+    await syncJobsQueries.update(
+      job.id,
+      {
+        status: 'failed',
+        completedAt: new Date(),
+        error: message,
+      },
+      dbAdmin,
+    );
 
     await integrationConnectionsQueries.updateSyncStatus(connection.id, 'error', message, dbAdmin);
 

@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 
 import { env } from '../../../config.js';
 import { logger } from '../../../lib/logger.js';
+import { dbAdmin } from '../../../lib/db.js';
 import { ExternalServiceError } from '../../../lib/appError.js';
 import { encrypt, decrypt } from '../encryption.js';
 import { integrationConnectionsQueries } from '../../../db/queries/index.js';
@@ -87,7 +88,11 @@ export async function refreshAccessToken(connectionId: number): Promise<{
   encryptedRefreshToken: string;
   accessTokenExpiresAt: Date;
 }> {
-  const connection = await integrationConnectionsQueries.getByIdAndProvider(connectionId, 'quickbooks');
+  const connection = await integrationConnectionsQueries.getByIdAndProvider(
+    connectionId,
+    'quickbooks',
+    dbAdmin,
+  );
   if (!connection) throw new Error(`Connection ${connectionId} not found`);
 
   const refreshToken = decrypt(connection.encryptedRefreshToken);
@@ -118,6 +123,7 @@ export async function refreshAccessToken(connectionId: number): Promise<{
         connection.id,
         'error',
         'QuickBooks access was revoked, please reconnect',
+        dbAdmin,
       );
       throw new ExternalServiceError('Intuit OAuth, token revoked', { status: 401 });
     }
@@ -136,6 +142,7 @@ export async function refreshAccessToken(connectionId: number): Promise<{
     encryptedAccessToken,
     encryptedRefreshToken,
     accessTokenExpiresAt,
+    dbAdmin,
   );
 
   return { encryptedAccessToken, encryptedRefreshToken, accessTokenExpiresAt };

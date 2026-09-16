@@ -1,6 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createHmac } from 'node:crypto';
 
+// lib/db.ts opens two postgres clients at module load, and this graph now
+// reaches it. Without the mock every such test file leaks a pool.
+vi.mock('../../../lib/db.js', () => ({ dbAdmin: {}, db: {} }));
 vi.mock('../../../config.js', () => ({
   env: {
     SHOPIFY_CLIENT_ID: 'test-client-id',
