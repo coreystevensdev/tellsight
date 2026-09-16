@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 
@@ -18,29 +19,55 @@ import { describe, it, expect } from 'vitest';
 // The runtime tests mock the query module, so they cannot see which client was
 // passed. This reads the source instead.
 
-const SOURCE = readFileSync(fileURLToPath(new URL('./integrations.ts', import.meta.url)), 'utf8');
+// Reading one file was the original mistake. Eighteen of the forty-five
+// connection queries live in routes/integrations.ts; the other twenty-seven sit
+// in the service tree, and those are the ones that produced
+// "Connection 168 not found" about a connection that existed. A guard that only
+// watches the route file would let that back in.
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
-const CALLS = [
-  ...SOURCE.matchAll(
-    /integrationConnectionsQueries\.(\w+)\(([\s\S]*?)\);/g,
-  ),
-].map((m) => ({ fn: m[1]!, args: m[2]! }));
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((entry) => {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) return sourceFiles(full);
+    return entry.endsWith('.ts') && !entry.endsWith('.test.ts') ? [full] : [];
+  });
+}
+
+const CALLS = sourceFiles(ROOT).flatMap((file) =>
+  [...readFileSync(file, 'utf8').matchAll(/integrationConnectionsQueries\.(\w+)\(([\s\S]*?)\);/g)].map((m) => ({
+    file: file.slice(ROOT.length),
+    fn: m[1]!,
+    args: m[2]!,
+  })),
+);
 
 describe('integration_connections queries are always org-scoped', () => {
   it('finds the call sites at all, so a rename cannot empty this test', () => {
-    expect(CALLS.length).toBeGreaterThanOrEqual(15);
+    expect(CALLS.length).toBeGreaterThanOrEqual(40);
+    // and they must come from more than the route file, or the scan silently
+    // narrowed back to where it started
+    expect(new Set(CALLS.map((c) => c.file)).size).toBeGreaterThan(5);
   });
 
-  it.each([
-    'getByOrgAndProvider',
-    'deleteByOrgAndProvider',
-    'upsert',
-  ])('passes a scoped client to every %s call', (fn) => {
-    const calls = CALLS.filter((c) => c.fn === fn);
-    expect(calls.length).toBeGreaterThan(0);
+  // Derived from what the scan finds, never a hardcoded list. The first version
+  // of this guard named three functions and omitted getByIdAndProvider, which is
+  // precisely the one whose seventeen unscoped reads caused the outage. A list
+  // written by hand stays as wrong as the day it was written.
+  it('passes a scoped client to every connection query, anywhere in the tree', () => {
+    const unscoped = CALLS.filter((c) => !/\btx\b|\bdbAdmin\b/.test(c.args));
+    expect(unscoped.map((c) => `${c.file} ${c.fn}`)).toEqual([]);
+  });
 
-    const unscoped = calls.filter((c) => !/\btx\b|\bdbAdmin\b/.test(c.args));
-    expect(unscoped).toEqual([]);
+  it('covers the query functions that actually exist, not a list someone typed', () => {
+    const seen = new Set(CALLS.map((c) => c.fn));
+    // These four are the ones that reach org-scoped rows. If a fifth appears the
+    // assertion above already covers it; this only proves the scan sees the
+    // read that broke, since a regex that silently stopped matching it would
+    // otherwise leave every check vacuously green.
+    for (const fn of ['getByIdAndProvider', 'getByOrgAndProvider', 'deleteByOrgAndProvider', 'upsert']) {
+      expect(seen).toContain(fn);
+    }
   });
 
   // The callbacks are public: the provider redirects the browser there with no

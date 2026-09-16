@@ -20,6 +20,10 @@ const mockReturning = vi.fn() as ReturnType<typeof vi.fn> & { _result: Promise<u
 
 vi.mock('../../../lib/db.js', () => ({
   dbAdmin: {
+    // Branded so an assertion can tell the clients apart. expect.anything()
+    // matches either one, which made the assertion below read as coverage of
+    // the scoped-client fix while observing nothing about it.
+    __brand: 'dbAdmin',
     insert: () => ({
       values: (v: unknown) => {
         mockInsertValues(v);
@@ -37,6 +41,7 @@ vi.mock('../../../lib/db.js', () => ({
       },
     }),
   },
+  db: { __brand: 'db' },
 }));
 
 vi.mock('../../../lib/logger.js', () => ({
@@ -170,7 +175,11 @@ describe('runSync', () => {
     await runSync(1, 'initial');
 
     // The connection is fetched by its own id (1), not treated as an org id.
-    expect(mockGetByIdAndProvider).toHaveBeenCalledWith(1, 'quickbooks', expect.anything());
+    expect(mockGetByIdAndProvider).toHaveBeenCalledWith(
+      1,
+      'quickbooks',
+      expect.objectContaining({ __brand: 'dbAdmin' }),
+    );
 
     expect(mockCreateDataset).toHaveBeenCalledWith(
       10,
