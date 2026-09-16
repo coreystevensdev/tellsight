@@ -2,9 +2,11 @@
 node_modules/
 
 # Environment
-.env
-.env.local
-.env.*.local
+# Every .env variant, including the .bak a credential helper leaves behind.
+# Listing them one by one missed .env.bak, which holds JWT_SECRET and
+# DATABASE_URL and was committable.
+.env*
+!.env.example
 
 # Next.js
 .next/
