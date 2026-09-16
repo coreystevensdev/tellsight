@@ -63,6 +63,7 @@ import {
   closeStatCorrectionsQueue,
 } from './jobs/statCorrections/index.js';
 import { initEmailProvider } from './services/email/index.js';
+import { logStripeKeyStatus } from './services/subscription/stripeHealth.js';
 import { redis } from './lib/redis.js';
 import { queryClient, adminClient } from './lib/db.js';
 import { abortAll as abortAllStreams } from './lib/activeStreams.js';
@@ -141,6 +142,11 @@ async function start() {
   }
 
   initEmailProvider(env);
+
+  // Fire and forget. A rejected key must not stop the app booting: the dashboard,
+  // the digests and the connectors all work without billing, and coupling their
+  // availability to Stripe's would be worse than a broken checkout.
+  void logStripeKeyStatus();
 
   if (isQbConfigured(env)) {
     initSyncWorker();

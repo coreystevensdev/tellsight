@@ -8,6 +8,7 @@ import { checkDatabaseHealth, type DbHealth } from '../lib/db.js';
 import { logger } from '../lib/logger.js';
 import { checkRedisHealth } from '../lib/redis.js';
 import { getEmailProvider } from '../services/email/index.js';
+import { checkStripeHealth } from '../services/subscription/stripeHealth.js';
 
 const router = Router();
 
@@ -30,10 +31,11 @@ router.get('/health/live', (_req, res) => {
 // readiness, can this instance serve traffic? Check DB + Redis.
 // A failed readiness probe stops routing traffic but doesn't restart.
 router.get('/health/ready', async (_req, res) => {
-  const [rawDb, redisHealth, emailHealth] = await Promise.all([
+  const [rawDb, redisHealth, emailHealth, stripeHealth] = await Promise.all([
     checkDatabaseHealth(),
     checkRedisHealth(),
     checkEmailHealth(),
+    checkStripeHealth(),
   ]);
 
   const dbHealth = reportDatabase(rawDb);
@@ -41,16 +43,17 @@ router.get('/health/ready', async (_req, res) => {
 
   res.status(ready ? 200 : 503).json({
     status: ready ? 'ok' : 'degraded',
-    services: { database: dbHealth, redis: redisHealth, email: emailHealth },
+    services: { database: dbHealth, redis: redisHealth, email: emailHealth, stripe: stripeHealth },
   });
 });
 
 // backward-compatible combined check (used by Docker healthcheck + E2E wait loop)
 router.get('/health', async (_req, res) => {
-  const [rawDb, redisHealth, emailHealth] = await Promise.all([
+  const [rawDb, redisHealth, emailHealth, stripeHealth] = await Promise.all([
     checkDatabaseHealth(),
     checkRedisHealth(),
     checkEmailHealth(),
+    checkStripeHealth(),
   ]);
 
   const dbHealth = reportDatabase(rawDb);
@@ -58,7 +61,7 @@ router.get('/health', async (_req, res) => {
 
   res.status(status === 'ok' ? 200 : 503).json({
     status,
-    services: { database: dbHealth, redis: redisHealth, email: emailHealth },
+    services: { database: dbHealth, redis: redisHealth, email: emailHealth, stripe: stripeHealth },
     timestamp: new Date().toISOString(),
   });
 });
