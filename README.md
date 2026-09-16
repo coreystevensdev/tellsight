@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://tellsight.coreystevens.dev"><img src="https://img.shields.io/badge/demo-live-2DD4BF.svg" alt="Live demo"></a>
   <a href="https://github.com/coreystevensdev/tellsight/actions/workflows/ci.yml"><img src="https://github.com/coreystevensdev/tellsight/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/tests-4%2C345-brightgreen.svg" alt="4,345 tests">
+  <img src="https://img.shields.io/badge/tests-4%2C338-brightgreen.svg" alt="4,338 tests">
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License">
   <img src="https://img.shields.io/badge/Next.js-16-black.svg" alt="Next.js 16">
   <img src="https://img.shields.io/badge/TypeScript-5.9-3178c6.svg" alt="TypeScript">
@@ -15,7 +15,7 @@
 
 **Live:** [tellsight.coreystevens.dev](https://tellsight.coreystevens.dev), no signup needed, the dashboard loads with seed data and a real AI summary. **Deploy:** AWS EC2 t3.micro + RDS PostgreSQL 18 + Redis 7 (Docker Compose, co-located). GitHub Actions OIDC deploys via SSM SendCommand; no SSH key stored. See [infra/README.md](infra/README.md) for the Terraform runbook.
 
-Most analytics tools show numbers. This one explains what they mean, and delivers the interpretation to your inbox every week. Connect QuickBooks, Shopify or Square, or upload a CSV (the four data sources supported today), get charts, then a plain-English explanation of what the trends actually mean for your business. Sign in with Google or email and password. Multi-tenant Postgres with row-level security, SSE streaming for AI summaries, BullMQ three-queue digest pipeline, Stripe billing. The AI only ever sees computed statistics, never raw rows. 4,345 automated tests (4,268 Vitest plus 77 Playwright E2E), with the curation pipeline's financial math the most heavily covered.
+Most analytics tools show numbers. This one explains what they mean, and delivers the interpretation to your inbox every week. Connect QuickBooks, Shopify or Square, or upload a CSV (the four data sources supported today), get charts, then a plain-English explanation of what the trends actually mean for your business. Sign in with Google or email and password. Multi-tenant Postgres with row-level security, SSE streaming for AI summaries, BullMQ three-queue digest pipeline, Stripe billing. The AI only ever sees computed statistics, never raw rows. 4,338 automated tests (4,261 Vitest plus 77 Playwright E2E), with the curation pipeline's financial math the most heavily covered.
 
 ## Problem
 
@@ -40,7 +40,7 @@ Upload a CSV or connect QuickBooks, Shopify or Square directly via OAuth (the fo
 </p>
 
 - **Streaming AI summaries.** Claude reads the computed statistics and explains what matters. Summaries stream in real time via SSE so the user sees output as it generates.
-- **Stripe billing.** Free tier with AI preview (~150 words), Pro tier for full summaries.
+- **Stripe billing.** Free tier with AI preview (~150 words), Pro tier for full summaries. Reviewing this? Pro is reachable without paying for it, see Known limitations for the code. The checkout, the webhook and the tier transition are all the real ones; only the amount is zero.
 - **Row-level security.** Org-first multi-tenancy with PostgreSQL RLS policies on every table.
 - **Shareable insights.** Generate PNG snapshots or shareable links for team collaboration.
 - **Dark mode.** System preference detection + manual toggle with oklch color tokens.
@@ -201,6 +201,8 @@ The weekly digest pipeline illustrates several patterns that come up in high-thr
 ## Known limitations
 
 A few honest gaps:
+
+- **Pro is free to evaluate, on purpose.** Enter `REVIEWER` at checkout for a 100% discount. Gating the AI interpretation behind a paywall nobody reviewing this will pay is self-defeating, and a demo that charged a real card would need the business registration, tax handling and refund obligations to be real too. The discount is a Stripe promotion code, so the hosted checkout, the `checkout.session.completed` webhook and the free-to-Pro transition all run exactly as they would for a paying customer. Activation reads no amount, so a zero-total subscription lands the same way.
 
 - **The connectors run on sandbox credentials, deliberately.** QuickBooks, Shopify and Square all default to their sandbox environments, and each is gated off entirely unless its credentials are set. The code paths are the production ones: real webhook signature verification, real OAuth with state and HMAC checks, real token refresh against the provider's live token endpoint. Only the credentials differ, and `SQUARE_ENVIRONMENT` / `QUICKBOOKS_ENVIRONMENT` switch it with no code change. A public demo that charged a visitor's card would need business registration, tax handling and refund obligations to be real too, and a connector pointed at a live seller account would put actual business revenue on a single free-tier instance for a benefit no visitor could see, since signed-out visitors are served synthetic seed data regardless.
 
