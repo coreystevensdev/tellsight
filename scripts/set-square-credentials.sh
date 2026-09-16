@@ -18,7 +18,33 @@ read -r -s -p "Application Secret: " APP_SECRET
 echo
 [ -n "$APP_ID" ] && [ -n "$APP_SECRET" ] || { echo "Both values are required."; exit 1; }
 
-cp "$ENV_FILE" "$ENV_FILE.bak"
+# read -s echoes nothing, so a double paste is invisible until Square answers
+# 401 service.not_authorized on the token exchange, which reads like a wrong
+# secret rather than a repeated one. Shape-check both before writing.
+check() {
+  local name="$1" value="$2" prefix="$3" want_len="$4"
+  case "$value" in
+    "$prefix"*) ;;
+    *) echo "$name does not start with $prefix. Wrong field copied?"; exit 1 ;;
+  esac
+  local n=${#value}
+  if [ "$n" -ne "$want_len" ]; then
+    local reps=$(printf '%s' "$value" | grep -o "$prefix" | wc -l | tr -d ' ')
+    if [ "$reps" -gt 1 ]; then
+      echo "$name contains $prefix $reps times ($n chars). It looks pasted more than once."
+    else
+      echo "$name is $n chars, expected $want_len."
+    fi
+    exit 1
+  fi
+}
+check "Application ID"     "$APP_ID"     "sandbox-sq0idb-" 37
+check "Application Secret" "$APP_SECRET" "sandbox-sq0csb-" 58
+
+# Backup goes outside the repo. Leaving a .env.bak next to .env puts a file
+# holding JWT_SECRET and DATABASE_URL one `git add -A` away from a commit.
+BACKUP="${TMPDIR:-/tmp}/tellsight-env-$(date +%Y%m%d-%H%M%S).bak"
+cp "$ENV_FILE" "$BACKUP"
 
 # Drop any existing Square lines, commented or not, then write a clean block.
 # Rewriting beats sed-in-place on four separate lines, which is how a stray
@@ -39,7 +65,7 @@ INNER
 
 mv "$ENV_FILE.tmp" "$ENV_FILE"
 
-echo "Written. Previous file kept at .env.bak"
+echo "Written. Previous file kept at $BACKUP"
 echo
 echo "Register this exact redirect URL on the same Square OAuth page:"
 echo "  http://localhost:3001/integrations/square/callback"
