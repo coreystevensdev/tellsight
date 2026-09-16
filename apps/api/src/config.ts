@@ -10,6 +10,12 @@ export const envSchema = z
     STRIPE_SECRET_KEY: z.string().min(1),
     STRIPE_WEBHOOK_SECRET: z.string().min(1),
     STRIPE_PRICE_ID: z.string().min(1),
+
+    // This deployment is a public demo with no real customers, so it runs Stripe
+    // in test mode on purpose: a live key means a visitor who clicks Upgrade gets
+    // a real payment form for a real charge. Set this to 'true' to allow it.
+    // Anything serving actual users leaves it unset and keeps the rule below.
+    STRIPE_TEST_MODE_IN_PRODUCTION: z.enum(['true', 'false']).default('false'),
     GOOGLE_CLIENT_ID: z.string().min(1),
     GOOGLE_CLIENT_SECRET: z.string().min(1),
     JWT_SECRET: z.string().min(32),
@@ -74,10 +80,15 @@ export const envSchema = z
     DISABLE_RATE_LIMIT: z.enum(['true', 'false']).default('false'),
   })
   .refine(
-    (data) => !(data.NODE_ENV === 'production' && data.STRIPE_SECRET_KEY.startsWith('sk_test_')),
+    (data) =>
+      !(
+        data.NODE_ENV === 'production'
+        && data.STRIPE_SECRET_KEY.startsWith('sk_test_')
+        && data.STRIPE_TEST_MODE_IN_PRODUCTION !== 'true'
+      ),
     {
       message:
-        'STRIPE_SECRET_KEY must be a live key (sk_live_*) when NODE_ENV=production. A test key (sk_test_*) in production silently ships a broken payment flow to real users.',
+        'STRIPE_SECRET_KEY must be a live key (sk_live_*) when NODE_ENV=production. A test key (sk_test_*) in production silently ships a broken payment flow to real users. Set STRIPE_TEST_MODE_IN_PRODUCTION=true if this deployment is a demo and that is intended.',
       path: ['STRIPE_SECRET_KEY'],
     },
   )

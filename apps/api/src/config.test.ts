@@ -49,6 +49,24 @@ function baseEnv(overrides: Record<string, string> = {}) {
   };
 }
 
+// Production has email requirements of its own, so a Stripe test that only
+// asserts "rejected" can pass on an unrelated issue. These keep it honest.
+function prodEnv(overrides: Record<string, string> = {}) {
+  return baseEnv({
+    NODE_ENV: 'production',
+    EMAIL_PROVIDER: 'resend',
+    RESEND_API_KEY: 're_abc',
+    RESEND_WEBHOOK_SECRET: 'whsec_resend',
+    EMAIL_FROM_NAME: 'Tellsight',
+    ...overrides,
+  });
+}
+
+function stripeKeyIssue(result: ReturnType<typeof envSchema.safeParse>) {
+  if (result.success) return null;
+  return result.error.issues.find((i) => i.path[0] === 'STRIPE_SECRET_KEY')?.message ?? null;
+}
+
 describe('envSchema, email provider coupling', () => {
   it('accepts EMAIL_PROVIDER=resend when RESEND_API_KEY is set', () => {
     const result = envSchema.safeParse(
@@ -128,6 +146,32 @@ describe('envSchema, production guards on non-email settings', () => {
 
     const issue = result.error.issues.find((i) => i.path[0] === 'STRIPE_SECRET_KEY');
     expect(issue?.message).toMatch(/must be a live key/);
+  });
+
+  // A public demo has no real customers to ship a broken payment flow to, and a
+  // live key there means a visitor clicking Upgrade meets a real payment form.
+  // The exception has to be asked for, so a deployment cannot drift into it.
+  it('allows a Stripe test key in production when the deployment asks for it', () => {
+    const result = envSchema.safeParse(
+      prodEnv({ STRIPE_SECRET_KEY: 'sk_test_x', STRIPE_TEST_MODE_IN_PRODUCTION: 'true' }),
+    );
+    expect(result.success).toBe(true);
+  });
+
+  it('does not treat an unset opt-in as permission', () => {
+    const result = envSchema.safeParse(
+      prodEnv({ STRIPE_SECRET_KEY: 'sk_test_x', STRIPE_TEST_MODE_IN_PRODUCTION: 'false' }),
+    );
+    expect(stripeKeyIssue(result)).toMatch(/must be a live key/);
+  });
+
+  // The opt-in is about test keys only. It must not become a way to run a live
+  // key on a laptop, which is the refine that costs real money.
+  it('still rejects a live key outside production even with the opt-in set', () => {
+    const result = envSchema.safeParse(
+      baseEnv({ STRIPE_SECRET_KEY: 'sk_live_x', STRIPE_TEST_MODE_IN_PRODUCTION: 'true' }),
+    );
+    expect(stripeKeyIssue(result)).toMatch(/must be a test key/);
   });
 
   it('accepts a live Stripe key in production', () => {

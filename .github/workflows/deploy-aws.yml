@@ -98,6 +98,7 @@ jobs:
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
           STRIPE_PRICE_ID: ${{ secrets.STRIPE_PRICE_ID }}
+          STRIPE_TEST_MODE_IN_PRODUCTION: ${{ vars.STRIPE_TEST_MODE_IN_PRODUCTION }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -158,6 +159,10 @@ jobs:
               ("STRIPE_SECRET_KEY", os.environ['STRIPE_SECRET_KEY']),
               ("STRIPE_WEBHOOK_SECRET", os.environ['STRIPE_WEBHOOK_SECRET']),
               ("STRIPE_PRICE_ID", os.environ['STRIPE_PRICE_ID']),
+              # A repo variable, not a secret: it carries no credential, and the
+              # whole point is that running Stripe in test mode here is a stated
+              # choice rather than something inferred from a key prefix.
+              ("STRIPE_TEST_MODE_IN_PRODUCTION", os.environ.get('STRIPE_TEST_MODE_IN_PRODUCTION') or 'false'),
               ("GOOGLE_CLIENT_ID", os.environ['GOOGLE_CLIENT_ID']),
               ("GOOGLE_CLIENT_SECRET", os.environ['GOOGLE_CLIENT_SECRET']),
               ("JWT_SECRET", os.environ['JWT_SECRET']),

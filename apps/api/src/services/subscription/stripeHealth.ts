@@ -1,3 +1,4 @@
+import { env } from '../../config.js';
 import { logger } from '../../lib/logger.js';
 import { getStripe } from './stripeService.js';
 
@@ -11,21 +12,29 @@ export interface StripeHealth {
 }
 
 /**
- * Asks Stripe whether the configured key is one it recognises.
+ * Asks Stripe whether the configured billing settings are ones it recognises.
  *
- * config.ts already rejects an sk_test_ key in production, and its message says
- * why: a test key there silently ships a broken payment flow. But it checks the
- * prefix, not the key. Production ran for weeks on an sk_live_ value that Stripe
- * answers 401 to, which is the same broken flow the prefix rule exists to stop.
+ * config.ts checks the shape of STRIPE_SECRET_KEY, not whether it works, and it
+ * says nothing at all about the other two Stripe settings. Those have to agree:
+ * the key, the price id and the webhook secret are each scoped to one Stripe
+ * mode, so moving a deployment between modes means moving all three. Moving one
+ * or two is the failure this catches.
  *
- * A retrieve on the balance is the cheapest authenticated read Stripe offers and
- * changes nothing.
+ * The key is checked first, since a price lookup against a key Stripe rejects
+ * tells you nothing. A balance retrieve is the cheapest authenticated read Stripe
+ * offers and changes nothing.
+ *
+ * The webhook secret is the one leg with no read to verify it against, and it is
+ * also the worst to get wrong: checkout succeeds and activation never happens.
  */
 export async function checkStripeHealth(): Promise<StripeHealth> {
   const started = Date.now();
 
   try {
-    const balance = await getStripe().balance.retrieve({}, { timeout: TIMEOUT_MS });
+    const stripe = getStripe();
+    const balance = await stripe.balance.retrieve({}, { timeout: TIMEOUT_MS });
+    await stripe.prices.retrieve(env.STRIPE_PRICE_ID, {}, { timeout: TIMEOUT_MS });
+
     return { status: 'ok', latencyMs: Date.now() - started, livemode: balance.livemode };
   } catch (err) {
     const latencyMs = Date.now() - started;
@@ -44,6 +53,17 @@ export async function checkStripeHealth(): Promise<StripeHealth> {
       };
     }
 
+    // The price lookup is the only call here that names an id, so a 404 is
+    // STRIPE_PRICE_ID pointing at something this key cannot see. That is what a
+    // half-finished mode switch looks like: the key moved and the price did not.
+    if (code === 404) {
+      return {
+        status: 'error',
+        latencyMs,
+        detail: 'STRIPE_PRICE_ID does not exist for this API key',
+      };
+    }
+
     return { status: 'unknown', latencyMs, detail: 'Stripe unreachable, key not verified' };
   }
 }
@@ -59,15 +79,18 @@ export async function logStripeKeyStatus(): Promise<void> {
   if (health.status === 'error') {
     logger.error(
       { latencyMs: health.latencyMs, detail: health.detail },
-      'Stripe key rejected, checkout and upgrades will fail',
+      'Stripe billing settings rejected, checkout and upgrades will fail',
     );
     return;
   }
 
   if (health.status === 'unknown') {
-    logger.warn({ latencyMs: health.latencyMs }, 'Could not verify the Stripe key at boot');
+    logger.warn({ latencyMs: health.latencyMs }, 'Could not verify the Stripe settings at boot');
     return;
   }
 
-  logger.info({ latencyMs: health.latencyMs, livemode: health.livemode }, 'Stripe key verified');
+  logger.info(
+    { latencyMs: health.latencyMs, livemode: health.livemode },
+    'Stripe key and price verified',
+  );
 }
