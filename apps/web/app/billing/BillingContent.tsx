@@ -1,6 +1,9 @@
 'use client';
 
 import { useCallback, useState } from 'react';
+
+import { PRO_PRICE_DISPLAY } from 'shared/constants';
+
 import { useSubscription } from '@/lib/hooks/useSubscription';
 
 export function BillingContent() {
@@ -76,7 +79,7 @@ export function BillingContent() {
         <div className="space-y-4">
           <div className="rounded-lg border border-primary/30 bg-primary/[0.03] p-6">
             <div className="flex items-baseline gap-1">
-              <span className="text-3xl font-bold text-foreground">$29</span>
+              <span className="text-3xl font-bold text-foreground">{PRO_PRICE_DISPLAY}</span>
               <span className="text-sm text-muted-foreground">/month</span>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -106,7 +109,7 @@ export function BillingContent() {
             disabled={loading}
             className="w-full rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? 'Redirecting to checkout...' : 'Upgrade to Pro, $29/mo'}
+            {loading ? 'Redirecting to checkout...' : `Upgrade to Pro, ${PRO_PRICE_DISPLAY}/mo`}
           </button>
         </div>
       ) : (
