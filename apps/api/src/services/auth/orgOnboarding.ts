@@ -73,3 +73,25 @@ export async function createOwnerOrgForUser(userId: number, ownerName: string) {
 
   return { org, membership };
 }
+
+/**
+ * The org to sign someone in to, creating one if they have none left.
+ *
+ * Until member removal existed a user with no memberships could not occur, and
+ * all three sign-in paths threw "User has no organization membership" at one.
+ * Now they can occur: someone who joined by invite never got an org of their own,
+ * so removing them leaves them with nothing, unable to sign in and therefore
+ * unable to delete their own account either, since that route is behind auth.
+ *
+ * Giving them one back turns a removal into a removal rather than a locked door,
+ * and matches the rule the rest of the product already holds to, that a user has
+ * an org. They land on the same seeded demo a new sign-up gets.
+ */
+export async function resolvePrimaryMembership(userId: number, ownerName: string) {
+  const [existing] = await userOrgsQueries.getUserOrgs(userId, dbAdmin);
+  if (existing) return existing;
+
+  logger.info({ userId }, 'Signing in a user with no org, creating one');
+  const { org, membership } = await createOwnerOrgForUser(userId, ownerName);
+  return { ...membership, org };
+}
