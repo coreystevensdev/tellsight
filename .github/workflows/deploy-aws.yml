@@ -6,6 +6,17 @@ on:
     branches: [main]
     types: [completed]
 
+  # Secrets only reach the box when a deploy writes /opt/tellsight/.env, and
+  # until this existed the only way to start one was to push a commit. Rotating
+  # STRIPE_PRICE_ID on 2026-09-17 meant re-running an unrelated CI run to get a
+  # deploy out of it.
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Deploy even though CI has not passed for this commit
+        type: boolean
+        default: false
+
 # One deploy at a time, per instance. Without this, merging a few PRs in quick
 # succession starts a deploy per CI run and they race on the same box: on
 # 2026-09-14 seven runs for the same sha started inside 106 seconds, five died
@@ -22,6 +33,7 @@ concurrency:
 permissions:
   id-token: write
   contents: read
+  actions: read  # reads CI's conclusion for this sha on a manual run
 
 env:
   AWS_REGION: us-east-1
@@ -31,12 +43,33 @@ jobs:
   deploy:
     name: Build, Push, Deploy
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
 
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      # A manual run skips the workflow_run gate, so it has to ask the question
+      # that gate answers. Deploying a commit CI has not passed is sometimes the
+      # right call, a flaky e2e should not block a secret rotation, so this is a
+      # tick box rather than a wall. Empty is treated as failure: no completed
+      # run for this sha is not the same as a green one.
+      - name: Check CI passed for this commit
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.force }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          conclusion=$(gh api \
+            "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$SHA&status=completed&per_page=1" \
+            --jq '.workflow_runs[0].conclusion // ""')
+          echo "CI for ${SHA:0:7}: ${conclusion:-none}"
+          if [ "$conclusion" != "success" ]; then
+            echo "::error::CI for ${SHA:0:7} is '${conclusion:-none}'. Re-run with force checked if that is intended."
+            exit 1
+          fi
 
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v6
@@ -51,7 +84,7 @@ jobs:
       - name: Set image tags
         id: tags
         env:
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
           ECR_API: ${{ secrets.ECR_API_REPO }}
           ECR_WEB: ${{ secrets.ECR_WEB_REPO }}
         run: |
@@ -90,7 +123,7 @@ jobs:
       - name: Deploy via SSM
         env:
           EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_ADMIN_URL: ${{ secrets.DATABASE_ADMIN_URL }}
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}

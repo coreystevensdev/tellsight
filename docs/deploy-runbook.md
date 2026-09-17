@@ -67,10 +67,23 @@ Watch the Actions tab for live status.
 
 ### Manual deploy (force a redeploy without a code change)
 
+This is the path for a secret rotation. A GitHub secret changes nothing on the box by itself: `.env`
+is written during a deploy, so a new value sits unused until one runs.
+
 ```bash
-# Trigger the workflow manually from the Actions tab, or:
-gh workflow run deploy-aws.yml
+# Deploys the tip of main, after checking CI passed for that commit
+gh workflow run deploy-aws.yml --ref main
+
+# Same, for a commit CI has not passed (a flaky e2e, say)
+gh workflow run deploy-aws.yml --ref main -f force=true
 ```
+
+Without `force` the run stops before touching AWS if CI has not recorded a success for that exact
+commit, which includes the case where no completed CI run exists for it at all. The automatic path
+gets that gate from `workflow_run`; a manual run has to ask for itself.
+
+This command was in the runbook before the workflow accepted `workflow_dispatch`, so it failed with
+`Workflow does not have 'workflow_dispatch' trigger` until 2026-09-17.
 
 Or, for an env-only change (no image rebuild needed):
 
