@@ -3,13 +3,14 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 const createOrg = vi.fn();
 const findOrgBySlug = vi.fn();
 const addMember = vi.fn();
+const getUserOrgs = vi.fn();
 const createDataset = vi.fn();
 const insertBatch = vi.fn();
 const loggerError = vi.fn();
 const tx = { marker: 'tx' };
 
 vi.mock('../../db/queries/orgs.js', () => ({ createOrg, findOrgBySlug }));
-vi.mock('../../db/queries/userOrgs.js', () => ({ addMember }));
+vi.mock('../../db/queries/userOrgs.js', () => ({ addMember, getUserOrgs }));
 vi.mock('../../db/queries/datasets.js', () => ({ createDataset }));
 vi.mock('../../db/queries/dataRows.js', () => ({ insertBatch }));
 vi.mock('../../lib/db.js', () => ({
@@ -17,7 +18,7 @@ vi.mock('../../lib/db.js', () => ({
 }));
 vi.mock('../../lib/logger.js', () => ({ logger: { error: loggerError, info: vi.fn(), warn: vi.fn() } }));
 
-const { createOwnerOrgForUser } = await import('./orgOnboarding.js');
+const { createOwnerOrgForUser, resolvePrimaryMembership } = await import('./orgOnboarding.js');
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -25,6 +26,7 @@ beforeEach(() => {
   createOrg.mockResolvedValue({ id: 77, name: "Dana's Organization", slug: 'dana-org' });
   addMember.mockResolvedValue({ orgId: 77, userId: 5, role: 'owner' });
   createDataset.mockResolvedValue({ id: 900 });
+  getUserOrgs.mockResolvedValue([]);
 });
 
 describe('createOwnerOrgForUser', () => {
@@ -79,5 +81,36 @@ describe('createOwnerOrgForUser', () => {
       expect.objectContaining({ orgId: 77 }),
       expect.stringContaining('seed'),
     );
+  });
+});
+
+describe('resolvePrimaryMembership', () => {
+  it('uses the org they are already in', async () => {
+    const existing = { orgId: 3, userId: 5, role: 'member', org: { id: 3, name: 'Theirs' } };
+    getUserOrgs.mockResolvedValue([existing]);
+
+    expect(await resolvePrimaryMembership(5, 'Dana')).toBe(existing);
+    expect(createOrg).not.toHaveBeenCalled();
+  });
+
+  // Removing someone who joined by invite leaves them with none, and every
+  // sign-in path used to throw at them. They could not get in, and account
+  // deletion is behind auth, so they could not get out either.
+  it('makes one when they have none left, shaped like the ones getUserOrgs returns', async () => {
+    getUserOrgs.mockResolvedValue([]);
+
+    const membership = await resolvePrimaryMembership(5, 'Dana');
+
+    expect(createOrg).toHaveBeenCalled();
+    expect(membership.org).toMatchObject({ id: 77 });
+    expect(membership.role).toBe('owner');
+  });
+
+  it('seeds that org too, so they do not land on an empty dashboard', async () => {
+    getUserOrgs.mockResolvedValue([]);
+
+    await resolvePrimaryMembership(5, 'Dana');
+
+    expect(createDataset).toHaveBeenCalledWith(77, expect.objectContaining({ isSeedData: true }), tx);
   });
 });

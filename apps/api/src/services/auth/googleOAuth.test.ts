@@ -281,20 +281,29 @@ describe('googleOAuth', () => {
       );
     });
 
-    it('throws AuthenticationError when user has no org membership', async () => {
+    // Removing someone who joined by invite leaves them with no org at all, and
+    // this used to throw at them. They could not sign in, and since account
+    // deletion is behind auth they could not leave either.
+    it('gives a signed-in user with no org one, rather than turning them away', async () => {
       setupGoogleTokenExchange();
 
       mockFindUserByGoogleId.mockResolvedValueOnce({
         id: 1,
+        name: 'Orphan',
         email: 'orphan@example.com',
         isPlatformAdmin: false,
       });
       mockUpdateUser.mockResolvedValueOnce({});
       mockGetUserOrgs.mockResolvedValueOnce([]);
+      mockFindOrgBySlug.mockResolvedValueOnce(undefined);
+      mockCreateOrg.mockResolvedValueOnce({ id: 55, name: "Orphan's Organization", slug: 'orphan-org' });
+      mockAddMember.mockResolvedValueOnce({ orgId: 55, userId: 1, role: 'owner' });
 
-      await expect(handleGoogleCallback('auth-code')).rejects.toThrow(
-        'User has no organization membership',
-      );
+      const result = await handleGoogleCallback('auth-code');
+
+      expect(result.org.id).toBe(55);
+      expect(mockCreateOrg).toHaveBeenCalled();
+      expect(mockAddMember).toHaveBeenCalledWith(55, 1, 'owner', expect.anything());
     });
   });
 });

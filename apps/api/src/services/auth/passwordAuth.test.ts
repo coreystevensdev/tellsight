@@ -45,8 +45,11 @@ vi.mock('./inviteService.js', () => ({
   redeemInvite: mockRedeemInvite,
 }));
 
+const mockResolvePrimaryMembership = vi.fn();
+
 vi.mock('./orgOnboarding.js', () => ({
   createOwnerOrgForUser: mockCreateOwnerOrgForUser,
+  resolvePrimaryMembership: mockResolvePrimaryMembership,
 }));
 
 vi.mock('./passwordService.js', () => ({
@@ -73,6 +76,7 @@ const { ConflictError, AuthenticationError, NotFoundError, ValidationError } = a
 describe('passwordAuth', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockResolvePrimaryMembership.mockResolvedValue({ org: { id: 10, name: 'Org', slug: 'org' }, role: 'owner' });
   });
 
   describe('signUpWithPassword', () => {
@@ -149,7 +153,7 @@ describe('passwordAuth', () => {
     it('logs in with the correct password', async () => {
       mockFindUserByEmail.mockResolvedValueOnce({ id: 1, email: 'user@example.com', passwordHash: 'hashed:pw' });
       mockVerifyPassword.mockResolvedValueOnce(true);
-      mockGetUserOrgs.mockResolvedValueOnce([{ org: { id: 10, name: 'Org', slug: 'org' }, role: 'owner' }]);
+      mockResolvePrimaryMembership.mockResolvedValueOnce({ org: { id: 10, name: 'Org', slug: 'org' }, role: 'owner' });
 
       const result = await logInWithPassword('user@example.com', 'correct');
       expect(result.isNewUser).toBe(false);
@@ -223,7 +227,7 @@ describe('passwordAuth', () => {
       });
       mockFindUserById.mockResolvedValueOnce({ id: 7, email: 'user@example.com' });
       mockHashPassword.mockResolvedValueOnce('hashed:new');
-      mockGetUserOrgs.mockResolvedValueOnce([{ org: { id: 10, name: 'Org', slug: 'org' }, role: 'owner' }]);
+      mockResolvePrimaryMembership.mockResolvedValueOnce({ org: { id: 10, name: 'Org', slug: 'org' }, role: 'owner' });
 
       const result = await resetPassword('valid-token', 'newpassword1');
 

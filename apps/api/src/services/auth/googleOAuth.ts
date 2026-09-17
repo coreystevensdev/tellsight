@@ -7,7 +7,7 @@ import * as usersQueries from '../../db/queries/users.js';
 import * as userOrgsQueries from '../../db/queries/userOrgs.js';
 import { dbAdmin } from '../../lib/db.js';
 import { validateInviteToken, redeemInvite } from './inviteService.js';
-import { createOwnerOrgForUser } from './orgOnboarding.js';
+import { createOwnerOrgForUser, resolvePrimaryMembership } from './orgOnboarding.js';
 import { AUTH } from 'shared/constants';
 
 interface GoogleTokenResponse {
@@ -129,12 +129,7 @@ export async function handleGoogleCallback(code: string, inviteToken?: string) {
       };
     }
 
-    const memberships = await userOrgsQueries.getUserOrgs(existingUser.id, dbAdmin);
-    if (memberships.length === 0) {
-      throw new AuthenticationError('User has no organization membership');
-    }
-
-    const primaryMembership = memberships[0]!;
+    const primaryMembership = await resolvePrimaryMembership(existingUser.id, existingUser.name);
     logger.info({ userId: existingUser.id }, 'Returning user authenticated via Google OAuth');
 
     return {

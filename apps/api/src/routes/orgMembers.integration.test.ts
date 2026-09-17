@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import { findCallerContext, removeMember } from '../db/queries/userOrgs.js';
 import { orgs, userOrgs, users } from '../db/schema.js';
 import { dbAdmin } from '../lib/db.js';
-import { createOwnerOrgForUser } from '../services/auth/orgOnboarding.js';
+import { createOwnerOrgForUser, resolvePrimaryMembership } from '../services/auth/orgOnboarding.js';
 
 // Removal is only worth anything if it actually ends the session, and what ends
 // it is currentMembership finding nothing. That is a fact about a delete and a
@@ -70,5 +70,26 @@ describe('removeMember against real Postgres', () => {
     expect(await removeMember(org.id, stranger, dbAdmin)).toBeUndefined();
 
     await dbAdmin.delete(orgs).where(eq(orgs.id, org.id));
+  });
+
+  // The whole loop: someone who joined by invite has no org of their own, so
+  // removing them used to leave an account that could not sign in and, because
+  // account deletion is behind auth, could not be closed either.
+  it('leaves a removed invitee able to sign in again, with an org of their own', async () => {
+    const owner = await makeUser('inviting-owner');
+    const invitee = await makeUser('invitee');
+    const { org } = await createOwnerOrgForUser(owner, `Invited ${Date.now()}`);
+    await dbAdmin.insert(userOrgs).values({ orgId: org.id, userId: invitee, role: 'member' });
+
+    await removeMember(org.id, invitee, dbAdmin);
+    expect(await findCallerContext(invitee, org.id, dbAdmin)).toBeNull();
+
+    const repaired = await resolvePrimaryMembership(invitee, 'Invitee');
+
+    expect(repaired.org.id).not.toBe(org.id);
+    expect(repaired.role).toBe('owner');
+    expect(await findCallerContext(invitee, repaired.org.id, dbAdmin)).toMatchObject({ role: 'owner' });
+
+    await dbAdmin.delete(orgs).where(inArray(orgs.id, [org.id, repaired.org.id]));
   });
 });

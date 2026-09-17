@@ -1,5 +1,6 @@
 import { randomBytes, createHash } from 'node:crypto';
 import { logger } from '../../lib/logger.js';
+import { resolvePrimaryMembership } from './orgOnboarding.js';
 import { AuthenticationError, ConflictError, NotFoundError, ValidationError } from '../../lib/appError.js';
 import * as usersQueries from '../../db/queries/users.js';
 import * as userOrgsQueries from '../../db/queries/userOrgs.js';
@@ -61,12 +62,7 @@ export async function logInWithPassword(email: string, password: string) {
     throw new AuthenticationError('Invalid email or password');
   }
 
-  const memberships = await userOrgsQueries.getUserOrgs(user.id, dbAdmin);
-  if (memberships.length === 0) {
-    throw new AuthenticationError('User has no organization membership');
-  }
-
-  const primaryMembership = memberships[0]!;
+  const primaryMembership = await resolvePrimaryMembership(user.id, user.name);
   logger.info({ userId: user.id }, 'User authenticated via password');
 
   return { user, org: primaryMembership.org, membership: primaryMembership, isNewUser: false };
@@ -114,12 +110,7 @@ export async function resetPassword(token: string, newPassword: string) {
   // force re-login everywhere, whoever holds the old password shouldn't keep an active session
   await refreshTokensQueries.revokeAllForUser(user.id, dbAdmin);
 
-  const memberships = await userOrgsQueries.getUserOrgs(user.id, dbAdmin);
-  if (memberships.length === 0) {
-    throw new AuthenticationError('User has no organization membership');
-  }
-
-  const primaryMembership = memberships[0]!;
+  const primaryMembership = await resolvePrimaryMembership(user.id, user.name);
   logger.info({ userId: user.id }, 'Password reset completed');
 
   return { user, org: primaryMembership.org, membership: primaryMembership };
