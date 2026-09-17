@@ -19,6 +19,7 @@ import { digestRouter } from './digest.js';
 import { proposalsRouter } from './proposals.js';
 import { statCorrectionsRouter } from './statCorrections.js';
 import { qaRouter } from './qa.js';
+import { accountRouter } from './account.js';
 
 const protectedRouter = Router();
 
@@ -26,6 +27,7 @@ const protectedRouter = Router();
 protectedRouter.use(authMiddleware);
 protectedRouter.use(sentryUserContext);
 
+protectedRouter.use('/account', accountRouter);
 protectedRouter.use('/invites', inviteRouter);
 protectedRouter.use('/datasets', datasetsRouter);
 protectedRouter.use('/datasets', datasetsManageRouter);

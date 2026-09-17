@@ -259,6 +259,7 @@ export const AUDIT_ACTIONS = {
   AUTH_SIGNUP: 'auth.signup',
   AUTH_PASSWORD_RESET_REQUESTED: 'auth.password_reset_requested',
   AUTH_PASSWORD_RESET_COMPLETED: 'auth.password_reset_completed',
+  ACCOUNT_DELETED: 'account.deleted',
   ORG_INVITE_SENT: 'org.invite_sent',
   ORG_INVITE_ACCEPTED: 'org.invite_accepted',
   ORG_MEMBER_REMOVED: 'org.member_removed',
