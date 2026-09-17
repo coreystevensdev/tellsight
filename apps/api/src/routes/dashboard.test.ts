@@ -19,12 +19,15 @@ const mockGetActiveDatasetId = vi.fn();
 const mockGetRowCount = vi.fn();
 const mockGetHasMarginSignal = vi.fn();
 
+const mockFindCallerContext = vi.fn();
+
 vi.mock('../db/queries/index.js', () => ({
   chartsQueries: { getChartData: mockGetChartData, getHasMarginSignal: mockGetHasMarginSignal },
   datasetsQueries: { getUserOrgDemoState: mockGetUserOrgDemoState, getDatasetsByOrg: mockGetDatasetsByOrg },
   orgsQueries: { getSeedOrgId: mockGetSeedOrgId, findOrgById: mockFindOrgById, getActiveDatasetId: mockGetActiveDatasetId },
   aiSummariesQueries: { getCachedSummary: mockGetCachedSummary, getLatestSummary: mockGetLatestSummary },
   dataRowsQueries: { getRowCount: mockGetRowCount },
+  userOrgsQueries: { findCallerContext: mockFindCallerContext },
 }));
 
 vi.mock('../services/analytics/trackEvent.js', () => ({
@@ -107,6 +110,7 @@ beforeEach(() => {
   mockGetActiveDatasetId.mockResolvedValue(null);
   mockGetRowCount.mockResolvedValue(144);
   mockGetHasMarginSignal.mockResolvedValue(false);
+  mockFindCallerContext.mockResolvedValue({ role: 'owner', isPlatformAdmin: false });
   // withRlsContext executes the callback with a mock tx, query mocks intercept regardless
   mockWithRlsContext.mockImplementation(async (_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({ _tag: 'tx' }));
 });
@@ -229,6 +233,25 @@ describe('GET /dashboard/charts', () => {
 
     expect(res.status).toBe(200);
     expect(mockGetChartData).toHaveBeenCalledWith(99, undefined, undefined, expect.anything());
+  });
+
+  // The dashboard is public, so it verifies the cookie itself rather than sitting
+  // behind currentMembership. A deleted account's token still verifies, and
+  // without this it got an empty "Your Organization" instead of the demo, while a
+  // removed member would have kept reading the org they were removed from.
+  it('serves the public demo when the session outlived the membership', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce({ sub: '7', org_id: 10, role: 'owner', isAdmin: false });
+    mockFindCallerContext.mockResolvedValueOnce(null);
+
+    const res = await fetch(`${baseUrl}/dashboard/charts`, {
+      headers: { Cookie: 'access_token=valid-but-stale' },
+    });
+    const body = (await res.json()) as { data: { isDemo: boolean; orgName: string } };
+
+    expect(res.status).toBe(200);
+    expect(body.data.isDemo).toBe(true);
+    expect(mockGetSeedOrgId).toHaveBeenCalled();
+    expect(mockWithRlsContext).not.toHaveBeenCalled();
   });
 
   it('falls back to demoState empty when getUserOrgDemoState fails', async () => {
