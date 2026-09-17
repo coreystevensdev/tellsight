@@ -75,3 +75,20 @@ export async function findCallerContext(
 
   return row ?? null;
 }
+
+/** Returns the deleted membership, or undefined when the user was not in this org.
+ *  Nothing else needs revoking: the removed member's access token fails
+ *  currentMembership on its next request, and rotateRefreshToken already refuses
+ *  to mint a new pair for an org the user no longer belongs to. */
+export async function removeMember(
+  orgId: number,
+  userId: number,
+  client: typeof db | DbTransaction = db,
+) {
+  const [removed] = await client
+    .delete(userOrgs)
+    .where(and(eq(userOrgs.orgId, orgId), eq(userOrgs.userId, userId)))
+    .returning();
+
+  return removed;
+}
