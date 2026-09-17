@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import { auditLogs, dataRows, datasets, orgs, refreshTokens, userOrgs, users } from '../../db/schema.js';
 import { dbAdmin } from '../../lib/db.js';
 import { createOwnerOrgForUser } from './orgOnboarding.js';
+import { findCallerContext } from '../../db/queries/userOrgs.js';
 import { deleteAccount } from './accountDeletion.js';
 
 // The unit tests mock the db client, so they prove deleteAccount issues the right
@@ -80,6 +81,32 @@ describe('deleteAccount against real Postgres', () => {
     expect(survivor?.userId).toBeNull();
 
     expect(await dbAdmin.select().from(userOrgs).where(eq(userOrgs.userId, leaver))).toHaveLength(0);
+  });
+
+  // authMiddleware asks findCallerContext on every request, so this returning
+  // null is what actually shuts a deleted account's still-valid access token out.
+  // Without it the token keeps working for the rest of its 15 minutes.
+  it('leaves nothing for authMiddleware to find afterwards', async () => {
+    const userId = await makeUser('token-outlives');
+    const { org } = await createOwnerOrgForUser(userId, `Outlives ${Date.now()}`);
+
+    expect(await findCallerContext(userId, org.id, dbAdmin)).not.toBeNull();
+
+    await deleteAccount(userId);
+
+    expect(await findCallerContext(userId, org.id, dbAdmin)).toBeNull();
+  });
+
+  it('leaves nothing to find for an org the user was only removed from', async () => {
+    const leaver = await makeUser('leaver2');
+    const stayer = await makeUser('stayer2');
+    const { org } = await createOwnerOrgForUser(stayer, `Shared2 ${Date.now()}`);
+    await dbAdmin.insert(userOrgs).values({ orgId: org.id, userId: leaver, role: 'member' });
+
+    await deleteAccount(leaver);
+
+    expect(await findCallerContext(leaver, org.id, dbAdmin)).toBeNull();
+    expect(await findCallerContext(stayer, org.id, dbAdmin)).toMatchObject({ role: 'owner' });
   });
 
   it('refuses to strand members with no owner, and changes nothing when it does', async () => {

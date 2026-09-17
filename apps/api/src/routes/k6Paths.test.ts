@@ -8,6 +8,13 @@ import type { Server } from 'node:http';
 // from one that does: both come back 401. That is exactly how k6 spent months
 // requesting /api/datasets, a path Express never served, and grading the 401 as a
 // passing flow. Stubbing auth is what makes the 404 visible.
+// Stubbed for the same reason authMiddleware is: these are wiring tests, and the
+// user the stub above sets has to survive to the guards unchanged. The middleware
+// itself is covered in middleware/currentMembership.test.ts.
+vi.mock('../middleware/currentMembership.js', () => ({
+  currentMembership: vi.fn((_req: unknown, _res: unknown, next: () => void) => next()),
+}));
+
 vi.mock('../middleware/authMiddleware.js', () => ({
   authMiddleware: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));

@@ -1,6 +1,6 @@
 import { eq, and } from 'drizzle-orm';
 import { db, type DbTransaction } from '../../lib/db.js';
-import { userOrgs } from '../schema.js';
+import { userOrgs, users } from '../schema.js';
 
 export async function addMember(
   orgId: number,
@@ -58,3 +58,20 @@ export async function getOrgMembers(
   });
 }
 
+/** The caller's standing as the database has it right now, not as their token
+ *  remembered it. Returns null once the membership is gone, which is what a
+ *  deleted account and a removed member both look like from here.
+ *  Runs before any RLS context exists, so the caller passes dbAdmin. */
+export async function findCallerContext(
+  userId: number,
+  orgId: number,
+  client: typeof db | DbTransaction = db,
+) {
+  const [row] = await client
+    .select({ role: userOrgs.role, isPlatformAdmin: users.isPlatformAdmin })
+    .from(userOrgs)
+    .innerJoin(users, eq(users.id, userOrgs.userId))
+    .where(and(eq(userOrgs.userId, userId), eq(userOrgs.orgId, orgId)));
+
+  return row ?? null;
+}

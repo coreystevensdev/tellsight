@@ -93,6 +93,13 @@ vi.mock('../services/auth/tokenService.js', () => ({
   verifyAccessToken: vi.fn(),
 }));
 
+// Stubbed for the same reason authMiddleware is: these are wiring tests, and the
+// user the stub above sets has to survive to the guards unchanged. The middleware
+// itself is covered in middleware/currentMembership.test.ts.
+vi.mock('../middleware/currentMembership.js', () => ({
+  currentMembership: vi.fn((_req: unknown, _res: unknown, next: () => void) => next()),
+}));
+
 vi.mock('../middleware/authMiddleware.js', () => ({
   authMiddleware: vi.fn((req: unknown, _res: unknown, next: () => void) => {
     (req as { user: { sub: string; org_id: number } }).user = { sub: '1', org_id: 1 };
