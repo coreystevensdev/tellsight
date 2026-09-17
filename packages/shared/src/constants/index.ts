@@ -313,7 +313,17 @@ export const DEMO_MODE_STATES = {
   EMPTY: 'empty',
 } as const;
 
-// Display only. What actually gets charged is the Stripe price named by
-// STRIPE_PRICE_ID, and nothing keeps the two in step but hand, so this lives in
-// one place rather than in each component that shows a number.
-export const PRO_PRICE_DISPLAY = '$29';
+// What Pro costs, in the app's own words. The amount actually charged is the
+// Stripe price named by STRIPE_PRICE_ID, and checkStripeHealth compares the two
+// at boot, because they disagreed once already: the upgrade button said $29
+// while checkout charged $29.99.
+export const PRO_PRICE_CENTS = 2999;
+
+// Built from the integer rather than carried alongside it, so the number shown
+// and the number compared against Stripe cannot drift apart. Whole dollars lose
+// the trailing zeros, so 2900 reads "$29".
+const priceDollars = Math.floor(PRO_PRICE_CENTS / 100);
+const priceCents = PRO_PRICE_CENTS % 100;
+export const PRO_PRICE_DISPLAY = priceCents === 0
+  ? `$${priceDollars}`
+  : `$${priceDollars}.${String(priceCents).padStart(2, '0')}`;

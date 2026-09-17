@@ -1,3 +1,5 @@
+import { PRO_PRICE_CENTS } from 'shared/constants';
+
 import { env } from '../../config.js';
 import { logger } from '../../lib/logger.js';
 import { getStripe } from './stripeService.js';
@@ -24,6 +26,11 @@ export interface StripeHealth {
  * tells you nothing. A balance retrieve is the cheapest authenticated read Stripe
  * offers and changes nothing.
  *
+ * The price is also checked against what the app says Pro costs. Stripe holds the
+ * amount customers are charged and PRO_PRICE_CENTS holds the amount they are shown,
+ * and nothing but this makes them agree: they drifted for months, with the upgrade
+ * button promising $29 while checkout charged $29.99.
+ *
  * The webhook secret is the one leg with no read to verify it against, and it is
  * also the worst to get wrong: checkout succeeds and activation never happens.
  */
@@ -33,9 +40,19 @@ export async function checkStripeHealth(): Promise<StripeHealth> {
   try {
     const stripe = getStripe();
     const balance = await stripe.balance.retrieve({}, { timeout: TIMEOUT_MS });
-    await stripe.prices.retrieve(env.STRIPE_PRICE_ID, {}, { timeout: TIMEOUT_MS });
+    const price = await stripe.prices.retrieve(env.STRIPE_PRICE_ID, {}, { timeout: TIMEOUT_MS });
+    const latencyMs = Date.now() - started;
 
-    return { status: 'ok', latencyMs: Date.now() - started, livemode: balance.livemode };
+    if (price.unit_amount !== PRO_PRICE_CENTS) {
+      return {
+        status: 'error',
+        latencyMs,
+        livemode: balance.livemode,
+        detail: `Stripe charges ${price.unit_amount} but the app shows ${PRO_PRICE_CENTS}`,
+      };
+    }
+
+    return { status: 'ok', latencyMs, livemode: balance.livemode };
   } catch (err) {
     const latencyMs = Date.now() - started;
     const type = (err as { type?: string }).type;
@@ -79,7 +96,7 @@ export async function logStripeKeyStatus(): Promise<void> {
   if (health.status === 'error') {
     logger.error(
       { latencyMs: health.latencyMs, detail: health.detail },
-      'Stripe billing settings rejected, checkout and upgrades will fail',
+      'Stripe billing is misconfigured',
     );
     return;
   }
