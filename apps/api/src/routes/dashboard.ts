@@ -5,7 +5,7 @@ import { chartFiltersSchema } from 'shared/schemas';
 import type { DemoModeState } from 'shared/types';
 import { verifyAccessToken } from '../services/auth/tokenService.js';
 import { AuthenticationError } from '../lib/appError.js';
-import { aiSummariesQueries, chartsQueries, dataRowsQueries, datasetsQueries, orgsQueries } from '../db/queries/index.js';
+import { aiSummariesQueries, chartsQueries, dataRowsQueries, datasetsQueries, orgsQueries, userOrgsQueries } from '../db/queries/index.js';
 import { dbAdmin } from '../lib/db.js';
 import { DATASET_FRESHNESS_DAYS } from '../db/queries/digestEligibility.js';
 import { withRlsContext } from '../lib/rls.js';
@@ -50,6 +50,16 @@ dashboardRouter.get('/dashboard/charts', async (req: Request, res: Response) => 
       const payload = await verifyAccessToken(token);
       const orgId = payload.org_id;
       const userId = Number(payload.sub);
+
+      // This route is public, so it handles the cookie itself instead of sitting
+      // behind currentMembership like every other org-scoped read. Same question
+      // though: the signature proves who minted the token, not that the person is
+      // still in this org. Without it a deleted account keeps getting an empty
+      // "Your Organization" shell instead of the demo, and a removed member would
+      // keep reading the org they were removed from until the token lapsed.
+      if (!(await userOrgsQueries.findCallerContext(userId, orgId, dbAdmin))) {
+        throw new AuthenticationError('Session no longer valid');
+      }
 
       // orgs table has no org_id, intentional RLS exception
       const org = await orgsQueries.findOrgById(orgId);
