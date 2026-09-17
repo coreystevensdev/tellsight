@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { apiClient } from '@/lib/api-client';
 import { useResource } from '@/lib/hooks/useResource';
 import { BackLink } from '@/components/common/BackLink';
+import Members from './Members';
 
 interface GeneratedInvite {
   url: string;
@@ -100,7 +101,7 @@ export default function Invites() {
   }
 
   return (
-    <div className="w-full max-w-md space-y-6 border-t-2 border-border bg-card p-8">
+    <div className="w-full max-w-xl space-y-8 border-t-2 border-border bg-card p-8">
       <BackLink />
       <div>
         <h1 className="font-serif text-xl font-medium text-foreground">Invite Team Members</h1>
@@ -170,6 +171,8 @@ export default function Invites() {
           </ul>
         </div>
       )}
+
+      <Members />
     </div>
   );
 }
