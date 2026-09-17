@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+import { PRO_PRICE_CENTS } from 'shared/constants';
+
 const h = vi.hoisted(() => ({
   retrieve: vi.fn(),
   retrievePrice: vi.fn(),
@@ -24,7 +26,7 @@ const { checkStripeHealth, logStripeKeyStatus } = await import('./stripeHealth.j
 beforeEach(() => {
   vi.clearAllMocks();
   h.retrieve.mockResolvedValue({ livemode: false });
-  h.retrievePrice.mockResolvedValue({ id: 'price_test_fake', livemode: false });
+  h.retrievePrice.mockResolvedValue({ id: 'price_test_fake', livemode: false, unit_amount: PRO_PRICE_CENTS });
 });
 
 describe('checkStripeHealth', () => {
@@ -87,6 +89,23 @@ describe('checkStripeHealth', () => {
     expect(result.detail).toMatch(/STRIPE_PRICE_ID/);
   });
 
+  // The drift this exists for: Stripe charged $29.99 for months while every
+  // button in the app promised $29. Nothing compared them, so nothing said so.
+  it('reports error when Stripe charges a different amount than the app shows', async () => {
+    h.retrievePrice.mockResolvedValue({ unit_amount: PRO_PRICE_CENTS + 100, livemode: false });
+
+    const result = await checkStripeHealth();
+
+    expect(result.status).toBe('error');
+    expect(result.detail).toMatch(String(PRO_PRICE_CENTS));
+  });
+
+  it('reports error when the price carries no amount at all', async () => {
+    h.retrievePrice.mockResolvedValue({ unit_amount: null, livemode: false });
+
+    expect((await checkStripeHealth()).status).toBe('error');
+  });
+
   it('does not look up the price when the key is already rejected', async () => {
     h.retrieve.mockRejectedValue(Object.assign(new Error('nope'), { statusCode: 401 }));
 
@@ -98,13 +117,31 @@ describe('checkStripeHealth', () => {
 });
 
 describe('logStripeKeyStatus', () => {
+  // The message is fixed and now covers a rejected key and a price that charges
+  // the wrong amount, so it can no longer claim checkout will fail: on a price
+  // mismatch checkout works fine, it just charges a number nobody was shown.
+  // What went wrong rides in the structured field.
   it('logs at error level when the key is rejected', async () => {
     h.retrieve.mockRejectedValue(Object.assign(new Error('nope'), { statusCode: 401 }));
 
     await logStripeKeyStatus();
 
-    expect(h.error).toHaveBeenCalledWith(expect.anything(), expect.stringMatching(/rejected/i));
+    expect(h.error).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: expect.stringMatching(/rejected/i) }),
+      expect.stringMatching(/misconfigured/i),
+    );
     expect(h.warn).not.toHaveBeenCalled();
+  });
+
+  it('logs at error level when the price disagrees with the app', async () => {
+    h.retrievePrice.mockResolvedValue({ unit_amount: PRO_PRICE_CENTS + 1, livemode: false });
+
+    await logStripeKeyStatus();
+
+    expect(h.error).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: expect.stringContaining(String(PRO_PRICE_CENTS)) }),
+      expect.stringMatching(/misconfigured/i),
+    );
   });
 
   it('warns rather than errors when Stripe is simply unreachable', async () => {
