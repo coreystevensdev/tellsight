@@ -1,4 +1,4 @@
-import type { CookieOptions } from 'express';
+import type { CookieOptions, Response } from 'express';
 import { env } from '../config.js';
 
 // Session cookies must survive the BFF hop (browser → Vercel → Railway) and,
@@ -28,4 +28,8 @@ export function clearCookieOptions(): CookieOptions {
     path: '/',
     ...(env.COOKIE_DOMAIN ? { domain: env.COOKIE_DOMAIN } : {}),
   };
+}
+
+export function clearCookie(res: Response, name: string) {
+  res.clearCookie(name, clearCookieOptions());
 }

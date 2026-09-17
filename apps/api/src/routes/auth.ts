@@ -18,7 +18,7 @@ import { PasswordResetEmail } from '../services/auth/templates/passwordResetEmai
 import { sendEmail } from '../services/email/index.js';
 import * as refreshTokensQueries from '../db/queries/refreshTokens.js';
 import { dbAdmin } from '../lib/db.js';
-import { sessionCookieOptions, clearCookieOptions } from '../lib/cookies.js';
+import { sessionCookieOptions, clearCookie } from '../lib/cookies.js';
 import { env } from '../config.js';
 import { AUTH, PASSWORD_RESET } from 'shared/constants';
 import { googleCallbackSchema, signupSchema, passwordLoginSchema, forgotPasswordSchema, resetPasswordSchema } from 'shared/schemas';
@@ -30,10 +30,6 @@ const router = Router();
 
 function setCookie(res: Response, name: string, value: string, maxAge: number) {
   res.cookie(name, value, sessionCookieOptions(maxAge));
-}
-
-function clearCookie(res: Response, name: string) {
-  res.clearCookie(name, clearCookieOptions());
 }
 
 interface SessionSubject {
