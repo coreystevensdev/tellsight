@@ -316,4 +316,4 @@ export const DEMO_MODE_STATES = {
 // Display only. What actually gets charged is the Stripe price named by
 // STRIPE_PRICE_ID, and nothing keeps the two in step but hand, so this lives in
 // one place rather than in each component that shows a number.
-export const PRO_PRICE_DISPLAY = '$29.99';
+export const PRO_PRICE_DISPLAY = '$29';
