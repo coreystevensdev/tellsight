@@ -28,6 +28,13 @@ const makeLogger = (): Record<string, unknown> => ({
   child: () => makeLogger(),
 });
 vi.mock('../lib/logger.js', () => ({ logger: makeLogger() }));
+// This suite runs the real authMiddleware and the real protectedRouter, which is
+// the point of it, so currentMembership stays real too and only its one database
+// read is faked.
+const mockFindCallerContext = vi.fn();
+vi.mock('../db/queries/userOrgs.js', () => ({ findCallerContext: mockFindCallerContext }));
+vi.mock('../lib/db.js', () => ({ dbAdmin: {} }));
+
 vi.mock('../services/auth/tokenService.js', () => ({
   verifyAccessToken: (...a: unknown[]) => mockVerify(...a),
 }));
@@ -108,9 +115,31 @@ describe('admin role boundary', () => {
   // and the one most often collapsed.
   it('refuses a signed-in non-admin', async () => {
     mockVerify.mockResolvedValueOnce({ sub: '7', org_id: 10, role: 'owner', isAdmin: false });
+    mockFindCallerContext.mockResolvedValueOnce({ role: 'owner', isPlatformAdmin: false });
 
     const res = await fetch(`${baseUrl}/admin/orgs`, { headers: { Cookie: 'access_token=t' } });
 
     expect(res.status).toBe(403);
+  });
+
+  // Same signed token, opposite answer from the database. Whichever of these two
+  // the guard believes is the one that decides, and it has to be the database:
+  // the token's copy is up to AUTH.ACCESS_TOKEN_EXPIRY out of date.
+  it('refuses a token that still claims admin after the flag is gone', async () => {
+    mockVerify.mockResolvedValueOnce({ sub: '7', org_id: 10, role: 'owner', isAdmin: true });
+    mockFindCallerContext.mockResolvedValueOnce({ role: 'owner', isPlatformAdmin: false });
+
+    const res = await fetch(`${baseUrl}/admin/orgs`, { headers: { Cookie: 'access_token=t' } });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('refuses a valid token whose membership is gone', async () => {
+    mockVerify.mockResolvedValueOnce({ sub: '7', org_id: 10, role: 'owner', isAdmin: false });
+    mockFindCallerContext.mockResolvedValueOnce(null);
+
+    const res = await fetch(`${baseUrl}/dashboard/charts`, { headers: { Cookie: 'access_token=t' } });
+
+    expect(res.status).toBe(401);
   });
 });

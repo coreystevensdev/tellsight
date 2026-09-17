@@ -9,6 +9,8 @@ import { and, eq } from 'drizzle-orm';
 import postgres from 'postgres';
 import { SEED_ORG } from 'shared/constants';
 
+const SEED_USER_EMAIL = 'demo@tellsight.local';
+
 import * as schema from './schema.js';
 import { buildSeedRows, SEED_DATASET_NAME } from './seedData.js';
 
@@ -29,6 +31,33 @@ Marketing got slashed to $200-$300/month during Q3 2025, down from $800-$1,200 t
 
 Margins are tighter than they look. After expenses, most months net $2K-$4K. The December spike papers over thin months. A cash reserve from holiday season would smooth out the year without forcing cuts.`;
 
+/** The demo org shipped with no members at all, which is the orphaned state the
+ *  account deletion path now refuses to create, and it meant the k6 load test was
+ *  signing tokens for a user that was not in the database. That only passed
+ *  because nothing looked. No password hash and no google id, so no auth path can
+ *  sign in as it. */
+type SeedTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+async function ensureSeedOwner(tx: SeedTx, orgId: number) {
+  const [inserted] = await tx
+    .insert(schema.users)
+    .values({ email: SEED_USER_EMAIL, name: 'Sunrise Cafe Demo' })
+    .onConflictDoNothing({ target: schema.users.email })
+    .returning();
+
+  const owner = inserted ?? await tx.query.users.findFirst({
+    where: eq(schema.users.email, SEED_USER_EMAIL),
+  });
+  if (!owner) throw new Error('Seed owner vanished between upsert and lookup');
+
+  await tx
+    .insert(schema.userOrgs)
+    .values({ orgId, userId: owner.id, role: 'owner' })
+    .onConflictDoNothing();
+
+  console.info(`Seed org owner is user ${owner.id} (org ${orgId})`);
+}
+
 async function seed() {
   // app_admin role has BYPASSRLS, no SET LOCAL needed
   await db.transaction(async (tx) => {
@@ -45,6 +74,9 @@ async function seed() {
         ),
       });
       if (seedDataset) {
+        // Per-resource, not all-or-nothing: the owner arrived after the data did,
+        // so every environment already past this point would never get one.
+        await ensureSeedOwner(tx, existing.id);
         console.info(`Seed data already exists for "${SEED_ORG.name}", skipping`);
         return;
       }
@@ -75,6 +107,8 @@ async function seed() {
       .returning();
 
     if (!dataset) throw new Error('Failed to create seed dataset');
+
+    await ensureSeedOwner(tx, orgId);
 
     const rows = buildSeedRows();
     await tx.insert(schema.dataRows).values(

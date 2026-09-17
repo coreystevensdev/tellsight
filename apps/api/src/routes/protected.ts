@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/authMiddleware.js';
+import { currentMembership } from '../middleware/currentMembership.js';
 import { sentryUserContext } from '../lib/sentry.js';
 import { inviteRouter } from './invites.js';
 import { datasetsRouter } from './datasets.js';
@@ -25,6 +26,9 @@ const protectedRouter = Router();
 
 // every route mounted on this router requires a valid JWT
 protectedRouter.use(authMiddleware);
+// Immediately after, always. authMiddleware proves the token was signed by us;
+// this proves the person behind it still exists and still belongs here.
+protectedRouter.use(currentMembership);
 protectedRouter.use(sentryUserContext);
 
 protectedRouter.use('/account', accountRouter);
