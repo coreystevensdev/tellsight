@@ -189,7 +189,9 @@ async function seed() {
           messages: [{ role: 'user', content: user }],
         });
 
-        const content = message.content[0]?.type === 'text' ? message.content[0].text : '';
+        // First text block, not the first block: a thinking model puts one first.
+        const textBlock = message.content.find((b) => b.type === 'text');
+        const content = textBlock && 'text' in textBlock ? textBlock.text : '';
 
         await tx.insert(schema.aiSummaries).values({
           orgId,

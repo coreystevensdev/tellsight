@@ -247,7 +247,9 @@ describe('generateInterpretation', () => {
     expect(result).toBe('Revenue is growing steadily.');
     expect(mockCreate).toHaveBeenCalledWith({
       model: 'claude-sonnet-4-5-20250929',
-      max_tokens: 1024,
+      // 2048 since 2026-09-18: the newer models spend output tokens on thinking,
+      // and a max_tokens stop makes the tool paths drop every call in the response.
+      max_tokens: 2048,
       messages: [{ role: 'user', content: 'analyze this data' }],
     });
   });
