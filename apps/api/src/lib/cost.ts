@@ -27,22 +27,11 @@
  */
 
 import { env } from '../config.js';
+import { pricingFor } from './modelPricing.js';
 
 export const CAP_MULTIPLIER = 3;
 export const ABSOLUTE_CEILING_USD = 1.0;
 const HISTORY_CAP = 50;
-
-interface ModelPricing {
-  inputPerMillion: number;
-  outputPerMillion: number;
-}
-
-const PRICING: Record<string, ModelPricing> = {
-  'claude-sonnet-4-5': { inputPerMillion: 3, outputPerMillion: 15 },
-  'claude-sonnet-4-6': { inputPerMillion: 3, outputPerMillion: 15 },
-  'claude-opus-4-7': { inputPerMillion: 15, outputPerMillion: 75 },
-  'claude-haiku-4-5': { inputPerMillion: 1, outputPerMillion: 5 },
-};
 
 export interface Usage {
   input_tokens: number;
@@ -50,11 +39,8 @@ export interface Usage {
 }
 
 export function computeCost(usage: Usage, model: string = env.CLAUDE_MODEL): number | null {
-  // Destructure from entries so the price object is non-nullable in scope
-  // PRICING[key] under noUncheckedIndexedAccess returns T | undefined.
-  const entry = Object.entries(PRICING).find(([prefix]) => model.startsWith(prefix));
-  if (!entry) return null;
-  const [, p] = entry;
+  const p = pricingFor(model);
+  if (!p) return null;
   return (
     (usage.input_tokens / 1_000_000) * p.inputPerMillion +
     (usage.output_tokens / 1_000_000) * p.outputPerMillion

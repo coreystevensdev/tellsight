@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { pricingFor, KNOWN_MODEL_PREFIXES } from './lib/modelPricing.js';
+
 export const envSchema = z
   .object({
     DATABASE_URL: z.string().url(),
@@ -78,6 +80,17 @@ export const envSchema = z
     // Only for CI / E2E, set to 'true' to bypass rate limiters entirely.
     // Parallel Playwright workers blow the 60/min public limit otherwise.
     DISABLE_RATE_LIMIT: z.enum(['true', 'false']).default('false'),
+  })
+  // An unpriced model is worse than a wrong one. computeCost returns null for a
+  // prefix it does not know, and applyCostGate returns on null before it reaches
+  // exceedsBudget, so the rolling cap and the absolute ceiling both stop
+  // applying and nothing is recorded. The ceiling's own comment says it is there
+  // to bound "a misconfigured first invocation on Opus", which is precisely the
+  // switch that defeats it. Fail at boot instead: adding a price is one line.
+  .refine((data) => pricingFor(data.CLAUDE_MODEL) !== null, {
+    message:
+      `CLAUDE_MODEL has no entry in the pricing table, so the cost cap would not apply to it. Add its per-million prices to lib/modelPricing.ts. Known prefixes: ${KNOWN_MODEL_PREFIXES.join(', ')}.`,
+    path: ['CLAUDE_MODEL'],
   })
   .refine(
     (data) =>
