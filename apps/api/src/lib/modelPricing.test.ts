@@ -10,9 +10,25 @@ describe('pricingFor', () => {
   // The whole table exists so an unpriced model cannot slip past the cost gate,
   // and config.ts refuses to boot on a null from here.
   it('returns null for a model it does not know', () => {
-    expect(pricingFor('claude-sonnet-5')).toBeNull();
+    expect(pricingFor('claude-sonnet-9')).toBeNull();
     expect(pricingFor('gpt-4')).toBeNull();
     expect(pricingFor('')).toBeNull();
+  });
+
+  // Listed at 15/75 until 2026-09-18, which is Opus 4.1's price. At three times
+  // the truth the $1 absolute ceiling refuses calls that are fine, and the cost
+  // tile overstates spend. Pinned so it cannot drift back.
+  it('prices Opus 4.7 at its own rate, not the retired 4.1 rate', () => {
+    expect(pricingFor('claude-opus-4-7-20260101')).toEqual({ inputPerMillion: 5, outputPerMillion: 25 });
+  });
+
+  it('prices Sonnet 5 below Sonnet 4.5, per the published rates', () => {
+    const five = pricingFor('claude-sonnet-5')!;
+    const fourFive = pricingFor('claude-sonnet-4-5-20250929')!;
+
+    expect(five).toEqual({ inputPerMillion: 2, outputPerMillion: 10 });
+    expect(five.inputPerMillion).toBeLessThan(fourFive.inputPerMillion);
+    expect(five.outputPerMillion).toBeLessThan(fourFive.outputPerMillion);
   });
 
   // A prefix that is itself a prefix of another would make matching depend on

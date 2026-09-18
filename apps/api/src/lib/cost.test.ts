@@ -41,10 +41,24 @@ describe('computeCost', () => {
     expect(cost).toBeNull();
   });
 
-  it('Opus is 5x Sonnet at the same token volume', () => {
+  // Was 'Opus is 5x Sonnet', asserting the 15/75 the table carried for Opus 4.7.
+  // That is Opus 4.1's retired price; 4.7 is 5/25, so the real ratio is 5/3. The
+  // test named the wrong number as confidently as the table held it, which is how
+  // it survived: both halves agreed with each other and neither with Anthropic.
+  it('Opus costs 5/3 of Sonnet at the same token volume', () => {
     const sonnet = computeCost({ input_tokens: 1000, output_tokens: 1000 }, 'claude-sonnet-4-5');
     const opus = computeCost({ input_tokens: 1000, output_tokens: 1000 }, 'claude-opus-4-7');
-    expect(opus! / sonnet!).toBeCloseTo(5, 5);
+    expect(opus! / sonnet!).toBeCloseTo(5 / 3, 5);
+  });
+
+  // The reason to look at Sonnet 5 at all, before quality: it is cheaper per
+  // token on both halves. Nominally 33%, though Claude 4.7 and later use a
+  // tokenizer that emits about 30% more tokens for the same text, so the real
+  // saving is nearer 13% and no per-token comparison across that line is honest.
+  it('Sonnet 5 costs less per token than Sonnet 4.5', () => {
+    const five = computeCost({ input_tokens: 1000, output_tokens: 1000 }, 'claude-sonnet-5');
+    const fourFive = computeCost({ input_tokens: 1000, output_tokens: 1000 }, 'claude-sonnet-4-5');
+    expect(five!).toBeLessThan(fourFive!);
   });
 });
 
