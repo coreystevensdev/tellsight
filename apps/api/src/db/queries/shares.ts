@@ -1,4 +1,4 @@
-import { eq, lt, sql } from 'drizzle-orm';
+import { and, eq, lt, sql } from 'drizzle-orm';
 import { db, dbAdmin, type DbTransaction } from '../../lib/db.js';
 import { shares } from '../schema.js';
 
@@ -57,4 +57,19 @@ export async function getSharesByOrg(
   return client.query.shares.findMany({
     where: eq(shares.orgId, orgId),
   });
+}
+
+/** Scoped to the org, same as deleteInvite. Deleting matches how shares already
+ *  end: deleteExpired removes the row rather than marking it. */
+export async function deleteShare(
+  orgId: number,
+  shareId: number,
+  client: typeof db | DbTransaction = db,
+) {
+  const [deleted] = await client
+    .delete(shares)
+    .where(and(eq(shares.id, shareId), eq(shares.orgId, orgId)))
+    .returning();
+
+  return deleted;
 }

@@ -5,7 +5,16 @@ import userEvent from '@testing-library/user-event';
 // No test file, and no reference from any other test.
 
 const apiClient = vi.fn();
-vi.mock('@/lib/api-client', () => ({ apiClient: (...args: unknown[]) => apiClient(...args) }));
+
+// The page grew two more sections that read from their own endpoints. Without
+// routing by path they are handed the invite list and render it back, which is
+// how a countdown assertion here started matching rows from another component.
+vi.mock('@/lib/api-client', () => ({
+  apiClient: (path: string, ...rest: unknown[]) =>
+    path === '/org/members' || path === '/shares'
+      ? Promise.resolve({ data: [] })
+      : apiClient(path, ...rest),
+}));
 
 import Invites from './Invites';
 

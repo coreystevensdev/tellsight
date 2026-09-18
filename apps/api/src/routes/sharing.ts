@@ -4,8 +4,10 @@ import { AUDIT_ACTIONS } from 'shared/constants';
 import { requireUser } from '../lib/requireUser.js';
 import { generateShareLink, getSharedInsight } from '../services/sharing/index.js';
 import { withRlsContext } from '../lib/rls.js';
+import { z } from 'zod';
 import { createShareSchema } from 'shared/schemas';
-import { ValidationError } from '../lib/appError.js';
+import { sharesQueries } from '../db/queries/index.js';
+import { ValidationError, NotFoundError, AuthorizationError } from '../lib/appError.js';
 import { auditAuth } from '../services/audit/auditService.js';
 
 // mounted behind authMiddleware via protectedRouter
@@ -36,6 +38,57 @@ shareRouter.post('/', async (req, res: Response) => {
   });
 
   res.status(201).json({ data: result });
+});
+
+// A share link keeps working until it expires, which is thirty days by default,
+// so removing someone left any link they made alive. Listing them is half of it:
+// an owner cannot revoke what they cannot see.
+shareRouter.get('/', async (req, res: Response) => {
+  const user = requireUser(req);
+
+  const rows = await withRlsContext(user.org_id, user.isAdmin, (tx) =>
+    sharesQueries.getSharesByOrg(user.org_id, tx),
+  );
+
+  // No token or hash: the link itself is the credential and this list is read by
+  // people who should be able to revoke a share without being handed its access.
+  res.json({
+    data: rows.map((s) => ({
+      id: s.id,
+      datasetId: s.datasetId,
+      createdBy: s.createdBy,
+      createdAt: s.createdAt,
+      expiresAt: s.expiresAt,
+      viewCount: s.viewCount,
+      isMine: s.createdBy === parseInt(user.sub, 10),
+    })),
+  });
+});
+
+// Owners can revoke anything in their org, and anyone can revoke what they made.
+// A member revoking a colleague's link is neither of those.
+shareRouter.delete('/:id', async (req, res: Response) => {
+  const user = requireUser(req);
+  const parsed = z.coerce.number().int().positive().safeParse(req.params.id);
+  if (!parsed.success) throw new ValidationError('Invalid share ID');
+
+  const revoked = await withRlsContext(user.org_id, user.isAdmin, async (tx) => {
+    const existing = await sharesQueries.getSharesByOrg(user.org_id, tx);
+    const target = existing.find((s) => s.id === parsed.data);
+    if (!target) return null;
+    if (user.role !== 'owner' && target.createdBy !== parseInt(user.sub, 10)) return 'forbidden';
+    return sharesQueries.deleteShare(user.org_id, parsed.data, tx);
+  });
+
+  if (revoked === 'forbidden') throw new AuthorizationError('Only the owner or whoever made it can revoke a share');
+  if (!revoked) throw new NotFoundError('No such share');
+
+  auditAuth(req, AUDIT_ACTIONS.SHARE_REVOKED, {
+    targetType: 'share',
+    targetId: String(parsed.data),
+  });
+
+  res.json({ data: { id: parsed.data } });
 });
 
 // public router, no auth required, token hash is the access control

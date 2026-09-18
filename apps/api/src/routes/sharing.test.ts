@@ -22,6 +22,11 @@ vi.mock('../services/sharing/index.js', () => ({
   getSharedInsight: mockGetSharedInsight,
 }));
 
+const getSharesByOrg = vi.fn();
+const deleteShare = vi.fn();
+
+vi.mock('../db/queries/index.js', () => ({ sharesQueries: { getSharesByOrg, deleteShare } }));
+
 vi.mock('../lib/rls.js', () => ({
   withRlsContext: vi.fn((_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({})),
 }));
@@ -69,7 +74,11 @@ beforeAll(async () => {
 
 afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  getSharesByOrg.mockResolvedValue([]);
+  deleteShare.mockResolvedValue({ id: 5, orgId: 10, createdBy: 1 });
+});
 
 function memberPayload() {
   return {
@@ -216,5 +225,78 @@ describe('GET /shares/:token', () => {
 
     expect(res.status).toBe(400);
     expect(body.error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+describe('GET /shares', () => {
+  it('lists the org shares without handing out the credential', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(memberPayload());
+    getSharesByOrg.mockResolvedValue([
+      { id: 5, orgId: 10, datasetId: 2, createdBy: 1, createdAt: new Date(0), expiresAt: new Date(0), viewCount: 3, tokenHash: 'secret-hash', insightSnapshot: {} },
+    ]);
+
+    const res = await fetch(`${baseUrl}/shares`, { headers: { Cookie: 'access_token=t' } });
+    const body = (await res.json()) as { data: Array<Record<string, unknown>> };
+
+    expect(res.status).toBe(200);
+    expect(body.data[0]).toMatchObject({ id: 5, viewCount: 3, isMine: true });
+    // the point of the endpoint is revocation, not re-sharing
+    expect(JSON.stringify(body)).not.toContain('secret-hash');
+    expect(body.data[0]).not.toHaveProperty('insightSnapshot');
+  });
+});
+
+describe('DELETE /shares/:id', () => {
+  const shareRow = (createdBy: number) => ({
+    id: 5, orgId: 10, datasetId: 2, createdBy, createdAt: new Date(0), expiresAt: new Date(0), viewCount: 0,
+  });
+
+  it('lets someone revoke the link they made', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(memberPayload());
+    getSharesByOrg.mockResolvedValue([shareRow(1)]);
+
+    const res = await fetch(`${baseUrl}/shares/5`, { method: 'DELETE', headers: { Cookie: 'access_token=t' } });
+
+    expect(res.status).toBe(200);
+    expect(deleteShare).toHaveBeenCalledWith(10, 5, expect.anything());
+  });
+
+  it('lets an owner revoke a link someone else made', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce({ ...memberPayload(), role: 'owner' });
+    getSharesByOrg.mockResolvedValue([shareRow(99)]);
+
+    const res = await fetch(`${baseUrl}/shares/5`, { method: 'DELETE', headers: { Cookie: 'access_token=t' } });
+
+    expect(res.status).toBe(200);
+  });
+
+  it('refuses a member revoking a colleague link', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(memberPayload());
+    getSharesByOrg.mockResolvedValue([shareRow(99)]);
+
+    const res = await fetch(`${baseUrl}/shares/5`, { method: 'DELETE', headers: { Cookie: 'access_token=t' } });
+
+    expect(res.status).toBe(403);
+    expect(deleteShare).not.toHaveBeenCalled();
+  });
+
+  // The org comes from the caller, so a share in another org is simply not found
+  // rather than being deleted out from under it.
+  it('404s for a share that is not in the caller org', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce({ ...memberPayload(), role: 'owner' });
+    getSharesByOrg.mockResolvedValue([]);
+
+    const res = await fetch(`${baseUrl}/shares/5`, { method: 'DELETE', headers: { Cookie: 'access_token=t' } });
+
+    expect(res.status).toBe(404);
+    expect(deleteShare).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-numeric id', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce({ ...memberPayload(), role: 'owner' });
+
+    const res = await fetch(`${baseUrl}/shares/abc`, { method: 'DELETE', headers: { Cookie: 'access_token=t' } });
+
+    expect(res.status).toBe(400);
   });
 });

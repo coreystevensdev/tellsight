@@ -16,6 +16,13 @@ vi.mock('../services/auth/inviteService.js', () => ({
   getActiveInvitesForOrg: mockGetActiveInvitesForOrg,
 }));
 
+const deleteInvite = vi.fn();
+const mockAuditAuth = vi.fn();
+
+vi.mock('../services/audit/auditService.js', () => ({ auditAuth: mockAuditAuth, audit: vi.fn() }));
+
+vi.mock('../db/queries/index.js', () => ({ orgInvitesQueries: { deleteInvite } }));
+
 vi.mock('../lib/rls.js', () => ({
   withRlsContext: vi.fn((_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({})),
 }));
@@ -246,5 +253,56 @@ describe('GET /invites/:token', () => {
 
     expect(res.status).toBe(404);
     expect(body.error.code).toBe('NOT_FOUND');
+  });
+});
+
+describe('DELETE /invites/:id', () => {
+  // Until this existed, removing someone meant nothing while an unused invite for
+  // the org was still in circulation: redeemInvite adds anyone holding one who is
+  // not already a member.
+  it('revokes an invite in the caller org', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload());
+    deleteInvite.mockResolvedValueOnce({ id: 7, orgId: 10 });
+
+    const res = await fetch(`${baseUrl}/invites/7`, { method: 'DELETE', headers: { Cookie: 'access_token=t' } });
+
+    expect(res.status).toBe(200);
+    expect(deleteInvite).toHaveBeenCalledWith(10, 7, expect.anything());
+  });
+
+  it('404s when the invite is not in the caller org', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload());
+    deleteInvite.mockResolvedValueOnce(undefined);
+
+    const res = await fetch(`${baseUrl}/invites/7`, { method: 'DELETE', headers: { Cookie: 'access_token=t' } });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('is closed to members', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce({ ...ownerPayload(), role: 'member' });
+
+    const res = await fetch(`${baseUrl}/invites/7`, { method: 'DELETE', headers: { Cookie: 'access_token=t' } });
+
+    expect(res.status).toBe(403);
+    expect(deleteInvite).not.toHaveBeenCalled();
+  });
+
+  it('ignores an org id offered in the query string', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload());
+    deleteInvite.mockResolvedValueOnce({ id: 7, orgId: 10 });
+
+    await fetch(`${baseUrl}/invites/7?orgId=999`, { method: 'DELETE', headers: { Cookie: 'access_token=t' } });
+
+    expect(deleteInvite).toHaveBeenCalledWith(10, 7, expect.anything());
+  });
+
+  it('rejects a non-numeric id', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload());
+
+    const res = await fetch(`${baseUrl}/invites/abc`, { method: 'DELETE', headers: { Cookie: 'access_token=t' } });
+
+    expect(res.status).toBe(400);
+    expect(deleteInvite).not.toHaveBeenCalled();
   });
 });

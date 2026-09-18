@@ -32,6 +32,18 @@ read -r integration < "$tmp/integration"
 read -r evalscripts < "$tmp/evalscripts"
 read -r e2e < "$tmp/e2e"
 
+# A collection that fails prints nothing, grep -c answers 0, and the suite simply
+# disappears from the total. That is how a broken web collection once cut the
+# badge by a thousand tests and still produced a number the README could be set
+# to. Every suite here has tests, so a zero is a failure, not a count.
+for suite in api web shared integration evalscripts e2e; do
+  if [ "${!suite}" -eq 0 ]; then
+    echo "count-tests: $suite collected 0 tests, which means its collection failed." >&2
+    echo "Re-run without the 2>/dev/null in list() to see the error." >&2
+    exit 1
+  fi
+done
+
 vitest=$((api + web + shared + integration + evalscripts))
 total=$((vitest + e2e))
 

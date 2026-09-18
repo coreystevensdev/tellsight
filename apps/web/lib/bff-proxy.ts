@@ -141,6 +141,29 @@ export function proxyPatch(upstreamPath: string) {
   };
 }
 
+export function proxyDelete(upstreamPath: string) {
+  return async (request: NextRequest) => {
+    let res: Response;
+    try {
+      res = await fetch(`${webEnv.API_INTERNAL_URL}${upstreamPath}`, {
+        method: 'DELETE',
+        headers: { Cookie: cookies(request) },
+        signal: upstreamSignal(request),
+      });
+    } catch (err) {
+      console.warn('[bff-proxy:delete] upstream unreachable', err);
+      return upstreamErrorResponse();
+    }
+
+    try {
+      return NextResponse.json(await res.json(), { status: res.status });
+    } catch (err) {
+      console.warn('[bff-proxy:delete] upstream returned non-JSON body', err);
+      return invalidResponse(res);
+    }
+  };
+}
+
 export function proxyPostWithCookies(upstreamPath: string) {
   return async (request: NextRequest) => {
     let res: Response;
