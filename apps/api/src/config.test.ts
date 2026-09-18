@@ -153,7 +153,7 @@ describe('envSchema, production guards on non-email settings', () => {
   // exceedsBudget, so both the rolling cap and the absolute ceiling stop
   // applying. A typo in a model id should not be able to buy that.
   it('rejects a model the pricing table has no entry for', () => {
-    const result = envSchema.safeParse(baseEnv({ CLAUDE_MODEL: 'claude-sonnet-5' }));
+    const result = envSchema.safeParse(baseEnv({ CLAUDE_MODEL: 'claude-sonnet-9' }));
 
     expect(result.success).toBe(false);
     if (result.success) return;
