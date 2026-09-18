@@ -141,6 +141,7 @@ export function proxyPatch(upstreamPath: string) {
   };
 }
 
+// Forwards no body, like proxyGet: none of its callers send one.
 export function proxyDelete(upstreamPath: string) {
   return async (request: NextRequest) => {
     let res: Response;

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
-import { proxyGet, proxyPost, proxyPut, proxyPatch, proxyPostWithCookies, upstreamSignal, UPSTREAM_TIMEOUT_MS } from './bff-proxy';
+import { proxyGet, proxyPost, proxyPut, proxyPatch, proxyDelete, proxyPostWithCookies, upstreamSignal, UPSTREAM_TIMEOUT_MS } from './bff-proxy';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -13,6 +13,9 @@ const helpers = [
   { name: 'proxyPut', tag: '[bff-proxy:put]', build: () => proxyPut('/whatever'), method: 'PUT' },
   // Backs the live PATCH handler at app/api/proposals/[id]/route.ts.
   { name: 'proxyPatch', tag: '[bff-proxy:patch]', build: () => proxyPatch('/whatever'), method: 'PATCH' },
+  // Backs the three integration disconnects, which each hand-rolled this before
+  // the helper existed and so had no timeout and no guard on a non-JSON body.
+  { name: 'proxyDelete', tag: '[bff-proxy:delete]', build: () => proxyDelete('/whatever'), method: 'DELETE' },
   { name: 'proxyPostWithCookies', tag: '[bff-proxy:post-with-cookies]', build: () => proxyPostWithCookies('/whatever'), method: 'POST' },
 ];
 
@@ -21,7 +24,7 @@ describe.each(helpers)('$name parse hardening', ({ name, tag, build, method }) =
   // so the collapse-case mocks below carry a cookie to prove the other helpers don't pick it up.
   const expectedCookies = (name === 'proxyPostWithCookies' ? ['session=; Max-Age=0'] : []);
 
-  const request = () => new NextRequest('http://localhost/api/whatever', { method, body: method === 'GET' ? undefined : '{}' });
+  const request = () => new NextRequest('http://localhost/api/whatever', { method, body: method === 'GET' || method === 'DELETE' ? undefined : '{}' });
 
   it('returns 502 UPSTREAM_UNAVAILABLE when fetch rejects', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -141,9 +144,10 @@ describe.each(helpers)('$name parse hardening', ({ name, tag, build, method }) =
     const req = new NextRequest('http://localhost/api/whatever', {
       method,
       headers: { Cookie: 'session=abc123' },
-      body: method === 'GET' ? undefined : '{}',
+      body: method === 'GET' || method === 'DELETE' ? undefined : '{}',
     });
-    const expectedBody = method === 'GET' ? undefined : await req.clone().text();
+    // DELETE forwards no body, same as GET: none of the five callers send one.
+    const expectedBody = method === 'GET' || method === 'DELETE' ? undefined : await req.clone().text();
 
     await build()(req);
 
@@ -154,14 +158,15 @@ describe.each(helpers)('$name parse hardening', ({ name, tag, build, method }) =
     // setting it to 'GET', but both mean the same thing to fetch.
     expect(init?.method ?? 'GET').toBe(method);
 
-    if (method === 'GET') {
+    // The bodyless helpers send no Content-Type, because there is no content.
+    if (method === 'GET' || method === 'DELETE') {
       expect(init?.headers).toEqual({ Cookie: 'session=abc123' });
     } else {
       expect(init?.headers).toEqual({ 'Content-Type': 'application/json', Cookie: 'session=abc123' });
     }
   });
 
-  it.skipIf(method === 'GET')('forwards an empty request body without defaulting it', async () => {
+  it.skipIf(method === 'GET' || method === 'DELETE')('forwards an empty request body without defaulting it', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -244,7 +249,7 @@ describe('upstreamSignal', () => {
 
       const request = new NextRequest('http://localhost/api/whatever', {
         method,
-        body: method === 'GET' ? undefined : '{}',
+        body: method === 'GET' || method === 'DELETE' ? undefined : '{}',
       });
       const controller = new AbortController();
       controller.abort();
