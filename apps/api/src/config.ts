@@ -9,6 +9,12 @@ export const envSchema = z
     REDIS_URL: z.string().url(),
     CLAUDE_API_KEY: z.string().min(1),
     CLAUDE_MODEL: z.string().default('claude-sonnet-4-5-20250929'),
+
+    // Optional second model for the tool-use paths, proposals and the Q&A loop.
+    // Those want structured output and tool adherence; the interpretation wants
+    // prose quality and is the product's whole claim. Unset means one model for
+    // everything, which is what shipped for a year.
+    CLAUDE_MODEL_TOOLS: z.string().optional(),
     STRIPE_SECRET_KEY: z.string().min(1),
     STRIPE_WEBHOOK_SECRET: z.string().min(1),
     STRIPE_PRICE_ID: z.string().min(1),
@@ -87,6 +93,11 @@ export const envSchema = z
   // applying and nothing is recorded. The ceiling's own comment says it is there
   // to bound "a misconfigured first invocation on Opus", which is precisely the
   // switch that defeats it. Fail at boot instead: adding a price is one line.
+  .refine((data) => !data.CLAUDE_MODEL_TOOLS || pricingFor(data.CLAUDE_MODEL_TOOLS) !== null, {
+    message:
+      `CLAUDE_MODEL_TOOLS has no entry in the pricing table, so the cost cap would not apply to the tool paths. Add its per-million prices to lib/modelPricing.ts. Known prefixes: ${KNOWN_MODEL_PREFIXES.join(', ')}.`,
+    path: ['CLAUDE_MODEL_TOOLS'],
+  })
   .refine((data) => pricingFor(data.CLAUDE_MODEL) !== null, {
     message:
       `CLAUDE_MODEL has no entry in the pricing table, so the cost cap would not apply to it. Add its per-million prices to lib/modelPricing.ts. Known prefixes: ${KNOWN_MODEL_PREFIXES.join(', ')}.`,

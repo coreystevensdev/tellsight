@@ -24,10 +24,16 @@ export interface ModelPricing {
 // made the cap compute Opus costs at three times the truth, so the $1 absolute
 // ceiling would have refused legitimate calls and the cost tile overstated spend.
 //
-// Claude 4.7 and later use a newer tokenizer that produces roughly 30% more
-// tokens for the same text, so a per-token price is not comparable across that
-// line. Sonnet 5 is nominally 33% cheaper than Sonnet 4.5 and about 13% cheaper
-// once the tokenizer is accounted for.
+// A per-token price says very little across the 4.7 line. Two effects work the
+// same direction and neither shows up in this table: that generation uses a
+// tokenizer emitting roughly 30% more tokens for the same text, and the newer
+// models spend output tokens on thinking.
+//
+// Measured 2026-09-18 on the healthy-growth eval fixture, one generation each:
+// Sonnet 4.5 produced 291 output tokens for $0.0052; Sonnet 5 produced 856, of
+// which 445 were thinking, for $0.0106. So Sonnet 5 costs about twice as much
+// per call here despite being a third cheaper per token. Compare calls, never
+// rates.
 export const PRICING: Record<string, ModelPricing> = {
   'claude-sonnet-4-5': { inputPerMillion: 3, outputPerMillion: 15 },
   'claude-sonnet-4-6': { inputPerMillion: 3, outputPerMillion: 15 },

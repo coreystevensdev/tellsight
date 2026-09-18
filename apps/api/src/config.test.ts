@@ -161,6 +161,20 @@ describe('envSchema, production guards on non-email settings', () => {
     expect(issue?.message).toMatch(/pricing table/i);
   });
 
+  it('rejects an unpriced tool model too, so the split cannot open a hole', () => {
+    const result = envSchema.safeParse(baseEnv({ CLAUDE_MODEL_TOOLS: 'claude-sonnet-9' }));
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    const issue = result.error.issues.find((i) => i.path[0] === 'CLAUDE_MODEL_TOOLS');
+    expect(issue?.message).toMatch(/pricing table/i);
+  });
+
+  it('accepts a priced tool model, and accepts none at all', () => {
+    expect(envSchema.safeParse(baseEnv({ CLAUDE_MODEL_TOOLS: 'claude-haiku-4-5' })).success).toBe(true);
+    expect(envSchema.safeParse(baseEnv()).success).toBe(true);
+  });
+
   it.each([
     ['the dated default', 'claude-sonnet-4-5-20250929'],
     ['a bare prefix', 'claude-haiku-4-5'],

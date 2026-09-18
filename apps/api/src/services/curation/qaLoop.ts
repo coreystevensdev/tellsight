@@ -7,7 +7,7 @@ import { AppError, CostBudgetExceededError } from '../../lib/appError.js';
 import { CircuitOpenError } from '../../lib/circuitBreaker.js';
 import { computeCost, exceedsBudget, ABSOLUTE_CEILING_USD } from '../../lib/cost.js';
 import type { PromptInput } from '../aiInterpretation/provider.js';
-import { converseWithTools, type ToolCall, type ToolResultInput } from '../aiInterpretation/claudeClient.js';
+import { converseWithTools, modelFor, type ToolCall, type ToolResultInput } from '../aiInterpretation/claudeClient.js';
 import {
   GET_METRIC_WITH_TREND_TOOL,
   COMPARE_TO_PRIOR_PERIODS_TOOL,
@@ -224,7 +224,13 @@ export async function runQaLoop(question: string, ctx: ToolContext, signal?: Abo
     }
     state = turn.state;
 
-    const cost = computeCost({ input_tokens: turn.usage.inputTokens, output_tokens: turn.usage.outputTokens });
+    // The Q&A loop is a tool path, so it is costed against whatever the tool
+    // paths run on. Leaving this implicit would cost it at the prose model's
+    // rate the moment the two differ.
+    const cost = computeCost(
+      { input_tokens: turn.usage.inputTokens, output_tokens: turn.usage.outputTokens },
+      modelFor('tools'),
+    );
     if (cost !== null) totalCost += cost;
 
     if (turn.toolCalls.length === 0) {

@@ -70,6 +70,21 @@ const runInBreaker = breaker.exec.bind(breaker);
 const runToolInBreaker = toolBreaker.exec.bind(toolBreaker);
 const runConverseInBreaker = converseBreaker.exec.bind(converseBreaker);
 
+/**
+ * Which model a given path uses.
+ *
+ * 'prose' is the interpretation, the digest and the alert copy: the product's
+ * claim is that it explains numbers well, so this is the one worth paying for.
+ * 'tools' is proposals and the Q&A loop, which want a tool call in the right
+ * shape more than they want good sentences.
+ *
+ * Unset CLAUDE_MODEL_TOOLS means both resolve to the same model, which is what
+ * shipped before this existed.
+ */
+export function modelFor(path: 'prose' | 'tools'): string {
+  return path === 'tools' ? (env.CLAUDE_MODEL_TOOLS ?? env.CLAUDE_MODEL) : env.CLAUDE_MODEL;
+}
+
 // Reports a rejected key as 'error' and anything else as 'degraded'. Collapsing
 // both to 'error', which this did, means the check calls the key broken every
 // time Anthropic has a bad minute, and a check that cries wolf gets ignored on
@@ -118,14 +133,14 @@ function systemParam(input: PromptInput) {
 // history; recording would raise the floor and let the next anomaly slip
 // through. anthropicStream keeps its own log-only variant, it can't throw
 // after content has already streamed to the client.
-function applyCostGate(usage: Usage, caller: string): number | null {
-  const cost = computeCost(usage);
+function applyCostGate(usage: Usage, caller: string, model: string): number | null {
+  const cost = computeCost(usage, model);
   if (cost === null) {
     // config.ts refuses an unpriced CLAUDE_MODEL at boot, so reaching this means
     // a caller passed a model of its own. Not thrown: the tokens are spent and
     // failing the request would turn an accounting gap into a 500. Logged loudly
     // because an uncapped call is exactly the thing that must not pass quietly.
-    logger.error({ model: env.CLAUDE_MODEL, caller }, 'No pricing for model, cost gate skipped');
+    logger.error({ model, caller }, 'No pricing for model, cost gate skipped');
     return null;
   }
 
@@ -133,7 +148,7 @@ function applyCostGate(usage: Usage, caller: string): number | null {
   if (budget.exceeded) {
     aiCostBudgetExceeded.inc({ caller });
     logger.warn(
-      { cost, cap: budget.cap, median: budget.median, model: env.CLAUDE_MODEL },
+      { cost, cap: budget.cap, median: budget.median, model },
       'Claude API cost budget exceeded, request refused',
     );
     throw new CostBudgetExceededError(cost, budget.cap);
@@ -163,7 +178,7 @@ async function anthropicGenerate(input: PromptInput): Promise<string> {
   return runInBreaker(async () => {
     try {
       const message = await client.messages.create({
-        model: env.CLAUDE_MODEL,
+        model: modelFor('prose'),
         max_tokens: 1024,
         ...(systemParam(input) && { system: systemParam(input) }),
         messages: [{ role: 'user', content: input.user }],
@@ -171,10 +186,10 @@ async function anthropicGenerate(input: PromptInput): Promise<string> {
 
       const block = message.content[0];
       const text = block?.type === 'text' ? block.text : '';
-      const cost = applyCostGate(message.usage, 'generate');
+      const cost = applyCostGate(message.usage, 'generate', modelFor('prose'));
 
       logger.info(
-        { model: env.CLAUDE_MODEL, usage: message.usage, cost },
+        { model: modelFor('prose'), usage: message.usage, cost },
         'Claude API response received',
       );
 
@@ -198,7 +213,7 @@ async function anthropicGenerateTool(
   return runToolInBreaker(async () => {
     try {
       const message = await client.messages.create({
-        model: env.CLAUDE_MODEL,
+        model: modelFor('tools'),
         max_tokens: 1024,
         ...(systemParam(input) && { system: systemParam(input) }),
         messages: [{ role: 'user', content: input.user }],
@@ -212,12 +227,12 @@ async function anthropicGenerateTool(
 
       if (message.stop_reason === 'max_tokens') {
         logger.warn(
-          { model: env.CLAUDE_MODEL, usage: message.usage },
+          { model: modelFor('tools'), usage: message.usage },
           'Claude API tool-use response truncated at max_tokens, dropping all tool calls from this response',
         );
       } else if (message.stop_reason !== 'end_turn' && message.stop_reason !== 'tool_use') {
         logger.warn(
-          { model: env.CLAUDE_MODEL, usage: message.usage, stopReason: message.stop_reason },
+          { model: modelFor('tools'), usage: message.usage, stopReason: message.stop_reason },
           'Claude API tool-use response ended for an unexpected reason, dropping all tool calls from this response',
         );
       }
@@ -229,16 +244,16 @@ async function anthropicGenerateTool(
       const textBlockCount = message.content.filter((block) => block.type === 'text').length;
       if (textBlockCount > 0) {
         logger.info(
-          { model: env.CLAUDE_MODEL, textBlockCount, toolCallCount: calls.length },
+          { model: modelFor('tools'), textBlockCount, toolCallCount: calls.length },
           'Claude API tool-use response included text alongside or instead of tool calls',
         );
       }
 
-      const cost = applyCostGate(message.usage, 'generateTool');
+      const cost = applyCostGate(message.usage, 'generateTool', modelFor('tools'));
       onCost?.(cost);
 
       logger.info(
-        { model: env.CLAUDE_MODEL, usage: message.usage, cost, toolCallCount: calls.length },
+        { model: modelFor('tools'), usage: message.usage, cost, toolCallCount: calls.length },
         'Claude API tool-use response received',
       );
 
@@ -443,7 +458,7 @@ async function anthropicConverseWithTools(
     try {
       const message = await client.messages.create(
         {
-          model: env.CLAUDE_MODEL,
+          model: modelFor('tools'),
           max_tokens: 1024,
           ...(systemParam(input) && { system: systemParam(input) }),
           messages,
@@ -463,12 +478,12 @@ async function anthropicConverseWithTools(
 
       if (message.stop_reason === 'max_tokens') {
         logger.warn(
-          { model: env.CLAUDE_MODEL, usage: message.usage },
+          { model: modelFor('tools'), usage: message.usage },
           'Claude API multi-turn tool conversation truncated at max_tokens, tool_use input or text may be incomplete',
         );
       } else if (isAbnormalStop) {
         logger.warn(
-          { model: env.CLAUDE_MODEL, usage: message.usage, stopReason: message.stop_reason },
+          { model: modelFor('tools'), usage: message.usage, stopReason: message.stop_reason },
           'Claude API multi-turn tool conversation ended for an unexpected reason',
         );
       }
@@ -484,7 +499,7 @@ async function anthropicConverseWithTools(
 
       if (text.length > 0 && toolCalls.length > 0) {
         logger.info(
-          { model: env.CLAUDE_MODEL, toolCallCount: toolCalls.length },
+          { model: modelFor('tools'), toolCallCount: toolCalls.length },
           'Claude API multi-turn tool conversation turn included text alongside tool calls',
         );
       }
@@ -504,10 +519,10 @@ async function anthropicConverseWithTools(
         toolCalls = [];
       }
 
-      const cost = applyCostGate(message.usage, 'converseWithTools');
+      const cost = applyCostGate(message.usage, 'converseWithTools', modelFor('tools'));
 
       logger.info(
-        { model: env.CLAUDE_MODEL, usage: message.usage, cost, toolCallCount: toolCalls.length },
+        { model: modelFor('tools'), usage: message.usage, cost, toolCallCount: toolCalls.length },
         'Claude API multi-turn tool conversation turn received',
       );
 
@@ -548,7 +563,7 @@ async function anthropicStream(
   return runInBreaker(async () => {
     try {
       const stream = client.messages.stream({
-        model: env.CLAUDE_MODEL,
+        model: modelFor('prose'),
         max_tokens: 1024,
         ...(systemParam(input) && { system: systemParam(input) }),
         messages: [{ role: 'user', content: input.user }],
@@ -568,13 +583,15 @@ async function anthropicStream(
       // user via onText callbacks. Throwing here would be wasted, they got
       // the answer. We still skip recording into median history so the floor
       // stays representative of normal cost.
-      const cost = computeCost(finalMessage.usage);
+      // Same model this call actually used, not the global default: with a
+      // per-path override those differ and the cap would cost the stream wrong.
+      const cost = computeCost(finalMessage.usage, modelFor('prose'));
       if (cost !== null) {
         const budget = exceedsBudget(cost);
         if (budget.exceeded) {
           aiCostBudgetExceeded.inc({ caller: 'stream' });
           logger.warn(
-            { cost, cap: budget.cap, median: budget.median, model: env.CLAUDE_MODEL },
+            { cost, cap: budget.cap, median: budget.median, model: modelFor('prose') },
             'Claude API stream cost budget exceeded, content delivered, anomaly logged',
           );
         } else {
@@ -583,7 +600,7 @@ async function anthropicStream(
       }
 
       logger.info(
-        { model: env.CLAUDE_MODEL, usage: finalMessage.usage, cost },
+        { model: modelFor('prose'), usage: finalMessage.usage, cost },
         'Claude API stream completed',
       );
 
