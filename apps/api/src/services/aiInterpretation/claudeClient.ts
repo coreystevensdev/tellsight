@@ -70,6 +70,13 @@ const runInBreaker = breaker.exec.bind(breaker);
 const runToolInBreaker = toolBreaker.exec.bind(toolBreaker);
 const runConverseInBreaker = converseBreaker.exec.bind(converseBreaker);
 
+// Raised from 1024 on 2026-09-18. Sonnet 4.5 uses about 291 output tokens on a
+// representative fixture, but the newer models spend output tokens on thinking:
+// Sonnet 5 used 856 on the same one, 84% of the old cap. A max_tokens stop makes
+// the tool paths drop every tool call in the response, so the headroom is not
+// optional if a model that thinks is ever selected.
+const MAX_OUTPUT_TOKENS = 2048;
+
 /**
  * Which model a given path uses.
  *
@@ -174,12 +181,41 @@ function mapAnthropicError(err: unknown): never {
   });
 }
 
+/**
+ * Generate against a named model rather than whatever the path resolves to.
+ *
+ * Exists for the eval harness, which has to hold the judge fixed while the model
+ * under test changes: judging with the model being judged makes a lenient grader
+ * look like a better writer. Goes through the same breaker and cost gate as
+ * everything else, so a judge run is bounded and costed like any other call.
+ */
+export async function generateWithModel(input: PromptInput, model: string): Promise<string> {
+  return runInBreaker(async () => {
+    try {
+      const message = await client.messages.create({
+        model,
+        max_tokens: MAX_OUTPUT_TOKENS,
+        ...(systemParam(input) && { system: systemParam(input) }),
+        messages: [{ role: 'user', content: input.user }],
+      });
+
+      const block = message.content[0];
+      const text = block?.type === 'text' ? block.text : '';
+      applyCostGate(message.usage, 'generateWithModel', model);
+
+      return text;
+    } catch (err) {
+      mapAnthropicError(err);
+    }
+  });
+}
+
 async function anthropicGenerate(input: PromptInput): Promise<string> {
   return runInBreaker(async () => {
     try {
       const message = await client.messages.create({
         model: modelFor('prose'),
-        max_tokens: 1024,
+        max_tokens: MAX_OUTPUT_TOKENS,
         ...(systemParam(input) && { system: systemParam(input) }),
         messages: [{ role: 'user', content: input.user }],
       });
@@ -214,7 +250,7 @@ async function anthropicGenerateTool(
     try {
       const message = await client.messages.create({
         model: modelFor('tools'),
-        max_tokens: 1024,
+        max_tokens: MAX_OUTPUT_TOKENS,
         ...(systemParam(input) && { system: systemParam(input) }),
         messages: [{ role: 'user', content: input.user }],
         tools: tools.map((tool) => ({
@@ -459,7 +495,7 @@ async function anthropicConverseWithTools(
       const message = await client.messages.create(
         {
           model: modelFor('tools'),
-          max_tokens: 1024,
+          max_tokens: MAX_OUTPUT_TOKENS,
           ...(systemParam(input) && { system: systemParam(input) }),
           messages,
           ...(tools.length > 0 && {
@@ -564,7 +600,7 @@ async function anthropicStream(
     try {
       const stream = client.messages.stream({
         model: modelFor('prose'),
-        max_tokens: 1024,
+        max_tokens: MAX_OUTPUT_TOKENS,
         ...(systemParam(input) && { system: systemParam(input) }),
         messages: [{ role: 'user', content: input.user }],
       });

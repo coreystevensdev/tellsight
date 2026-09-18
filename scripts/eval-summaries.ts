@@ -50,6 +50,9 @@ const FROZEN_NOW = new Date('2026-01-15T12:00:00Z');
 // and is actually worse than 45 at catching a 20% rate.
 const SAMPLES = Number(process.env.EVAL_SAMPLES ?? 10);
 
+// Deliberately not CLAUDE_MODEL: the judge must not move when the subject does.
+const JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL ?? 'claude-sonnet-4-5-20250929';
+
 // Diagnosing one fixture should not cost three. Misses are the thing worth
 // reading and they concentrate: cash-crunch carried 4 of the 6 in the last run.
 const ONLY_FIXTURE = process.env.EVAL_FIXTURE ?? '';
@@ -234,6 +237,7 @@ function printScorecardTable(rows: FixtureScore[]): void {
 
 async function scoreFixture(
   provider: LlmProvider,
+  judgeProvider: LlmProvider,
   fixture: (typeof FIXTURES)[number],
 ): Promise<{ score: FixtureScore; promptVersion: string }> {
   const scored = scoreInsights(fixture.build());
@@ -245,9 +249,9 @@ async function scoreFixture(
     try {
       const summary = await provider.generate({ system, user });
       const [faithfulness, completeness, insight] = await Promise.all([
-        scoreFaithfulness(provider, groundTruth, summary),
-        scoreCompleteness(provider, fixture.answerKey, summary),
-        scoreActionability(provider, summary),
+        scoreFaithfulness(judgeProvider, groundTruth, summary),
+        scoreCompleteness(judgeProvider, fixture.answerKey, summary),
+        scoreActionability(judgeProvider, summary),
       ]);
       const legal = scoreLegalPosture(summary);
       samples.push({
@@ -313,6 +317,23 @@ async function main(): Promise<void> {
   const { getProvider } = await import('../apps/api/src/services/aiInterpretation/provider.js');
   const provider = getProvider();
 
+  // The grader has to be the same in both arms. askJudge takes a provider, and
+  // until now it was handed the same one doing the generating, so changing
+  // CLAUDE_MODEL changed the subject and the judge together: a newer model that
+  // grades more leniently would look like a better writer. Pinned, and printed,
+  // so a scorecard says what graded it.
+  const { generateWithModel } = await import('../apps/api/src/services/aiInterpretation/claudeClient.js');
+  const judgeProvider = {
+    generate: (input: { system: string; user: string }) => generateWithModel(input, JUDGE_MODEL),
+    stream: () => { throw new Error('judge provider generates only'); },
+    generateTool: () => { throw new Error('judge provider generates only'); },
+    conversation: () => { throw new Error('judge provider generates only'); },
+    checkHealth: () => { throw new Error('judge provider generates only'); },
+  } as unknown as LlmProvider;
+
+  console.log(`  generating with: ${process.env.CLAUDE_MODEL ?? 'claude-sonnet-4-5-20250929'}`);
+  console.log(`  judging with:    ${JUDGE_MODEL}`);
+
   console.log(`Running ${ONLY_FIXTURE ? 1 : FIXTURES.length} fixture(s) x ${SAMPLES} samples...`);
   const results: FixtureScore[] = [];
   const failedFixtureIds: string[] = [];
@@ -324,7 +345,7 @@ async function main(): Promise<void> {
   }
   for (const fixture of selected) {
     try {
-      const { score, promptVersion: version } = await scoreFixture(provider, fixture);
+      const { score, promptVersion: version } = await scoreFixture(provider, judgeProvider, fixture);
       promptVersion = version;
       results.push(score);
     } catch (err) {
