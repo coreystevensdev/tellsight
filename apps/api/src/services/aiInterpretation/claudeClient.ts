@@ -119,6 +119,18 @@ export async function probeClaudeHealth(): Promise<ProviderHealth> {
 
 const anthropicHealth = probeClaudeHealth;
 
+// The first text block, not the first block.
+//
+// A response is a list, and a model that thinks puts a thinking block in it. When
+// one landed at index 0 this returned '' and the caller got a blank summary with
+// no error: the eval saw judges replying "I need to see the actual summary
+// content to grade it" on roughly one Sonnet 5 sample in ten. The tool paths
+// already filtered across every block; the prose paths did not.
+function firstText(content: Array<{ type: string }>): string {
+  const block = content.find((b) => b.type === 'text');
+  return block && 'text' in block ? String((block as { text: unknown }).text) : '';
+}
+
 // Build the SDK system parameter from PromptInput. Returns undefined when
 // the system half is empty (digest template, legacy single-file versions) so
 // the call shape matches the pre-caching path exactly.
@@ -199,8 +211,7 @@ export async function generateWithModel(input: PromptInput, model: string): Prom
         messages: [{ role: 'user', content: input.user }],
       });
 
-      const block = message.content[0];
-      const text = block?.type === 'text' ? block.text : '';
+      const text = firstText(message.content);
       applyCostGate(message.usage, 'generateWithModel', model);
 
       return text;
@@ -220,8 +231,7 @@ async function anthropicGenerate(input: PromptInput): Promise<string> {
         messages: [{ role: 'user', content: input.user }],
       });
 
-      const block = message.content[0];
-      const text = block?.type === 'text' ? block.text : '';
+      const text = firstText(message.content);
       const cost = applyCostGate(message.usage, 'generate', modelFor('prose'));
 
       logger.info(
@@ -640,8 +650,7 @@ async function anthropicStream(
         'Claude API stream completed',
       );
 
-      const block = finalMessage.content[0];
-      const fullText = block?.type === 'text' ? block.text : '';
+      const fullText = firstText(finalMessage.content);
 
       return {
         fullText,
