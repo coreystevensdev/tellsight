@@ -9,7 +9,10 @@ import { getStripe } from './stripeService.js';
 const TIMEOUT_MS = 5_000;
 
 export interface StripeHealth {
-  status: 'ok' | 'error' | 'unknown';
+  // 'degraded', not 'unknown': db, redis, email and the admin panel already use
+  // it for "could not determine", and shipping a second word for one idea on the
+  // same JSON object is drift I introduced in #205.
+  status: 'ok' | 'degraded' | 'error';
   latencyMs: number;
   livemode?: boolean;
   detail?: string;
@@ -85,7 +88,7 @@ export async function probeStripeHealth(): Promise<StripeHealth> {
       };
     }
 
-    return { status: 'unknown', latencyMs, detail: 'Stripe unreachable, key not verified' };
+    return { status: 'degraded', latencyMs, detail: 'Stripe unreachable, key not verified' };
   }
 }
 
@@ -116,7 +119,7 @@ export async function logStripeKeyStatus(): Promise<void> {
     return;
   }
 
-  if (health.status === 'unknown') {
+  if (health.status === 'degraded') {
     logger.warn({ latencyMs: health.latencyMs }, 'Could not verify the Stripe settings at boot');
     return;
   }

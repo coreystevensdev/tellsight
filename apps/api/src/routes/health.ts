@@ -9,6 +9,7 @@ import { logger } from '../lib/logger.js';
 import { checkRedisHealth } from '../lib/redis.js';
 import { getEmailProvider } from '../services/email/index.js';
 import { checkStripeHealth } from '../services/subscription/stripeHealth.js';
+import { checkClaudeHealth } from '../services/aiInterpretation/claudeClient.js';
 
 const router = Router();
 
@@ -31,11 +32,12 @@ router.get('/health/live', (_req, res) => {
 // readiness, can this instance serve traffic? Check DB + Redis.
 // A failed readiness probe stops routing traffic but doesn't restart.
 router.get('/health/ready', async (_req, res) => {
-  const [rawDb, redisHealth, emailHealth, stripeHealth] = await Promise.all([
+  const [rawDb, redisHealth, emailHealth, stripeHealth, claudeHealth] = await Promise.all([
     checkDatabaseHealth(),
     checkRedisHealth(),
     checkEmailHealth(),
     checkStripeHealth(),
+    checkClaudeHealth(),
   ]);
 
   const dbHealth = reportDatabase(rawDb);
@@ -43,17 +45,18 @@ router.get('/health/ready', async (_req, res) => {
 
   res.status(ready ? 200 : 503).json({
     status: ready ? 'ok' : 'degraded',
-    services: { database: dbHealth, redis: redisHealth, email: emailHealth, stripe: stripeHealth },
+    services: { database: dbHealth, redis: redisHealth, email: emailHealth, stripe: stripeHealth, claude: claudeHealth },
   });
 });
 
 // backward-compatible combined check (used by Docker healthcheck + E2E wait loop)
 router.get('/health', async (_req, res) => {
-  const [rawDb, redisHealth, emailHealth, stripeHealth] = await Promise.all([
+  const [rawDb, redisHealth, emailHealth, stripeHealth, claudeHealth] = await Promise.all([
     checkDatabaseHealth(),
     checkRedisHealth(),
     checkEmailHealth(),
     checkStripeHealth(),
+    checkClaudeHealth(),
   ]);
 
   const dbHealth = reportDatabase(rawDb);
@@ -61,7 +64,7 @@ router.get('/health', async (_req, res) => {
 
   res.status(status === 'ok' ? 200 : 503).json({
     status,
-    services: { database: dbHealth, redis: redisHealth, email: emailHealth, stripe: stripeHealth },
+    services: { database: dbHealth, redis: redisHealth, email: emailHealth, stripe: stripeHealth, claude: claudeHealth },
     timestamp: new Date().toISOString(),
   });
 });

@@ -4,8 +4,12 @@ export interface StreamResult {
 }
 
 export interface ProviderHealth {
-  status: 'ok' | 'error';
+  // 'degraded' rather than a fourth word: db, redis, email and the admin panel
+  // already use it to mean "could not determine", and 'error' is reserved for
+  // something a person has to go and fix.
+  status: 'ok' | 'degraded' | 'error';
   latencyMs: number;
+  detail?: string;
 }
 
 // Split into system + user so providers that support prompt caching can mark
