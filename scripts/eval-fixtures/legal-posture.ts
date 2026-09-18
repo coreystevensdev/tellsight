@@ -69,7 +69,7 @@ export function scoreLegalPosture(summary: string): LegalPostureResult {
   const violations: string[] = [];
 
   for (const phrase of findDirectiveLanguage(summary)) {
-    violations.push(`banned imperative: "${phrase.toLowerCase()}"`);
+    violations.push(`banned imperative: "${phrase.toLowerCase()}" in: ${sentenceAround(summary, phrase)}`);
   }
 
   for (const m of summary.matchAll(commandRe)) {
@@ -81,6 +81,22 @@ export function scoreLegalPosture(summary: string): LegalPostureResult {
   if (!hasHedge) violations.push('no approved hedge present');
 
   return { pass: violations.length === 0, violations };
+}
+
+// The phrase alone is not diagnosable. "you need to" has a directive reading and
+// a descriptive one, and the shared matcher already exempts "what you need to"
+// for exactly that reason, so an operator reading a failure has to know which
+// kind fired. A scorecard saying only the phrase costs a re-run to find out,
+// which is what it cost here.
+function sentenceAround(summary: string, phrase: string): string {
+  const at = summary.toLowerCase().indexOf(phrase.toLowerCase());
+  if (at === -1) return '(phrase not found in summary)';
+
+  const before = summary.lastIndexOf('.', at);
+  const after = summary.indexOf('.', at + phrase.length);
+  return summary
+    .slice(before === -1 ? 0 : before + 1, after === -1 ? summary.length : after + 1)
+    .trim();
 }
 
 function escapeRe(s: string): string {

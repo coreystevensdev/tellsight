@@ -57,6 +57,32 @@ describe('the descriptive reading of "you need to"', () => {
     expect(hasDirectiveLanguage('Bring whatever you need to that conversation.')).toBe(false);
   });
 
+  // Both observed on a live Sonnet 4.5 run, twice in fifteen samples on the
+  // healthy-growth fixture. Neither instructs anyone: the phrase sits in a clause
+  // describing a condition, and what|whatever alone did not reach it.
+  it.each([
+    "That shapes what happens when growth slows or you need to scale the team.",
+    "The answer shapes what happens when growth slows or you need to scale further.",
+  ])('does not flag a condition clause seen in production: %s', (text) => {
+    expect(hasDirectiveLanguage(text)).toBe(false);
+  });
+
+  it.each([
+    ['than', 'You are earning less than you need to stay solvent.'],
+    ['when', 'Costs climb when you need to add capacity.'],
+    ['if', 'That changes if you need to borrow.'],
+    ['until', 'It holds until you need to replace the van.'],
+  ])('does not flag it after %s', (_marker, text) => {
+    expect(hasDirectiveLanguage(text)).toBe(false);
+  });
+
+  // The remaining known gap, deliberately not guessed at: a reduced relative has
+  // no marker word to anchor an exemption on, and this has not been seen in a real
+  // generation. Asserted so the limit is visible rather than discovered again.
+  it('still over-matches a reduced relative with a noun in front', () => {
+    expect(hasDirectiveLanguage('The cash you need to cover payroll is $9,200.')).toBe(true);
+  });
+
   // The exemption is one word wide. Everything the phrase exists to catch still trips.
   it.each([
     'You need to cut payroll next month.',
