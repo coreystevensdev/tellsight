@@ -36,10 +36,29 @@ function escapeRegExp(s: string): string {
 // fires an analytics event the admin compliance view reads, so a false positive
 // there teaches an operator to discount the signal that matters.
 //
-// Narrow on purpose: only this phrase, only directly after a relative pronoun.
+// Widened 2026-09-18. what|whatever covered one descriptive shape and missed the
+// rest: a live Sonnet 4.5 run tripped twice in fifteen samples on
+//
+//   "...shapes what happens when growth slows or you need to scale the team"
+//
+// which instructs nobody. The markers below all introduce a clause describing a
+// condition rather than addressing the reader, so the phrase after them is
+// reporting, not telling.
+//
+// Still known to over-match on a reduced relative with a noun in front, as in
+// "the cash you need to cover payroll". No marker word to anchor on there, and it
+// has not been seen in a real generation, so it is left alone rather than guessed
+// at. A directive in any position still trips: "Given the runway, you need to cut
+// costs" has no marker before "you".
+//
+// Narrow on purpose: only this phrase, only directly after one of these words.
 // "You need to cut costs" is untouched, and so is every other banned phrase.
+const DESCRIPTIVE_MARKERS = [
+  'what', 'whatever', 'than', 'when', 'whenever', 'if', 'unless', 'until', 'before', 'while', 'or',
+];
+
 const RELATIVE_READING: Partial<Record<(typeof BANNED_IMPERATIVES)[number], string>> = {
-  'you need to': '(?<!\\b(?:what|whatever)\\s+)',
+  'you need to': `(?<!\\b(?:${DESCRIPTIVE_MARKERS.join('|')})\\s+)`,
 };
 
 const DIRECTIVE_SOURCE = `\\b(?:${BANNED_IMPERATIVES.map(
