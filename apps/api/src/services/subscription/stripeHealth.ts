@@ -1,5 +1,7 @@
 import { PRO_PRICE_CENTS } from 'shared/constants';
 
+import { cachedHealth } from '../../lib/cachedHealth.js';
+
 import { env } from '../../config.js';
 import { logger } from '../../lib/logger.js';
 import { getStripe } from './stripeService.js';
@@ -34,7 +36,9 @@ export interface StripeHealth {
  * The webhook secret is the one leg with no read to verify it against, and it is
  * also the worst to get wrong: checkout succeeds and activation never happens.
  */
-export async function checkStripeHealth(): Promise<StripeHealth> {
+/** Uncached. Exported so the probe's own behaviour can be tested without a
+ *  module-level cache answering for it; routes should use checkStripeHealth. */
+export async function probeStripeHealth(): Promise<StripeHealth> {
   const started = Date.now();
 
   try {
@@ -85,13 +89,24 @@ export async function checkStripeHealth(): Promise<StripeHealth> {
   }
 }
 
+// Five minutes, against a container healthcheck that curls /health every thirty
+// seconds. Two Stripe calls a probe at that rate is 5,760 a day to answer a
+// question whose answer changes when someone rotates a key. A deploy restarts
+// the process and empties this, so the post-deploy poll and the boot log both
+// see a fresh result.
+const HEALTH_TTL_MS = 5 * 60 * 1000;
+
+export const checkStripeHealth = cachedHealth(HEALTH_TTL_MS, probeStripeHealth);
+
 /**
  * Runs once at boot so a rejected key is visible without waiting for someone to
  * reach checkout. Never throws: billing being misconfigured should not stop the
  * dashboard, the digests or the connectors from serving.
  */
 export async function logStripeKeyStatus(): Promise<void> {
-  const health = await checkStripeHealth();
+  // The uncached probe: boot wants a fresh answer, and there is nothing to
+  // spare anyway since the cache is empty this early.
+  const health = await probeStripeHealth();
 
   if (health.status === 'error') {
     logger.error(

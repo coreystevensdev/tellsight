@@ -21,7 +21,7 @@ vi.mock('../../lib/logger.js', () => ({
   logger: { error: h.error, warn: h.warn, info: h.info },
 }));
 
-const { checkStripeHealth, logStripeKeyStatus } = await import('./stripeHealth.js');
+const { probeStripeHealth, checkStripeHealth, logStripeKeyStatus } = await import('./stripeHealth.js');
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -33,7 +33,7 @@ describe('checkStripeHealth', () => {
   it('reports ok and which mode the key belongs to', async () => {
     h.retrieve.mockResolvedValue({ livemode: true });
 
-    const result = await checkStripeHealth();
+    const result = await probeStripeHealth();
 
     expect(result.status).toBe('ok');
     expect(result.livemode).toBe(true);
@@ -48,7 +48,7 @@ describe('checkStripeHealth', () => {
   ])('reports error on %s', async (_label, err) => {
     h.retrieve.mockRejectedValue(Object.assign(new Error('nope'), err));
 
-    const result = await checkStripeHealth();
+    const result = await probeStripeHealth();
 
     expect(result.status).toBe('error');
     expect(result.detail).toMatch(/rejected/i);
@@ -64,13 +64,13 @@ describe('checkStripeHealth', () => {
   ])('reports unknown, not error, on %s', async (_label, err) => {
     h.retrieve.mockRejectedValue(Object.assign(new Error('transient'), err));
 
-    const result = await checkStripeHealth();
+    const result = await probeStripeHealth();
 
     expect(result.status).toBe('unknown');
   });
 
   it('checks the configured price, not just the key', async () => {
-    await checkStripeHealth();
+    await probeStripeHealth();
 
     expect(h.retrievePrice).toHaveBeenCalledWith('price_test_fake', {}, expect.anything());
   });
@@ -83,7 +83,7 @@ describe('checkStripeHealth', () => {
       Object.assign(new Error('No such price'), { statusCode: 404, type: 'StripeInvalidRequestError' }),
     );
 
-    const result = await checkStripeHealth();
+    const result = await probeStripeHealth();
 
     expect(result.status).toBe('error');
     expect(result.detail).toMatch(/STRIPE_PRICE_ID/);
@@ -94,7 +94,7 @@ describe('checkStripeHealth', () => {
   it('reports error when Stripe charges a different amount than the app shows', async () => {
     h.retrievePrice.mockResolvedValue({ unit_amount: PRO_PRICE_CENTS + 100, livemode: false });
 
-    const result = await checkStripeHealth();
+    const result = await probeStripeHealth();
 
     expect(result.status).toBe('error');
     expect(result.detail).toMatch(String(PRO_PRICE_CENTS));
@@ -103,13 +103,13 @@ describe('checkStripeHealth', () => {
   it('reports error when the price carries no amount at all', async () => {
     h.retrievePrice.mockResolvedValue({ unit_amount: null, livemode: false });
 
-    expect((await checkStripeHealth()).status).toBe('error');
+    expect((await probeStripeHealth()).status).toBe('error');
   });
 
   it('does not look up the price when the key is already rejected', async () => {
     h.retrieve.mockRejectedValue(Object.assign(new Error('nope'), { statusCode: 401 }));
 
-    const result = await checkStripeHealth();
+    const result = await probeStripeHealth();
 
     expect(result.detail).toMatch(/rejected/i);
     expect(h.retrievePrice).not.toHaveBeenCalled();
@@ -159,5 +159,18 @@ describe('logStripeKeyStatus', () => {
   it('never throws, whatever Stripe does', async () => {
     h.retrieve.mockRejectedValue(new Error('boom'));
     await expect(logStripeKeyStatus()).resolves.toBeUndefined();
+  });
+});
+
+// Last in the file on purpose: this is the only test that touches the cached
+// export, and the cache is module-level, so anything after it would read this
+// result rather than its own.
+describe('checkStripeHealth caching', () => {
+  it('asks Stripe once, not once per health check', async () => {
+    await checkStripeHealth();
+    await checkStripeHealth();
+    await checkStripeHealth();
+
+    expect(h.retrieve).toHaveBeenCalledTimes(1);
   });
 });
