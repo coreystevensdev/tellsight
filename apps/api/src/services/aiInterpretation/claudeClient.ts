@@ -120,7 +120,14 @@ function systemParam(input: PromptInput) {
 // after content has already streamed to the client.
 function applyCostGate(usage: Usage, caller: string): number | null {
   const cost = computeCost(usage);
-  if (cost === null) return null;
+  if (cost === null) {
+    // config.ts refuses an unpriced CLAUDE_MODEL at boot, so reaching this means
+    // a caller passed a model of its own. Not thrown: the tokens are spent and
+    // failing the request would turn an accounting gap into a 500. Logged loudly
+    // because an uncapped call is exactly the thing that must not pass quietly.
+    logger.error({ model: env.CLAUDE_MODEL, caller }, 'No pricing for model, cost gate skipped');
+    return null;
+  }
 
   const budget = exceedsBudget(cost);
   if (budget.exceeded) {
