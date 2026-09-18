@@ -1496,9 +1496,11 @@ describe('converseWithTools', () => {
 // not on the readiness path, which deliberately checks database, redis and email
 // only, so this is the surface an operator looks at rather than a gate.
 describe('checkClaudeHealth', () => {
+  // The uncached probe. checkClaudeHealth memoizes for five minutes, so calling
+  // it here would hand every case after the first whatever the first one got.
   async function probe() {
-    const { checkClaudeHealth } = await import('./claudeClient.js');
-    return checkClaudeHealth();
+    const { probeClaudeHealth } = await import('./claudeClient.js');
+    return probeClaudeHealth();
   }
 
   // The generate/stream spies are shared with every other block in this file, so
@@ -1532,10 +1534,30 @@ describe('checkClaudeHealth', () => {
     expect(mockStream).not.toHaveBeenCalled();
   });
 
-  it('reports error when the API refuses', async () => {
-    mockModelsList.mockRejectedValueOnce(new Error('credit balance is too low'));
+  // A rejected key is something a person has to go and fix. Anything else is
+  // Anthropic having a bad minute, and reporting that as a broken key is how a
+  // check gets ignored on the morning it is right.
+  it.each([
+    ['a 401', { status: 401 }],
+    ['a 403', { status: 403 }],
+    ['a typed authentication error', { name: 'AuthenticationError' }],
+  ])('reports error on %s', async (_label, shape) => {
+    mockModelsList.mockRejectedValueOnce(Object.assign(new Error('nope'), shape));
 
-    expect((await probe()).status).toBe('error');
+    const health = await probe();
+
+    expect(health.status).toBe('error');
+    expect(health.detail).toMatch(/rejected/i);
+  });
+
+  it.each([
+    ['a low balance', new Error('credit balance is too low')],
+    ['a 500', Object.assign(new Error('upstream'), { status: 500 })],
+    ['a bare failure', new Error('boom')],
+  ])('reports degraded, not error, on %s', async (_label, err) => {
+    mockModelsList.mockRejectedValueOnce(err);
+
+    expect((await probe()).status).toBe('degraded');
   });
 
   // getSystemHealth runs the three probes under Promise.all, so one that threw
@@ -1548,6 +1570,23 @@ describe('checkClaudeHealth', () => {
     mockModelsList.mockImplementationOnce(() => {
       throw new Error('synchronous');
     });
-    await expect(probe()).resolves.toMatchObject({ status: 'error' });
+    // Resolving is the point here, not which non-ok it resolves to.
+    await expect(probe()).resolves.toMatchObject({ status: 'degraded' });
+  });
+});
+
+// Last in the file: the cache is module-level, so anything after this reads its
+// result rather than its own.
+describe('checkClaudeHealth caching', () => {
+  it('asks Anthropic once, not once per health check', async () => {
+    mockModelsList.mockReset();
+    mockModelsList.mockResolvedValue({ data: [] });
+    const { checkClaudeHealth } = await import('./claudeClient.js');
+
+    await checkClaudeHealth();
+    await checkClaudeHealth();
+    await checkClaudeHealth();
+
+    expect(mockModelsList).toHaveBeenCalledTimes(1);
   });
 });

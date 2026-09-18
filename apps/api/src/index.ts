@@ -64,6 +64,7 @@ import {
 } from './jobs/statCorrections/index.js';
 import { initEmailProvider } from './services/email/index.js';
 import { logStripeKeyStatus } from './services/subscription/stripeHealth.js';
+import { logClaudeKeyStatus } from './services/aiInterpretation/claudeClient.js';
 import { redis } from './lib/redis.js';
 import { queryClient, adminClient } from './lib/db.js';
 import { abortAll as abortAllStreams } from './lib/activeStreams.js';
@@ -147,6 +148,9 @@ async function start() {
   // the digests and the connectors all work without billing, and coupling their
   // availability to Stripe's would be worse than a broken checkout.
   void logStripeKeyStatus();
+// Same reason: config.ts asserts the Claude key is a non-empty string and
+// nothing else looks until a user asks for a summary.
+void logClaudeKeyStatus();
 
   if (isQbConfigured(env)) {
     initSyncWorker();

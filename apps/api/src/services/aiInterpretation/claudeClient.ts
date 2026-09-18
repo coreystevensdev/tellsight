@@ -16,6 +16,7 @@ import type {
   ToolResultInput,
   ConversationTurn,
 } from './provider.js';
+import { cachedHealth } from '../../lib/cachedHealth.js';
 import { getProvider, registerProvider } from './provider.js';
 
 export type { StreamResult, ToolDefinition, ToolCall, ToolResultInput, ConversationTurn };
@@ -69,16 +70,32 @@ const runInBreaker = breaker.exec.bind(breaker);
 const runToolInBreaker = toolBreaker.exec.bind(toolBreaker);
 const runConverseInBreaker = converseBreaker.exec.bind(converseBreaker);
 
-async function anthropicHealth(): Promise<ProviderHealth> {
+// Reports a rejected key as 'error' and anything else as 'degraded'. Collapsing
+// both to 'error', which this did, means the check calls the key broken every
+// time Anthropic has a bad minute, and a check that cries wolf gets ignored on
+// the morning it is right. config.ts only asserts the key is a non-empty string,
+// so a mistyped one boots fine and fails first for a user.
+export async function probeClaudeHealth(): Promise<ProviderHealth> {
   const start = Date.now();
   try {
     await client.models.list({ limit: 1 });
     return { status: 'ok', latencyMs: Date.now() - start };
   } catch (err) {
-    logger.warn({ err: (err as Error).message }, 'Claude API health check failed');
-    return { status: 'error', latencyMs: Date.now() - start };
+    const latencyMs = Date.now() - start;
+    const status = (err as { status?: number }).status;
+    const name = (err as Error).name;
+
+    if (status === 401 || status === 403 || name === 'AuthenticationError') {
+      logger.error({ err: (err as Error).message }, 'Claude rejected the configured API key');
+      return { status: 'error', latencyMs, detail: 'Anthropic rejected the configured API key' };
+    }
+
+    logger.warn({ err: (err as Error).message }, 'Could not verify the Claude key');
+    return { status: 'degraded', latencyMs, detail: 'Anthropic unreachable, key not verified' };
   }
 }
+
+const anthropicHealth = probeClaudeHealth;
 
 // Build the SDK system parameter from PromptInput. Returns undefined when
 // the system half is empty (digest template, legacy single-file versions) so
@@ -618,9 +635,11 @@ export async function streamInterpretation(
   return getProvider().stream(input, onText, signal);
 }
 
-export async function checkClaudeHealth(): Promise<ProviderHealth> {
-  return getProvider().checkHealth();
-}
+// Five minutes, same reasoning as stripeHealth: /health is curled every thirty
+// seconds by the container healthcheck and this answer changes on a rotation.
+export const checkClaudeHealth = cachedHealth(5 * 60 * 1000, async (): Promise<ProviderHealth> =>
+  getProvider().checkHealth(),
+);
 
 export async function generateWithTools(
   input: PromptInput,
@@ -638,4 +657,26 @@ export async function converseWithTools(
   signal?: AbortSignal,
 ): Promise<ConversationTurn> {
   return getProvider().converseWithTools(state, input, tools, toolResults, signal);
+}
+
+/**
+ * Runs once at boot so a rejected key is visible before someone asks for a
+ * summary. Uncached, since the cache is empty this early and boot wants a fresh
+ * answer. Never throws: the AI being unreachable should not stop the dashboard,
+ * the connectors or the digests from serving.
+ */
+export async function logClaudeKeyStatus(): Promise<void> {
+  const health = await probeClaudeHealth();
+
+  if (health.status === 'error') {
+    logger.error({ latencyMs: health.latencyMs, detail: health.detail }, 'Claude key rejected');
+    return;
+  }
+
+  if (health.status === 'degraded') {
+    logger.warn({ latencyMs: health.latencyMs }, 'Could not verify the Claude key at boot');
+    return;
+  }
+
+  logger.info({ latencyMs: health.latencyMs }, 'Claude key verified');
 }

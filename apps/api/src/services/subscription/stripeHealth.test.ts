@@ -61,12 +61,12 @@ describe('checkStripeHealth', () => {
     ['a timeout', { type: 'StripeConnectionError' }],
     ['a 500', { statusCode: 500 }],
     ['an unrecognised failure', {}],
-  ])('reports unknown, not error, on %s', async (_label, err) => {
+  ])('reports degraded, not error, on %s', async (_label, err) => {
     h.retrieve.mockRejectedValue(Object.assign(new Error('transient'), err));
 
     const result = await probeStripeHealth();
 
-    expect(result.status).toBe('unknown');
+    expect(result.status).toBe('degraded');
   });
 
   it('checks the configured price, not just the key', async () => {
