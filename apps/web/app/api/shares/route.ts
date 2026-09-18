@@ -1,3 +1,4 @@
-import { proxyPost } from '@/lib/bff-proxy';
+import { proxyGet, proxyPost } from '@/lib/bff-proxy';
 
+export const GET = proxyGet('/shares');
 export const POST = proxyPost('/shares');
