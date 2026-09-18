@@ -52,3 +52,19 @@ export async function getActiveInvites(
     ),
   });
 }
+
+/** Scoped to the org so an owner cannot reach an invite belonging to another one.
+ *  Deleted rather than flagged: an invite is a bearer token and nothing reads the
+ *  row for history, so the audit entry is the record that it was revoked. */
+export async function deleteInvite(
+  orgId: number,
+  inviteId: number,
+  client: typeof db | DbTransaction = db,
+) {
+  const [deleted] = await client
+    .delete(orgInvites)
+    .where(and(eq(orgInvites.id, inviteId), eq(orgInvites.orgId, orgId)))
+    .returning();
+
+  return deleted;
+}

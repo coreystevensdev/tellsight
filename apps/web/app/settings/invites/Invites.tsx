@@ -5,6 +5,7 @@ import { apiClient } from '@/lib/api-client';
 import { useResource } from '@/lib/hooks/useResource';
 import { BackLink } from '@/components/common/BackLink';
 import Members from './Members';
+import SharedLinks from './SharedLinks';
 
 interface GeneratedInvite {
   url: string;
@@ -32,6 +33,7 @@ export default function Invites() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [revoking, setRevoking] = useState<number | null>(null);
 
   // loadedAt travels with the rows rather than in its own state, because the
   // countdown beside each invite is only true as of the moment they were read.
@@ -64,6 +66,22 @@ export default function Invites() {
       setError(msg);
     } finally {
       setLoading(false);
+    }
+  }
+
+  // Anyone still holding the link can join with it, so an invite that is listed
+  // but not cancellable is a door you can see and cannot close.
+  async function revokeInvite(id: number) {
+    setRevoking(id);
+    setError(null);
+
+    try {
+      await apiClient(`/invites/${id}`, { method: 'DELETE' });
+      list.refetch();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not revoke that invite');
+    } finally {
+      setRevoking(null);
     }
   }
 
@@ -161,10 +179,21 @@ export default function Invites() {
           </h2>
           <ul className="divide-y divide-border rounded-md border border-border">
             {activeInvites.map((inv) => (
-              <li key={inv.id} className="flex items-center justify-between px-4 py-3">
+              <li key={inv.id} className="flex items-center justify-between gap-3 px-4 py-3">
                 <span className="text-xs text-muted-foreground">Invite #<span className="font-mono">{inv.id}</span></span>
-                <span className="font-mono text-xs text-muted-foreground">
-                  {daysUntil(inv.expiresAt, loadedAt)}d left
+                <span className="flex items-center gap-3">
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {daysUntil(inv.expiresAt, loadedAt)}d left
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => revokeInvite(inv.id)}
+                    disabled={revoking === inv.id}
+                    aria-label={`Revoke invite ${inv.id}`}
+                    className="min-h-11 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:border-destructive hover:text-destructive disabled:opacity-50"
+                  >
+                    {revoking === inv.id ? 'Revoking...' : 'Revoke'}
+                  </button>
                 </span>
               </li>
             ))}
@@ -173,6 +202,8 @@ export default function Invites() {
       )}
 
       <Members />
+
+      <SharedLinks />
     </div>
   );
 }
