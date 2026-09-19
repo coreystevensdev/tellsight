@@ -316,6 +316,14 @@ resource "aws_instance" "main" {
 
   user_data = base64encode(local.user_data)
 
+  # The API runs on a bridge network, so IMDS takes an extra hop that a limit
+  # of 1 refuses. The instance has answered at 2 since launch by luck, not this.
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 2
+  }
+
   root_block_device {
     # Free tier: 30 GB EBS storage total.
     volume_size           = 20
