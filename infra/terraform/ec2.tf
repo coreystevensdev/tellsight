@@ -81,6 +81,27 @@ resource "aws_iam_role_policy_attachment" "ssm_core" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
+# Lets the instance mint an OIDC token asserting its own role ARN, which
+# Anthropic exchanges for a short-lived API token instead of a static key.
+# GetWebIdentityToken takes no resource ARN, so "*" is the only valid scope;
+# the real constraint is the federation rule's subject_prefix at Anthropic,
+# which must pin this role exactly. Requires the account-level outbound
+# federation flag, enabled 2026-09-19.
+resource "aws_iam_role_policy" "ec2_web_identity" {
+  name = "${local.name}-ec2-web-identity"
+  role = aws_iam_role.ec2.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "MintWebIdentityToken"
+      Effect   = "Allow"
+      Action   = "sts:GetWebIdentityToken"
+      Resource = "*"
+    }]
+  })
+}
+
 resource "aws_iam_instance_profile" "ec2" {
   name = "${local.name}-ec2-profile"
   role = aws_iam_role.ec2.name
