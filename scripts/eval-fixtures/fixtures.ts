@@ -158,6 +158,7 @@ export function seasonalAnomaly(): ComputedStat[] {
         zScore: 2.6,
         iqrBounds: { lower: 12000, upper: 18000 },
         deviation: 11000,
+        period: '2025-12',
       },
     },
     {
@@ -215,11 +216,10 @@ export const FIXTURES: EvalFixture[] = [
     build: cashCrunch,
   },
   {
-    // AC2 frames this as "a December revenue anomaly", but AnomalyDetails carries
-    // no month field, so the calendar month isn't encodable in the stat. The label
-    // describes what the data actually is: a revenue spike anomaly, not a dated one.
+    // AC2 framed this as "a December revenue anomaly" and the month used to be
+    // unencodable, so the label dropped it. AnomalyDetails.period carries it now.
     id: 'seasonal-anomaly',
-    label: 'Revenue spike anomaly, seasonal projection, year-over-year, category trend',
+    label: 'December revenue spike anomaly, seasonal projection, year-over-year, category trend',
     answerKey: ['anomaly', 'year_over_year', 'seasonal_projection', 'trend'],
     build: seasonalAnomaly,
   },

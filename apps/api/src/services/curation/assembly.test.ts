@@ -31,7 +31,7 @@ const fixtureInsights: ScoredInsight[] = [
       category: 'Sales',
       value: 900,
       comparison: 500,
-      details: { direction: 'above', zScore: 2.5, iqrBounds: { lower: 200, upper: 800 }, deviation: 400 },
+      details: { direction: 'above', zScore: 2.5, iqrBounds: { lower: 200, upper: 800 }, deviation: 400, period: '2026-03' },
     },
     score: 0.85,
     breakdown: { novelty: 0.9, actionability: 0.9, specificity: 0.95 },
@@ -196,7 +196,7 @@ describe('assemblePrompt', () => {
           category: 'Sales',
           value: 900,
           comparison: 500,
-          details: { direction: 'above', zScore: 2.5, iqrBounds: { lower: 200, upper: 800 }, deviation: 400 },
+          details: { direction: 'above', zScore: 2.5, iqrBounds: { lower: 200, upper: 800 }, deviation: 400, period: '2026-03' },
         },
         score: 0.123456789,
         breakdown: { novelty: 0.987654321, actionability: 0.876543219, specificity: 0.765432198 },
@@ -208,6 +208,9 @@ describe('assemblePrompt', () => {
     // Positive control first: without this the rest passes on an empty prompt.
     expect(prompt).toContain('Sales');
     expect(prompt).toContain('z-score: 2.50');
+    // Anomalies are the only stat the model can place in time, and only via
+    // this. Dropping it is how two spikes months apart read as one event.
+    expect(prompt).toContain('Anomaly (2026-03)');
 
     for (const internal of ['0.123456789', '0.987654321', '0.876543219', '0.765432198']) {
       expect(prompt, `scoring internal ${internal} reached the prompt`).not.toContain(internal);
@@ -244,7 +247,7 @@ describe('assemblePrompt', () => {
           category: 'Marketing',
           value: 100,
           comparison: 500,
-          details: { direction: 'below', zScore: -3, iqrBounds: { lower: 200, upper: 800 }, deviation: -400 },
+          details: { direction: 'below', zScore: -3, iqrBounds: { lower: 200, upper: 800 }, deviation: -400, period: '2026-03' },
         },
         score: 0.8,
         breakdown: { novelty: 0.9, actionability: 0.9, specificity: 0.7 },

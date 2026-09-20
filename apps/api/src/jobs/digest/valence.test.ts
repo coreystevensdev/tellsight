@@ -119,7 +119,7 @@ function nonFinancial(kind: NonFinancialType): ComputedStat {
         statType: 'anomaly',
         category: 'expenses',
         value: 9000,
-        details: { direction: 'above', zScore: 2.4, iqrBounds: { lower: 3000, upper: 7000 }, deviation: 4000 },
+        details: { direction: 'above', zScore: 2.4, iqrBounds: { lower: 3000, upper: 7000 }, deviation: 4000, period: '2026-03' },
       };
     case 'category_breakdown':
       return {

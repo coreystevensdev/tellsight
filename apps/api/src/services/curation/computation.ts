@@ -230,7 +230,10 @@ function detectAnomalies(groups: Map<string, CategoryGroup>): ComputedStat[] {
     const lower = q1 - 1.5 * iqr;
     const upper = q3 + 1.5 * iqr;
 
-    for (const amt of group.amounts) {
+    // Indexed rather than for-of: groupByCategory pushes amounts and timeSeries
+    // together, so i is the only link back to when the outlier happened.
+    for (let i = 0; i < group.amounts.length; i++) {
+      const amt = group.amounts[i]!;
       if (amt < lower || amt > upper) {
         const catMean = mean(group.amounts);
         const catStd = standardDeviation(group.amounts);
@@ -246,6 +249,7 @@ function detectAnomalies(groups: Map<string, CategoryGroup>): ComputedStat[] {
             zScore,
             iqrBounds: { lower, upper },
             deviation: amt - catMean,
+            period: monthKey(new Date(group.timeSeries[i]![0])),
           },
         });
       }
@@ -1038,7 +1042,10 @@ function statDiscriminator(stat: ComputedStat): string {
     case StatType.CashFlow:
       return `w${stat.details.trailingMonths}`;
     case StatType.Anomaly:
-      // anomaly identity is the value: no date/month on AnomalyDetails
+      // Stays the value even though details.period now exists. These ids are
+      // embedded in stored summaries as <stat id="..."/> and resolveStatById
+      // recomputes to match them, so widening the discriminator would break the
+      // audit drawer on every summary already written.
       return `v${stat.value}`;
     default:
       // trend, category_breakdown, margin_trend, runway, break_even, cash_forecast:
