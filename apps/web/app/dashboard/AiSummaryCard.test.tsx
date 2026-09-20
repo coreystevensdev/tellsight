@@ -155,6 +155,24 @@ describe('AiSummaryCard', () => {
     expect(screen.getByText(/Too many requests/)).toBeTruthy();
   });
 
+  // userMessage falls through to the API's own wording for any code it does not
+  // know, so an unmapped 401 printed "Missing access token" where the analysis
+  // had been. That string is the API talking to a developer.
+  it('does not print the API wording for an expired session', () => {
+    mockUseAiStream.mockReturnValue(
+      defaultHookReturn({
+        status: 'error',
+        error: 'Missing access token',
+        code: 'AUTHENTICATION_REQUIRED',
+        retryable: false,
+      }),
+    );
+
+    render(<AiSummaryCard datasetId={42} />);
+    expect(screen.queryByText('Missing access token')).toBeNull();
+    expect(screen.getByText(/session expired/i)).toBeTruthy();
+  });
+
   it('hides retry button when not retryable', () => {
     mockUseAiStream.mockReturnValue(
       defaultHookReturn({
@@ -489,7 +507,7 @@ describe('AiSummaryCard', () => {
       const past = new Date(Date.now() - 60_000).toISOString();
 
       render(
-        <AiSummaryCard datasetId={42} cachedContent="Prior summary" cachedStaleAt={past} />,
+        <AiSummaryCard datasetId={42} cachedContent="Prior summary" cachedStaleAt={past} hasAuth />,
       );
 
       expect(screen.getByText('Your data has been updated')).toBeTruthy();
@@ -512,7 +530,7 @@ describe('AiSummaryCard', () => {
       const past = new Date(Date.now() - 60_000).toISOString();
 
       render(
-        <AiSummaryCard datasetId={42} cachedContent="Prior summary" cachedStaleAt={past} />,
+        <AiSummaryCard datasetId={42} cachedContent="Prior summary" cachedStaleAt={past} hasAuth />,
       );
 
       // before click, cached content shown, stream hook called with null
@@ -531,11 +549,30 @@ describe('AiSummaryCard', () => {
       const past = new Date(Date.now() - 60_000).toISOString();
 
       render(
-        <AiSummaryCard datasetId={null} cachedContent="Prior summary" cachedStaleAt={past} />,
+        <AiSummaryCard datasetId={null} cachedContent="Prior summary" cachedStaleAt={past} hasAuth />,
       );
 
       const btn = screen.getByRole('button', { name: /refresh insights/i }) as HTMLButtonElement;
       expect(btn.disabled).toBe(true);
+    });
+
+    // The live demo shipped this: a signed-out visitor got the banner, clicked
+    // the only control on it, and the 401 replaced the whole summary with
+    // "Missing access token". Refresh streams over the protected route, and the
+    // anonymous path reads the RSC cache, so there is nothing to refresh.
+    it('hides the banner from a signed-out visitor even when the summary is stale', () => {
+      mockUseAiStream.mockReturnValue(defaultHookReturn());
+      const past = new Date(Date.now() - 60_000).toISOString();
+
+      render(
+        <AiSummaryCard datasetId={42} cachedContent="Prior summary" cachedStaleAt={past} />,
+      );
+
+      expect(screen.queryByText('Your data has been updated')).toBeNull();
+      expect(screen.queryByRole('button', { name: /refresh insights/i })).toBeNull();
+      // Positive control: the summary itself still renders, so this is not
+      // passing on an empty card.
+      expect(screen.getByText('Prior summary')).toBeTruthy();
     });
   });
 });

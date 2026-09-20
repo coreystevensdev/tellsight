@@ -28,6 +28,9 @@ interface AiSummaryCardProps {
   cachedContent?: string;
   cachedMetadata?: TransparencyMetadata | null;
   cachedStaleAt?: string | null;
+  // Defaults to false so a caller that forgets it hides the refresh control
+  // rather than offering one that 401s.
+  hasAuth?: boolean;
   tier?: SubscriptionTier;
   onToggleTransparency?: () => void;
   transparencyOpen?: boolean;
@@ -54,6 +57,10 @@ const ERROR_MESSAGES: Record<string, string> = {
   PIPELINE_ERROR: 'Something went wrong preparing your analysis.',
   EMPTY_RESPONSE: 'AI produced no results, please try again.',
   STREAM_ERROR: 'Something went wrong generating insights.',
+  // Reachable when a session expires mid-read. Without an entry here
+  // userMessage falls through to the API's wording, and 'Missing access
+  // token' is what the reader gets where the analysis used to be.
+  AUTHENTICATION_REQUIRED: 'Your session expired. Sign in again to refresh this analysis.',
 };
 
 function userMessage(code: string | null, fallback: string | null): string {
@@ -363,6 +370,7 @@ export function AiSummaryCard({
   cachedContent,
   cachedMetadata,
   cachedStaleAt,
+  hasAuth = false,
   tier,
   onToggleTransparency,
   transparencyOpen,
@@ -486,7 +494,11 @@ export function AiSummaryCard({
         role="region"
         aria-label="AI business summary"
       >
-        {isStale && (
+        {/* hasAuth, not just isStale: refreshing streams over the protected
+            route, so offering it to a signed-out visitor 401s and replaces the
+            summary it was meant to update. The anonymous path reads the RSC
+            cache and has nothing to refresh anyway. */}
+        {isStale && hasAuth && (
           <StaleBanner onRefresh={handleRefreshInsights} disabled={datasetId === null} />
         )}
         <h3 className="mb-4 font-serif text-lg font-medium text-card-foreground">Analysis</h3>
