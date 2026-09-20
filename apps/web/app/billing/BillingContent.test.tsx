@@ -159,3 +159,32 @@ describe('BillingContent portal', () => {
     expect(window.location.href).toBe('');
   });
 });
+
+// Production runs Stripe in test mode and nothing said so, so the only path to
+// Pro was a checkout that declines a real card with no explanation. The notice
+// is opt-in: a deployment taking real money must not render it.
+describe('demo billing notice', () => {
+  it('names the test card when the deployment runs Stripe in test mode', () => {
+    render(<BillingContent demoBilling />);
+
+    expect(screen.getByText('Demo billing')).toBeInTheDocument();
+    expect(screen.getByText(/4242 4242 4242 4242/)).toBeInTheDocument();
+    // Still reachable, the notice explains checkout rather than replacing it.
+    expect(screen.getByRole('button', { name: /Upgrade to Pro/ })).toBeInTheDocument();
+  });
+
+  it('says nothing when the deployment takes real cards', () => {
+    render(<BillingContent />);
+
+    expect(screen.queryByText('Demo billing')).not.toBeInTheDocument();
+    expect(screen.queryByText(/4242/)).not.toBeInTheDocument();
+  });
+
+  it('shows the notice to a Pro subscriber too, since their subscription is also not real', () => {
+    useSubscription.mockReturnValue({ tier: 'pro', isLoading: false });
+    render(<BillingContent demoBilling />);
+
+    expect(screen.getByText('Demo billing')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Manage Subscription/ })).toBeInTheDocument();
+  });
+});

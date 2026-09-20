@@ -209,6 +209,20 @@ describe('envSchema, production guards on non-email settings', () => {
     expect(stripeKeyIssue(result)).toMatch(/must be a test key/);
   });
 
+  // The billing page's demo notice reads the flag, not the key, so this pairing
+  // would print "pay with a test card" above a checkout that takes a real one.
+  // Production is the only place a live key is legal, so this is where it bites.
+  it('rejects the test-mode opt-in alongside a live key in production', () => {
+    const result = envSchema.safeParse(
+      prodEnv({ STRIPE_SECRET_KEY: 'sk_live_x', STRIPE_TEST_MODE_IN_PRODUCTION: 'true' }),
+    );
+    expect(result.success).toBe(false);
+    const msg = result.success
+      ? ''
+      : result.error.issues.map((i) => i.message).join(' ');
+    expect(msg).toMatch(/pay with a test card/);
+  });
+
   it('accepts a live Stripe key in production', () => {
     const result = envSchema.safeParse(
       baseEnv({
