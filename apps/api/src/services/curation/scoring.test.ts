@@ -30,7 +30,7 @@ function mockConfig(cfg: unknown) {
 
 const fixtureStats: ComputedStat[] = [
   { statType: StatType.Total, category: 'Sales', value: 5000, details: { scope: 'category', count: 10 } },
-  { statType: StatType.Anomaly, category: 'Sales', value: 900, comparison: 500, details: { direction: 'above', zScore: 2.5, iqrBounds: { lower: 200, upper: 800 }, deviation: 400 } },
+  { statType: StatType.Anomaly, category: 'Sales', value: 900, comparison: 500, details: { direction: 'above', zScore: 2.5, iqrBounds: { lower: 200, upper: 800 }, deviation: 400, period: '2026-03' } },
   { statType: StatType.Trend, category: 'Sales', value: 0.05, details: { slope: 0.05, intercept: 100, growthPercent: 25, dataPoints: 6, firstValue: 400, lastValue: 500 } },
   { statType: StatType.Average, category: 'Sales', value: 500, details: { scope: 'category', median: 480 } },
   { statType: StatType.CategoryBreakdown, category: 'Sales', value: 5000, details: { percentage: 60, absoluteTotal: 5000, transactionCount: 10, min: 100, max: 900 } },

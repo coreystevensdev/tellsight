@@ -171,6 +171,51 @@ describe('computeStats', () => {
     expect(bigAnomaly!.details).toHaveProperty('direction', 'above');
   });
 
+  it('dates an anomaly to the month of the outlying row, not the dataset', () => {
+    const stats = computeStats(fixture.withAnomaly);
+    const outlier = stats.find((s) => s.statType === StatType.Anomaly && s.value === 500);
+
+    // The $500 row is 2026-05-01; the other four span 2026-01 to 2026-04.
+    expect(outlier).toBeDefined();
+    expect(outlier!.statType).toBe(StatType.Anomaly);
+    if (outlier!.statType !== StatType.Anomaly) return;
+    expect(outlier!.details.period).toBe('2026-05');
+  });
+
+  // The production defect this field exists for: the summary called a December
+  // revenue spike and an October payroll spike "the same window", because every
+  // anomaly reached the prompt with no date on it.
+  it('gives two categories their own periods when their outliers are months apart', () => {
+    const row = (id: number, category: string, date: string, amount: string) => ({
+      id, orgId: 1, datasetId: 1, sourceType: 'csv' as const, category,
+      parentCategory: null, date: new Date(date), amount, label: null,
+      metadata: null, createdAt: new Date(),
+    });
+
+    // Five points per category, not four: at n=4 the outlier lands in the pair
+    // that sets q3 and widens the fence past itself, so it never gets flagged.
+    const stats = computeStats([
+      row(1, 'Revenue', '2025-09-01', '100.00'),
+      row(2, 'Revenue', '2025-10-01', '105.00'),
+      row(3, 'Revenue', '2025-11-01', '98.00'),
+      row(4, 'Revenue', '2025-12-01', '900.00'),
+      row(5, 'Revenue', '2026-01-01', '102.00'),
+      row(6, 'Payroll', '2025-09-01', '50.00'),
+      row(7, 'Payroll', '2025-10-01', '400.00'),
+      row(8, 'Payroll', '2025-11-01', '52.00'),
+      row(9, 'Payroll', '2025-12-01', '48.00'),
+      row(10, 'Payroll', '2026-01-01', '51.00'),
+    ]);
+
+    const periodOf = (category: string) => {
+      const s = stats.find((x) => x.statType === StatType.Anomaly && x.category === category);
+      return s && s.statType === StatType.Anomaly ? s.details.period : undefined;
+    };
+
+    expect(periodOf('Revenue')).toBe('2025-12');
+    expect(periodOf('Payroll')).toBe('2025-10');
+  });
+
   it('produces category breakdown with percentages', () => {
     const stats = computeStats(fixture.multiCategory);
     const breakdowns = stats.filter(

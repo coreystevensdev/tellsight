@@ -43,6 +43,10 @@ export interface AnomalyDetails {
   zScore: number;
   iqrBounds: { lower: number; upper: number };
   deviation: number;
+  // Nothing else in an anomaly is temporal, so without this the model reads two
+  // categories' outliers as concurrent when they are months apart. Format is
+  // monthKey's, YYYY-MM.
+  period: string;
 }
 
 export interface CategoryBreakdownDetails {

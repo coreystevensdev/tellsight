@@ -288,11 +288,35 @@ describe('assignIds', () => {
       statType: StatType.Anomaly,
       category: 'Sales',
       value: 500,
-      details: { direction: 'above', zScore: 3.1, iqrBounds: { lower: 100, upper: 400 }, deviation: 100 },
+      details: { direction: 'above', zScore: 3.1, iqrBounds: { lower: 100, upper: 400 }, deviation: 100, period: '2026-03' },
     };
     // two identical anomaly objects, same value -> same id
     const identified = assignIds([anomaly, { ...anomaly }], 1);
     expect(identified).toHaveLength(1);
+  });
+
+  // Accepted, not incidental. The discriminator stays value-only because these
+  // ids live inside stored summaries and resolveStatById recomputes to match
+  // them, so widening it would break the audit drawer on every summary already
+  // written. The cost is that same-amount outliers in one category collapse to
+  // whichever came first, and the survivor's period is the only one cited.
+  it('collapses same-value anomalies in one category even when the periods differ', () => {
+    const base: ComputedStat = {
+      statType: StatType.Anomaly,
+      category: 'Sales',
+      value: 500,
+      details: { direction: 'above', zScore: 3.1, iqrBounds: { lower: 100, upper: 400 }, deviation: 100, period: '2026-03' },
+    };
+    const later: ComputedStat = {
+      ...base,
+      details: { ...base.details, period: '2026-07' },
+    };
+
+    const identified = assignIds([base, later], 1);
+    expect(identified).toHaveLength(1);
+    const kept = identified[0]!;
+    if (kept.statType !== StatType.Anomaly) throw new Error('expected an anomaly');
+    expect(kept.details.period).toBe('2026-03');
   });
 
   it('does not mutate the original stats', () => {
@@ -388,7 +412,7 @@ describe('assignIds', () => {
       statType: StatType.Anomaly,
       category: 'Sales',
       value: 500,
-      details: { direction: 'above', zScore: 3.1, iqrBounds: { lower: 100, upper: 400 }, deviation: 100 },
+      details: { direction: 'above', zScore: 3.1, iqrBounds: { lower: 100, upper: 400 }, deviation: 100, period: '2026-03' },
     };
     const [identified] = assignIds([anomaly], 1);
     if (identified?.statType !== StatType.Anomaly || anomaly.statType !== StatType.Anomaly) {
