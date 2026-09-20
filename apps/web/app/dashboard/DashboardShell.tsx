@@ -357,6 +357,7 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
       cachedContent={cachedSummary}
       cachedMetadata={cachedMetadata}
       cachedStaleAt={cachedStaleAt}
+      hasAuth={hasAuth}
       tier={tier}
       onToggleTransparency={toggleTransparency}
       transparencyOpen={transparencyOpen}
