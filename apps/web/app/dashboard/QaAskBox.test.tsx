@@ -39,7 +39,7 @@ describe('QaAskBox', () => {
   it('renders an input and a disabled Ask button when idle with no question typed', () => {
     mockUseQaAnswer.mockReturnValue(defaultHookReturn());
 
-    render(<QaAskBox datasetId={7} />);
+    render(<QaAskBox datasetId={7} hasAuth />);
 
     expect(screen.getByPlaceholderText(/how did revenue trend/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Ask' })).toBeDisabled();
@@ -48,7 +48,7 @@ describe('QaAskBox', () => {
   it('enables Ask once a question is typed and calls ask on click', () => {
     mockUseQaAnswer.mockReturnValue(defaultHookReturn());
 
-    render(<QaAskBox datasetId={7} />);
+    render(<QaAskBox datasetId={7} hasAuth />);
     const input = screen.getByPlaceholderText(/how did revenue trend/i);
     fireEvent.change(input, { target: { value: 'How is my runway?' } });
 
@@ -62,7 +62,7 @@ describe('QaAskBox', () => {
   it('submits on Enter in the input', () => {
     mockUseQaAnswer.mockReturnValue(defaultHookReturn());
 
-    render(<QaAskBox datasetId={7} />);
+    render(<QaAskBox datasetId={7} hasAuth />);
     const input = screen.getByPlaceholderText(/how did revenue trend/i);
     fireEvent.change(input, { target: { value: 'How is my runway?' } });
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -73,7 +73,7 @@ describe('QaAskBox', () => {
   it('does not submit on Enter while an IME composition is in progress (regression)', () => {
     mockUseQaAnswer.mockReturnValue(defaultHookReturn());
 
-    render(<QaAskBox datasetId={7} />);
+    render(<QaAskBox datasetId={7} hasAuth />);
     const input = screen.getByPlaceholderText(/how did revenue trend/i);
     fireEvent.change(input, { target: { value: '日本語' } });
     fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
@@ -87,7 +87,7 @@ describe('QaAskBox', () => {
   it('trims whitespace before calling ask and rejects a whitespace-only question', () => {
     mockUseQaAnswer.mockReturnValue(defaultHookReturn());
 
-    render(<QaAskBox datasetId={7} />);
+    render(<QaAskBox datasetId={7} hasAuth />);
     const input = screen.getByPlaceholderText(/how did revenue trend/i);
 
     fireEvent.change(input, { target: { value: '   ' } });
@@ -101,7 +101,7 @@ describe('QaAskBox', () => {
   it('disables the Ask button when datasetId is null', () => {
     mockUseQaAnswer.mockReturnValue(defaultHookReturn());
 
-    render(<QaAskBox datasetId={null} />);
+    render(<QaAskBox datasetId={null} hasAuth />);
     const input = screen.getByPlaceholderText(/how did revenue trend/i);
     fireEvent.change(input, { target: { value: 'How is my runway?' } });
 
@@ -111,7 +111,7 @@ describe('QaAskBox', () => {
   it('shows a disabled input and a thinking spinner while asking', () => {
     mockUseQaAnswer.mockReturnValue(defaultHookReturn({ status: 'asking' }));
 
-    render(<QaAskBox datasetId={7} />);
+    render(<QaAskBox datasetId={7} hasAuth />);
 
     expect(screen.getByText('Thinking...')).toBeTruthy();
     expect((screen.getByPlaceholderText(/how did revenue trend/i) as HTMLInputElement).disabled).toBe(true);
@@ -120,7 +120,7 @@ describe('QaAskBox', () => {
   it('renders the locked state with an inline UpgradeCta, not the error state', () => {
     mockUseQaAnswer.mockReturnValue(defaultHookReturn({ status: 'locked' }));
 
-    render(<QaAskBox datasetId={7} />);
+    render(<QaAskBox datasetId={7} hasAuth />);
 
     expect(screen.getByText('Unlock full analysis')).toBeTruthy();
     expect(screen.queryByText('Try again')).toBeNull();
@@ -129,7 +129,7 @@ describe('QaAskBox', () => {
   it('navigates to /billing when the locked UpgradeCta is clicked', () => {
     mockUseQaAnswer.mockReturnValue(defaultHookReturn({ status: 'locked' }));
 
-    render(<QaAskBox datasetId={7} />);
+    render(<QaAskBox datasetId={7} hasAuth />);
     fireEvent.click(screen.getByRole('button', { name: /upgrade to pro subscription/i }));
 
     expect(mockPush).toHaveBeenCalledWith('/billing');
@@ -140,7 +140,7 @@ describe('QaAskBox', () => {
       defaultHookReturn({ status: 'error', error: 'Failed to answer the question', code: 'QA_LOOP_FAILED' }),
     );
 
-    render(<QaAskBox datasetId={7} />);
+    render(<QaAskBox datasetId={7} hasAuth />);
 
     expect(screen.getByText('Something went wrong answering that question.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
@@ -152,7 +152,7 @@ describe('QaAskBox', () => {
       defaultHookReturn({ status: 'error', error: 'fail', code: 'QA_LOOP_FAILED' }),
     );
 
-    render(<QaAskBox datasetId={7} />);
+    render(<QaAskBox datasetId={7} hasAuth />);
     const input = screen.getByPlaceholderText(/how did revenue trend/i);
     fireEvent.change(input, { target: { value: 'How is my runway?' } });
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
@@ -173,7 +173,7 @@ describe('QaAskBox', () => {
       }),
     );
 
-    const { container } = render(<QaAskBox datasetId={7} />);
+    const { container } = render(<QaAskBox datasetId={7} hasAuth />);
 
     expect(container.textContent).toContain('Revenue grew 12% this quarter.');
     expect(
@@ -194,7 +194,7 @@ describe('QaAskBox', () => {
       }),
     );
 
-    render(<QaAskBox datasetId={7} />);
+    render(<QaAskBox datasetId={7} hasAuth />);
 
     expect(screen.getAllByText(new RegExp(AI_DISCLAIMER.slice(0, 20)))).toHaveLength(1);
   });
@@ -202,12 +202,12 @@ describe('QaAskBox', () => {
   it('clears the question and any open citation sheet when the dataset changes', () => {
     mockUseQaAnswer.mockReturnValue(defaultHookReturn());
 
-    const { rerender } = render(<QaAskBox datasetId={7} />);
+    const { rerender } = render(<QaAskBox datasetId={7} hasAuth />);
     const input = screen.getByPlaceholderText(/how did revenue trend/i) as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'How is my runway?' } });
     expect(input.value).toBe('How is my runway?');
 
-    rerender(<QaAskBox datasetId={8} />);
+    rerender(<QaAskBox datasetId={8} hasAuth />);
 
     expect((screen.getByPlaceholderText(/how did revenue trend/i) as HTMLInputElement).value).toBe('');
   });
@@ -233,7 +233,7 @@ describe('QaAskBox', () => {
       }),
     );
 
-    render(<QaAskBox datasetId={7} />);
+    render(<QaAskBox datasetId={7} hasAuth />);
 
     const marker = screen.getByRole('button', { name: /show how \$5,000 was calculated/i });
     fireEvent.click(marker);
@@ -260,7 +260,7 @@ describe('QaAskBox', () => {
       }),
     );
 
-    render(<QaAskBox datasetId={7} />);
+    render(<QaAskBox datasetId={7} hasAuth />);
 
     expect(screen.queryByText(/<cite/)).toBeNull();
   });
@@ -269,7 +269,7 @@ describe('QaAskBox', () => {
     it('renders fallback chips when idle with no metadata', () => {
       mockUseQaAnswer.mockReturnValue(defaultHookReturn());
 
-      render(<QaAskBox datasetId={7} />);
+      render(<QaAskBox datasetId={7} hasAuth />);
 
       expect(screen.getByRole('button', { name: 'How did revenue trend this quarter?' })).toBeTruthy();
     });
@@ -277,7 +277,7 @@ describe('QaAskBox', () => {
     it('renders stat-type-derived chips when metadata is provided', () => {
       mockUseQaAnswer.mockReturnValue(defaultHookReturn());
 
-      render(<QaAskBox datasetId={7} metadata={{ statTypes: ['anomaly'] } as never} />);
+      render(<QaAskBox datasetId={7} metadata={{ statTypes: ['anomaly'] } as never} hasAuth />);
 
       expect(screen.getByRole('button', { name: "What's driving the biggest anomaly in my data?" })).toBeTruthy();
     });
@@ -285,7 +285,7 @@ describe('QaAskBox', () => {
     it('populates the input and asks immediately when a chip is clicked', () => {
       mockUseQaAnswer.mockReturnValue(defaultHookReturn());
 
-      render(<QaAskBox datasetId={7} />);
+      render(<QaAskBox datasetId={7} hasAuth />);
       fireEvent.click(screen.getByRole('button', { name: 'How did revenue trend this quarter?' }));
 
       expect(mockAsk).toHaveBeenCalledWith('How did revenue trend this quarter?');
@@ -301,7 +301,7 @@ describe('QaAskBox', () => {
         turnCount: 1,
       } }));
 
-      render(<QaAskBox datasetId={7} />);
+      render(<QaAskBox datasetId={7} hasAuth />);
 
       expect(screen.queryByRole('button', { name: 'How did revenue trend this quarter?' })).toBeNull();
     });
@@ -309,9 +309,70 @@ describe('QaAskBox', () => {
     it('hides chips while a question is in flight', () => {
       mockUseQaAnswer.mockReturnValue(defaultHookReturn({ status: 'asking' }));
 
-      render(<QaAskBox datasetId={7} />);
+      render(<QaAskBox datasetId={7} hasAuth />);
 
       expect(screen.queryByRole('button', { name: 'How did revenue trend this quarter?' })).toBeNull();
     });
+  });
+});
+
+// The public demo shipped this. /qa sits on protectedRouter, but the suggestion
+// chips were gated only on isAsking and datasetId, so a signed-out visitor could
+// click one, get 401, and be shown "Missing access token" over a "Try again"
+// button that would 401 forever.
+describe('QaAskBox signed out', () => {
+  it('disables the suggestion chips so clicking one fires nothing', () => {
+    mockUseQaAnswer.mockReturnValue(defaultHookReturn());
+
+    render(<QaAskBox datasetId={7} />);
+    const chip = screen.getByRole('button', { name: 'How did revenue trend this quarter?' }) as HTMLButtonElement;
+
+    expect(chip.disabled).toBe(true);
+    fireEvent.click(chip);
+    expect(mockAsk).not.toHaveBeenCalled();
+  });
+
+  it('disables the input, which is what keeps Ask unreachable', () => {
+    mockUseQaAnswer.mockReturnValue(defaultHookReturn());
+
+    render(<QaAskBox datasetId={7} />);
+    const input = screen.getByPlaceholderText(/how did revenue trend/i) as HTMLInputElement;
+
+    expect(input.disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Ask' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  // askFromChart reaches askSuggested through an effect, bypassing both the
+  // chips and the input, so it is the one path a disabled control cannot stop.
+  it('ignores a chart-originated question and leaves the input empty', () => {
+    mockUseQaAnswer.mockReturnValue(defaultHookReturn());
+
+    render(<QaAskBox datasetId={7} askFromChart={{ text: 'Why did payroll jump?', nonce: 1 }} />);
+
+    expect(mockAsk).not.toHaveBeenCalled();
+    const input = screen.getByPlaceholderText(/how did revenue trend/i) as HTMLInputElement;
+    expect(input.value).toBe('');
+  });
+
+  it('acts on a chart-originated question once signed in', () => {
+    mockUseQaAnswer.mockReturnValue(defaultHookReturn());
+
+    render(<QaAskBox datasetId={7} askFromChart={{ text: 'Why did payroll jump?', nonce: 1 }} hasAuth />);
+
+    expect(mockAsk).toHaveBeenCalledWith('Why did payroll jump?');
+  });
+
+  it('says why the box is inert instead of leaving dead controls', () => {
+    mockUseQaAnswer.mockReturnValue(defaultHookReturn());
+
+    render(<QaAskBox datasetId={7} />);
+    expect(screen.getByText('Sign in to ask questions about this data.')).toBeTruthy();
+  });
+
+  it('drops the sign-in line once the viewer is signed in', () => {
+    mockUseQaAnswer.mockReturnValue(defaultHookReturn());
+
+    render(<QaAskBox datasetId={7} hasAuth />);
+    expect(screen.queryByText('Sign in to ask questions about this data.')).toBeNull();
   });
 });

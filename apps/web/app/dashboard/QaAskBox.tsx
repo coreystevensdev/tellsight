@@ -23,12 +23,19 @@ interface QaAskBoxProps {
   // as new: clicking the same bar twice should ask twice rather than be swallowed
   // as an unchanged prop.
   askFromChart?: { text: string; nonce: number } | null;
+  // Defaults to false: /qa is on protectedRouter, so a caller that forgets
+  // this should offer nothing rather than a control that 401s.
+  hasAuth?: boolean;
 }
 
+// Second copy of this shape; AiSummaryCard has the other. Both fall through to
+// the API's own `message` for an unmapped code, which is how "Missing access
+// token" reached a reader there. If a third surface needs one, share it.
 const ERROR_MESSAGES: Record<string, string> = {
   QA_LOOP_FAILED: 'Something went wrong answering that question.',
   RATE_LIMITED: 'Too many requests, please wait a moment.',
   VALIDATION_ERROR: 'That question could not be sent, try rephrasing it.',
+  AUTHENTICATION_REQUIRED: 'Your session expired. Sign in again to ask a question.',
 };
 
 function userMessage(code: string | null, fallback: string | null): string {
@@ -123,7 +130,7 @@ function AnswerText({ rawText, onOpenCite }: { rawText: string; onOpenCite: (sta
   );
 }
 
-export function QaAskBox({ datasetId, metadata, className, askFromChart }: QaAskBoxProps) {
+export function QaAskBox({ datasetId, metadata, className, askFromChart, hasAuth = false }: QaAskBoxProps) {
   const [question, setQuestion] = useState('');
   const [openCiteId, setOpenCiteId] = useState<string | null>(null);
   const [priorDatasetId, setPriorDatasetId] = useState(datasetId);
@@ -174,7 +181,7 @@ export function QaAskBox({ datasetId, metadata, className, askFromChart }: QaAsk
   }
 
   function askSuggested(text: string) {
-    if (isAsking || status === 'locked' || datasetId === null) return;
+    if (!hasAuth || isAsking || status === 'locked' || datasetId === null) return;
     setQuestion(text);
     askQuestion(text);
   }
@@ -214,6 +221,12 @@ export function QaAskBox({ datasetId, metadata, className, askFromChart }: QaAsk
       <h3 className="font-serif text-lg font-medium text-card-foreground">Ask a question</h3>
       <p className="mb-4 text-xs text-muted-foreground">Limited to the data behind this dashboard.</p>
 
+      {!hasAuth && (
+        <p className="mb-4 text-sm text-muted-foreground">
+          Sign in to ask questions about this data.
+        </p>
+      )}
+
       {status === 'idle' && (
         <div className="mb-3 flex flex-wrap gap-2">
           {getSuggestedQuestions(metadata?.statTypes).map((suggestion) => (
@@ -221,7 +234,7 @@ export function QaAskBox({ datasetId, metadata, className, askFromChart }: QaAsk
               key={suggestion}
               type="button"
               onClick={() => askSuggested(suggestion)}
-              disabled={isAsking || datasetId === null}
+              disabled={!hasAuth || isAsking || datasetId === null}
               className={cn(
                 'inline-flex items-center rounded-full border border-border bg-card px-3 py-2 text-xs font-medium text-card-foreground',
                 'transition-colors duration-200 ease-out hover:border-primary/40',
@@ -244,7 +257,7 @@ export function QaAskBox({ datasetId, metadata, className, askFromChart }: QaAsk
           type="text"
           value={question}
           placeholder="e.g. How did revenue trend this quarter?"
-          disabled={isAsking}
+          disabled={!hasAuth || isAsking}
           maxLength={500}
           onChange={(e) => setQuestion(e.target.value)}
           onKeyDown={handleKeyDown}

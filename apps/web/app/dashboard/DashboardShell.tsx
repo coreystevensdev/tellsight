@@ -551,7 +551,7 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
 
           <AiSummaryErrorBoundary className="mt-6">
             <div ref={askBoxRef}>
-              <QaAskBox datasetId={data.datasetId} metadata={metadata} askFromChart={chartAsk} />
+              <QaAskBox datasetId={data.datasetId} metadata={metadata} askFromChart={chartAsk} hasAuth={hasAuth} />
             </div>
 
             {/* After the interpretation, not beside the KPIs: these are someone
