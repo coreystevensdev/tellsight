@@ -127,6 +127,21 @@ export const envSchema = z
       path: ['STRIPE_SECRET_KEY'],
     },
   )
+  // The billing page's demo notice reads this flag, not the key. If the two can
+  // disagree, the page tells a visitor to pay with a test card while a live key
+  // takes their real one.
+  .refine(
+    (data) =>
+      !(
+        data.STRIPE_TEST_MODE_IN_PRODUCTION === 'true'
+        && data.STRIPE_SECRET_KEY.startsWith('sk_live_')
+      ),
+    {
+      message:
+        'STRIPE_TEST_MODE_IN_PRODUCTION=true with a live key (sk_live_*). That combination puts "pay with a test card" on the billing page in front of a checkout that charges real ones.',
+      path: ['STRIPE_TEST_MODE_IN_PRODUCTION'],
+    },
+  )
   .refine((data) => !(data.EMAIL_PROVIDER === 'resend' && !data.RESEND_API_KEY), {
     message: 'RESEND_API_KEY required when EMAIL_PROVIDER=resend.',
     path: ['EMAIL_PROVIDER'],

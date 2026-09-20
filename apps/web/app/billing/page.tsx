@@ -1,4 +1,5 @@
 import { BackLink } from '@/components/common/BackLink';
+import { webEnv } from '@/lib/config';
 import { BillingContent } from './BillingContent';
 
 export default function BillingPage() {
@@ -7,7 +8,7 @@ export default function BillingPage() {
       <div className="w-full max-w-[640px]">
         <BackLink />
         <h1 className="mb-8 text-2xl font-semibold tracking-tight">Billing</h1>
-        <BillingContent />
+        <BillingContent demoBilling={webEnv.STRIPE_TEST_MODE_IN_PRODUCTION === 'true'} />
       </div>
     </div>
   );

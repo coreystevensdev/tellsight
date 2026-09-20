@@ -6,7 +6,7 @@ import { PRO_PRICE_DISPLAY } from 'shared/constants';
 
 import { useSubscription } from '@/lib/hooks/useSubscription';
 
-export function BillingContent() {
+export function BillingContent({ demoBilling = false }: { demoBilling?: boolean }) {
   const { tier, isLoading } = useSubscription({ enabled: true });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +57,20 @@ export function BillingContent() {
 
   return (
     <div className="space-y-6">
+      {demoBilling && (
+        <div
+          role="status"
+          className="rounded-lg border border-accent-warm/40 bg-accent-warm/10 px-4 py-3"
+        >
+          <p className="text-sm font-medium text-card-foreground">Demo billing</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Checkout runs against Stripe&rsquo;s test mode, so a real card is declined and nothing is
+            charged. Use <span className="font-mono">4242 4242 4242 4242</span> with any future
+            expiry and any CVC to see the Pro tier.
+          </p>
+        </div>
+      )}
+
       <div className="rounded-lg border border-border bg-card p-6">
         <div className="mb-1 text-sm text-muted-foreground">Current Plan</div>
         <div className="text-xl font-semibold text-card-foreground">
