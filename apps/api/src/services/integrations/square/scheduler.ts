@@ -15,16 +15,18 @@ export async function registerDailySync(orgId: number, connectionId: number): Pr
   const queue = getSyncQueue();
   const jobId = jobIdFor(orgId);
 
-  await queue.add(
+  await queue.upsertJobScheduler(
     jobId,
-    { connectionId, trigger: 'scheduled' },
+    { pattern: DAILY_CRON },
     {
-      repeat: { pattern: DAILY_CRON, key: jobId },
-      jobId,
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 30_000 },
-      removeOnComplete: { age: 86_400, count: 100 },
-      removeOnFail: { age: 7 * 86_400 },
+      name: jobId,
+      data: { connectionId, trigger: 'scheduled' },
+      opts: {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 30_000 },
+        removeOnComplete: { age: 86_400, count: 100 },
+        removeOnFail: { age: 7 * 86_400 },
+      },
     },
   );
 
@@ -41,7 +43,7 @@ export async function removeDailySync(orgId: number): Promise<void> {
 
 /**
  * On API startup: load all Square connections and register their daily syncs.
- * BullMQ's `jobId` on repeatable jobs makes this idempotent.
+ * upsertJobScheduler makes this idempotent.
  */
 export async function initScheduler(): Promise<void> {
   try {

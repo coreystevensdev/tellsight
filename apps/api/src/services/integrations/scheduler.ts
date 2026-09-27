@@ -16,16 +16,18 @@ export async function registerDailySync(
   const queue = getSyncQueue();
   const jobId = jobIdFor(orgId);
 
-  await queue.add(
+  await queue.upsertJobScheduler(
     jobId,
-    { connectionId, trigger: 'scheduled' },
+    { pattern: DAILY_CRON },
     {
-      repeat: { pattern: DAILY_CRON, key: jobId },
-      jobId,
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 30_000 },
-      removeOnComplete: { age: 86_400, count: 100 },
-      removeOnFail: { age: 7 * 86_400 },
+      name: jobId,
+      data: { connectionId, trigger: 'scheduled' },
+      opts: {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 30_000 },
+        removeOnComplete: { age: 86_400, count: 100 },
+        removeOnFail: { age: 7 * 86_400 },
+      },
     },
   );
 
@@ -42,8 +44,8 @@ export async function removeDailySync(orgId: number): Promise<void> {
 
 /**
  * On API startup: load all QB connections and register their daily syncs.
- * BullMQ's `jobId` on repeatable jobs makes this idempotent, if a job
- * scheduler already exists for a given org, this is a no-op.
+ * upsertJobScheduler makes this idempotent, if a job scheduler already
+ * exists for a given org, this is a no-op.
  */
 export async function initScheduler(): Promise<void> {
   try {
