@@ -1,40 +1,39 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-interface RepeatableJobMeta {
+interface SchedulerMeta {
   key: string;
   pattern: string;
   name: string;
 }
 
-const repeatableJobs = new Map<string, RepeatableJobMeta>();
+const schedulers = new Map<string, SchedulerMeta>();
 
-const mockQueueAdd = vi.fn(
+const mockUpsertJobScheduler = vi.fn(
   async (
-    name: string,
-    _data: unknown,
-    opts: { repeat?: { pattern: string; key: string } },
+    schedulerId: string,
+    repeatOpts: { pattern: string },
+    template: { name?: string },
   ) => {
-    if (opts?.repeat?.key) {
-      repeatableJobs.set(opts.repeat.key, {
-        key: opts.repeat.key,
-        pattern: opts.repeat.pattern,
-        name,
-      });
-    }
+    // Same id on a second upsert overwrites the slot, so the slot count stays one.
+    schedulers.set(schedulerId, {
+      key: schedulerId,
+      pattern: repeatOpts.pattern,
+      name: template?.name ?? schedulerId,
+    });
     return undefined;
   },
 );
 const mockQueueClose = vi.fn().mockResolvedValue(undefined);
 const mockRemoveJobScheduler = vi.fn(async (key: string) => {
-  return repeatableJobs.delete(key);
+  return schedulers.delete(key);
 });
-const mockGetRepeatableJobs = vi.fn(async () => Array.from(repeatableJobs.values()));
+const mockGetJobSchedulers = vi.fn(async () => Array.from(schedulers.values()));
 
 class FakeQueue {
-  add = mockQueueAdd;
+  upsertJobScheduler = mockUpsertJobScheduler;
   close = mockQueueClose;
   removeJobScheduler = mockRemoveJobScheduler;
-  getRepeatableJobs = mockGetRepeatableJobs;
+  getJobSchedulers = mockGetJobSchedulers;
   constructor(public name: string, public opts: unknown) {}
 }
 
@@ -47,29 +46,32 @@ vi.mock('../../lib/logger.js', () => ({
 beforeEach(async () => {
   vi.clearAllMocks();
   vi.resetModules();
-  repeatableJobs.clear();
+  schedulers.clear();
 });
 
 describe('initStatCorrectionsCronJob', () => {
-  it('registers the repeatable expiry job with the right pattern + key', async () => {
+  it('registers the scheduled expiry job with the right pattern + id', async () => {
     const { initStatCorrectionsCronJob } = await import('./cron.js');
 
     await initStatCorrectionsCronJob();
 
-    expect(mockQueueAdd).toHaveBeenCalledWith(
+    expect(mockUpsertJobScheduler).toHaveBeenCalledWith(
       'stat-corrections-expire',
-      {},
+      { pattern: '0 3 * * *' },
       expect.objectContaining({
-        repeat: expect.objectContaining({ pattern: '0 3 * * *', key: 'stat-corrections-expire' }),
-        attempts: 3,
-        backoff: expect.objectContaining({ type: 'exponential', delay: 60_000 }),
-        removeOnComplete: { count: 50 },
-        removeOnFail: { age: 30 * 86_400 },
+        name: 'stat-corrections-expire',
+        data: {},
+        opts: expect.objectContaining({
+          attempts: 3,
+          backoff: expect.objectContaining({ type: 'exponential', delay: 60_000 }),
+          removeOnComplete: { count: 50 },
+          removeOnFail: { age: 30 * 86_400 },
+        }),
       }),
     );
   });
 
-  it('is idempotent across two calls (getRepeatableJobs returns one entry)', async () => {
+  it('is idempotent across two calls (getJobSchedulers returns one entry)', async () => {
     const { initStatCorrectionsCronJob } = await import('./cron.js');
     const { getExpireQueue } = await import('./queue.js');
 
@@ -77,12 +79,12 @@ describe('initStatCorrectionsCronJob', () => {
     await initStatCorrectionsCronJob();
 
     const queue = getExpireQueue() as unknown as FakeQueue;
-    const jobs = await queue.getRepeatableJobs();
+    const jobs = await queue.getJobSchedulers();
     expect(jobs).toHaveLength(1);
     expect(jobs[0]).toMatchObject({ key: 'stat-corrections-expire', pattern: '0 3 * * *' });
   });
 
-  it('re-registering after shutdown lands a fresh single repeatable', async () => {
+  it('re-registering after shutdown lands a fresh single scheduler', async () => {
     const { initStatCorrectionsCronJob, shutdownStatCorrectionsCron } = await import('./cron.js');
     const { getExpireQueue } = await import('./queue.js');
 
@@ -90,15 +92,15 @@ describe('initStatCorrectionsCronJob', () => {
     await shutdownStatCorrectionsCron();
 
     const queue = getExpireQueue() as unknown as FakeQueue;
-    expect(await queue.getRepeatableJobs()).toHaveLength(0);
+    expect(await queue.getJobSchedulers()).toHaveLength(0);
 
     await initStatCorrectionsCronJob();
-    expect(await queue.getRepeatableJobs()).toHaveLength(1);
+    expect(await queue.getJobSchedulers()).toHaveLength(1);
   });
 });
 
 describe('shutdownStatCorrectionsCron', () => {
-  it('removes the scheduler by key', async () => {
+  it('removes the scheduler by id', async () => {
     const { shutdownStatCorrectionsCron } = await import('./cron.js');
 
     await shutdownStatCorrectionsCron();

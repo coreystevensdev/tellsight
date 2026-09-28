@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const mockQueueAdd = vi.fn();
+const mockUpsertJobScheduler = vi.fn();
 const mockRemoveJobScheduler = vi.fn().mockResolvedValue(true);
 const mockGetAllByProvider = vi.fn();
 
 vi.mock('./worker.js', () => ({
   getSyncQueue: () => ({
-    add: mockQueueAdd,
+    upsertJobScheduler: mockUpsertJobScheduler,
     removeJobScheduler: mockRemoveJobScheduler,
   }),
 }));
@@ -31,32 +31,32 @@ describe('scheduler', () => {
   });
 
   describe('registerDailySync', () => {
-    it('registers a repeatable job with 3am UTC cron', async () => {
+    it('registers a scheduler with 3am UTC cron', async () => {
       const { registerDailySync } = await import('./scheduler.js');
       await registerDailySync(10, 42);
 
-      expect(mockQueueAdd).toHaveBeenCalledWith(
+      expect(mockUpsertJobScheduler).toHaveBeenCalledWith(
         'qb-daily-10',
-        { connectionId: 42, trigger: 'scheduled' },
+        { pattern: '0 3 * * *' },
         expect.objectContaining({
-          repeat: expect.objectContaining({ pattern: '0 3 * * *' }),
-          jobId: 'qb-daily-10',
-          attempts: 3,
+          name: 'qb-daily-10',
+          data: { connectionId: 42, trigger: 'scheduled' },
+          opts: expect.objectContaining({ attempts: 3 }),
         }),
       );
     });
 
-    it('uses org-scoped jobId for uniqueness', async () => {
+    it('uses an org-scoped scheduler id for uniqueness', async () => {
       const { registerDailySync } = await import('./scheduler.js');
       await registerDailySync(999, 1);
 
-      const [name] = mockQueueAdd.mock.calls[0]!;
-      expect(name).toBe('qb-daily-999');
+      const [schedulerId] = mockUpsertJobScheduler.mock.calls[0]!;
+      expect(schedulerId).toBe('qb-daily-999');
     });
   });
 
   describe('removeDailySync', () => {
-    it('removes by jobId', async () => {
+    it('removes by scheduler id', async () => {
       const { removeDailySync } = await import('./scheduler.js');
       await removeDailySync(10);
 
@@ -75,10 +75,10 @@ describe('scheduler', () => {
       const { initScheduler } = await import('./scheduler.js');
       await initScheduler();
 
-      expect(mockQueueAdd).toHaveBeenCalledTimes(3);
-      expect(mockQueueAdd).toHaveBeenCalledWith('qb-daily-100', expect.any(Object), expect.any(Object));
-      expect(mockQueueAdd).toHaveBeenCalledWith('qb-daily-200', expect.any(Object), expect.any(Object));
-      expect(mockQueueAdd).toHaveBeenCalledWith('qb-daily-300', expect.any(Object), expect.any(Object));
+      expect(mockUpsertJobScheduler).toHaveBeenCalledTimes(3);
+      expect(mockUpsertJobScheduler).toHaveBeenCalledWith('qb-daily-100', expect.any(Object), expect.any(Object));
+      expect(mockUpsertJobScheduler).toHaveBeenCalledWith('qb-daily-200', expect.any(Object), expect.any(Object));
+      expect(mockUpsertJobScheduler).toHaveBeenCalledWith('qb-daily-300', expect.any(Object), expect.any(Object));
     });
 
     it('no-ops when no connections exist', async () => {
@@ -87,7 +87,7 @@ describe('scheduler', () => {
       const { initScheduler } = await import('./scheduler.js');
       await initScheduler();
 
-      expect(mockQueueAdd).not.toHaveBeenCalled();
+      expect(mockUpsertJobScheduler).not.toHaveBeenCalled();
     });
 
     it('logs and swallows errors during init', async () => {
@@ -96,7 +96,7 @@ describe('scheduler', () => {
       const { initScheduler } = await import('./scheduler.js');
       await expect(initScheduler()).resolves.toBeUndefined();
 
-      expect(mockQueueAdd).not.toHaveBeenCalled();
+      expect(mockUpsertJobScheduler).not.toHaveBeenCalled();
     });
   });
 });

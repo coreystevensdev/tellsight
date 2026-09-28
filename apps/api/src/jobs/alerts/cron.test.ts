@@ -1,42 +1,41 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Same repeat-key dedupe model as jobs/digest/cron.test.ts: a second add with
-// the same key overwrites the slot rather than creating a second entry.
-interface RepeatableJobMeta {
+// Same scheduler-id dedupe model as jobs/digest/cron.test.ts: a second upsert
+// with the same id overwrites the slot rather than creating a second entry.
+interface SchedulerMeta {
   key: string;
   pattern: string;
   name: string;
 }
 
-const repeatableJobs = new Map<string, RepeatableJobMeta>();
+const schedulers = new Map<string, SchedulerMeta>();
 
-const mockQueueAdd = vi.fn(
+const mockUpsertJobScheduler = vi.fn(
   async (
-    name: string,
-    _data: unknown,
-    opts: { repeat?: { pattern: string; key: string } },
+    schedulerId: string,
+    repeatOpts: { pattern: string },
+    template: { name?: string },
   ) => {
-    if (opts?.repeat?.key) {
-      repeatableJobs.set(opts.repeat.key, {
-        key: opts.repeat.key,
-        pattern: opts.repeat.pattern,
-        name,
-      });
-    }
+    // Same id on a second upsert overwrites the slot, so the slot count stays one.
+    schedulers.set(schedulerId, {
+      key: schedulerId,
+      pattern: repeatOpts.pattern,
+      name: template?.name ?? schedulerId,
+    });
     return undefined;
   },
 );
 const mockQueueClose = vi.fn().mockResolvedValue(undefined);
 const mockRemoveJobScheduler = vi.fn(async (key: string) => {
-  return repeatableJobs.delete(key);
+  return schedulers.delete(key);
 });
-const mockGetRepeatableJobs = vi.fn(async () => Array.from(repeatableJobs.values()));
+const mockGetJobSchedulers = vi.fn(async () => Array.from(schedulers.values()));
 
 class FakeQueue {
-  add = mockQueueAdd;
+  upsertJobScheduler = mockUpsertJobScheduler;
   close = mockQueueClose;
   removeJobScheduler = mockRemoveJobScheduler;
-  getRepeatableJobs = mockGetRepeatableJobs;
+  getJobSchedulers = mockGetJobSchedulers;
   constructor(public name: string, public opts: unknown) {}
 }
 
@@ -49,29 +48,32 @@ vi.mock('../../lib/logger.js', () => ({
 beforeEach(async () => {
   vi.clearAllMocks();
   vi.resetModules();
-  repeatableJobs.clear();
+  schedulers.clear();
 });
 
 describe('initAlertsCronJob', () => {
-  it('registers the repeatable cron job with the right pattern + key', async () => {
+  it('registers the scheduled cron job with the right pattern + id', async () => {
     const { initAlertsCronJob } = await import('./cron.js');
 
     await initAlertsCronJob();
 
-    expect(mockQueueAdd).toHaveBeenCalledWith(
+    expect(mockUpsertJobScheduler).toHaveBeenCalledWith(
       'alerts-orchestrator',
-      expect.objectContaining({ correlationId: 'cron-bootstrap' }),
+      { pattern: '0 6 * * *' },
       expect.objectContaining({
-        repeat: expect.objectContaining({ pattern: '0 6 * * *', key: 'alerts-orchestrator' }),
-        attempts: 3,
-        backoff: expect.objectContaining({ type: 'exponential', delay: 60_000 }),
-        removeOnComplete: { count: 50 },
-        removeOnFail: { age: 30 * 86_400 },
+        name: 'alerts-orchestrator',
+        data: expect.objectContaining({ correlationId: 'cron-bootstrap' }),
+        opts: expect.objectContaining({
+          attempts: 3,
+          backoff: expect.objectContaining({ type: 'exponential', delay: 60_000 }),
+          removeOnComplete: { count: 50 },
+          removeOnFail: { age: 30 * 86_400 },
+        }),
       }),
     );
   });
 
-  it('is idempotent across two calls (getRepeatableJobs returns one entry)', async () => {
+  it('is idempotent across two calls (getJobSchedulers returns one entry)', async () => {
     const { initAlertsCronJob } = await import('./cron.js');
     const { getOrchestratorQueue } = await import('./queue.js');
 
@@ -79,23 +81,25 @@ describe('initAlertsCronJob', () => {
     await initAlertsCronJob();
 
     const queue = getOrchestratorQueue() as unknown as FakeQueue;
-    const jobs = await queue.getRepeatableJobs();
+    const jobs = await queue.getJobSchedulers();
     expect(jobs).toHaveLength(1);
     expect(jobs[0]).toMatchObject({ key: 'alerts-orchestrator', pattern: '0 6 * * *' });
   });
 
-  it('keeps repeat.key and jobId aligned so future migrations stay safe', async () => {
-    const { initAlertsCronJob } = await import('./cron.js');
-    await initAlertsCronJob();
+  it('registers and removes under the same scheduler id', async () => {
+    const { initAlertsCronJob, shutdownAlertsCron } = await import('./cron.js');
 
-    const opts = mockQueueAdd.mock.calls[0]![2] as unknown as {
-      repeat: { key: string };
-      jobId: string;
-    };
-    expect(opts.jobId).toBe(opts.repeat.key);
+    await initAlertsCronJob();
+    await shutdownAlertsCron();
+
+    // If these two ever drift apart, shutdown removes nothing and the old
+    // schedule keeps firing from Redis under the id nobody deletes.
+    expect(mockUpsertJobScheduler.mock.calls[0]![0]).toBe(
+      mockRemoveJobScheduler.mock.calls[0]![0],
+    );
   });
 
-  it('re-registering after shutdown lands a fresh single repeatable', async () => {
+  it('re-registering after shutdown lands a fresh single scheduler', async () => {
     const { initAlertsCronJob, shutdownAlertsCron } = await import('./cron.js');
     const { getOrchestratorQueue } = await import('./queue.js');
 
@@ -103,15 +107,15 @@ describe('initAlertsCronJob', () => {
     await shutdownAlertsCron();
 
     const queue = getOrchestratorQueue() as unknown as FakeQueue;
-    expect(await queue.getRepeatableJobs()).toHaveLength(0);
+    expect(await queue.getJobSchedulers()).toHaveLength(0);
 
     await initAlertsCronJob();
-    expect(await queue.getRepeatableJobs()).toHaveLength(1);
+    expect(await queue.getJobSchedulers()).toHaveLength(1);
   });
 });
 
 describe('shutdownAlertsCron', () => {
-  it('removes the scheduler by key', async () => {
+  it('removes the scheduler by id', async () => {
     const { shutdownAlertsCron } = await import('./cron.js');
 
     await shutdownAlertsCron();

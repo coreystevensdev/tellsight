@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const add = vi.fn();
+const upsertJobScheduler = vi.fn();
 const removeJobScheduler = vi.fn();
 const getAllByProvider = vi.fn();
 
-vi.mock('./worker.js', () => ({ getSyncQueue: () => ({ add, removeJobScheduler }) }));
+vi.mock('./worker.js', () => ({ getSyncQueue: () => ({ upsertJobScheduler, removeJobScheduler }) }));
 vi.mock('../../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock('../../../lib/db.js', () => ({ dbAdmin: {} }));
 vi.mock('../../../db/queries/index.js', () => ({
@@ -16,28 +16,30 @@ const { registerDailySync, removeDailySync, initScheduler } = await import('./sc
 beforeEach(() => vi.clearAllMocks());
 
 describe('square scheduler', () => {
-  // All three providers share one org id space and BullMQ keys repeatable jobs
-  // by name, so an unprefixed key would have Square silently replace the
-  // QuickBooks schedule for the same org.
-  it('namespaces the repeatable job away from the other providers', async () => {
+  // All three providers share one org id space and BullMQ keys schedulers by
+  // id, so an unprefixed id would have Square silently replace the QuickBooks
+  // schedule for the same org.
+  it('namespaces the scheduler away from the other providers', async () => {
     await registerDailySync(3, 7);
-    const [jobId, data, opts] = add.mock.calls[0]!;
-    expect(jobId).toBe('square-daily-3');
-    expect(jobId).not.toBe('qb-daily-3');
-    expect(jobId).not.toBe('shopify-daily-3');
-    expect(data).toEqual({ connectionId: 7, trigger: 'scheduled' });
-    expect((opts as { repeat: { key: string } }).repeat.key).toBe('square-daily-3');
+    const [schedulerId, , template] = upsertJobScheduler.mock.calls[0]!;
+    expect(schedulerId).toBe('square-daily-3');
+    expect(schedulerId).not.toBe('qb-daily-3');
+    expect(schedulerId).not.toBe('shopify-daily-3');
+    expect(template as { name: string; data: unknown }).toMatchObject({
+      name: 'square-daily-3',
+      data: { connectionId: 7, trigger: 'scheduled' },
+    });
   });
 
   // 3am QuickBooks, 4am Shopify, 5am here: three providers waking every
   // connection in the same minute is a self-inflicted thundering herd.
   it('runs an hour after Shopify', async () => {
     await registerDailySync(3, 7);
-    const opts = add.mock.calls[0]![2] as { repeat: { pattern: string } };
-    expect(opts.repeat.pattern).toBe('0 5 * * *');
+    const repeatOpts = upsertJobScheduler.mock.calls[0]![1] as { pattern: string };
+    expect(repeatOpts.pattern).toBe('0 5 * * *');
   });
 
-  it('removes by the same key it registered', async () => {
+  it('removes by the same id it registered', async () => {
     await removeDailySync(3);
     expect(removeJobScheduler).toHaveBeenCalledWith('square-daily-3');
   });
@@ -48,8 +50,11 @@ describe('square scheduler', () => {
       { id: 8, orgId: 4 },
     ]);
     await initScheduler();
-    expect(add).toHaveBeenCalledTimes(2);
-    expect(add.mock.calls.map((c) => c[0])).toEqual(['square-daily-3', 'square-daily-4']);
+    expect(upsertJobScheduler).toHaveBeenCalledTimes(2);
+    expect(upsertJobScheduler.mock.calls.map((c) => c[0])).toEqual([
+      'square-daily-3',
+      'square-daily-4',
+    ]);
   });
 
   // Boot must not die because Redis is briefly unavailable; the API still
