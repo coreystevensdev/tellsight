@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import type { Mock } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { toast } from 'sonner';
 
@@ -15,7 +16,7 @@ let mockSwrReturn = {
 // Per-key overrides so tests can feed /org/financials data without changing
 // the primary chart-data fallback. Keys starting with '/org/financials' look up
 // this map; everything else falls back to mockSwrReturn.
-let mockSwrByKey: Record<string, { data: unknown; mutate: ReturnType<typeof vi.fn> }> = {};
+let mockSwrByKey: Record<string, { data: unknown; mutate: Mock }> = {};
 
 vi.mock('swr', () => ({
   default: (key: string | null, _fetcher: unknown, opts: { fallbackData: unknown }) => {

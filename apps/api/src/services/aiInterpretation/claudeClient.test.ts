@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Mock } from 'vitest';
 
 vi.mock('../../config.js', () => ({
   env: {
@@ -25,11 +26,11 @@ interface BreakerOpts {
 const mockBreakerInstances: Array<{
   name: string;
   opts: BreakerOpts;
-  execSpy: ReturnType<typeof vi.fn>;
+  execSpy: Mock;
 }> = [];
 
 vi.mock('../../lib/circuitBreaker.js', () => ({
-  CircuitBreaker: vi.fn().mockImplementation((opts: BreakerOpts) => {
+  CircuitBreaker: vi.fn().mockImplementation(function (opts: BreakerOpts) {
     const execSpy = vi.fn((fn: () => Promise<unknown>) => fn());
     mockBreakerInstances.push({ name: opts.name, opts, execSpy });
     return { exec: execSpy, isOpen: () => false };
@@ -76,10 +77,12 @@ vi.mock('@anthropic-ai/sdk', () => {
   }
 
   const MockAnthropic = Object.assign(
-    vi.fn().mockImplementation(() => ({
+    vi.fn().mockImplementation(function () {
+    return {
       messages: { create: mockCreate, stream: mockStream },
       models: { list: mockModelsList },
-    })),
+    };
+  }),
     { AuthenticationError, BadRequestError },
   );
 

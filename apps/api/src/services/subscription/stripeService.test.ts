@@ -6,11 +6,13 @@ const mockGetSubscriptionByOrgId = vi.fn();
 
 vi.mock('stripe', () => {
   return {
-    default: vi.fn().mockImplementation(() => ({
+    default: vi.fn().mockImplementation(function () {
+    return {
       checkout: { sessions: { create: mockSessionsCreate } },
       billingPortal: { sessions: { create: mockPortalSessionsCreate } },
       webhooks: { constructEvent: vi.fn() },
-    })),
+    };
+  }),
   };
 });
 

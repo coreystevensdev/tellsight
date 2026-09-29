@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Mock } from 'vitest';
 
 import type { ScoredInsight } from './types.js';
 import { StatType } from './types.js';
@@ -60,7 +61,7 @@ const fixtureInsights: ScoredInsight[] = [
 
 // The default mock for readFileSync, re-applied in beforeEach so per-test
 // mockImplementation overrides don't bleed into subsequent tests.
-function setDefaultFsMock(readFileSyncMock: ReturnType<typeof vi.fn>) {
+function setDefaultFsMock(readFileSyncMock: Mock) {
   readFileSyncMock.mockImplementation((path: unknown) => {
     const p = String(path);
     if (p.includes('-system.md') || p.includes('-user.md')) {

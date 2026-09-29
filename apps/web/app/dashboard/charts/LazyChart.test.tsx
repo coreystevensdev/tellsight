@@ -7,7 +7,7 @@ const mockDisconnect = vi.fn();
 
 vi.stubGlobal(
   'IntersectionObserver',
-  vi.fn((cb: (entries: Array<{ isIntersecting: boolean }>) => void) => {
+  vi.fn(function (cb: (entries: Array<{ isIntersecting: boolean }>) => void) {
     intersectionCallback = cb;
     return { observe: mockObserve, disconnect: mockDisconnect, unobserve: vi.fn() };
   }),

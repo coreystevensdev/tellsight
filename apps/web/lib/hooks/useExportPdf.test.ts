@@ -14,7 +14,9 @@ const trackClientEvent = vi.fn();
 
 vi.mock('html-to-image', () => ({ toPng: (...a: unknown[]) => toPng(...a) }));
 vi.mock('jspdf', () => ({
-  jsPDF: vi.fn(() => ({ addImage, addPage, save })),
+  jsPDF: vi.fn(function () {
+    return { addImage, addPage, save };
+  }),
 }));
 vi.mock('@/lib/analytics', () => ({
   trackClientEvent: (...a: unknown[]) => trackClientEvent(...a),

@@ -37,7 +37,9 @@ vi.mock('drizzle-orm/postgres-js', () => ({
   drizzle: vi.fn(() => ({ execute: mockExecute })),
 }));
 vi.mock('ioredis', () => ({
-  default: vi.fn(() => ({ ping: mockPing, on: vi.fn(), status: 'ready' })),
+  default: vi.fn(function () {
+    return { ping: mockPing, on: vi.fn(), status: 'ready' };
+  }),
 }));
 vi.mock('./logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn() },

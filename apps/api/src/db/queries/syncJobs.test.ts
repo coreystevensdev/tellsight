@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Mock } from 'vitest';
 
 const mockInsertValues = vi.fn();
-const mockReturning = vi.fn() as ReturnType<typeof vi.fn> & { _result: Promise<unknown[]> };
+const mockReturning = vi.fn() as Mock & { _result: Promise<unknown[]> };
 const mockUpdateSet = vi.fn();
-const mockWhere = vi.fn() as ReturnType<typeof vi.fn> & { _result: Promise<void> | undefined };
+const mockWhere = vi.fn() as Mock & { _result: Promise<void> | undefined };
 const mockSelectFrom = vi.fn();
 const mockOrderBy = vi.fn();
-const mockLimit = vi.fn() as ReturnType<typeof vi.fn> & { _result: Promise<unknown[]> };
+const mockLimit = vi.fn() as Mock & { _result: Promise<unknown[]> };
 
 vi.mock('../../lib/db.js', () => ({
   db: {

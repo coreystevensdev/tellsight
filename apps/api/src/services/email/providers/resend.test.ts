@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Mock } from 'vitest';
 import React from 'react';
 
 vi.hoisted(() => {
@@ -50,7 +51,9 @@ function fakeResend(sendImpl: (...args: unknown[]) => unknown) {
 }
 
 describe('resend provider', () => {
-  let sentry: { captureException: ReturnType<typeof vi.fn> };
+  // vitest 5 types a bare vi.fn() as Mock<Procedure | Constructable>, which no
+  // longer matches Sentry's captureException, so name the signature.
+  let sentry: { captureException: Mock };
 
   beforeEach(() => {
     vi.clearAllMocks();

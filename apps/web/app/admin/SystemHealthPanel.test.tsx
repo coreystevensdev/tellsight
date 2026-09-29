@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Mock } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 import type { SystemHealth } from './types';
@@ -21,7 +22,9 @@ const degradedHealth: SystemHealth = {
   },
 };
 
-let mockUseSWR: ReturnType<typeof vi.fn>;
+// vitest 5 types a bare vi.fn() as Mock<Procedure | Constructable>, which is
+// not callable without narrowing, so name the signature.
+let mockUseSWR: Mock<(...args: unknown[]) => unknown>;
 
 vi.mock('swr', () => ({
   default: (...args: unknown[]) => mockUseSWR(...args),
