@@ -74,11 +74,18 @@ import { metricsRouter } from './routes/metrics.js';
 
 const app = express();
 
-// Production hop count: Cloudflare (DNS-only) → Vercel edge → Railway → Express = 2 hops
-// for browser traffic via BFF. Direct-to-Railway (Stripe webhook, api.{DOMAIN}) is 1 hop,
-// but those paths don't rely on req.ip for rate limiting. Local docker-compose is 0 hops,
-// so 2 is harmless (Express falls back to socket address). Raise to 3 if Cloudflare
-// proxy mode is re-enabled on the apex record.
+// Production hop count: Cloudflare (DNS-only, so 0 hops) → Caddy → Next.js BFF →
+// Express. Two proxies sit in front of this, and req.ip has to skip exactly those two.
+//
+// Verified against production rather than reasoned about: the auth limiter allowed 10
+// requests then answered 429, and three spoofed X-Forwarded-For values were all still
+// refused, so req.ip resolves to the real caller and not to a proxy or to a header the
+// caller controls. Both halves matter. Too low and every visitor shares one bucket;
+// too high and the value is attacker-supplied.
+//
+// Direct-to-instance paths (the Stripe webhook) are 1 hop and do not key on req.ip.
+// Local docker-compose is 0 hops, where Express falls back to the socket address.
+// Raise to 3 if Cloudflare proxy mode is turned on for the record.
 app.set('trust proxy', 2);
 
 // Before helmet so the scraper does not need to handle security headers. The
