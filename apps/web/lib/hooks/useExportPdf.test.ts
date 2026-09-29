@@ -101,6 +101,17 @@ describe('useExportPdf pagination', () => {
 
     for (const call of addImage.mock.calls) expect(call[4]).toBe(190);
   });
+
+  // Without a compression argument jsPDF embeds the bitmap raw, and the export
+  // of the live dashboard came back 35.5 MB, which is exactly its pixel count
+  // times four. Measured on a real capture at 1792x4947: NONE 26.6 MB,
+  // FAST 0.57 MB, MEDIUM 0.55 MB, SLOW 0.50 MB. FAST is the whole win.
+  it('compresses the embedded image on every page', async () => {
+    await exportWith(1000, 4000);
+
+    expect(addImage.mock.calls.length).toBeGreaterThan(1);
+    for (const call of addImage.mock.calls) expect(call[7]).toBe('FAST');
+  });
 });
 
 describe('useExportPdf outcomes', () => {
