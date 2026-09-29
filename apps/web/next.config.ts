@@ -5,13 +5,15 @@ import { withSentryConfig } from '@sentry/nextjs';
 // The API disables helmet's CSP with "CSP is the frontend's job" (index.ts),
 // and for a long time the frontend did not hold up its end.
 //
-// script-src carries 'unsafe-inline' rather than a nonce. Next.js can use a
-// nonce, but only one minted per request in proxy.ts, and that means widening
-// its matcher from the four protected routes to every route. proxy.ts is the
-// file with the "dashboard is public, never redirect from /dashboard" rule on
-// it, and running it everywhere to satisfy a defence-in-depth header is a worse
-// trade than the weaker script-src. Nonces also opt every page out of static
-// rendering.
+// script-src carries 'unsafe-inline' rather than a nonce. Next.js can mint one,
+// but only in proxy.ts, which means widening its matcher from the five routes it
+// covers to all 24 page routes, and a nonce is per-request so it also opts 21 of
+// those 24 out of static rendering. The whole policy would also have to move
+// into proxy.ts, since headers() is evaluated at build time and cannot produce a
+// per-request value, which would leave the matcher's exclusion regex deciding
+// which paths get a CSP at all. See docs/adr/0002-csp-unsafe-inline-over-nonces.md for the full
+// measurement and for the fail-open trap that makes a half-done migration worse
+// than this.
 //
 // So this does not stop an injected inline script. It stops what such a script
 // would need next: connect-src blocks exfiltration to another origin,
