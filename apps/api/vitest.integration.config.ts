@@ -11,11 +11,8 @@ export default defineConfig({
     fileParallelism: false,
     include: ['src/**/*.integration.test.ts'],
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        execArgv: ['--max-old-space-size=4096'],
-      },
-    },
+    // vitest 4 removed poolOptions; the pool settings are top-level now.
+    execArgv: ['--max-old-space-size=4096'],
   },
   resolve: {
     alias: {

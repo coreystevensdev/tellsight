@@ -72,9 +72,25 @@ jobs:
       # Coverage thresholds live in each package's vitest.config.ts and are set
       # as a ratchet just under measured coverage, so this fails on a real drop
       # rather than on noise.
-      - run: pnpm -C packages/shared test:coverage && pnpm -C apps/web test:coverage
+      - name: Run shared + web tests
+        run: |
+          pnpm -C packages/shared exec vitest run --coverage \
+            --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/shared.json"
+          pnpm -C apps/web exec vitest run --coverage \
+            --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/web.json"
         env:
           CI: "true"
+
+      - name: Record executed test count
+        run: |
+          node scripts/count-from-reports.mjs \
+            "$RUNNER_TEMP/shared.json" "$RUNNER_TEMP/web.json" > count-shared-web
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-count-shared-web
+          path: count-shared-web
+          retention-days: 1
 
   # This job was continue-on-error for a long time, on the theory that the
   # Vitest + Drizzle + Anthropic SDK module graph exceeded runner memory. Whatever
@@ -104,10 +120,21 @@ jobs:
 
       - name: Run API tests
         working-directory: apps/api
-        run: npx vitest run
+        run: |
+          npx vitest run \
+            --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/api.json"
         env:
           CI: "true"
           NODE_OPTIONS: "--max-old-space-size=4096"
+
+      - name: Record executed test count
+        run: node scripts/count-from-reports.mjs "$RUNNER_TEMP/api.json" > count-api
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-count-api
+          path: count-api
+          retention-days: 1
 
   test-api-rls-integration:
     name: Tests (API RLS integration)
@@ -157,7 +184,9 @@ jobs:
           DATABASE_ADMIN_URL: postgresql://app_admin:app@localhost:5432/analytics
 
       - name: Run RLS integration tests
-        run: pnpm --filter api test:integration
+        run: |
+          pnpm -C apps/api exec vitest run -c vitest.integration.config.ts \
+            --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/integration.json"
         env:
           NODE_ENV: test
           DATABASE_URL: postgresql://app_user:app@localhost:5432/analytics
@@ -173,6 +202,15 @@ jobs:
           APP_URL: http://localhost:3000
           EMAIL_FROM_ADDRESS: noreply@example.com
           EMAIL_MAILING_ADDRESS: 123 CI Test Way
+
+      - name: Record executed test count
+        run: node scripts/count-from-reports.mjs "$RUNNER_TEMP/integration.json" > count-integration
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-count-integration
+          path: count-integration
+          retention-days: 1
 
   seed-validation:
     name: Seed Data Validation
@@ -244,7 +282,19 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm test:eval
+      - name: Run eval script tests
+        run: |
+          pnpm -C apps/api exec vitest run -c ../../scripts/vitest.config.ts \
+            --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/eval.json"
+
+      - name: Record executed test count
+        run: node scripts/count-from-reports.mjs "$RUNNER_TEMP/eval.json" > count-eval
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-count-eval
+          path: count-eval
+          retention-days: 1
 
   e2e:
     name: E2E Tests
@@ -296,6 +346,16 @@ jobs:
 
       - name: Run Playwright tests
         run: npx playwright test
+
+      - name: Record executed test count
+        run: |
+          node scripts/count-from-reports.mjs --playwright e2e-results.json > count-e2e
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-count-e2e
+          path: count-e2e
+          retention-days: 1
 
       # A retried pass is a green tick, so a test that only passes on the second
       # attempt is invisible until it fails twice in a row. Annotates rather than
@@ -365,24 +425,39 @@ jobs:
 
   test-count:
     name: Test Count
+    # Every suite that contributes to the badge, because the numbers now come
+    # from those runs rather than from a separate collection here.
+    needs: [test-shared-web, test-api, test-api-rls-integration, test-eval, e2e]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+
+      - uses: actions/download-artifact@v5
         with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: README test count matches every suite
+          pattern: test-count-*
+          merge-multiple: true
+
+      - name: README test count matches what every suite ran
         run: |
-          # count-tests.sh collects with `vitest list` and `playwright test --list`,
-          # neither of which executes anything, so no database and no browsers.
-          out=$(bash scripts/count-tests.sh)
-          echo "$out"
-          val() { echo "$out" | awk -v k="$1" '$1==k{print $2}'; }
-          t=$(val total_fmt); v=$(val vitest_fmt); e2e=$(val playwright)
-          [ -n "$t" ] && [ -n "$v" ] && [ -n "$e2e" ] || { echo "count script produced no totals"; exit 1; }
+          # Each suite writes the count its own run reported, so this asserts
+          # executed tests. It used to call `vitest list`, which stopped being a
+          # usable count under vitest 5: an it.each lists once as its unexpanded
+          # "%s" template instead of once per case, so the collected total read
+          # 4,015 while 4,502 tests still ran.
+          for f in count-shared-web count-api count-integration count-eval count-e2e; do
+            [ -s "$f" ] || { echo "$f is missing or empty, so a suite did not report"; exit 1; }
+          done
+          read -r shared_web < count-shared-web
+          read -r api < count-api
+          read -r integration < count-integration
+          read -r eval < count-eval
+          read -r e2e < count-e2e
+          vitest=$((shared_web + api + integration + eval))
+          total=$((vitest + e2e))
+          fmt() { python3 -c "import sys; print(f'{int(sys.argv[1]):,}')" "$1"; }
+          v=$(fmt "$vitest"); t=$(fmt "$total")
+          echo "shared+web $shared_web / api $api / integration $integration / eval $eval / e2e $e2e"
+          echo "vitest $v, total $t"
           fail=0
           grep -q "badge/tests-${t/,/%2C}-brightgreen" README.md || { echo "badge does not say $t"; fail=1; }
           grep -q "alt=\"$t tests\"" README.md || { echo "badge alt text does not say $t"; fail=1; }
