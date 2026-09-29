@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { Mock } from 'vitest';
 
 import { bucketRowsByMonth } from './computation.js';
 
 let resolvedRows: Array<{ bucket: string; parentCategory: string | null; total: string }> = [];
 
-function chain(): Record<string, ReturnType<typeof vi.fn>> {
-  const c: Record<string, ReturnType<typeof vi.fn>> = {};
+function chain(): Record<string, Mock> {
+  const c: Record<string, Mock> = {};
   c.from = vi.fn().mockReturnValue(c);
   c.where = vi.fn().mockReturnValue(c);
   c.groupBy = vi.fn().mockImplementation(() => Promise.resolve(resolvedRows));

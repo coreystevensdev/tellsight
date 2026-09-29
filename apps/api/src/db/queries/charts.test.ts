@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Mock } from 'vitest';
 
 const mockSelect = vi.fn();
 const mockSelectDistinct = vi.fn();
 
 function chainable(resolvedValue: unknown) {
-  const chain: Record<string, ReturnType<typeof vi.fn>> = {};
+  const chain: Record<string, Mock> = {};
   chain.as = vi.fn().mockReturnValue(chain);
   chain.from = vi.fn().mockReturnValue(chain);
   chain.where = vi.fn().mockReturnValue(chain);

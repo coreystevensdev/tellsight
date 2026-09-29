@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Mock } from 'vitest';
 
 const mockGetByIdAndProvider = vi.fn();
 const mockUpdateSyncStatus = vi.fn();
@@ -16,7 +17,9 @@ const mockNormalizeTransactions = vi.fn();
 const mockTrackEvent = vi.fn();
 const mockInsertValues = vi.fn();
 const mockOnConflict = vi.fn();
-const mockReturning = vi.fn() as ReturnType<typeof vi.fn> & { _result: Promise<unknown[]> };
+// vitest 5 types a bare vi.fn() as Mock<Procedure | Constructable>, which is
+// not callable without narrowing, so name the signature.
+const mockReturning = vi.fn() as Mock & { _result: Promise<unknown[]> };
 
 vi.mock('../../../lib/db.js', () => ({
   dbAdmin: {

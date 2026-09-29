@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Mock } from 'vitest';
 
 const mockInsertValues = vi.fn();
 const mockOnConflict = vi.fn();
-const mockReturning = vi.fn() as ReturnType<typeof vi.fn> & { _result: Promise<unknown[]> };
+const mockReturning = vi.fn() as Mock & { _result: Promise<unknown[]> };
 const mockSelectFrom = vi.fn();
-const mockWhere = vi.fn() as ReturnType<typeof vi.fn> & { _result: Promise<void> | undefined; _directResult: Promise<unknown[]> | undefined };
-const mockLimit = vi.fn() as ReturnType<typeof vi.fn> & { _result: Promise<unknown[]> };
+const mockWhere = vi.fn() as Mock & { _result: Promise<void> | undefined; _directResult: Promise<unknown[]> | undefined };
+const mockLimit = vi.fn() as Mock & { _result: Promise<unknown[]> };
 const mockSet = vi.fn();
 const mockDelete = vi.fn();
 

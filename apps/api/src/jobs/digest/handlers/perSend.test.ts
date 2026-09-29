@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Mock } from 'vitest';
 
 const mockUpsertDefaults = vi.fn();
 const mockMarkSent = vi.fn().mockResolvedValue(undefined);
@@ -243,7 +244,7 @@ describe('happy path', () => {
     const { logger } = await import('../../../lib/logger.js');
     await handlePerSendJob({ id: 'send-audit', data: baseJobData } as never);
 
-    const successCall = (logger.info as ReturnType<typeof vi.fn>).mock.calls.find(
+    const successCall = (logger.info as Mock).mock.calls.find(
       (call) => call[1] === 'Per-send complete',
     );
     expect(successCall).toBeDefined();

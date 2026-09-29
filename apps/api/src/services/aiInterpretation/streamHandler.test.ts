@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { Mock } from 'vitest';
 
 // One test here stands up a real HTTP server and aborts a real client socket,
 // because res.destroyed and res.writableEnded cannot be observed through a
@@ -684,7 +685,7 @@ describe('streamToSSE', () => {
     });
 
     const { res, chunks } = createMockRes();
-    (res.flushHeaders as ReturnType<typeof vi.fn>).mockImplementation(() => {
+    (res.flushHeaders as Mock).mockImplementation(() => {
       callOrder.push('flushHeaders');
     });
 

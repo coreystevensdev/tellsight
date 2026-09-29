@@ -42,10 +42,12 @@ vi.mock('@anthropic-ai/sdk', () => {
   class AuthenticationError extends Error {}
   class BadRequestError extends Error {}
   const MockAnthropic = Object.assign(
-    vi.fn().mockImplementation(() => ({
+    vi.fn().mockImplementation(function () {
+    return {
       messages: { create: mockCreate, stream: mockStream },
       models: { list: vi.fn() },
-    })),
+    };
+  }),
     { AuthenticationError, BadRequestError },
   );
   return { default: MockAnthropic };

@@ -220,16 +220,26 @@ describe('proxyPostWithCookies invalid-response cookie forwarding', () => {
 });
 
 describe('upstreamSignal', () => {
-  it('aborts on its own once UPSTREAM_TIMEOUT_MS elapses, with no client-side abort', () => {
-    vi.useFakeTimers();
+  it('aborts on its own once the timeout elapses, with no client-side abort', async () => {
     const request = new NextRequest('http://localhost/api/whatever', { method: 'POST', body: '{}' });
 
-    const signal = upstreamSignal(request);
+    // Real timer at 20ms rather than fake timers at UPSTREAM_TIMEOUT_MS:
+    // AbortSignal.timeout runs on a native timer that vi.advanceTimersByTime
+    // does not reach, so faking it asserts nothing.
+    const signal = upstreamSignal(request, 20);
     expect(signal.aborted).toBe(false);
 
-    vi.advanceTimersByTime(UPSTREAM_TIMEOUT_MS);
+    await new Promise((resolve) => setTimeout(resolve, 60));
 
     expect(signal.aborted).toBe(true);
+    expect(request.signal.aborted).toBe(false);
+  });
+
+  it('carries the 60s upstream timeout by default', () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
+    upstreamSignal(new NextRequest('http://localhost/api/whatever', { method: 'POST', body: '{}' }));
+    expect(timeout).toHaveBeenCalledWith(UPSTREAM_TIMEOUT_MS);
+    timeout.mockRestore();
   });
 
   it.each(helpers)(

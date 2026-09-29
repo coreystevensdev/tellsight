@@ -187,7 +187,9 @@ describe('useShareInsight', () => {
     });
 
     // jsdom has no ClipboardItem, stub it
-    globalThis.ClipboardItem = vi.fn().mockImplementation((items) => items) as unknown as typeof ClipboardItem;
+    globalThis.ClipboardItem = vi.fn().mockImplementation(function (items) {
+      return items;
+    }) as unknown as typeof ClipboardItem;
 
     // mock fetch for data URL to blob conversion
     const blob = new Blob(['png'], { type: 'image/png' });

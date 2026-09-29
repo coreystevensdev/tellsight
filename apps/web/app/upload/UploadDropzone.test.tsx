@@ -36,7 +36,12 @@ const previewResponse = {
 beforeEach(() => {
   xhrInstance = new MockXHR();
   mockLocationAssign.mockClear();
-  vi.stubGlobal('XMLHttpRequest', vi.fn(() => xhrInstance));
+  vi.stubGlobal(
+    'XMLHttpRequest',
+    vi.fn(function () {
+      return xhrInstance;
+    }),
+  );
   vi.stubGlobal('location', { ...window.location, assign: mockLocationAssign });
   vi.useFakeTimers({ shouldAdvanceTime: true });
 });
@@ -291,7 +296,9 @@ describe('UploadDropzone', () => {
 
   it('retries the upload once after a silent refresh when the access token expired', async () => {
     let xhrCallCount = 0;
-    vi.stubGlobal('XMLHttpRequest', vi.fn(() => {
+    vi.stubGlobal(
+      'XMLHttpRequest',
+      vi.fn(function () {
       const inst = new MockXHR();
       xhrCallCount++;
       const isFirstCall = xhrCallCount === 1;

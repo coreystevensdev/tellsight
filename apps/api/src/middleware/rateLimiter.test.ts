@@ -21,12 +21,14 @@ vi.mock('../lib/logger.js', () => ({
 
 // mock ioredis so we don't need a real Redis connection
 vi.mock('ioredis', () => {
-  const RedisMock = vi.fn().mockImplementation(() => ({
+  const RedisMock = vi.fn().mockImplementation(function () {
+    return {
     status: 'ready',
     on: vi.fn(),
     connect: vi.fn(),
     disconnect: vi.fn(),
-  }));
+  };
+  });
   return { default: RedisMock };
 });
 

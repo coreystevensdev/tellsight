@@ -38,8 +38,14 @@ export const UPSTREAM_TIMEOUT_MS = 60_000;
 // Races the client's own disconnect against a hang backstop so a stuck
 // Express instance still resolves to the existing 502 path instead of
 // hanging forever.
-export function upstreamSignal(request: NextRequest): AbortSignal {
-  return AbortSignal.any([request.signal, AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)]);
+// timeoutMs is a parameter because AbortSignal.timeout is backed by a native
+// timer that vi.useFakeTimers cannot advance, so the only way to test the
+// timeout branch is to hand it a short real one.
+export function upstreamSignal(
+  request: NextRequest,
+  timeoutMs = UPSTREAM_TIMEOUT_MS,
+): AbortSignal {
+  return AbortSignal.any([request.signal, AbortSignal.timeout(timeoutMs)]);
 }
 
 function cookies(request: NextRequest): string {

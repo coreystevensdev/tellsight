@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Mock } from 'vitest';
+import type * as fsPromises from 'node:fs/promises';
 import React from 'react';
 
 vi.hoisted(() => {
@@ -39,12 +41,19 @@ function makeFakeLogger() {
   return { logger: instance as unknown as RealLogger, info, debug, warn, error };
 }
 
-function makeFakeFs(overrides: Partial<{ writeFile: ReturnType<typeof vi.fn>; mkdir: ReturnType<typeof vi.fn> }> = {}) {
+// The provider wants Pick<typeof fsPromises, 'writeFile' | 'mkdir'>, whose
+// overloads a vi.fn() has never structurally matched. Under vitest 4 the mock
+// type was loose enough to pass anyway; vitest 5 types it as
+// Mock<Procedure | Constructable> and it stops. One cast at the boundary keeps
+// the call sites and the .mock assertions unchanged.
+type FakeFs = Pick<typeof fsPromises, 'writeFile' | 'mkdir'>;
+
+function makeFakeFs(overrides: Partial<Record<'writeFile' | 'mkdir', Mock>> = {}) {
   return {
     writeFile: vi.fn(async () => undefined),
     mkdir: vi.fn(async () => undefined),
     ...overrides,
-  };
+  } as unknown as FakeFs & { writeFile: Mock; mkdir: Mock };
 }
 
 // Minimal React fixture, one element with literal content so render produces
