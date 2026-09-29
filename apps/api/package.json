@@ -25,7 +25,7 @@
     "@anthropic-ai/sdk": "^0.128.0",
     "@react-email/render": "^2.1.0",
     "@resvg/resvg-js": "2.6.2",
-    "@sentry/node": "^10.67.0",
+    "@sentry/node": "^11.0.0",
     "bullmq": "^6.3.9",
     "cookie-parser": "^1.4.7",
     "csv-parse": "7.0.3",
