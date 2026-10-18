@@ -279,3 +279,30 @@ describe('shutdownDigestWorkers', () => {
     expect(mockWorkerClose).not.toHaveBeenCalled();
   });
 });
+
+// staleNudge was imported by workers.ts and left unmocked here, which pulled the
+// real db/queries and email modules in and stalled the first test for five
+// seconds. Mocking the leaf fixes it, but mocking leaves by enumeration means a
+// sixth handler re-opens the hole silently. This fails loudly instead, and names
+// the handler, rather than leaving someone to wonder why the suite got slow.
+describe('handler mock coverage', () => {
+  const MOCKED = ['orchestrator', 'perOrg', 'perSend', 'staleNudge'];
+
+  it('mocks every handler workers.ts imports', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { dirname, resolve } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+
+    const here = dirname(fileURLToPath(import.meta.url));
+    const source = readFileSync(resolve(here, 'workers.ts'), 'utf-8');
+    const imported = [...source.matchAll(/from '\.\/handlers\/(\w+)\.js'/g)].map((m) => m[1]!);
+
+    expect(imported.length, 'no ./handlers imports found in workers.ts, update this regex').toBeGreaterThan(0);
+    const unmocked = imported.filter((h) => !MOCKED.includes(h));
+    expect(
+      unmocked,
+      `workers.ts imports ${unmocked.join(', ')} with no vi.mock here. ` +
+        'Add one per handler and list it in MOCKED, or the real module graph loads and the suite stalls.',
+    ).toEqual([]);
+  });
+});
