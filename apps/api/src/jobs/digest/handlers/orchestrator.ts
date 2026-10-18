@@ -151,17 +151,28 @@ export async function handleOrchestratorJob(job: Job): Promise<void> {
     logger.error({ correlationId, err }, 'Stale nudge sweep failed, digests were unaffected');
   }
 
-  logger.info(
-    {
-      correlationId,
-      eligibleOrgCount,
-      enqueueFailures,
-      pausedForStaleData,
-      nudgesEnqueued,
-      weekStart,
-      weekEnd,
-      durationMs: Date.now() - start,
-    },
-    'Digest orchestrator complete',
-  );
+  // Zero eligible orgs while paused orgs exist means every paying customer's
+  // digest has stopped, which is indistinguishable at info level from a healthy
+  // tick on an account with no subscribers. It is how the 2026-09-06 sweep went
+  // quiet for five weeks: the counts were right there in the log and nothing
+  // read them. Gated on pausedForStaleData so a deployment with no Pro orgs at
+  // all stays silent instead of warning every Sunday about nothing.
+  const everyOrgWentQuiet = eligibleOrgCount === 0 && (pausedForStaleData ?? 0) > 0;
+  const summary = {
+    correlationId,
+    eligibleOrgCount,
+    enqueueFailures,
+    pausedForStaleData,
+    nudgesEnqueued,
+    weekStart,
+    weekEnd,
+    durationMs: Date.now() - start,
+  };
+
+  if (everyOrgWentQuiet) {
+    logger.warn(summary, 'Digest orchestrator complete, but no org was eligible and all are paused on stale data');
+    return;
+  }
+
+  logger.info(summary, 'Digest orchestrator complete');
 }
