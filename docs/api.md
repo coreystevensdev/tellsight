@@ -279,8 +279,9 @@ rather than triggering generation, so this is safe to poll:
 
 `GET /ai-summaries/:datasetId` is the generating call and goes through the
 subscription gate, which annotates rather than blocks: free-tier callers get a
-real summary truncated to roughly 150 words plus an `upgrade_required` marker in
-the stream. Both it and `POST /qa/:datasetId` stream SSE, so pass `-N` to stop
+real summary truncated at 50 words plus an `upgrade_required` marker in the
+stream, whose `wordCount` carries the delivered total (the check runs per delta,
+so it lands on or just past the limit). Both it and `POST /qa/:datasetId` stream SSE, so pass `-N` to stop
 curl buffering.
 
 Show-me-the-math for a single stat, and the rows behind it:
