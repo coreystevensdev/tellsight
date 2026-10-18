@@ -6,6 +6,7 @@ import type { Mock } from 'vitest';
 // mock. It times out at the 5000ms default under parallel load, which matters
 // now that this job can fail the build rather than being continue-on-error.
 vi.setConfig({ testTimeout: 30_000 });
+import { FREE_PREVIEW_WORD_LIMIT } from 'shared/constants';
 import type { Response } from 'express';
 import type { StreamResult } from './claudeClient.js';
 import type { StreamOutcome } from './streamHandler.js';
@@ -752,7 +753,7 @@ describe('streamToSSE', () => {
       return Array.from({ length: count }, (_, i) => `word${i}`).join(' ');
     }
 
-    it('truncates at ~150 words and sends upgrade_required for free tier', async () => {
+    it('truncates at the free-preview limit and sends upgrade_required for free tier', async () => {
       const longText = generateWords(200);
       mockStreamInterpretation.mockImplementation(
         async (_prompt: string, onText: (d: string) => void) => {
@@ -770,6 +771,14 @@ describe('streamToSSE', () => {
       const upgradeChunk = chunks.find((c) => c.startsWith('event: upgrade_required'));
       expect(upgradeChunk).toBeDefined();
       expect(upgradeChunk).toContain('"wordCount"');
+      // The limit is a floor and nothing more. The check runs once per delta, so
+      // whatever the provider sends in the chunk that crosses the line is
+      // delivered: this mock hands over all 200 words at once and the free tier
+      // gets all 200. No upper bound is asserted because streamHandler does not
+      // control chunk size. Without the floor the test asserted only that some
+      // number came back, and would have passed at any limit.
+      const reported = Number(/"wordCount":(\d+)/.exec(upgradeChunk!)![1]);
+      expect(reported).toBeGreaterThanOrEqual(FREE_PREVIEW_WORD_LIMIT);
 
       const doneChunk = chunks.find((c) => c.startsWith('event: done'));
       expect(doneChunk).toBeDefined();

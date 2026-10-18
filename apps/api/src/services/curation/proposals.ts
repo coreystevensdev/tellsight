@@ -8,7 +8,9 @@ import { statInstanceId } from './computation.js';
 import { validateProposalCandidate } from './proposalValidation.js';
 import type { ScoredInsight } from './types.js';
 
-const PROMPT_VERSION = 'v1-agent';
+// Exported so the eval harness grades the prompt and tool this path actually
+// ships, instead of a copy that can drift away from it.
+export const PROMPT_VERSION = 'v1-agent';
 
 // Matches the "at most 5" instruction in v1-agent-system.md's Volume section.
 const MAX_PROPOSALS = 5;
@@ -29,7 +31,7 @@ function rankProposals(proposals: AgentProposal[]): AgentProposal[] {
   );
 }
 
-const RECORD_PROPOSAL_TOOL: ToolDefinition = {
+export const RECORD_PROPOSAL_TOOL: ToolDefinition = {
   name: 'record_proposal',
   description:
     "Record one finding worth the business owner's attention. Call once per genuine finding, or not at all when nothing in the stats is worth flagging.",
@@ -167,6 +169,9 @@ export async function generateProposals(
 ): Promise<AgentProposal[]> {
   const { system, user } = assemblePrompt(insights, datasetId, PROMPT_VERSION, businessProfile, now);
   const allowedStatIds = new Set(insights.map((insight) => statInstanceId(insight.stat, datasetId)));
+  // Same stat set the prompt was assembled from, so the figure check measures the
+  // proposal against exactly what the model was shown.
+  const pipelineStats = insights.map((insight) => insight.stat);
   const period = currentPeriod(now);
 
   logger.info({ datasetId, insightCount: insights.length }, 'agent proposal generation started');
@@ -183,7 +188,7 @@ export async function generateProposals(
     const candidate = buildCandidate(call.input, period);
     if (!candidate) continue;
 
-    const proposal = validateProposalCandidate(candidate, allowedStatIds);
+    const proposal = validateProposalCandidate(candidate, allowedStatIds, pipelineStats);
     if (proposal) proposals.push(proposal);
   }
 
