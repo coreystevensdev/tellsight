@@ -4,6 +4,7 @@ const mockWorkerClose = vi.fn().mockResolvedValue(undefined);
 const mockHandleOrchestratorJob = vi.fn().mockResolvedValue(undefined);
 const mockHandlePerOrgJob = vi.fn().mockResolvedValue(undefined);
 const mockHandlePerSendJob = vi.fn().mockResolvedValue(undefined);
+const mockHandleStaleNudgeJob = vi.fn().mockResolvedValue(undefined);
 const mockTrackEvent = vi.fn();
 
 interface WorkerCall {
@@ -48,6 +49,11 @@ vi.mock('../../lib/logger.js', () => ({
 vi.mock('./handlers/orchestrator.js', () => ({ handleOrchestratorJob: mockHandleOrchestratorJob }));
 vi.mock('./handlers/perOrg.js', () => ({ handlePerOrgJob: mockHandlePerOrgJob }));
 vi.mock('./handlers/perSend.js', () => ({ handlePerSendJob: mockHandlePerSendJob }));
+// Unmocked, this one reached db/queries -> lib/db.ts, which opens two postgres
+// clients at module scope. config.js is mocked without DATABASE_URL, so each sat
+// on a 10s connect_timeout inside a 5s test timeout and the first test to import
+// workers.js always lost the race.
+vi.mock('./handlers/staleNudge.js', () => ({ handleStaleNudgeJob: mockHandleStaleNudgeJob }));
 vi.mock('../../services/analytics/trackEvent.js', () => ({ trackEvent: mockTrackEvent }));
 
 beforeEach(() => {
