@@ -73,6 +73,11 @@ const FLOORS = { faithfulness: 0.85, completeness: 0.8 };
 const SUMMARIES_START = "computed from the business's uploaded data:\n\n";
 const SUMMARIES_END = '\n\n**Data lineage:**';
 
+// v1-agent interpolates the same {{statSummaries}} block but introduces it with
+// its own sentence, which also carries the [cite: id] instruction, so it needs
+// its own opening anchor. The closing anchor is identical in both templates.
+const AGENT_SUMMARIES_START = "that id is what belongs in a proposal's evidence array.\n\n";
+
 // The user prompt opens with "Today is <date>." and the model reasons from it:
 // 2.4 months of runway against a dated balance becomes a calendar month in the
 // summary. The ground truth handed to the faithfulness judge started at the stats
@@ -132,24 +137,46 @@ interface FixtureScore {
   sampledCount: number;
 }
 
+// faithfulness/completeness are nullable because the agent is allowed to return
+// no proposals at all, and an abstention has no prose to grade. Legal posture is
+// not nullable: silence passes it.
+interface AgentSample {
+  proposalCount: number;
+  faithfulness: number | null;
+  completeness: number | null;
+  legalPass: boolean;
+  legalViolations: string[];
+}
+
+interface AgentFixtureScore {
+  id: string;
+  label: string;
+  faithfulness: { mean: number; min: number } | null;
+  completeness: { mean: number; min: number } | null;
+  legalPosture: { pass: boolean; violations: string[] };
+  proposalsPerSample: number;
+  silentSamples: number;
+  sampledCount: number;
+}
+
 // Everything the model was given as fact, which is what "unsupported" has to be
 // measured against.
-function extractGroundTruth(userPrompt: string): string {
-  const stats = extractStatSummaries(userPrompt);
+function extractGroundTruth(userPrompt: string, startAnchor = SUMMARIES_START): string {
+  const stats = extractStatSummaries(userPrompt, startAnchor);
   const today = TODAY_LINE.exec(userPrompt)?.[0];
   return today ? `${today}\n\n${stats}` : stats;
 }
 
-function extractStatSummaries(userPrompt: string): string {
-  const start = userPrompt.indexOf(SUMMARIES_START);
+function extractStatSummaries(userPrompt: string, startAnchor = SUMMARIES_START): string {
+  const start = userPrompt.indexOf(startAnchor);
   const end = userPrompt.indexOf(SUMMARIES_END);
   if (start === -1 || end === -1 || end <= start) {
     throw new Error(
-      'Could not find the statSummaries block in the assembled prompt. The v1.6 ' +
-        'template likely changed; update SUMMARIES_START/SUMMARIES_END in eval-summaries.ts.',
+      'Could not find the statSummaries block in the assembled prompt. The template ' +
+        `likely changed; update the anchors in eval-summaries.ts (looked for ${JSON.stringify(startAnchor)}).`,
     );
   }
-  return userPrompt.slice(start + SUMMARIES_START.length, end).trim();
+  return userPrompt.slice(start + startAnchor.length, end).trim();
 }
 
 
@@ -233,6 +260,93 @@ function printScorecardTable(rows: FixtureScore[]): void {
     const missed = `${r.insight.misses}/${r.sampledCount}`;
     console.log(`| ${r.id}${degraded} | ${f} | ${c} | ${r.legalPosture.pass ? 'pass' : 'FAIL'} | ${missed} missed |`);
   }
+}
+
+// The agent arm. The dashboard arm above grades v2.0 prose from provider.generate;
+// this one grades v1-agent, which the agent path renders through the same
+// assemblePrompt but answers with a record_proposal tool call rather than prose.
+// Calling generateProposals rather than rebuilding its steps means the candidate
+// build, the stat-id validator and the dedup gate are all the shipped ones, so a
+// proposal the production path would drop is dropped here too.
+//
+// Scores faithfulness, completeness and legal posture, which transfer directly.
+// Deliberately NOT gated on INSIGHT_MISS_CEILING: FR22's ceiling was calibrated
+// against the dashboard summary, and whether it should also bind the agent is a
+// product decision, not something to assume by wiring it up.
+async function scoreAgentFixture(
+  judgeProvider: LlmProvider,
+  fixture: (typeof FIXTURES)[number],
+): Promise<AgentFixtureScore> {
+  // Dynamic for the same reason the provider is: proposals.ts reaches claudeClient,
+  // which builds the Anthropic client from config.ts and throws at load when the
+  // key is unset. The import is cached, so the per-fixture cost is one lookup.
+  const { generateProposals, PROMPT_VERSION } = await import(
+    '../apps/api/src/services/curation/proposals.js'
+  );
+
+  const scored = scoreInsights(fixture.build());
+  const { user } = assemblePrompt(scored, 1, PROMPT_VERSION, undefined, FROZEN_NOW);
+  const groundTruth = extractGroundTruth(user, AGENT_SUMMARIES_START);
+
+  const samples: AgentSample[] = [];
+  for (let i = 0; i < SAMPLES; i++) {
+    try {
+      const proposals = await generateProposals(scored, 1, undefined, FROZEN_NOW);
+      // Nothing to judge, but far from nothing to report: the prompt tells the
+      // model to call the tool "or not at all when nothing is worth flagging",
+      // so silence is a legitimate answer and its rate is the interesting number.
+      if (proposals.length === 0) {
+        samples.push({ proposalCount: 0, faithfulness: null, completeness: null, legalPass: true, legalViolations: [] });
+        console.log(`  ${fixture.id} agent sample ${i + 1}/${SAMPLES}: no proposals`);
+        continue;
+      }
+
+      const prose = proposals
+        .map((p) => [p.title, p.explanation, p.recommendation].filter(Boolean).join('\n'))
+        .join('\n\n');
+      const [faithfulness, completeness] = await Promise.all([
+        scoreFaithfulness(judgeProvider, groundTruth, prose),
+        scoreCompleteness(judgeProvider, fixture.answerKey, prose),
+      ]);
+      const legal = scoreLegalPosture(prose);
+      samples.push({
+        proposalCount: proposals.length,
+        faithfulness,
+        completeness,
+        legalPass: legal.pass,
+        legalViolations: legal.violations,
+      });
+      console.log(
+        `  ${fixture.id} agent sample ${i + 1}/${SAMPLES}: ${proposals.length} proposal(s), faith ${faithfulness.toFixed(2)}, comp ${completeness.toFixed(2)}, legal ${legal.pass ? 'pass' : 'FAIL'}`,
+      );
+    } catch (err) {
+      console.error(`  ${fixture.id} agent sample ${i + 1}/${SAMPLES} failed: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  if (samples.length === 0) {
+    throw new Error(`${fixture.id}: all ${SAMPLES} agent samples failed`);
+  }
+
+  const scoredSamples = samples.filter((s) => s.faithfulness !== null);
+  const faithVals = scoredSamples.map((s) => s.faithfulness as number);
+  const compVals = scoredSamples.map((s) => s.completeness as number);
+  return {
+    id: fixture.id,
+    label: fixture.label,
+    // Mean over the samples that produced a proposal. A run where the model
+    // stayed silent every time has no prose to score, and reporting 0.00 for it
+    // would read as a faithfulness failure rather than an abstention.
+    faithfulness: faithVals.length ? { mean: mean(faithVals), min: Math.min(...faithVals) } : null,
+    completeness: compVals.length ? { mean: mean(compVals), min: Math.min(...compVals) } : null,
+    legalPosture: {
+      pass: samples.every((s) => s.legalPass),
+      violations: [...new Set(samples.flatMap((s) => s.legalViolations))],
+    },
+    proposalsPerSample: mean(samples.map((s) => s.proposalCount)),
+    silentSamples: samples.filter((s) => s.proposalCount === 0).length,
+    sampledCount: samples.length,
+  };
 }
 
 async function scoreFixture(
@@ -354,6 +468,21 @@ async function main(): Promise<void> {
     }
   }
 
+  // On by default: the agent prompt shipping ungraded while the scorecard reported
+  // on v2.0 is the exact gap this arm closes, so skipping has to be deliberate.
+  // EVAL_AGENT=0 opts out when only the dashboard arm is being iterated on.
+  const agentResults: AgentFixtureScore[] = [];
+  if (process.env.EVAL_AGENT !== '0') {
+    console.log(`\nAgent arm (v1-agent, record_proposal tool) x ${SAMPLES} samples...`);
+    for (const fixture of selected) {
+      try {
+        agentResults.push(await scoreAgentFixture(judgeProvider, fixture));
+      } catch (err) {
+        console.error(`  ${fixture.id} agent arm failed: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+  }
+
   if (results.length === 0) {
     console.error('FAIL: no fixtures were scored');
     mkdirSync(dirname(MARKER_PATH), { recursive: true });
@@ -389,6 +518,18 @@ async function main(): Promise<void> {
 
   const scorecard = {
     promptVersion, // the version assemblePrompt actually rendered, not a hardcoded guess
+    // Its own section rather than folded into the aggregate above: these are a
+    // different prompt answering with a different mechanism, and averaging them
+    // together would hide a regression in either one.
+    agent: agentResults.length
+      ? {
+          promptVersion: 'v1-agent',
+          fixtures: agentResults,
+          legalPosture: agentResults.every((r) => r.legalPosture.pass),
+          silentSamples: agentResults.reduce((n, r) => n + r.silentSamples, 0),
+          totalSamples: agentResults.reduce((n, r) => n + r.sampledCount, 0),
+        }
+      : null,
     generatedAt: new Date().toISOString(), // lives only here, never in the printed/compared surface
     samplesPerFixture: SAMPLES,
     floors: FLOORS,
