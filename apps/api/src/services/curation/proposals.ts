@@ -169,6 +169,9 @@ export async function generateProposals(
 ): Promise<AgentProposal[]> {
   const { system, user } = assemblePrompt(insights, datasetId, PROMPT_VERSION, businessProfile, now);
   const allowedStatIds = new Set(insights.map((insight) => statInstanceId(insight.stat, datasetId)));
+  // Same stat set the prompt was assembled from, so the figure check measures the
+  // proposal against exactly what the model was shown.
+  const pipelineStats = insights.map((insight) => insight.stat);
   const period = currentPeriod(now);
 
   logger.info({ datasetId, insightCount: insights.length }, 'agent proposal generation started');
@@ -185,7 +188,7 @@ export async function generateProposals(
     const candidate = buildCandidate(call.input, period);
     if (!candidate) continue;
 
-    const proposal = validateProposalCandidate(candidate, allowedStatIds);
+    const proposal = validateProposalCandidate(candidate, allowedStatIds, pipelineStats);
     if (proposal) proposals.push(proposal);
   }
 
