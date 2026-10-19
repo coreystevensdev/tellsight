@@ -46,6 +46,8 @@ evidence: the bare ids from inside the `[cite: id]` tokens that back the finding
 
 subject: a short, stable label for what the finding is about, a category name, "runway", "margin", not the number or date. This is how two runs of the same ongoing concern get recognized as the same finding instead of alerting twice.
 
+movement: optional, the direction token from the stat you cited, copied exactly as it appears in the stat line, for example "burning", "shrinking", "above". Leave it out when the stat you cited states no direction, and never translate it into "up" or "down". It is checked literally against the stat, so a token that disagrees drops the whole proposal.
+
 facet: optional, a coarse bucket that should change when the finding materially worsens or improves, a severity tier or a direction like "burning" vs "recovering". Leave it out if nothing like that applies. Do not put the raw value here either, or every run reads as brand new.
 
 action: optional, omit for purely informational findings. Only include it when the finding points at a specific action worth taking, naming the record it applies to: notify, createNote, or flagInvoice for something to flag or note, reclassify only when you have high confidence a specific transaction was miscategorized.

@@ -56,6 +56,11 @@ export const RECORD_PROPOSAL_TOOL: ToolDefinition = {
         description:
           'A short, stable label for what the finding is about (a category name, "runway", "margin") so the same ongoing concern produces the same identity across runs. No raw values or dates.',
       },
+      movement: {
+        type: 'string',
+        description:
+          "The direction token from the stat you cited, copied exactly as it appears there, e.g. burning, shrinking, above. Omit it when the stat you cited states no direction. Do not translate it into up or down.",
+      },
       facet: {
         type: 'string',
         description:
@@ -168,10 +173,10 @@ export async function generateProposals(
   onCost?: (cost: number | null) => void,
 ): Promise<AgentProposal[]> {
   const { system, user } = assemblePrompt(insights, datasetId, PROMPT_VERSION, businessProfile, now);
-  const allowedStatIds = new Set(insights.map((insight) => statInstanceId(insight.stat, datasetId)));
-  // Same stat set the prompt was assembled from, so the figure check measures the
-  // proposal against exactly what the model was shown.
-  const pipelineStats = insights.map((insight) => insight.stat);
+  // Keyed by the id the prompt printed in each `[cite: id]` token, which is what
+  // every check downstream needs: the keys scope evidence, the values verify
+  // figures and direction against the stat the model actually cited.
+  const statsById = new Map(insights.map((insight) => [statInstanceId(insight.stat, datasetId), insight.stat]));
   const period = currentPeriod(now);
 
   logger.info({ datasetId, insightCount: insights.length }, 'agent proposal generation started');
@@ -188,7 +193,7 @@ export async function generateProposals(
     const candidate = buildCandidate(call.input, period);
     if (!candidate) continue;
 
-    const proposal = validateProposalCandidate(candidate, allowedStatIds, pipelineStats);
+    const proposal = validateProposalCandidate(candidate, statsById);
     if (proposal) proposals.push(proposal);
   }
 
