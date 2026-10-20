@@ -65,6 +65,12 @@ export const agentProposalSchema = z.object({
     .refine((s) => !hasDirectiveLanguage(s), 'recommendation must be advisory, not directive'),
   confidence: z.number().min(0).max(1),
   evidence: z.array(z.string().min(1)).min(1), // ComputedStat ids, a subset of the prompt's allowedStatIds
+  // The direction token copied from the cited stat, verbatim. Not an enum: the
+  // three stat types that declare a direction use three different vocabularies
+  // ('above'|'below', 'expanding'|'shrinking'|'stable', 'burning'|'surplus') and
+  // nine declare none, so the check is equality against whichever one was cited
+  // rather than membership of a shared set. See ADR 0003.
+  movement: z.string().min(1).optional(),
   action: proposedActionSchema.optional(), // absent means informational finding, nothing to approve
   dedupKey: z.string().min(1), // stable across runs for the same finding
   period: z.string().min(1), // e.g. "2026-W26"
