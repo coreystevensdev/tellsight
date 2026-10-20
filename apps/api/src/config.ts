@@ -36,6 +36,9 @@ export const envSchema = z
     PUBLIC_API_URL: z.string().url().default('http://localhost:3001'),
     COOKIE_DOMAIN: z.string().min(1).optional(),
     NODE_ENV: z.enum(['development', 'production', 'test']),
+    // Short commit sha of the running image, set by the deploy. Unset
+    // everywhere else, which /health reports as null rather than guessing.
+    BUILD_SHA: z.string().min(1).optional(),
     // Starting level only. It can be changed at runtime through the admin
     // route, so this is not the authority on what the logger is doing now.
     LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).optional(),

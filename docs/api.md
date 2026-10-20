@@ -64,6 +64,20 @@ down. The deploy treats a 503 as a failed release and rolls back, so the split
 matters: a container that is running but cannot reach its database should not
 count as a successful deploy.
 
+`/health` returns both of those checks in one body, plus `buildSha`: the short
+commit sha of the running image. That is the only way to confirm what is
+deployed without CI credentials, because the drift gate reads the image tag off
+the instance over SSM. It is `null` anywhere the deploy did not set it, rather
+than a stand-in, so an unknown version cannot read as a real one.
+
+```bash
+curl -s https://tellsight.coreystevens.dev/api/health
+```
+
+```json
+{"status":"ok","buildSha":"18bc7b8","services":{ ... },"timestamp":"2026-10-20T00:31:08.523Z"}
+```
+
 A failed database check carries a `reason`, because the two failures need
 different responses:
 
