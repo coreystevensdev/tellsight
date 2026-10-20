@@ -4,6 +4,7 @@
 // an external SLA we don't control. Fail-open remains the posture for this endpoint.
 import { Router } from 'express';
 
+import { env } from '../config.js';
 import { checkDatabaseHealth, type DbHealth } from '../lib/db.js';
 import { logger } from '../lib/logger.js';
 import { checkRedisHealth } from '../lib/redis.js';
@@ -50,6 +51,9 @@ router.get('/health/ready', async (_req, res) => {
 });
 
 // backward-compatible combined check (used by Docker healthcheck + E2E wait loop)
+// Carries buildSha because this is the endpoint external tooling already
+// polls. Without it, confirming what is deployed means reading the image tag
+// off the instance over SSM, which only CI can do.
 router.get('/health', async (_req, res) => {
   const [rawDb, redisHealth, emailHealth, stripeHealth, claudeHealth] = await Promise.all([
     checkDatabaseHealth(),
@@ -64,6 +68,7 @@ router.get('/health', async (_req, res) => {
 
   res.status(status === 'ok' ? 200 : 503).json({
     status,
+    buildSha: env.BUILD_SHA ?? null,
     services: { database: dbHealth, redis: redisHealth, email: emailHealth, stripe: stripeHealth, claude: claudeHealth },
     timestamp: new Date().toISOString(),
   });

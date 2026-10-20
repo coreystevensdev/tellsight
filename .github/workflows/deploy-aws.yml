@@ -186,6 +186,8 @@ jobs:
 
           env_pairs = [
               ("NODE_ENV", "production"),
+              # Short sha, matching the image tag the drift gate compares.
+              ("BUILD_SHA", os.environ['HEAD_SHA'][:7]),
               ("DATABASE_URL", os.environ['DATABASE_URL']),
               ("DATABASE_ADMIN_URL", os.environ['DATABASE_ADMIN_URL']),
               ("CLAUDE_API_KEY", os.environ['CLAUDE_API_KEY']),

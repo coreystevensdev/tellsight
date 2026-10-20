@@ -15,6 +15,7 @@ vi.hoisted(() => {
     JWT_SECRET: 'j'.repeat(32),
     APP_URL: 'http://localhost:3000',
     NODE_ENV: 'development',
+    BUILD_SHA: 'abc1234',
     EMAIL_FROM_ADDRESS: 'insights@kiln.test.local',
     EMAIL_MAILING_ADDRESS: '500 Test Ave, Denver, CO 80202',
   });
@@ -134,6 +135,37 @@ describe('GET /health with a failed dependency', () => {
 
     expect(res.status).toBe(200);
     expect(body.status).toBe('ok');
+  });
+});
+
+describe('GET /health buildSha', () => {
+  it('reports the deployed sha', async () => {
+    const body = (await (await fetch(`${baseUrl}/health`)).json()) as { buildSha: string | null };
+
+    expect(body.buildSha).toBe('abc1234');
+  });
+
+  // The question it exists to answer is "what is running", which is asked most
+  // often mid-incident, so the degraded path has to carry it too.
+  it('still reports it when degraded', async () => {
+    mockCheckRedisHealth.mockResolvedValue({ status: 'error', latencyMs: 1 });
+
+    const res = await fetch(`${baseUrl}/health`);
+    const body = (await res.json()) as { buildSha: string | null };
+
+    expect(res.status).toBe(503);
+    expect(body.buildSha).toBe('abc1234');
+  });
+
+  it('is null outside a deploy rather than a stand-in value', async () => {
+    const saved = env.BUILD_SHA;
+    delete (env as Partial<typeof env>).BUILD_SHA;
+    try {
+      const body = (await (await fetch(`${baseUrl}/health`)).json()) as { buildSha: string | null };
+      expect(body.buildSha).toBeNull();
+    } finally {
+      (env as Partial<typeof env>).BUILD_SHA = saved;
+    }
   });
 });
 

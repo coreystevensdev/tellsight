@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockFindEligibleOrgs = vi.fn();
+const mockCountPaused = vi.fn().mockResolvedValue(0);
 const mockExpireProposals = vi.fn().mockResolvedValue([]);
 const mockOrgQueueAdd = vi.fn().mockResolvedValue(undefined);
 
@@ -9,14 +10,14 @@ vi.mock('bullmq', () => ({
 }));
 
 vi.mock('../../../config.js', () => ({ env: { REDIS_URL: 'redis://localhost:6379' } }));
-vi.mock('../../../lib/logger.js', () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
+const mockLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+vi.mock('../../../lib/logger.js', () => ({ logger: mockLogger }));
 vi.mock('../../../lib/db.js', () => ({ dbAdmin: {} }));
 
 vi.mock('../../../db/queries/index.js', () => ({
   digestEligibilityQueries: {
     findEligibleOrgs: mockFindEligibleOrgs,
+    countOrgsPausedForStaleData: mockCountPaused,
   },
   agentProposalsQueries: {
     expireProposals: mockExpireProposals,
@@ -35,6 +36,7 @@ const { handleOrchestratorJob, currentUtcWeek } = await import('./orchestrator.j
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockCountPaused.mockResolvedValue(0);
 });
 
 describe('currentUtcWeek', () => {
@@ -183,5 +185,49 @@ describe('handleOrchestratorJob', () => {
     await expect(handleOrchestratorJob({ id: 'orch-8' } as never)).resolves.toBeUndefined();
 
     expect(mockOrgQueueAdd).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the all-quiet warning', () => {
+  it('warns when no org is eligible and every one is paused on stale data', async () => {
+    mockFindEligibleOrgs.mockResolvedValueOnce([]);
+    mockCountPaused.mockResolvedValueOnce(1);
+
+    await handleOrchestratorJob({ id: 'orch-quiet' } as never);
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ eligibleOrgCount: 0, pausedForStaleData: 1 }),
+      expect.stringContaining('no org was eligible'),
+    );
+    // Exactly the 2026-09-06 shape: the counts were already logged, just at a
+    // level nothing reads. It must not still be reported as a clean run.
+    expect(mockLogger.info).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'Digest orchestrator complete',
+    );
+  });
+
+  it('stays quiet when there are simply no pro orgs to send to', async () => {
+    mockFindEligibleOrgs.mockResolvedValueOnce([]);
+    mockCountPaused.mockResolvedValueOnce(0);
+
+    await handleOrchestratorJob({ id: 'orch-empty' } as never);
+
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      expect.objectContaining({ eligibleOrgCount: 0, pausedForStaleData: 0 }),
+      'Digest orchestrator complete',
+    );
+  });
+
+  it('does not warn when orgs were eligible, even with others paused', async () => {
+    mockFindEligibleOrgs.mockResolvedValueOnce([
+      { id: 10, name: 'Acme', activeDatasetId: 100, businessProfile: null },
+    ]);
+    mockCountPaused.mockResolvedValueOnce(3);
+
+    await handleOrchestratorJob({ id: 'orch-mixed' } as never);
+
+    expect(mockLogger.warn).not.toHaveBeenCalled();
   });
 });

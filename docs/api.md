@@ -64,6 +64,20 @@ down. The deploy treats a 503 as a failed release and rolls back, so the split
 matters: a container that is running but cannot reach its database should not
 count as a successful deploy.
 
+`/health` returns both of those checks in one body, plus `buildSha`: the short
+commit sha of the running image. That is the only way to confirm what is
+deployed without CI credentials, because the drift gate reads the image tag off
+the instance over SSM. It is `null` anywhere the deploy did not set it, rather
+than a stand-in, so an unknown version cannot read as a real one.
+
+```bash
+curl -s https://tellsight.coreystevens.dev/api/health
+```
+
+```json
+{"status":"ok","buildSha":"18bc7b8","services":{ ... },"timestamp":"2026-10-20T00:31:08.523Z"}
+```
+
 A failed database check carries a `reason`, because the two failures need
 different responses:
 
@@ -279,8 +293,9 @@ rather than triggering generation, so this is safe to poll:
 
 `GET /ai-summaries/:datasetId` is the generating call and goes through the
 subscription gate, which annotates rather than blocks: free-tier callers get a
-real summary truncated to roughly 150 words plus an `upgrade_required` marker in
-the stream. Both it and `POST /qa/:datasetId` stream SSE, so pass `-N` to stop
+real summary truncated at 50 words plus an `upgrade_required` marker in the
+stream, whose `wordCount` carries the delivered total (the check runs per delta,
+so it lands on or just past the limit). Both it and `POST /qa/:datasetId` stream SSE, so pass `-N` to stop
 curl buffering.
 
 Show-me-the-math for a single stat, and the rows behind it:
