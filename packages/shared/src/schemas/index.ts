@@ -51,6 +51,10 @@ export {
 
 export type { BusinessProfile, OrgFinancials } from './businessProfile.js';
 
+export { categoryPlanSchema, categoryPlansInputSchema } from './categoryPlan.js';
+
+export type { CategoryPlan, CategoryPlansInput } from './categoryPlan.js';
+
 export {
   createShareSchema,
   insightSnapshotSchema,

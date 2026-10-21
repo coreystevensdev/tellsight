@@ -50,6 +50,7 @@ export type { ServiceStatus, SystemHealth } from './admin.js';
 export type { StatCorrectionStatus, StatCorrection } from './statCorrection.js';
 
 export type { BusinessProfile, OrgFinancials } from '../schemas/businessProfile.js';
+export type { CategoryPlan, CategoryPlansInput } from '../schemas/categoryPlan.js';
 
 export type { QaTermination, QaAnswer } from './qa.js';
 

@@ -499,6 +499,29 @@ export const cashBalanceSnapshots = pgTable(
   ],
 );
 
+// The owner's intended monthly spend per category. Not keyed to a dataset: a
+// plan is intent and outlives any upload, so keying it to datasetId would throw
+// every plan away on the next CSV. One row per category is what "planned" means,
+// which is why removing a plan deletes the row rather than nulling a column.
+export const categoryPlans = pgTable(
+  'category_plans',
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    orgId: integer('org_id')
+      .notNull()
+      .references(() => orgs.id, { onDelete: 'cascade' }),
+    category: varchar({ length: 255 }).notNull(),
+    // Matches data_rows.amount precision so comparing plan to actual cannot
+    // drift on scale.
+    plannedMonthly: numeric('planned_monthly', { precision: 12, scale: 2 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('idx_category_plans_org_category').on(table.orgId, table.category),
+  ],
+);
+
 export const cashBalanceSnapshotsRelations = relations(cashBalanceSnapshots, ({ one }) => ({
   org: one(orgs, {
     fields: [cashBalanceSnapshots.orgId],
