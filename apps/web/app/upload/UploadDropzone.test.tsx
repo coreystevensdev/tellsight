@@ -100,7 +100,10 @@ describe('UploadDropzone', () => {
   it('renders default state with dropzone prompt', () => {
     render(<UploadDropzone />);
 
-    expect(screen.getByRole('button', { name: /upload csv file/i })).toBeInTheDocument();
+    // The dropzone has no aria-label, so its accessible name is its own visible
+    // text (WCAG 2.5.3, see UploadDropzone.tsx). jsdom reports a touch device,
+    // so that text is the mobile copy.
+    expect(screen.getByRole('button', { name: /tap to select your csv file/i })).toBeInTheDocument();
     // jsdom exposes ontouchstart → isTouchDevice=true → mobile copy
     expect(screen.getByText(/tap to select your csv file/i)).toBeInTheDocument();
     expect(screen.getByText(/accepted: .csv up to 10mb/i)).toBeInTheDocument();
@@ -358,7 +361,7 @@ describe('UploadDropzone', () => {
   it('opens file picker on Enter key', () => {
     render(<UploadDropzone />);
 
-    const dropzone = screen.getByRole('button', { name: /upload csv file/i });
+    const dropzone = screen.getByRole('button', { name: /tap to select your csv file/i });
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     const clickSpy = vi.spyOn(input, 'click');
 
@@ -370,7 +373,7 @@ describe('UploadDropzone', () => {
   it('opens file picker on Space key', () => {
     render(<UploadDropzone />);
 
-    const dropzone = screen.getByRole('button', { name: /upload csv file/i });
+    const dropzone = screen.getByRole('button', { name: /tap to select your csv file/i });
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     const clickSpy = vi.spyOn(input, 'click');
 
@@ -544,7 +547,7 @@ describe('UploadDropzone', () => {
       fireEvent.click(screen.getByText('Cancel'));
 
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /upload csv file/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /tap to select your csv file/i })).toBeInTheDocument();
       });
     });
   });

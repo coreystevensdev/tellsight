@@ -311,7 +311,10 @@ export function UploadDropzone() {
         ref={dropzoneRef}
         role="button"
         tabIndex={0}
-        aria-label="Upload CSV file"
+        // Named by its content, not an aria-label. The visible text changes with
+        // state and with touch, so a fixed label drifts out of it and trips
+        // label-content-name-mismatch (WCAG 2.5.3 Label in Name). Content also
+        // carries the 10MB limit, which the old label hid from a screen reader.
         onClick={openFilePicker}
         onKeyDown={handleKeyDown}
         onDragEnter={handleDragEnter}
