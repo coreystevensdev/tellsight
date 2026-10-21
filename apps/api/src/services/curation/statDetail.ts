@@ -165,6 +165,23 @@ export function buildStatDetail(stat: IdentifiedStat): StatDetailView {
       };
     }
 
+    case StatType.CategoryVariance: {
+      const planned = usd.format(stat.details.plannedMonthly);
+      const actual = usd.format(stat.details.actualMonthly);
+      const word = stat.details.direction === 'over' ? 'over' : stat.details.direction === 'under' ? 'under' : 'on';
+      return {
+        kind: 'formula',
+        expression: `${stat.details.monthLabel}: spent $${actual} against a $${planned} plan, ${word} by ${usdSigned(stat.details.variance)}`,
+        terms: [
+          { label: 'Month compared', value: stat.details.monthLabel },
+          { label: 'Planned', value: `$${planned}` },
+          { label: 'Actual', value: `$${actual}` },
+          { label: 'Variance', value: usdSigned(stat.details.variance) },
+          { label: 'Variance percent', value: `${stat.details.variancePercent.toFixed(1)}%` },
+        ],
+      };
+    }
+
     case StatType.CashForecast: {
       const methodName = stat.details.method === 'linear_regression'
         ? 'Linear regression on trailing monthly net'

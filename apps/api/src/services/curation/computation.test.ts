@@ -2170,3 +2170,94 @@ describe('quantile (R type 2)', () => {
     expect(quantile([5, 6, 7], 1)).toBe(7);
   });
 });
+
+describe('computeCategoryVariance', () => {
+  const VNOW = new Date('2026-05-10T00:00:00.000Z');
+
+  function vrow(id: number, category: string, date: string, amount: string) {
+    return {
+      id, orgId: 1, datasetId: 1, sourceType: 'csv' as const, category,
+      parentCategory: 'Expenses', date: new Date(date), amount,
+      label: null, metadata: null, createdAt: new Date(),
+    };
+  }
+
+  // April is the latest complete month relative to VNOW (10 May), so these
+  // May rows must never be the ones compared.
+  const vrows = [
+    vrow(1, 'Rent', '2026-03-01', '2400.00'),
+    vrow(2, 'Rent', '2026-04-01', '2600.00'),
+    vrow(3, 'Rent', '2026-05-02', '40.00'),
+    vrow(4, 'Software', '2026-04-05', '100.00'),
+    vrow(5, 'Software', '2026-04-20', '95.00'),
+  ];
+
+  function varianceOf(plans: { category: string; plannedMonthly: number }[], now = VNOW) {
+    const stats = computeStats(vrows, { categoryPlans: plans, now });
+    return stats.filter((s) => s.statType === 'category_variance');
+  }
+
+  it('returns nothing when no plans are set', () => {
+    expect(varianceOf([])).toEqual([]);
+    expect(computeStats(vrows, { now: VNOW }).filter((s) => s.statType === 'category_variance')).toEqual([]);
+  });
+
+  // The whole point of the month selection. If the current month were included,
+  // Rent would compare 40 against 2400 and report 98% under plan.
+  it('compares the latest complete month, not the partial current one', () => {
+    const [rent] = varianceOf([{ category: 'Rent', plannedMonthly: 2400 }]);
+
+    expect(rent?.details).toMatchObject({
+      monthLabel: '2026-04',
+      actualMonthly: 2600,
+      plannedMonthly: 2400,
+      variance: 200,
+      direction: 'over',
+    });
+  });
+
+  it('sums every row in the compared month', () => {
+    const [software] = varianceOf([{ category: 'Software', plannedMonthly: 300 }]);
+
+    expect(software?.details).toMatchObject({ actualMonthly: 195, variance: -105, direction: 'under' });
+  });
+
+  it('reports a planned category with no spend that month as actual zero', () => {
+    const [travel] = varianceOf([{ category: 'Travel', plannedMonthly: 500 }]);
+
+    expect(travel?.details).toMatchObject({ actualMonthly: 0, variance: -500, direction: 'under' });
+  });
+
+  it('calls a small miss on_plan rather than over or under', () => {
+    const [rent] = varianceOf([{ category: 'Rent', plannedMonthly: 2550 }]);
+
+    expect(rent?.details.direction).toBe('on_plan');
+  });
+
+  // Infinity would reach validateSummary as a figure it cannot match.
+  it('reports zero percent for a zero plan instead of Infinity', () => {
+    const [rent] = varianceOf([{ category: 'Rent', plannedMonthly: 0 }]);
+
+    expect(rent?.details.variancePercent).toBe(0);
+    expect(Number.isFinite(rent?.details.variance)).toBe(true);
+  });
+
+  // statDiscriminator returns a placeholder for this type, so a duplicate would
+  // mint the same id and assignIds would drop it silently.
+  it('emits one stat per category even when a plan is listed twice', () => {
+    const stats = varianceOf([
+      { category: 'Rent', plannedMonthly: 2400 },
+      { category: 'Rent', plannedMonthly: 9999 },
+    ]);
+
+    expect(stats).toHaveLength(1);
+    expect(stats[0]?.details.plannedMonthly).toBe(2400);
+  });
+
+  it('returns nothing when every month in the data is the current one', () => {
+    const mayOnly = [vrow(1, 'Rent', '2026-05-02', '40.00')];
+
+    expect(computeStats(mayOnly, { categoryPlans: [{ category: 'Rent', plannedMonthly: 2400 }], now: VNOW })
+      .filter((s) => s.statType === 'category_variance')).toEqual([]);
+  });
+});

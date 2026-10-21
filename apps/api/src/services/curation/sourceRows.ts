@@ -68,6 +68,14 @@ export function resolveSourceRows(rows: DataRow[], stat: IdentifiedStat): DataRo
       return rows.filter((r) => isFinancialRow(r) && months.has(monthKey(r.date)));
     }
 
+    case StatType.CategoryVariance:
+      // The same month and category actualMonthly was summed over, so the
+      // drawer shows exactly the rows behind it. monthKey is UTC on both sides,
+      // which is what keeps a boundary row in one month rather than two.
+      return rows.filter(
+        (r) => r.category === stat.category && monthKey(r.date) === stat.details.monthLabel,
+      );
+
     case StatType.CashForecast: {
       const months = new Set(stat.details.basisMonths);
       return rows.filter((r) => isFinancialRow(r) && months.has(monthKey(r.date)));

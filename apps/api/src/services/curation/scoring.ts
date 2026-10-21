@@ -71,6 +71,10 @@ function noveltyScore(stat: ComputedStat): number {
     case StatType.BreakEven:
       // Below break-even gives a concrete revenue target; above it is reassuring.
       return stat.details.gap > 0 ? 0.75 : 0.60;
+    case StatType.CategoryVariance:
+      // A category landing on its plan is the expected outcome, so it is not
+      // news. A miss is, and the size of the miss is already in the score below.
+      return stat.details.direction === 'on_plan' ? 0.3 : 0.75;
     case StatType.CashForecast:
       // crossesZeroAtMonth !== null means the projection pierces zero in 3 months.
       return stat.details.crossesZeroAtMonth !== null ? 0.85 : 0.65;
@@ -105,6 +109,11 @@ function actionabilityScore(stat: ComputedStat): number {
       return 0.45;
     case StatType.BreakEven:
       return stat.details.gap > 0 ? 0.88 : 0.55;
+    case StatType.CategoryVariance:
+      // Overspending against a plan the owner set themselves is the most
+      // actionable thing here: they chose the number, so the gap is theirs to
+      // close. Underspending is worth knowing and rarely urgent.
+      return stat.details.direction === 'over' ? 0.9 : stat.details.direction === 'under' ? 0.6 : 0.3;
     case StatType.CashForecast:
       return stat.details.crossesZeroAtMonth !== null ? 0.92 : 0.55;
     case StatType.YearOverYear:
