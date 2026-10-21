@@ -48,7 +48,7 @@
     "shared": "workspace:*",
     "sharp": "0.35.5",
     "simple-statistics": "^7.12.1",
-    "stripe": "^22.6.1",
+    "stripe": "^23.0.0",
     "svix": "2.8.0",
     "zod": "3.25.76"
   },
