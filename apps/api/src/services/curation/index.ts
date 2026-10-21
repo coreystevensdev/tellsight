@@ -1,7 +1,12 @@
 import type { BusinessProfile, OrgFinancials } from 'shared/types';
 
 import { logger } from '../../lib/logger.js';
-import { dataRowsQueries, aiSummariesQueries, statCorrectionsQueries } from '../../db/queries/index.js';
+import {
+  dataRowsQueries,
+  aiSummariesQueries,
+  statCorrectionsQueries,
+  categoryPlansQueries,
+} from '../../db/queries/index.js';
 import type { db, DbTransaction } from '../../lib/db.js';
 import { computeStats } from './computation.js';
 import { scoreInsights, scoringConfig } from './scoring.js';
@@ -30,10 +35,22 @@ export async function runCurationPipeline(
 
   logger.info({ orgId, datasetId, rowCount: rows.length }, 'curation pipeline started');
 
+  // Fetched here rather than taken as a parameter, the way rows are: plans are
+  // per-org and orgId is already an argument, so making every caller fetch them
+  // would add a sixth positional parameter and a way to forget. Passing the same
+  // `client` means they inherit exactly the RLS treatment the rows above get,
+  // which in every production path is dbAdmin from a worker with no request
+  // context.
+  const categoryPlans = await categoryPlansQueries.listCategoryPlans(orgId, client);
+
   const stats = computeStats(rows, {
     trendMinPoints: scoringConfig.thresholds.trendMinDataPoints,
     financials: financials ?? null,
+    categoryPlans,
   });
+  if (categoryPlans.length > 0) {
+    logger.info({ orgId, planCount: categoryPlans.length }, 'curation included category plans');
+  }
   logger.info({ orgId, statCount: stats.length }, 'curation layer 1 complete');
 
   const resolvedCorrectionIds =
