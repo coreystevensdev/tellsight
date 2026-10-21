@@ -13,6 +13,7 @@ export const StatType = {
   Runway: 'runway',
   BreakEven: 'break_even',
   CashForecast: 'cash_forecast',
+  CategoryVariance: 'category_variance',
 } as const;
 
 export type StatType = (typeof StatType)[keyof typeof StatType];
@@ -55,6 +56,22 @@ export interface CategoryBreakdownDetails {
   transactionCount: number;
   min: number;
   max: number;
+}
+
+// Plan versus actual for one category, for the month named by monthLabel.
+// actualMonthly is one month's spend rather than the dataset total, because the
+// plan the owner set is a monthly figure and comparing it to a range total would
+// be arithmetic nobody asked for.
+//
+// `direction` carries its own vocabulary rather than a shared up/down, matching
+// the three detail shapes that already declare one. See ADR 0003.
+export interface CategoryVarianceDetails {
+  plannedMonthly: number;
+  actualMonthly: number;
+  variance: number;
+  variancePercent: number;
+  monthLabel: string;
+  direction: 'over' | 'under' | 'on_plan';
 }
 
 export interface YearOverYearDetails {
@@ -207,6 +224,11 @@ export interface BreakEvenStat extends BaseComputedStat {
   details: BreakEvenDetails;
 }
 
+export interface CategoryVarianceStat extends BaseComputedStat {
+  statType: 'category_variance';
+  details: CategoryVarianceDetails;
+}
+
 export interface CashForecastStat extends BaseComputedStat {
   statType: 'cash_forecast';
   details: CashForecastDetails;
@@ -224,7 +246,8 @@ export type ComputedStat =
   | CashFlowStat
   | RunwayStat
   | BreakEvenStat
-  | CashForecastStat;
+  | CashForecastStat
+  | CategoryVarianceStat;
 
 // Citation target for the audit drawer and NL Q&A: a ComputedStat with a stable instance id.
 // The id is derived (see statInstanceId in computation.ts), never stored on ComputedStat itself.

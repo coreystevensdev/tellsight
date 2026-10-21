@@ -108,6 +108,11 @@ function formatStatBody(insight: ScoredInsight): string {
       const cur = `$${usd.format(stat.details.currentMonthlyRevenue)}`;
       return `- [Overall] Break-Even: ${be}/mo at ${stat.details.marginPercent.toFixed(1)}% margin, current revenue ${cur}/mo, gap ${usdMinus(stat.details.gap)} (confidence: ${stat.details.confidence}, relevance: ${score.toFixed(2)})`;
     }
+    case StatType.CategoryVariance: {
+      const word = stat.details.direction === 'over' ? 'over' : stat.details.direction === 'under' ? 'under' : 'on';
+      return `- [${category}] Plan vs actual (${stat.details.monthLabel}): planned $${usd.format(stat.details.plannedMonthly)}, spent $${usd.format(stat.details.actualMonthly)}, ${word} plan by ${Math.abs(stat.details.variancePercent).toFixed(1)}% (relevance: ${score.toFixed(2)})`;
+    }
+
     case StatType.CashForecast: {
       const chain = [stat.details.startingBalance, ...stat.details.projectedMonths.map((p) => p.projectedBalance)]
         .map(usdMinus)
