@@ -13,6 +13,9 @@ vi.mock('./config', () => ({
   webEnv: { API_INTERNAL_URL: 'http://api:3001', JWT_SECRET: 'k'.repeat(32), NODE_ENV: 'test' },
 }));
 
+let incoming = new Headers();
+vi.mock('next/headers', () => ({ headers: () => Promise.resolve(incoming) }));
+
 const fetchMock = vi.fn();
 vi.stubGlobal('fetch', fetchMock);
 
@@ -27,6 +30,58 @@ function json(body: unknown, status = 200) {
 
 beforeEach(() => {
   fetchMock.mockReset();
+  incoming = new Headers();
+});
+
+// Measured in production on 2026-10-22: one /dashboard render cost 8 points on
+// rl_public:::ffff:172.18.0.5, the web container's bridge address. The public
+// tier is 60/min, so the whole site shared seven dashboard views a minute and
+// the eighth visitor got a 429. bff-proxy.ts fixed the client-side route
+// handlers, which are one request per view; these server-side reads are the
+// other eight and had no NextRequest to read the header off.
+describe('apiServer caller address', () => {
+  it('forwards x-forwarded-for so the API buckets per visitor', async () => {
+    incoming.set('x-forwarded-for', '203.0.113.7');
+    fetchMock.mockResolvedValueOnce(json({ data: null }));
+
+    await apiServer('/dashboard/charts', { cookies: 'access_token=abc' });
+
+    expect(fetchMock.mock.calls[0]![1].headers).toMatchObject({
+      'x-forwarded-for': '203.0.113.7',
+    });
+  });
+
+  it('keeps the whole chain, since Express picks the hop it trusts', async () => {
+    incoming.set('x-forwarded-for', '9.9.9.9, 203.0.113.7');
+    fetchMock.mockResolvedValueOnce(json({ data: null }));
+
+    await apiServer('/dashboard/charts');
+
+    expect(fetchMock.mock.calls[0]![1].headers['x-forwarded-for']).toBe('9.9.9.9, 203.0.113.7');
+  });
+
+  // Local compose has no proxy in front. Sending the header empty would make
+  // req.ip an empty string and collapse every caller into one bucket again.
+  it('omits the header when nothing forwarded one', async () => {
+    fetchMock.mockResolvedValueOnce(json({ data: null }));
+
+    await apiServer('/dashboard/charts');
+
+    expect(fetchMock.mock.calls[0]![1].headers).not.toHaveProperty('x-forwarded-for');
+  });
+
+  it('two visitors get two different addresses', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(json({ data: null })));
+
+    incoming.set('x-forwarded-for', '198.51.100.1');
+    await apiServer('/dashboard/charts');
+    incoming.set('x-forwarded-for', '198.51.100.2');
+    await apiServer('/dashboard/charts');
+
+    expect(fetchMock.mock.calls[0]![1].headers['x-forwarded-for']).not.toBe(
+      fetchMock.mock.calls[1]![1].headers['x-forwarded-for'],
+    );
+  });
 });
 
 describe('apiServer request shape', () => {
