@@ -36,6 +36,17 @@ function getParentCategory(
   return 'Other';
 }
 
+// A SubTotal line repeats the sum of the lines above it, and a DescriptionOnly
+// line carries text rather than money. Importing either one double-counts the
+// transaction: sandbox invoice 130 is 275 + 12.75 + 47.50 with a fourth line of
+// 335.25. Anything with no DetailType at all is kept, since we cannot tell what
+// it is and dropping money silently is worse than counting it.
+const AGGREGATE_DETAIL_TYPES = new Set(['SubTotalLineDetail', 'DescriptionOnly']);
+
+function carriesItsOwnAmount(line: QbLine): boolean {
+  return line.DetailType === undefined || !AGGREGATE_DETAIL_TYPES.has(line.DetailType);
+}
+
 function getAccountRef(line: QbLine) {
   return (
     line.AccountBasedExpenseLineDetail?.AccountRef ??
@@ -58,11 +69,13 @@ export function normalizeTransaction(
   tx: QbTransaction,
   txnType: QbTransactionType,
 ): NormalizedQbRow[] {
-  const lines = tx.Line ?? [];
+  const lines = (tx.Line ?? []).filter(carriesItsOwnAmount);
   const label = getLabel(tx);
   const date = new Date(tx.TxnDate);
 
-  // transactions without line items (e.g., Payment) get a single synthetic row
+  // No line items (a Payment), or nothing left after dropping aggregates (an
+  // invoice whose only line is its subtotal): one synthetic row off TotalAmt.
+  // Returning [] instead would lose the transaction entirely.
   if (lines.length === 0) {
     return [
       {
@@ -92,7 +105,11 @@ export function normalizeTransaction(
     const accountRef = getAccountRef(line);
     const category = accountRef?.name ?? 'Uncategorized';
     const parentCategory = getParentCategory(txnType, line);
-    const lineId = line.Id ?? String(index);
+    // QuickBooks line Ids are 1-based and this index is 0-based, so a bare
+    // String(index) collides with the Id of the line before it. That is what
+    // made the upsert fail with "cannot affect row a second time". The prefix
+    // keeps the generated ids out of the provider's numbering entirely.
+    const lineId = line.Id ?? `i${index}`;
 
     return {
       sourceType: 'quickbooks',
