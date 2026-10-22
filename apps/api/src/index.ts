@@ -74,19 +74,23 @@ import { metricsRouter } from './routes/metrics.js';
 
 const app = express();
 
-// Production hop count: Cloudflare (DNS-only, so 0 hops) → Caddy → Next.js BFF →
-// Express. Two proxies sit in front of this, and req.ip has to skip exactly those two.
+// Two different paths reach this app and they are different depths, which is
+// why this is an address list and not a hop count.
 //
-// Verified against production rather than reasoned about: the auth limiter allowed 10
-// requests then answered 429, and three spoofed X-Forwarded-For values were all still
-// refused, so req.ip resolves to the real caller and not to a proxy or to a header the
-// caller controls. Both halves matter. Too low and every visitor shares one bucket;
-// too high and the value is attacker-supplied.
+// A browser fetch to /api/* hits Caddy, which appends the caller, then the
+// Next.js rewrite proxies it on and appends another. A server-rendered page
+// instead calls apiServer, which hand-builds the fetch and appends nothing, so
+// the same caller arrives one entry shallower. Any single number is wrong for
+// one of them: 2 made apiServer's chain spoofable, 1 collapsed every rewrite
+// onto Caddy's container address.
 //
-// Direct-to-instance paths (the Stripe webhook) are 1 hop and do not key on req.ip.
-// Local docker-compose is 0 hops, where Express falls back to the socket address.
-// Raise to 3 if Cloudflare proxy mode is turned on for the record.
-app.set('trust proxy', 2);
+// Trusting the private docker addresses instead stops at the first public entry,
+// which is the one Caddy appended, at either depth. A caller cannot prepend past
+// it because their values sit further out than the appended one.
+//
+// Measured against the live box on 2026-10-22: one, two, and three prepended
+// addresses all still resolved to the real caller.
+app.set('trust proxy', 'loopback, uniquelocal');
 
 // Before helmet so the scraper does not need to handle security headers. The
 // bearer gate lives in the router, where it can be tested.

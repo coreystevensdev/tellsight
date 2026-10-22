@@ -32,15 +32,15 @@ interface QaAskBoxProps {
 // the API's own `message` for an unmapped code, which is how "Missing access
 // token" reached a reader there. If a third surface needs one, share it.
 const ERROR_MESSAGES: Record<string, string> = {
-  QA_LOOP_FAILED: 'Something went wrong answering that question.',
-  RATE_LIMITED: 'Too many requests, please wait a moment.',
-  VALIDATION_ERROR: 'That question could not be sent, try rephrasing it.',
+  QA_LOOP_FAILED: 'That question could not be answered. Try asking it a different way.',
+  RATE_LIMITED: "You've hit the request limit. Wait a minute, then try again.",
+  VALIDATION_ERROR: 'That question could not be sent. Try rephrasing it.',
   AUTHENTICATION_REQUIRED: 'Your session expired. Sign in again to ask a question.',
 };
 
 function userMessage(code: string | null, fallback: string | null): string {
   if (code && ERROR_MESSAGES[code]) return ERROR_MESSAGES[code];
-  return fallback ?? 'Something went wrong answering that question.';
+  return fallback ?? 'That question could not be answered. Try asking it a different way.';
 }
 
 // assembleQaAnswer (qaAnswer.ts) already appends AI_DISCLAIMER to the answer

@@ -79,7 +79,7 @@ export function useSourceRows(
       })
       .catch((err) => {
         if (err instanceof DOMException && err.name === 'AbortError') return;
-        setError(err instanceof Error ? err.message : 'Something went wrong');
+        setError(err instanceof Error ? err.message : 'Could not load the source rows.');
         setStatus('error');
       });
 

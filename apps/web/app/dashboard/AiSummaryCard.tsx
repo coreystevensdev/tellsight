@@ -50,13 +50,15 @@ interface AiSummaryCardProps {
   className?: string;
 }
 
+// Each of these names the thing that failed and what to do next. Four were
+// "Something went wrong" with the noun swapped, which tells a reader nothing.
 const ERROR_MESSAGES: Record<string, string> = {
-  TIMEOUT: 'The analysis took longer than expected.',
-  AI_UNAVAILABLE: 'AI service is temporarily unavailable.',
-  RATE_LIMITED: 'Too many requests, please wait a moment.',
-  PIPELINE_ERROR: 'Something went wrong preparing your analysis.',
-  EMPTY_RESPONSE: 'AI produced no results, please try again.',
-  STREAM_ERROR: 'Something went wrong generating insights.',
+  TIMEOUT: 'The analysis timed out before it finished. Try again.',
+  AI_UNAVAILABLE: 'The AI service is not responding. Nothing else on the page is affected.',
+  RATE_LIMITED: "You've hit the request limit. Wait a minute, then try again.",
+  PIPELINE_ERROR: 'Your data could not be prepared for analysis. The charts still work.',
+  EMPTY_RESPONSE: 'The analysis came back empty. Try again.',
+  STREAM_ERROR: 'The analysis stopped partway through. Try again.',
   // Reachable when a session expires mid-read. Without an entry here
   // userMessage falls through to the API's wording, and 'Missing access
   // token' is what the reader gets where the analysis used to be.
@@ -65,7 +67,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 
 function userMessage(code: string | null, fallback: string | null): string {
   if (code && ERROR_MESSAGES[code]) return ERROR_MESSAGES[code];
-  return fallback ?? 'Something went wrong generating insights.';
+  return fallback ?? 'The analysis could not be generated. Try again.';
 }
 
 export function truncateAtWordBoundary(
@@ -626,7 +628,7 @@ export function AiSummaryCard({
             {userMessage(code, error)}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Your data and charts are still available below.
+            Your data and charts are unaffected.
           </p>
         </div>
         {retryable && !maxRetriesReached && (
@@ -642,7 +644,7 @@ export function AiSummaryCard({
         )}
         {retryable && maxRetriesReached && (
           <p className="mt-3 text-xs text-muted-foreground">
-            Please try again later.
+            Out of retries. Try again in a few minutes.
           </p>
         )}
       </div>

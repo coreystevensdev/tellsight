@@ -50,7 +50,7 @@ export function StatCorrectionForm({ datasetId, statId }: StatCorrectionFormProp
 
       {status === 'error' && (
         <p className="text-sm text-destructive" role="alert">
-          Couldn&apos;t load past corrections: {error || 'Something went wrong.'}
+          Couldn&apos;t load past corrections{error ? `: ${error}` : '.'}
         </p>
       )}
 

@@ -118,7 +118,7 @@ describe('BillingContent checkout', () => {
     render(<BillingContent />);
     await user.click(screen.getByRole('button', { name: /Upgrade to Pro/ }));
 
-    expect(await screen.findByText(/Something went wrong/)).toBeInTheDocument();
+    expect(await screen.findByText(/Could not start checkout/)).toBeInTheDocument();
   });
 
   // The finally block. Without it a failed attempt leaves the button disabled

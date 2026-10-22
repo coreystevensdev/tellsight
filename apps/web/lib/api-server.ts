@@ -1,4 +1,6 @@
 // Server Components only. Client Components use api-client.ts (BFF proxy).
+import { headers } from 'next/headers';
+
 import type { ApiResponse } from 'shared/types';
 
 import { webEnv } from './config';
@@ -30,6 +32,12 @@ export async function apiServer<T>(
   options?: RequestInit & { cookies?: string },
 ): Promise<ApiResponse<T>> {
   const url = `${API_INTERNAL_URL}${path}`;
+  // Express keys its IP rate limits on req.ip, and a server-rendered page
+  // reaches it from the web container, so without this every visitor shares one
+  // bucket. A dashboard render costs 8 points against a 60/min tier, which
+  // capped the whole site at 7 views a minute. Safe to read here because every
+  // caller is a page that already awaits cookies().
+  const callerAddress = (await headers()).get('x-forwarded-for');
 
   let response: Response;
   try {
@@ -39,6 +47,7 @@ export async function apiServer<T>(
         'Content-Type': 'application/json',
         ...(options?.cookies ? { Cookie: options.cookies } : {}),
         ...options?.headers,
+        ...(callerAddress ? { 'x-forwarded-for': callerAddress } : {}),
       },
       cache: 'no-store',
     });

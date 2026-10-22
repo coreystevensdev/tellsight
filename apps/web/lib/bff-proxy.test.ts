@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
-import { proxyGet, proxyPost, proxyPut, proxyPatch, proxyDelete, proxyPostWithCookies, upstreamSignal, UPSTREAM_TIMEOUT_MS } from './bff-proxy';
+import { proxyGet, proxyPost, proxyPut, proxyPatch, proxyDelete, proxyPostWithCookies, upstreamSignal, UPSTREAM_TIMEOUT_MS, forwardedFor } from './bff-proxy';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -274,3 +274,51 @@ describe('upstreamSignal', () => {
     },
   );
 });
+
+// Express keys its IP rate limiters on req.ip, and every request from this
+// layer arrives on the same docker-bridge socket. Dropping X-Forwarded-For made
+// req.ip the web container for the whole app, so one visitor clicking around
+// the integrations page could 429 everyone.
+describe('forwardedFor', () => {
+  it('passes the header through unchanged so the appended caller stays last', () => {
+    const req = new NextRequest('http://localhost/api/whatever', {
+      headers: { 'x-forwarded-for': '9.9.9.9, 203.0.113.7' },
+    });
+
+    expect(forwardedFor(req)).toEqual({ 'x-forwarded-for': '9.9.9.9, 203.0.113.7' });
+  });
+
+  it('omits the header entirely when there is none, rather than sending an empty one', () => {
+    // An empty value is not the same as absent: it would add a blank entry to
+    // the address list Express walks.
+    expect(forwardedFor(new NextRequest('http://localhost/api/whatever'))).toEqual({});
+  });
+
+  it('is spreadable into any header object without disturbing it', () => {
+    const req = new NextRequest('http://localhost/api/whatever');
+    expect({ cookie: 'a=b', ...forwardedFor(req) }).toEqual({ cookie: 'a=b' });
+  });
+});
+
+describe('proxy helpers forward the caller address', () => {
+  it('sends x-forwarded-for upstream alongside the cookie', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ data: { ok: true } }),
+      headers: { getSetCookie: () => [] },
+    } as unknown as Response);
+
+    await proxyGet('/whatever')(
+      new NextRequest('http://localhost/api/whatever', {
+        headers: { Cookie: 'session=abc123', 'x-forwarded-for': '203.0.113.7' },
+      }),
+    );
+
+    const [, init] = fetchSpy.mock.calls[0]!;
+    expect(init?.headers).toEqual({
+      Cookie: 'session=abc123',
+      'x-forwarded-for': '203.0.113.7',
+    });
+  });
+})

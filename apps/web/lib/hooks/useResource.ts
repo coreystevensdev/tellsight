@@ -57,7 +57,7 @@ export function useResource<T>(key: string | null, load: (signal: AbortSignal) =
         if (cancelled) return;
         // An abort is this hook's own cleanup firing, not a failure to report.
         if (err instanceof DOMException && err.name === 'AbortError') return;
-        setSettled({ key, data: null, error: err instanceof Error ? err.message : 'Something went wrong' });
+        setSettled({ key, data: null, error: err instanceof Error ? err.message : 'Could not load that.' });
       });
 
     return () => {

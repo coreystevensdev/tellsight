@@ -18,7 +18,7 @@ export default async function CallbackPage({
         <div className="w-full max-w-sm space-y-4 rounded-lg bg-card p-8 text-center shadow-sm">
           <h1 className="text-lg font-semibold text-foreground">Authentication Failed</h1>
           <p className="text-sm text-muted-foreground">
-            Google denied the sign-in request. Please try again.
+            Google denied the sign-in request. Try again.
           </p>
           <a
             href="/login"

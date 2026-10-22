@@ -20,7 +20,7 @@ export default function AdminError({
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            {error.message || 'Something went wrong loading the admin dashboard.'}
+            {error.message || 'The admin dashboard could not load.'}
           </p>
           <Button onClick={reset} variant="outline" size="sm">
             Try again

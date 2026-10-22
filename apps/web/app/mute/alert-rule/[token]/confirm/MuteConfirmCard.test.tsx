@@ -80,7 +80,7 @@ describe('MuteConfirmCard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /confirm mute/i }));
 
-    expect(await screen.findByText(/couldn't reach our server/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Could not reach the server/i)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

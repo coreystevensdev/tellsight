@@ -62,7 +62,7 @@ export function DigestUnsubscribeConfirmCard({ token }: Props) {
     } catch {
       if (controller.signal.aborted) return;
       setStatus('error');
-      setMessage("We couldn't reach our server. Please try again in a few minutes.");
+      setMessage("Could not reach the server. Try again in a few minutes.");
     } finally {
       pendingRef.current = false;
     }

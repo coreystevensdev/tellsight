@@ -48,7 +48,7 @@ export default function InviteAccept({ token }: { token: string }) {
       const { data } = await res.json();
       window.location.href = data.url;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setError(err instanceof Error ? err.message : 'Could not accept this invite.');
       setJoining(false);
     }
   }

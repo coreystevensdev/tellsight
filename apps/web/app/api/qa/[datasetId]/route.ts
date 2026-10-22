@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { webEnv } from '@/lib/config';
-import { NULL_BODY_STATUSES, upstreamSignal } from '@/lib/bff-proxy';
+import { NULL_BODY_STATUSES, upstreamSignal, forwardedFor } from '@/lib/bff-proxy';
 import { logger } from '@/lib/logger';
 
 export const runtime = 'nodejs';
@@ -19,7 +19,7 @@ export async function POST(
   try {
     upstream = await fetch(`${webEnv.API_INTERNAL_URL}/qa/${encodeURIComponent(datasetId)}`, {
       method: 'POST',
-      headers: { cookie, 'Content-Type': 'application/json' },
+      headers: { cookie, 'Content-Type': 'application/json', ...forwardedFor(request) },
       body,
       // Forwards the client's disconnect (qa.ts's AbortController is otherwise
       // unreachable) and adds a timeout backstop for a hung Claude call.

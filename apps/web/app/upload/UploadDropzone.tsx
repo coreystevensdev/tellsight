@@ -147,7 +147,7 @@ export function UploadDropzone() {
       setState('preview');
     } catch (err) {
       setError({
-        message: err instanceof Error ? err.message : 'Something went wrong during upload',
+        message: err instanceof Error ? err.message : 'The upload did not finish.',
         fileName: file.name,
       });
       setState('error');
@@ -180,7 +180,7 @@ export function UploadDropzone() {
       const result = await response.json();
 
       if (!response.ok) {
-        const errMsg = result?.error?.message || 'Something went wrong while saving your data.';
+        const errMsg = result?.error?.message || 'Your data could not be saved.';
         setError({ message: errMsg, fileName: lastFile.name });
         setIsConfirming(false);
         setState('error');

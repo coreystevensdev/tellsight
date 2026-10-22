@@ -41,10 +41,10 @@ export class AiSummaryErrorBoundary extends Component<Props, State> {
       >
         <div aria-live="assertive">
           <p className="text-sm font-medium text-destructive">
-            Something went wrong generating insights.
+            The analysis could not be displayed.
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Your data and charts are still available below.
+            Your data and charts are unaffected.
           </p>
         </div>
         <button

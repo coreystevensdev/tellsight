@@ -29,7 +29,7 @@ export default function LoginButton({
       const { data } = await response.json();
       window.location.href = data.url;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setError(err instanceof Error ? err.message : 'Could not start Google sign-in.');
       setLoading(false);
     }
   }

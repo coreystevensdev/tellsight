@@ -79,8 +79,18 @@ describe('express middleware chain order', () => {
     expect(laterUse, 'something is registered after errorHandler').toBe(-1);
   });
 
-  it('trusts exactly the documented number of proxy hops', () => {
-    expect(SOURCE).toContain("app.set('trust proxy', 2)");
+  // Was: expect(SOURCE).toContain("app.set('trust proxy', 2)"). A source-text
+  // match pins the digit and says nothing about what req.ip resolves to, which
+  // is why it stayed green while every request keyed on the web container.
+  // trustProxy.test.ts drives a real Express app and asserts the behaviour; all
+  // that belongs here is that the setting is made at all, before anything reads it.
+  it('sets trust proxy before any middleware that keys on req.ip', () => {
+    const trust = positionOf("app.set('trust proxy'");
+    const limiter = SOURCE.indexOf('app.use(rateLimitPublic');
+
+    expect(trust).toBeGreaterThan(-1);
+    expect(limiter, 'app.use(rateLimitPublic not found').toBeGreaterThan(-1);
+    expect(trust).toBeLessThan(limiter);
   });
 });
 

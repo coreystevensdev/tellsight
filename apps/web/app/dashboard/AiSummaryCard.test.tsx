@@ -129,7 +129,7 @@ describe('AiSummaryCard', () => {
     mockUseAiStream.mockReturnValue(
       defaultHookReturn({
         status: 'error',
-        error: 'AI service is temporarily unavailable.',
+        error: 'upstream 503 from the model gateway',
         code: 'AI_UNAVAILABLE',
         retryable: true,
         retry: mockRetry,
@@ -137,7 +137,9 @@ describe('AiSummaryCard', () => {
     );
 
     render(<AiSummaryCard datasetId={42} />);
-    expect(screen.getByText('AI service is temporarily unavailable.')).toBeTruthy();
+    expect(
+      screen.getByText('The AI service is not responding. Nothing else on the page is affected.'),
+    ).toBeTruthy();
     expect(screen.getByText('Try again')).toBeTruthy();
   });
 
@@ -152,7 +154,7 @@ describe('AiSummaryCard', () => {
     );
 
     render(<AiSummaryCard datasetId={42} />);
-    expect(screen.getByText(/Too many requests/)).toBeTruthy();
+    expect(screen.getByText(/hit the request limit/)).toBeTruthy();
   });
 
   // userMessage falls through to the API's own wording for any code it does not
@@ -187,7 +189,7 @@ describe('AiSummaryCard', () => {
     expect(screen.queryByText('Try again')).toBeNull();
   });
 
-  it('shows "Please try again later" when max retries reached', () => {
+  it('shows an out-of-retries note when max retries reached', () => {
     mockUseAiStream.mockReturnValue(
       defaultHookReturn({
         status: 'error',
@@ -201,7 +203,7 @@ describe('AiSummaryCard', () => {
 
     render(<AiSummaryCard datasetId={42} />);
     expect(screen.queryByText('Try again')).toBeNull();
-    expect(screen.getByText('Please try again later.')).toBeTruthy();
+    expect(screen.getByText('Out of retries. Try again in a few minutes.')).toBeTruthy();
   });
 
   it('calls retry when Try again is clicked', () => {
@@ -237,7 +239,7 @@ describe('AiSummaryCard', () => {
     );
 
     render(<AiSummaryCard datasetId={42} />);
-    expect(screen.getByText('Your data and charts are still available below.')).toBeTruthy();
+    expect(screen.getByText('Your data and charts are unaffected.')).toBeTruthy();
   });
 
   // -- free_preview --
@@ -377,8 +379,8 @@ describe('AiSummaryCard', () => {
       </AiSummaryErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong generating insights.')).toBeTruthy();
-    expect(screen.getByText('Your data and charts are still available below.')).toBeTruthy();
+    expect(screen.getByText('The analysis could not be displayed.')).toBeTruthy();
+    expect(screen.getByText('Your data and charts are unaffected.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
 
     spy.mockRestore();
@@ -399,7 +401,7 @@ describe('AiSummaryCard', () => {
       </AiSummaryErrorBoundary>,
     );
 
-    expect(screen.getByText('Something went wrong generating insights.')).toBeTruthy();
+    expect(screen.getByText('The analysis could not be displayed.')).toBeTruthy();
 
     shouldThrow = false;
     act(() => {
@@ -407,7 +409,7 @@ describe('AiSummaryCard', () => {
     });
 
     expect(screen.getByText('recovered')).toBeTruthy();
-    expect(screen.queryByText('Something went wrong generating insights.')).toBeNull();
+    expect(screen.queryByText('The analysis could not be displayed.')).toBeNull();
 
     spy.mockRestore();
   });

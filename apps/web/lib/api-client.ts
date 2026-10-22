@@ -63,14 +63,29 @@ export async function apiClient<T>(
     credentials: 'include',
   };
 
-  let response = await fetch(url, fetchOptions);
-
-  if (response.status === 401 && (await attemptRefresh())) {
+  // fetch rejects with a TypeError on a dropped connection, a DNS failure or a
+  // blocked request. Letting that through matters because 41 call sites render
+  // `err instanceof Error ? err.message : ...` straight into the page, so the
+  // reader was being shown "Failed to fetch".
+  let response: Response;
+  try {
     response = await fetch(url, fetchOptions);
+
+    if (response.status === 401 && (await attemptRefresh())) {
+      response = await fetch(url, fetchOptions);
+    }
+  } catch {
+    throw new ApiClientError(
+      'Could not reach the server. Check your connection and try again.',
+      0,
+      'NETWORK_ERROR',
+    );
   }
 
   if (!response.ok) {
-    let msg = `API error: ${response.status}`;
+    // Same reason: this default is read by a person, not a log. The status is
+    // still on the error for any caller that wants to branch on it.
+    let msg = 'The server could not complete that request.';
     let code: string | null = null;
     try {
       const errorBody = (await response.json()) as ApiError;

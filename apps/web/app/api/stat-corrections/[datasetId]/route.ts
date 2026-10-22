@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { webEnv } from '@/lib/config';
+import { forwardedFor } from '@/lib/bff-proxy';
 
 export async function GET(
   request: NextRequest,
@@ -11,7 +12,7 @@ export async function GET(
   try {
     const res = await fetch(
       `${webEnv.API_INTERNAL_URL}/stat-corrections/${encodeURIComponent(datasetId)}`,
-      { headers: { cookie } },
+      { headers: { cookie, ...forwardedFor(request) } },
     );
     return NextResponse.json(await res.json(), { status: res.status });
   } catch {

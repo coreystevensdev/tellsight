@@ -88,7 +88,7 @@ export function CashBalanceStaleBanner({
       setInlineOpen(false);
       setRaw('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save. Please try again.');
+      setError(err instanceof Error ? err.message : 'Could not save the balance.');
     } finally {
       setSubmitting(false);
     }
@@ -121,8 +121,8 @@ export function CashBalanceStaleBanner({
         </p>
         <p className="mt-0.5 text-xs text-muted-foreground">
           {urgent
-            ? 'An updated balance sharpens the runway estimate significantly.'
-            : 'Runway accuracy depends on fresh data.'}
+            ? 'The runway figures on this page still use that old number.'
+            : 'Runway is counted forward from this balance.'}
         </p>
 
         {inlineOpen && (

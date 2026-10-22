@@ -423,7 +423,7 @@ describe('DashboardShell', () => {
 
       expect(toast.success).toHaveBeenCalledWith(
         'QuickBooks connected',
-        expect.objectContaining({ description: expect.stringContaining('syncing') }),
+        expect.objectContaining({ description: expect.stringContaining('Importing') }),
       );
       expect(mockReplace).toHaveBeenCalledWith('/dashboard', { scroll: false });
     });

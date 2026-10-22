@@ -11,8 +11,8 @@ interface DemoModeBannerProps {
 }
 
 const MESSAGES: Partial<Record<DemoModeState, string>> = {
-  seed_only: "You're viewing sample data, upload your own CSV to see real insights",
-  empty: 'Get started, upload a CSV to see plain-English insights',
+  seed_only: "This is sample data. Upload a CSV to see your own numbers.",
+  empty: 'No data yet. Upload a CSV to get a plain-English read on it.',
 };
 
 export function DemoModeBanner({ demoState, onUploadClick }: DemoModeBannerProps) {
