@@ -142,7 +142,9 @@ describe('QaAskBox', () => {
 
     render(<QaAskBox datasetId={7} hasAuth />);
 
-    expect(screen.getByText('Something went wrong answering that question.')).toBeTruthy();
+    expect(
+      screen.getByText('That question could not be answered. Try asking it a different way.'),
+    ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
     expect(screen.queryByText('Unlock full analysis')).toBeNull();
   });

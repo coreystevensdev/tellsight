@@ -32,15 +32,15 @@ export function ConnectorReturnToast() {
 
     if (value === 'connected') {
       toast.success(`${label} connected`, {
-        description: 'We’re syncing your transactions now, this can take a few minutes.',
+        description: 'Importing your transactions now. This takes a few minutes.',
       });
     } else if (value === 'denied') {
       toast.info(`${label} connection cancelled`, {
-        description: `Nothing was saved. You can connect anytime from Settings > Integrations.`,
+        description: `Nothing was saved. Connect again from Settings > Integrations.`,
       });
     } else if (value === 'error') {
       toast.error(`${label} connection failed`, {
-        description: `Something went wrong on the way back from ${label}. Retry from Settings > Integrations, we haven’t saved any of your data.`,
+        description: `${label} did not finish the handover, so nothing was saved. Try again from Settings > Integrations.`,
       });
     }
 

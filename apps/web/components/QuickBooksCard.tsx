@@ -75,7 +75,7 @@ export function QuickBooksCard() {
         });
       } else {
         toast.error('Couldn\u2019t start QuickBooks connection', {
-          description: 'Please try again, or retry from Settings > Integrations.',
+          description: 'Retry from Settings > Integrations.',
         });
       }
     }

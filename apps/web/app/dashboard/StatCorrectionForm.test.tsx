@@ -110,7 +110,7 @@ describe('StatCorrectionForm', () => {
 
     render(<StatCorrectionForm datasetId={7} statId="7:runway:_:_" />);
 
-    expect(screen.getByText("Couldn't load past corrections: Something went wrong.")).toBeInTheDocument();
+    expect(screen.getByText("Couldn't load past corrections.")).toBeInTheDocument();
   });
 
   it('shows both the fetch error and a submit error at once, without either hiding the other', () => {
