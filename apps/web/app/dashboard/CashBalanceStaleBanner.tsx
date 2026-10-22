@@ -88,7 +88,7 @@ export function CashBalanceStaleBanner({
       setInlineOpen(false);
       setRaw('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save. Please try again.');
+      setError(err instanceof Error ? err.message : 'Could not save the balance.');
     } finally {
       setSubmitting(false);
     }
@@ -121,7 +121,7 @@ export function CashBalanceStaleBanner({
         </p>
         <p className="mt-0.5 text-xs text-muted-foreground">
           {urgent
-            ? 'Every runway figure below is still using that old number.'
+            ? 'The runway figures on this page still use that old number.'
             : 'Runway is counted forward from this balance.'}
         </p>
 

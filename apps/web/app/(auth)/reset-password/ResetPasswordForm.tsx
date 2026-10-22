@@ -37,7 +37,7 @@ export default function ResetPasswordForm({ token }: { token?: string }) {
 
       router.push('/dashboard');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setError(err instanceof Error ? err.message : 'Could not reset your password.');
       setLoading(false);
     }
   }

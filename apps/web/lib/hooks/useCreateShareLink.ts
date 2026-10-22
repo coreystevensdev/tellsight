@@ -52,7 +52,7 @@ export function useCreateShareLink() {
       }
     } catch (err) {
       clearTimeout(timer);
-      setErrorMsg(err instanceof Error ? err.message : 'Something went wrong');
+      setErrorMsg(err instanceof Error ? err.message : 'Could not create the share link.');
       setStatus('error');
     }
   }, []);

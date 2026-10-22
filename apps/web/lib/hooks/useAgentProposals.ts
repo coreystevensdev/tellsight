@@ -126,7 +126,7 @@ export function useAgentProposals(enabled: boolean): UseAgentProposalsResult {
       if (!enabledRef.current || !mountedRef.current) return false;
 
       unhide(id);
-      setResolveError(err instanceof Error ? err.message : 'Something went wrong');
+      setResolveError(err instanceof Error ? err.message : 'Could not record that decision.');
       return false;
     } finally {
       resolveControllers.current.delete(controller);

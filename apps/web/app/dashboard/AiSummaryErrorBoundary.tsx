@@ -44,7 +44,7 @@ export class AiSummaryErrorBoundary extends Component<Props, State> {
             The analysis could not be displayed.
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Your data and charts are still available below.
+            Your data and charts are unaffected.
           </p>
         </div>
         <button

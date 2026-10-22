@@ -74,7 +74,7 @@ export function QuickBooksCard() {
           description: 'Refresh the page to see the current connection.',
         });
       } else {
-        toast.error('Couldn\u2019t start QuickBooks connection', {
+        toast.error("Couldn't start QuickBooks connection", {
           description: 'Retry from Settings > Integrations.',
         });
       }

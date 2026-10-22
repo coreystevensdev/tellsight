@@ -34,7 +34,7 @@ export default function PasswordLoginForm({ redirectPath }: { redirectPath: stri
       const redirect = redirectPath.startsWith('/') && !redirectPath.startsWith('//') ? redirectPath : '/dashboard';
       router.push(redirect);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setError(err instanceof Error ? err.message : 'Could not sign you in.');
       setLoading(false);
     }
   }

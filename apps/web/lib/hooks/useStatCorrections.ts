@@ -69,7 +69,7 @@ export function useStatCorrections(datasetId: number | null, statId: string | nu
         setSubmitStatus('idle');
         return true;
       } catch (err) {
-        setSubmitError(err instanceof Error ? err.message : 'Something went wrong');
+        setSubmitError(err instanceof Error ? err.message : 'Could not submit that correction.');
         setSubmitStatus('error');
         return false;
       }

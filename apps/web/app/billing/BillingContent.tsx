@@ -23,7 +23,7 @@ export function BillingContent({ demoBilling = false }: { demoBilling?: boolean 
       }
       window.location.href = json.data.checkoutUrl;
     } catch {
-      setError('Something went wrong. Please try again.');
+      setError('Could not start checkout. Check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -41,7 +41,7 @@ export function BillingContent({ demoBilling = false }: { demoBilling?: boolean 
       }
       window.location.href = json.data.portalUrl;
     } catch {
-      setError('Something went wrong. Please try again.');
+      setError('Could not open the billing portal. Check your connection and try again.');
     } finally {
       setLoading(false);
     }

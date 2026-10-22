@@ -67,7 +67,7 @@ export function LockedInsightCard({
     try {
       await onSubmit(parsed);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Could not save. Please try again.';
+      const msg = err instanceof Error ? err.message : 'Could not save that.';
       setError(msg);
       setSubmitting(false);
     }

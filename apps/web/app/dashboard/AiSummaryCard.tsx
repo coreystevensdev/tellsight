@@ -54,9 +54,9 @@ interface AiSummaryCardProps {
 // "Something went wrong" with the noun swapped, which tells a reader nothing.
 const ERROR_MESSAGES: Record<string, string> = {
   TIMEOUT: 'The analysis timed out before it finished. Try again.',
-  AI_UNAVAILABLE: 'The AI service is not responding. Your charts below are unaffected.',
-  RATE_LIMITED: 'You have hit the request limit. Wait a minute, then try again.',
-  PIPELINE_ERROR: 'Your data could not be prepared for analysis. The charts below still work.',
+  AI_UNAVAILABLE: 'The AI service is not responding. Nothing else on the page is affected.',
+  RATE_LIMITED: "You've hit the request limit. Wait a minute, then try again.",
+  PIPELINE_ERROR: 'Your data could not be prepared for analysis. The charts still work.',
   EMPTY_RESPONSE: 'The analysis came back empty. Try again.',
   STREAM_ERROR: 'The analysis stopped partway through. Try again.',
   // Reachable when a session expires mid-read. Without an entry here
@@ -628,7 +628,7 @@ export function AiSummaryCard({
             {userMessage(code, error)}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Your data and charts are still available below.
+            Your data and charts are unaffected.
           </p>
         </div>
         {retryable && !maxRetriesReached && (

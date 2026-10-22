@@ -174,7 +174,7 @@ describe('QuickBooksCard', () => {
     });
     expect(button).toHaveTextContent(/connect quickbooks/i);
     expect(mockToast.error).toHaveBeenCalledWith(
-      'Couldn\u2019t start QuickBooks connection',
+      "Couldn't start QuickBooks connection",
       expect.any(Object),
     );
   });

@@ -138,7 +138,7 @@ describe('AiSummaryCard', () => {
 
     render(<AiSummaryCard datasetId={42} />);
     expect(
-      screen.getByText('The AI service is not responding. Your charts below are unaffected.'),
+      screen.getByText('The AI service is not responding. Nothing else on the page is affected.'),
     ).toBeTruthy();
     expect(screen.getByText('Try again')).toBeTruthy();
   });
@@ -239,7 +239,7 @@ describe('AiSummaryCard', () => {
     );
 
     render(<AiSummaryCard datasetId={42} />);
-    expect(screen.getByText('Your data and charts are still available below.')).toBeTruthy();
+    expect(screen.getByText('Your data and charts are unaffected.')).toBeTruthy();
   });
 
   // -- free_preview --
@@ -380,7 +380,7 @@ describe('AiSummaryCard', () => {
     );
 
     expect(screen.getByText('The analysis could not be displayed.')).toBeTruthy();
-    expect(screen.getByText('Your data and charts are still available below.')).toBeTruthy();
+    expect(screen.getByText('Your data and charts are unaffected.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
 
     spy.mockRestore();

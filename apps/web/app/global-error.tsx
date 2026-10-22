@@ -18,7 +18,7 @@ export default function GlobalError({
     <html lang="en">
       <body className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">
-          <h2 className="text-lg font-semibold text-foreground">Something went wrong</h2>
+          <h2 className="text-lg font-semibold text-foreground">This page could not load.</h2>
           <p className="mt-2 text-sm text-muted-foreground">
             We&apos;ve been notified and are looking into it.
           </p>

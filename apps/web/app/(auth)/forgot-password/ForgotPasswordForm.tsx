@@ -25,12 +25,12 @@ export default function ForgotPasswordForm() {
 
       if (!response.ok) {
         const body = await response.json();
-        throw new Error(body.error?.message ?? 'Something went wrong');
+        throw new Error(body.error?.message ?? 'Could not send the reset email.');
       }
 
       setSent(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setError(err instanceof Error ? err.message : 'Could not send the reset email.');
     } finally {
       setLoading(false);
     }

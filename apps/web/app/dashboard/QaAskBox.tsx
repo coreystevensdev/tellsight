@@ -33,7 +33,7 @@ interface QaAskBoxProps {
 // token" reached a reader there. If a third surface needs one, share it.
 const ERROR_MESSAGES: Record<string, string> = {
   QA_LOOP_FAILED: 'That question could not be answered. Try asking it a different way.',
-  RATE_LIMITED: 'You have hit the request limit. Wait a minute, then try again.',
+  RATE_LIMITED: "You've hit the request limit. Wait a minute, then try again.",
   VALIDATION_ERROR: 'That question could not be sent. Try rephrasing it.',
   AUTHENTICATION_REQUIRED: 'Your session expired. Sign in again to ask a question.',
 };
