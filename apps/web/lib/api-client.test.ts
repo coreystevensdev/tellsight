@@ -184,7 +184,7 @@ describe('apiClient error shaping', () => {
 
   // Gateway timeouts and proxy errors come back as HTML, so the parse has to
   // fail softly rather than replacing the status with a JSON syntax error.
-  it('falls back to the status when the body is not JSON', async () => {
+  it('falls back to a readable message when the body is not JSON', async () => {
     fetchMock.mockResolvedValueOnce(new Response('<html>502</html>', { status: 502 }));
     const { apiClient } = await freshClient();
 
@@ -192,6 +192,47 @@ describe('apiClient error shaping', () => {
 
     expect(err.status).toBe(502);
     expect(err.code).toBeNull();
-    expect(err.message).toBe('API error: 502');
+    // Was "API error: 502". 41 call sites render err.message into the page, so
+    // this string is read by a person; the status is still on the error.
+    expect(err.message).toBe('The server could not complete that request.');
+  });
+
+  // A dropped connection, a DNS failure and a blocked request all reject fetch
+  // with a TypeError. That used to escape apiClient untouched, and since the
+  // call sites render `err instanceof Error ? err.message : ...`, the reader
+  // got "Failed to fetch" where an explanation belonged.
+  describe('network failure', () => {
+    it('does not let the raw fetch TypeError reach the caller', async () => {
+      fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+      const { apiClient } = await freshClient();
+
+      const err = (await apiClient('/x').catch((e: unknown) => e)) as ClientError;
+
+      expect(err.message).not.toMatch(/failed to fetch/i);
+      expect(err.message).toBe('Could not reach the server. Check your connection and try again.');
+    });
+
+    it('marks it so a caller can tell a network drop from a server reply', async () => {
+      fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+      const { apiClient } = await freshClient();
+
+      const err = (await apiClient('/x').catch((e: unknown) => e)) as ClientError;
+
+      expect(err.code).toBe('NETWORK_ERROR');
+      expect(err.status).toBe(0);
+    });
+
+    // The retry after a silent refresh is a second fetch and can drop too.
+    it('covers the post-refresh retry as well', async () => {
+      fetchMock
+        .mockResolvedValueOnce(new Response(null, { status: 401 }))
+        .mockResolvedValueOnce(new Response(null, { status: 200 }))
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'));
+      const { apiClient } = await freshClient();
+
+      const err = (await apiClient('/x').catch((e: unknown) => e)) as ClientError;
+
+      expect(err.code).toBe('NETWORK_ERROR');
+    });
   });
 });
