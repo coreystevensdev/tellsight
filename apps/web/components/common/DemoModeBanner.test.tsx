@@ -11,14 +11,14 @@ describe('DemoModeBanner', () => {
     it('shows sample-data message for seed_only state', () => {
       render(<DemoModeBanner demoState="seed_only" onUploadClick={noop} />);
 
-      expect(screen.getByText(/viewing sample data/i)).toBeInTheDocument();
+      expect(screen.getByText(/This is sample data/i)).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /upload csv/i })).toBeInTheDocument();
     });
 
-    it('shows get-started message for empty state', () => {
+    it('shows the upload prompt for empty state', () => {
       render(<DemoModeBanner demoState="empty" onUploadClick={noop} />);
 
-      expect(screen.getByText(/get started/i)).toBeInTheDocument();
+      expect(screen.getByText(/No data yet/i)).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /upload csv/i })).toBeInTheDocument();
     });
 
@@ -46,7 +46,7 @@ describe('DemoModeBanner', () => {
       const dismiss = screen.getByRole('button', { name: /dismiss sample data notice/i });
       fireEvent.click(dismiss);
 
-      expect(screen.queryByText(/viewing sample data/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/This is sample data/i)).not.toBeInTheDocument();
     });
 
     it('dismiss button has correct aria-label', () => {
@@ -101,7 +101,7 @@ describe('DemoModeBanner', () => {
 
       rerender(<DemoModeBanner demoState="seed_plus_user" onUploadClick={noop} />);
 
-      expect(screen.getByText(/viewing sample data/i)).toBeInTheDocument();
+      expect(screen.getByText(/This is sample data/i)).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /upload csv/i })).not.toBeInTheDocument();
     });
 

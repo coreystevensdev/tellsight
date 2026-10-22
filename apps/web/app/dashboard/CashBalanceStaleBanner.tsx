@@ -121,8 +121,8 @@ export function CashBalanceStaleBanner({
         </p>
         <p className="mt-0.5 text-xs text-muted-foreground">
           {urgent
-            ? 'An updated balance sharpens the runway estimate significantly.'
-            : 'Runway accuracy depends on fresh data.'}
+            ? 'Every runway figure below is still using that old number.'
+            : 'Runway is counted forward from this balance.'}
         </p>
 
         {inlineOpen && (
