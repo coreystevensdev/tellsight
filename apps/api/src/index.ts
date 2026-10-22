@@ -74,24 +74,23 @@ import { metricsRouter } from './routes/metrics.js';
 
 const app = express();
 
-// One hop, not two. Caddy appends the real caller to X-Forwarded-For and neither
-// it nor the BFF adds itself, so the list Express sees is [...caller-supplied,
-// realCaller] over a socket belonging to Caddy or to the web container. Trusting
-// one hop lands on realCaller; trusting two lands on whatever the caller put in
-// front of it.
+// Two different paths reach this app and they are different depths, which is
+// why this is an address list and not a hop count.
 //
-// This was 2, with a comment claiming production had verified it. The test could
-// not tell the two cases apart: bff-proxy.ts forwarded only the Cookie header, so
-// no X-Forwarded-For reached Express at all, the address list had a single entry,
-// and Express clamped to it. Spoofing failed because the header was discarded, not
-// because the hop count was right, and req.ip was the web container for every
-// request. One shared bucket for the whole app, which is how three clicks on the
-// integrations page could answer 429.
+// A browser fetch to /api/* hits Caddy, which appends the caller, then the
+// Next.js rewrite proxies it on and appends another. A server-rendered page
+// instead calls apiServer, which hand-builds the fetch and appends nothing, so
+// the same caller arrives one entry shallower. Any single number is wrong for
+// one of them: 2 made apiServer's chain spoofable, 1 collapsed every rewrite
+// onto Caddy's container address.
 //
-// Direct-to-instance paths (the Stripe webhook) do not key on req.ip. Local
-// docker-compose sends no X-Forwarded-For, where Express falls back to the socket.
-// Raise by one if Cloudflare proxy mode is ever turned on for the record.
-app.set('trust proxy', 1);
+// Trusting the private docker addresses instead stops at the first public entry,
+// which is the one Caddy appended, at either depth. A caller cannot prepend past
+// it because their values sit further out than the appended one.
+//
+// Measured against the live box on 2026-10-22: one, two, and three prepended
+// addresses all still resolved to the real caller.
+app.set('trust proxy', 'loopback, uniquelocal');
 
 // Before helmet so the scraper does not need to handle security headers. The
 // bearer gate lives in the router, where it can be tested.

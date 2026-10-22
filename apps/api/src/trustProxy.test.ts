@@ -9,31 +9,26 @@ import { readFileSync } from 'node:fs';
 // depends on nothing but the trust proxy setting, so a bare app is both
 // sufficient and honest about what is under test.
 
-// req.ip is what every IP-keyed rate limiter buckets on, so the hop count is a
-// security setting, not a formatting one. Too low and one spoofable header
-// hands a caller unlimited buckets; too high and the whole app shares a single
-// one, which is what shipped: bff-proxy.ts forwarded only the Cookie header, so
-// Express never saw an X-Forwarded-For, the address list had one entry, and
-// req.ip was the web container for every authenticated request.
-//
-// The test this replaced asserted that index.ts *contained the string*
-// "trust proxy', 2". It passed throughout.
+// req.ip is what every IP-keyed rate limiter buckets on, so this is a security
+// setting. Two earlier attempts were both wrong, and both had a green test:
+// a hop count of 2 left apiServer's forwarded chain spoofable, and 1 put every
+// browser fetch into a single bucket keyed on Caddy's container address.
 let server: http.Server;
 let baseUrl: string;
 
 // Read out of index.ts rather than written here. A literal would make this file
-// assert the behaviour of the number 1 instead of the behaviour of the number the
-// app actually configures, and changing index.ts would leave it green.
-function configuredHops(): number {
+// assert the behaviour of some setting index.ts does not use, and changing
+// index.ts would leave it green.
+function configuredTrust(): string {
   const src = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
-  const m = src.match(/app\.set\('trust proxy',\s*(\d+)\)/);
-  if (!m) throw new Error('index.ts no longer sets trust proxy to a literal number');
-  return Number(m[1]);
+  const m = src.match(/app\.set\('trust proxy', '([^']+)'\)/);
+  if (!m) throw new Error('index.ts no longer sets trust proxy to a literal string');
+  return m[1]!;
 }
 
 beforeAll(async () => {
   const app = express();
-  app.set('trust proxy', configuredHops());
+  app.set('trust proxy', configuredTrust());
   app.get('/whoami', (req, res) => {
     res.json({ ip: req.ip });
   });
@@ -53,33 +48,62 @@ async function ipFor(forwardedFor?: string): Promise<string> {
   return ((await res.json()) as { ip: string }).ip;
 }
 
-describe('trust proxy hop count', () => {
-  it('reads the real caller Caddy appended, not the socket', async () => {
-    // One proxy in front, so one entry: Caddy appends the peer it accepted from.
-    expect(await ipFor('203.0.113.7')).toBe('203.0.113.7');
+const CALLER = '203.0.113.7';
+// Caddy and the web app as the other sees them on the compose bridge.
+const EDGE = '172.18.0.4';
+const WEB = '172.18.0.5';
+
+describe('trust proxy resolves the caller at either depth', () => {
+  // apiServer hand-builds its fetch and appends nothing, so Caddy's entry is
+  // last. This is the shallower of the two paths.
+  it('reads the caller on a server-rendered page request', async () => {
+    expect(await ipFor(CALLER)).toBe(CALLER);
   });
 
-  it('ignores an address the caller put in front of their own', async () => {
-    // A caller sending X-Forwarded-For: 9.9.9.9 gets Caddy's append after it.
-    // Trusting one hop lands on the appended value; trusting two would hand the
-    // caller a fresh rate-limit bucket per spoofed address.
-    expect(await ipFor('9.9.9.9, 203.0.113.7')).toBe('203.0.113.7');
+  // A browser fetch to /api/* picks up a second append from the Next.js rewrite.
+  it('reads the caller on a browser fetch through the rewrite', async () => {
+    expect(await ipFor(`${CALLER}, ${EDGE}`)).toBe(CALLER);
   });
 
-  it('ignores a whole chain of spoofed addresses', async () => {
-    expect(await ipFor('1.1.1.1, 2.2.2.2, 3.3.3.3, 203.0.113.7')).toBe('203.0.113.7');
+  it('still reads the caller if another private hop is ever added', async () => {
+    expect(await ipFor(`${CALLER}, ${EDGE}, ${WEB}`)).toBe(CALLER);
+  });
+});
+
+describe('trust proxy ignores what the caller prepends', () => {
+  it.each([
+    ['one', '9.9.9.9'],
+    ['two', '1.1.1.1, 2.2.2.2'],
+    ['three', '1.1.1.1, 2.2.2.2, 3.3.3.3'],
+  ])('ignores %s prepended addresses on the shallow path', async (_n, spoof) => {
+    expect(await ipFor(`${spoof}, ${CALLER}`)).toBe(CALLER);
+  });
+
+  it('ignores prepended addresses through the rewrite too', async () => {
+    expect(await ipFor(`1.2.3.4, ${CALLER}, ${EDGE}`)).toBe(CALLER);
+  });
+
+  // A private address would extend trust if it were reached, but it sits further
+  // out than the public entry Caddy appended, so the walk stops first.
+  it('is not fooled by a prepended private address', async () => {
+    expect(await ipFor(`10.0.0.9, ${CALLER}, ${EDGE}`)).toBe(CALLER);
+  });
+});
+
+describe('trust proxy edge cases', () => {
+  // The production log that started this read ip: "::ffff:172.18.0.5", so the
+  // bridge addresses arrive v4-mapped and the trust list has to match them.
+  it('treats a v4-mapped private hop as private', async () => {
+    expect(await ipFor(`${CALLER}, ::ffff:${EDGE}`)).toBe(CALLER);
   });
 
   it('falls back to the socket when nothing is forwarded, as in local compose', async () => {
-    const ip = await ipFor();
-    expect(ip).toMatch(/127\.0\.0\.1$/);
+    expect(await ipFor()).toMatch(/127\.0\.0\.1$/);
   });
 
   it('gives two callers behind the same proxy different values', async () => {
-    // The property the rate limiter actually depends on. With the header
-    // dropped these were identical, which is the whole defect.
-    const a = await ipFor('198.51.100.1');
-    const b = await ipFor('198.51.100.2');
+    const a = await ipFor(`198.51.100.1, ${EDGE}`);
+    const b = await ipFor(`198.51.100.2, ${EDGE}`);
     expect(a).not.toBe(b);
   });
 });
