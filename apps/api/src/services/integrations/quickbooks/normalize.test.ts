@@ -163,7 +163,9 @@ describe('normalizeTransaction', () => {
     expect(rows[2]!.category).toBe('Tax');
   });
 
-  it('uses line index when line Id is missing', () => {
+  // Prefixed, not a bare index. QuickBooks numbers its line Ids from 1 and this
+  // index counts from 0, so a bare index lands on the previous line's Id.
+  it('falls back to a prefixed index when line Id is missing', () => {
     const tx = makePurchase({
       Line: [
         {
@@ -176,7 +178,7 @@ describe('normalizeTransaction', () => {
     });
 
     const rows = normalizeTransaction(tx, 'Purchase');
-    expect(rows[0]!.sourceId).toBe('tx-1-0');
+    expect(rows[0]!.sourceId).toBe('tx-1-i0');
   });
 
   it('normalizes amount to positive (abs value)', () => {
@@ -293,5 +295,78 @@ describe('normalizeTransactions', () => {
     });
     const rows = normalizeTransactions([multiLine], 'Purchase');
     expect(rows).toHaveLength(2);
+  });
+});
+
+// Sandbox invoice 130, the shape that broke the first real sync. Three item
+// lines and a SubTotal line repeating their sum. Importing the subtotal doubles
+// the invoice, and because the subtotal carries no Id it also took the previous
+// line's number and made the batched upsert fail on a duplicate key.
+describe('aggregate lines', () => {
+  function invoiceWithSubtotal() {
+    return makeInvoice({
+      Id: '130',
+      TotalAmt: 335.25,
+      Line: [
+        { Id: '1', Amount: 275, DetailType: 'SalesItemLineDetail', SalesItemLineDetail: { ItemRef: { value: '5', name: 'Rock Fountain' } } },
+        { Id: '2', Amount: 12.75, DetailType: 'SalesItemLineDetail', SalesItemLineDetail: { ItemRef: { value: '11', name: 'Pump' } } },
+        { Id: '3', Amount: 47.5, DetailType: 'SalesItemLineDetail', SalesItemLineDetail: { ItemRef: { value: '3', name: 'Concrete' } } },
+        { Amount: 335.25, DetailType: 'SubTotalLineDetail' },
+      ],
+    });
+  }
+
+  it('drops the SubTotal line so the invoice is not counted twice', () => {
+    const rows = normalizeTransaction(invoiceWithSubtotal(), 'Invoice');
+
+    expect(rows).toHaveLength(3);
+    const total = rows.reduce((sum, r) => sum + Number(r.amount), 0);
+    expect(total).toBeCloseTo(335.25, 2);
+    expect(rows.map((r) => r.category)).toEqual(['Rock Fountain', 'Pump', 'Concrete']);
+  });
+
+  it('leaves no duplicate sourceId for the batched upsert to choke on', () => {
+    const rows = normalizeTransaction(invoiceWithSubtotal(), 'Invoice');
+    const ids = rows.map((r) => r.sourceId);
+
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toEqual(['130-1', '130-2', '130-3']);
+  });
+
+  it('drops a DescriptionOnly line, which carries text rather than money', () => {
+    const tx = makeInvoice({
+      Line: [
+        { Id: '1', Amount: 100, DetailType: 'SalesItemLineDetail', SalesItemLineDetail: { ItemRef: { value: '6', name: 'Gardening' } } },
+        { Id: '2', Amount: 0, DetailType: 'DescriptionOnly' },
+      ],
+    });
+
+    const rows = normalizeTransaction(tx, 'Invoice');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.category).toBe('Gardening');
+  });
+
+  it('keeps a line with no DetailType rather than silently dropping money', () => {
+    const tx = makeInvoice({
+      Line: [{ Id: '1', Amount: 42, SalesItemLineDetail: { ItemRef: { value: '6', name: 'Gardening' } } }],
+    });
+
+    const rows = normalizeTransaction(tx, 'Invoice');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.amount).toBe('42');
+  });
+
+  it('falls back to TotalAmt when every line was an aggregate', () => {
+    const tx = makeInvoice({
+      Id: '42',
+      TotalAmt: 75,
+      Line: [{ Amount: 75, DetailType: 'SubTotalLineDetail' }],
+    });
+
+    const rows = normalizeTransaction(tx, 'Invoice');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.amount).toBe('75');
+    expect(rows[0]!.sourceId).toBe('42-0');
+    expect(rows[0]!.category).toBe('Uncategorized');
   });
 });
