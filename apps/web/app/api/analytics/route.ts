@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { webEnv } from '@/lib/config';
+import { forwardedFor } from '@/lib/bff-proxy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,6 +25,7 @@ export async function POST(request: NextRequest) {
       headers: {
         'Content-Type': 'application/json',
         cookie,
+        ...forwardedFor(request),
       },
       body: JSON.stringify(body),
     });

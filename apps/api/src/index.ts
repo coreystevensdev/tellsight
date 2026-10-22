@@ -74,19 +74,24 @@ import { metricsRouter } from './routes/metrics.js';
 
 const app = express();
 
-// Production hop count: Cloudflare (DNS-only, so 0 hops) → Caddy → Next.js BFF →
-// Express. Two proxies sit in front of this, and req.ip has to skip exactly those two.
+// One hop, not two. Caddy appends the real caller to X-Forwarded-For and neither
+// it nor the BFF adds itself, so the list Express sees is [...caller-supplied,
+// realCaller] over a socket belonging to Caddy or to the web container. Trusting
+// one hop lands on realCaller; trusting two lands on whatever the caller put in
+// front of it.
 //
-// Verified against production rather than reasoned about: the auth limiter allowed 10
-// requests then answered 429, and three spoofed X-Forwarded-For values were all still
-// refused, so req.ip resolves to the real caller and not to a proxy or to a header the
-// caller controls. Both halves matter. Too low and every visitor shares one bucket;
-// too high and the value is attacker-supplied.
+// This was 2, with a comment claiming production had verified it. The test could
+// not tell the two cases apart: bff-proxy.ts forwarded only the Cookie header, so
+// no X-Forwarded-For reached Express at all, the address list had a single entry,
+// and Express clamped to it. Spoofing failed because the header was discarded, not
+// because the hop count was right, and req.ip was the web container for every
+// request. One shared bucket for the whole app, which is how three clicks on the
+// integrations page could answer 429.
 //
-// Direct-to-instance paths (the Stripe webhook) are 1 hop and do not key on req.ip.
-// Local docker-compose is 0 hops, where Express falls back to the socket address.
-// Raise to 3 if Cloudflare proxy mode is turned on for the record.
-app.set('trust proxy', 2);
+// Direct-to-instance paths (the Stripe webhook) do not key on req.ip. Local
+// docker-compose sends no X-Forwarded-For, where Express falls back to the socket.
+// Raise by one if Cloudflare proxy mode is ever turned on for the record.
+app.set('trust proxy', 1);
 
 // Before helmet so the scraper does not need to handle security headers. The
 // bearer gate lives in the router, where it can be tested.

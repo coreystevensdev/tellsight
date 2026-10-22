@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { webEnv } from '@/lib/config';
+import { forwardedFor } from '@/lib/bff-proxy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,7 +28,7 @@ export async function GET(
 
   let upstream: globalThis.Response;
   try {
-    upstream = await fetch(upstreamUrl, { headers: { cookie } });
+    upstream = await fetch(upstreamUrl, { headers: { cookie, ...forwardedFor(request) } });
   } catch {
     return NextResponse.json(
       { error: { code: 'UPSTREAM_UNREACHABLE', message: 'API server unavailable' } },

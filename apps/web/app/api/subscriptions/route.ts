@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { proxyGet } from '@/lib/bff-proxy';
 import { webEnv } from '@/lib/config';
+import { forwardedFor } from '@/lib/bff-proxy';
 
 export async function POST(request: NextRequest) {
   const cookieHeader = request.headers.get('cookie') ?? '';
@@ -15,6 +16,7 @@ export async function POST(request: NextRequest) {
     headers: {
       'Content-Type': 'application/json',
       Cookie: cookieHeader,
+      ...forwardedFor(request),
     },
     body,
   });

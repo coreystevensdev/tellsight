@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { webEnv } from '@/lib/config';
-import { upstreamSignal } from '@/lib/bff-proxy';
+import { upstreamSignal, forwardedFor } from '@/lib/bff-proxy';
 import { logger } from '@/lib/logger';
 
 export const runtime = 'nodejs';
@@ -17,7 +17,7 @@ export async function GET(
   let upstream: globalThis.Response;
   try {
     upstream = await fetch(`${webEnv.API_INTERNAL_URL}/ai-summaries/${datasetId}`, {
-      headers: { cookie },
+      headers: { cookie, ...forwardedFor(request) },
       signal: upstreamSignal(request),
     });
   } catch (err) {

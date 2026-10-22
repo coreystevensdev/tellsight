@@ -52,13 +52,33 @@ function cookies(request: NextRequest): string {
   return request.headers.get('cookie') ?? '';
 }
 
+// Express keys its IP rate limiters on req.ip, and every request it sees from
+// here arrives on the same docker-bridge socket. Without this the whole app
+// shares one 60/min bucket and one visitor can lock out the rest.
+//
+// Forwarded verbatim rather than appended to: Caddy has already put the real
+// caller on the end of this list, and adding our own address would push the
+// value Express reads one position further out. Express is set to trust a
+// single hop, so a caller-supplied prefix stays ignored.
+export function forwardedFor(request: NextRequest): Record<string, string> {
+  const xff = request.headers.get('x-forwarded-for');
+  return xff ? { 'x-forwarded-for': xff } : {};
+}
+
+export function forwardedHeaders(
+  request: NextRequest,
+  extra?: Record<string, string>,
+): Record<string, string> {
+  return { Cookie: cookies(request), ...extra, ...forwardedFor(request) };
+}
+
 export function proxyGet(upstreamPath: string) {
   return async (request: NextRequest) => {
     let res: Response;
     try {
       const search = request.nextUrl.search;
       res = await fetch(`${webEnv.API_INTERNAL_URL}${upstreamPath}${search}`, {
-        headers: { Cookie: cookies(request) },
+        headers: forwardedHeaders(request),
         signal: upstreamSignal(request),
       });
     } catch (err) {
@@ -81,7 +101,7 @@ export function proxyPost(upstreamPath: string) {
     try {
       res = await fetch(`${webEnv.API_INTERNAL_URL}${upstreamPath}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Cookie: cookies(request) },
+        headers: forwardedHeaders(request, { 'Content-Type': 'application/json' }),
         body: await request.text(),
         signal: upstreamSignal(request),
       });
@@ -105,7 +125,7 @@ export function proxyPut(upstreamPath: string) {
     try {
       res = await fetch(`${webEnv.API_INTERNAL_URL}${upstreamPath}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Cookie: cookies(request) },
+        headers: forwardedHeaders(request, { 'Content-Type': 'application/json' }),
         body: await request.text(),
         signal: upstreamSignal(request),
       });
@@ -129,7 +149,7 @@ export function proxyPatch(upstreamPath: string) {
     try {
       res = await fetch(`${webEnv.API_INTERNAL_URL}${upstreamPath}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Cookie: cookies(request) },
+        headers: forwardedHeaders(request, { 'Content-Type': 'application/json' }),
         body: await request.text(),
         signal: upstreamSignal(request),
       });
@@ -154,7 +174,7 @@ export function proxyDelete(upstreamPath: string) {
     try {
       res = await fetch(`${webEnv.API_INTERNAL_URL}${upstreamPath}`, {
         method: 'DELETE',
-        headers: { Cookie: cookies(request) },
+        headers: forwardedHeaders(request),
         signal: upstreamSignal(request),
       });
     } catch (err) {
@@ -177,7 +197,7 @@ export function proxyPostWithCookies(upstreamPath: string) {
     try {
       res = await fetch(`${webEnv.API_INTERNAL_URL}${upstreamPath}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Cookie: cookies(request) },
+        headers: forwardedHeaders(request, { 'Content-Type': 'application/json' }),
         body: await request.text(),
         signal: upstreamSignal(request),
       });

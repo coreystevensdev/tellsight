@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { webEnv } from '@/lib/config';
+import { forwardedFor } from '@/lib/bff-proxy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,7 +20,7 @@ export async function GET(
   try {
     upstream = await fetch(
       `${webEnv.API_INTERNAL_URL}/ai-summaries/${encodeURIComponent(datasetId)}/stats/${encodeURIComponent(statId)}`,
-      { headers: { cookie } },
+      { headers: { cookie, ...forwardedFor(request) } },
     );
   } catch {
     return NextResponse.json(
