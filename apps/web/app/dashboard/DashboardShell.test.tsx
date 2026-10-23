@@ -289,6 +289,22 @@ describe('DashboardShell', () => {
     expect(screen.getByTestId('filter-bar')).toBeInTheDocument();
   });
 
+  // The page passes chartsUnavailable when the charts fetch failed. Without this
+  // branch the shell shows DemoModeBanner's "No data yet. Upload a CSV", which
+  // tells a reader their account is empty when the request simply did not land.
+  it('says the data could not load rather than claiming the account is empty', () => {
+    render(<DashboardShell initialData={emptyData} chartsUnavailable />);
+
+    expect(screen.getByText(/could not be loaded/i)).toBeInTheDocument();
+    expect(screen.queryByText(/No data yet/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the real empty state when the fetch actually succeeded', () => {
+    render(<DashboardShell initialData={emptyData} />);
+
+    expect(screen.queryByText(/could not be loaded/i)).not.toBeInTheDocument();
+  });
+
   it('hides FilterBar when no data', () => {
     render(<DashboardShell initialData={emptyData} />);
 

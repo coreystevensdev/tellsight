@@ -84,6 +84,11 @@ export default async function DashboardPage() {
   const hasAuth = cookieStore.has(AUTH.COOKIE_NAMES.ACCESS_TOKEN);
 
   let chartData: ChartData;
+  // "I could not ask" and "there is nothing there" are different facts and this
+  // catch used to report the second for both. EMPTY_CHART_DATA carries
+  // demoState 'empty', so a 429 or a 502 rendered "No data yet, upload a CSV"
+  // at a reader whose data was fine, with a 200 and no error anywhere.
+  let chartsUnavailable = false;
   try {
     const res = await apiServer<ChartData>('/dashboard/charts', {
       cookies: cookieHeader,
@@ -92,6 +97,7 @@ export default async function DashboardPage() {
   } catch (err) {
     if (err instanceof ApiServerError) {
       chartData = EMPTY_CHART_DATA;
+      chartsUnavailable = true;
     } else {
       throw err;
     }
@@ -137,6 +143,7 @@ export default async function DashboardPage() {
   return (
     <DashboardShell
       initialData={chartData}
+      chartsUnavailable={chartsUnavailable}
       cachedSummary={cachedSummary}
       cachedMetadata={cachedMetadata}
       cachedStaleAt={cachedStaleAt}

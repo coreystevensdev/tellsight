@@ -25,6 +25,7 @@ declare global {
     interface Request {
       user?: JwtPayload;
       subscriptionTier?: SubscriptionTier;
+      publicRateLimitCharged?: boolean;
     }
   }
 }

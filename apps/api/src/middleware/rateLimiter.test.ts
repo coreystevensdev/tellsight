@@ -81,6 +81,56 @@ describe('rateLimiter', { retry: 2 }, () => {
     });
   });
 
+  // index.ts mounts five routers with no path, and `app.use(mw, router)` with no
+  // path matches everything, so this middleware runs five times for one request.
+  // The describe above mounts it once, which is why the overcharge was invisible:
+  // in production a single GET moved the bucket by 5, making the 60/min tier a
+  // 12/min tier.
+  describe('rateLimitPublic charges once per request, not once per mount', () => {
+    let server: http.Server;
+    let baseUrl: string;
+
+    beforeAll(async () => {
+      const result = await createTestApp((app) => {
+        // Fresh bucket per test via a spoofed caller, since the limiters are
+        // module-level singletons and the suite above exhausts 127.0.0.1.
+        app.set('trust proxy', true);
+        app.use(rateLimitPublic);
+        app.use(rateLimitPublic);
+        app.use(rateLimitPublic);
+        app.use(rateLimitPublic);
+        app.use(rateLimitPublic);
+        app.get('/public', (_req: Request, res: Response) => {
+          res.json({ data: { ok: true } });
+        });
+      });
+      server = result.server;
+      baseUrl = result.baseUrl;
+    });
+
+    afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
+
+    async function getAs(ip: string) {
+      return fetch(`${baseUrl}/public`, { headers: { 'x-forwarded-for': ip } });
+    }
+
+    it('lets a caller through well past max/5', async () => {
+      // 13 requests. Charged once each that is 13 of 60. Charged per mount it is
+      // 65, so the old code started answering 429 partway through.
+      const responses = [];
+      for (let i = 0; i < 13; i++) responses.push(await getAs('198.51.100.21'));
+
+      expect(responses.filter((r) => r.status === 429)).toHaveLength(0);
+    });
+
+    it('still blocks once the real limit is reached', async () => {
+      const responses = [];
+      for (let i = 0; i < 64; i++) responses.push(await getAs('198.51.100.22'));
+
+      expect(responses.filter((r) => r.status === 429).length).toBeGreaterThan(0);
+    });
+  });
+
   describe('rateLimitAuth', () => {
     let server: http.Server;
     let baseUrl: string;
