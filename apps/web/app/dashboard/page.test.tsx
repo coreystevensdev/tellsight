@@ -209,3 +209,73 @@ describe('DashboardPage chart failures', () => {
     await expect(DashboardPage()).rejects.toThrow(TypeError);
   });
 });
+
+describe('DashboardPage distinguishes a failure from an empty account', () => {
+  // Measured against production on 2026-10-22: with the public bucket spent,
+  // /dashboard answered 200 and rendered "No data yet. Upload a CSV...". The
+  // reader is told their account is empty when the request simply failed, and
+  // neither the page nor the status code says otherwise.
+  it('flags a failed charts call so the empty-state banner stays hidden', async () => {
+    respond({ '/dashboard/charts': new ApiServerError('RATE_LIMITED', 'Too many requests', 429) });
+
+    const props = await renderPage();
+
+    expect(props.chartsUnavailable).toBe(true);
+  });
+
+  it('does not flag a genuinely empty account', async () => {
+    respond({ '/dashboard/charts': { ...CHARTS, datasetId: null, demoState: 'empty' } });
+
+    const props = await renderPage();
+
+    expect(props.chartsUnavailable).toBe(false);
+  });
+
+  // Every upstream status takes the same branch, so the fake empty state was
+  // reachable from an outage or a timeout too, not only from throttling.
+  it.each([429, 500, 502, 503])('flags a %s the same way', async (status) => {
+    respond({ '/dashboard/charts': new ApiServerError('ERR', 'upstream', status) });
+
+    const props = await renderPage();
+
+    expect(props.chartsUnavailable).toBe(true);
+  });
+});
+
+// Each call here spends a point of the visitor's public rate-limit budget, so
+// this count and RATE_LIMITS.public together decide how many times someone can
+// open the dashboard before it breaks. Exact rather than an upper bound: a
+// `toBeLessThanOrEqual` written against the budget passed happily when a ninth
+// fetch was added, because the real count had slack under the ceiling.
+describe('DashboardPage request fan-out', () => {
+  it('makes exactly four calls for a signed-in render', async () => {
+    signedIn();
+    respond({
+      '/dashboard/charts': CHARTS,
+      '/latest': { content: 'summary', metadata: null },
+      '/subscriptions/tier': { tier: 'pro' },
+      '/org/profile': { businessType: 'retail', teamSize: 'solo' },
+    });
+
+    await renderPage();
+
+    expect(apiServer.mock.calls.map((c) => c[0])).toEqual([
+      '/dashboard/charts',
+      '/ai-summaries/7/latest',
+      '/subscriptions/tier',
+      '/org/profile',
+    ]);
+  });
+
+  it('makes exactly two for an anonymous render', async () => {
+    anonymous();
+    respond({ '/dashboard/charts': CHARTS, '/cached': { content: 'seed', metadata: null } });
+
+    await renderPage();
+
+    expect(apiServer.mock.calls.map((c) => c[0])).toEqual([
+      '/dashboard/charts',
+      '/ai-summaries/7/cached',
+    ]);
+  });
+});

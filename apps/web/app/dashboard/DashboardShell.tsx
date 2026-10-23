@@ -51,6 +51,9 @@ import type { OrgFinancials } from 'shared/types';
 
 interface DashboardShellProps {
   initialData: ChartData;
+  // True when the charts request failed rather than came back empty. Without
+  // it the empty-state banner claims the account has no data.
+  chartsUnavailable?: boolean;
   cachedSummary?: string;
   cachedMetadata?: TransparencyMetadata | null;
   cachedStaleAt?: string | null;
@@ -169,7 +172,7 @@ function FilteredEmptyState({ onReset }: { onReset: () => void }) {
   );
 }
 
-export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cachedStaleAt, tier: serverTier, needsOnboarding, businessType, teamSize }: DashboardShellProps) {
+export function DashboardShell({ initialData, chartsUnavailable = false, cachedSummary, cachedMetadata, cachedStaleAt, tier: serverTier, needsOnboarding, businessType, teamSize }: DashboardShellProps) {
   const router = useRouter();
   const [showOnboarding, setShowOnboarding] = useState(needsOnboarding ?? false);
   const { setOrgName } = useSidebar();
@@ -394,7 +397,20 @@ export function DashboardShell({ initialData, cachedSummary, cachedMetadata, cac
         <AlertClickTracker />
       </Suspense>
       {showOnboarding && <OnboardingModal onComplete={() => setShowOnboarding(false)} />}
-      <DemoModeBanner demoState={data.demoState} onUploadClick={handleUploadClick} />
+      {chartsUnavailable ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="border-b border-destructive/20 bg-destructive/5 px-4 py-3 md:px-6 lg:px-8"
+        >
+          <p className="text-sm text-foreground">
+            Your dashboard data could not be loaded. This is not an empty account, so reload in a
+            moment rather than uploading anything.
+          </p>
+        </div>
+      ) : (
+        <DemoModeBanner demoState={data.demoState} onUploadClick={handleUploadClick} />
+      )}
 
       {isLoading && hasAnyData && !hasData ? (
         <div
