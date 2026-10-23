@@ -1,0 +1,20 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "c330e0446950d1d05d82621ebe9d3dcb"
+name = "Tellsight"
+application_url = "https://tellsight.coreystevens.dev/"
+embedded = false
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_orders,read_products,read_inventory"
+optional_scopes = [ ]
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [
+  "https://tellsight.coreystevens.dev/api/integrations/shopify/callback"
+]
+
+[webhooks]
+api_version = "2026-10"
