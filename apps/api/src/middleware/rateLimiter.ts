@@ -122,8 +122,15 @@ export function rateLimitAi(req: Request, res: Response, next: NextFunction) {
     });
 }
 
+// Five routers are mounted with no path (`app.use(rateLimitPublic, router)`
+// matches everything), so Express runs this middleware five times for a single
+// request and the old code called consume() on each pass. One request cost five
+// points, which made the 60/min tier a 12/min tier. Measured on the live box:
+// one GET /api/subscriptions/tier moved the bucket from 0 to 5.
 export function rateLimitPublic(req: Request, res: Response, next: NextFunction) {
   if (bypass) return next();
+  if (req.publicRateLimitCharged) return next();
+  req.publicRateLimitCharged = true;
   const key = req.ip ?? 'unknown';
   publicLimiter
     .consume(key)
