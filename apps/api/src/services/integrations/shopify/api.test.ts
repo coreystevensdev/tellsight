@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-import { RetryableError, TokenRevokedError, ConnectionNotFoundError } from './errors.js';
+import {
+  RetryableError,
+  ScopeDeniedError,
+  TokenRevokedError,
+  ConnectionNotFoundError,
+} from './errors.js';
 
 const mockGetByIdAndProvider = vi.fn();
 const mockDecrypt = vi.fn();
@@ -124,13 +129,59 @@ describe('Shopify API client', () => {
       await expect(client.getShopInfo()).rejects.toBeInstanceOf(RetryableError);
     });
 
-    it('maps an ACCESS_DENIED GraphQL error to TokenRevokedError', async () => {
+    // This asserted TokenRevokedError, and named that as the intent, so the
+    // wrong behaviour was pinned rather than caught. A missing scope and a dead
+    // credential need opposite responses: one needs a code or config change,
+    // the other needs the merchant to reconnect. Live, this told the reader to
+    // reconnect, they did, and it failed identically.
+    it('maps ACCESS_DENIED to a scope error, not a revoked token', async () => {
       mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
       mockFetch.mockResolvedValueOnce(
         graphqlResponse({
-          errors: [{ message: 'Access denied', extensions: { code: 'ACCESS_DENIED' } }],
+          errors: [
+            {
+              message: 'Access denied for customer field. Required access: `read_customers`.',
+              extensions: { code: 'ACCESS_DENIED' },
+            },
+          ],
         }),
       );
+
+      const { createShopifyClient } = await import('./api.js');
+      const client = await createShopifyClient(1);
+      const err = await client.getShopInfo().catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(ScopeDeniedError);
+      expect(err).not.toBeInstanceOf(TokenRevokedError);
+    });
+
+    // Shopify names the scope it wanted. Dropping that, as the old mapping did,
+    // leaves nothing to act on.
+    it('keeps the scope Shopify named in the message', async () => {
+      mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
+      mockFetch.mockResolvedValueOnce(
+        graphqlResponse({
+          errors: [
+            {
+              message: 'Access denied for customer field. Required access: `read_customers`.',
+              extensions: { code: 'ACCESS_DENIED' },
+            },
+          ],
+        }),
+      );
+
+      const { createShopifyClient } = await import('./api.js');
+      const client = await createShopifyClient(1);
+      const err = (await client.getShopInfo().catch((e: unknown) => e)) as Error;
+
+      expect(err.message).toContain('read_customers');
+      expect(err.message).not.toMatch(/revoked|reconnect/i);
+    });
+
+    // A real 401 is still a revoked token; only the GraphQL path changed.
+    it('still maps a 401 to a revoked token', async () => {
+      mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
+      mockFetch.mockResolvedValueOnce({ status: 401, ok: false, text: async () => '' });
 
       const { createShopifyClient } = await import('./api.js');
       const client = await createShopifyClient(1);

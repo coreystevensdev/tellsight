@@ -4,7 +4,7 @@ import type { ConnectionOptions, Job } from 'bullmq';
 import { env } from '../../../config.js';
 import { logger } from '../../../lib/logger.js';
 import { runSync, type SyncTrigger } from './sync.js';
-import { TokenRevokedError, ConnectionNotFoundError } from './errors.js';
+import { ScopeDeniedError, TokenRevokedError, ConnectionNotFoundError } from './errors.js';
 
 export const SYNC_QUEUE_NAME = 'shopify-sync';
 const WORKER_CONCURRENCY = 2;
@@ -75,6 +75,10 @@ export function initSyncWorker(): Worker {
         if (err instanceof TokenRevokedError) {
           logger.warn({ jobId: job.id, connectionId }, 'Shopify token revoked, marking job unrecoverable');
           throw new UnrecoverableError(`Token revoked: ${err.message}`);
+        }
+        if (err instanceof ScopeDeniedError) {
+          logger.warn({ jobId: job.id, connectionId }, 'Shopify scope missing, marking job unrecoverable');
+          throw new UnrecoverableError(err.message);
         }
         if (err instanceof ConnectionNotFoundError) {
           logger.warn({ jobId: job.id, connectionId }, 'Shopify connection not found, marking job unrecoverable');

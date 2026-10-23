@@ -11,7 +11,6 @@ function makeOrder(overrides: Partial<ShopifyOrder> = {}): ShopifyOrder {
     updatedAt: '2026-04-10T12:00:00Z',
     displayFinancialStatus: 'PAID',
     currentTotalPriceSet: { shopMoney: { amount: '120.00', currencyCode: 'USD' } },
-    customer: { displayName: 'Jane Doe' },
     lineItems: {
       edges: [
         {
@@ -46,7 +45,7 @@ describe('normalizeOrder', () => {
       category: 'Ceramic Mug',
       amount: '80.00',
       parentCategory: 'Income',
-      label: 'Jane Doe',
+      label: '#1001',
     });
     expect(rows[1]).toMatchObject({ category: 'Tote Bag', amount: '40.00' });
   });
@@ -62,9 +61,15 @@ describe('normalizeOrder', () => {
     });
   });
 
-  it('falls back to the order name as the label when there is no customer', () => {
-    const rows = normalizeOrder(makeOrder({ customer: null }));
-    expect(rows[0]!.label).toBe('#1001');
+  // The label used to prefer customer.displayName. Reading that field needs
+  // read_customers, which this app does not request, and Shopify answers
+  // ACCESS_DENIED for the whole query rather than omitting the field. Orders
+  // synced fine until the store had its first real order, then every sync
+  // failed. The order name is public to the merchant and enough for a label,
+  // so the field is gone rather than the scope added.
+  it('labels an order with its name, never a customer', () => {
+    const rows = normalizeOrder(makeOrder({}));
+    expect(rows.every((r) => r.label === '#1001')).toBe(true);
   });
 
   it('lands a refund on the Expenses side, not as negative Income', () => {

@@ -6,7 +6,7 @@ import { ExternalServiceError } from '../../../lib/appError.js';
 
 // read-only across the whole app posture: this connector only ever reads,
 // never writes back to the merchant's store.
-const SHOPIFY_SCOPES = 'read_orders,read_products,read_inventory';
+export const SHOPIFY_SCOPES = 'read_orders,read_products,read_inventory';
 const SHOP_DOMAIN_RE = /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/;
 const TOKEN_TIMEOUT_MS = 10_000;
 
