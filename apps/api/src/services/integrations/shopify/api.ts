@@ -4,6 +4,7 @@ import { decrypt } from '../encryption.js';
 import { integrationConnectionsQueries } from '../../../db/queries/index.js';
 import {
   RetryableError,
+  ScopeDeniedError,
   TokenRevokedError,
   ShopifyApiError,
   ConnectionNotFoundError,
@@ -76,7 +77,7 @@ export async function createShopifyClient(connectionId: number): Promise<Shopify
         throw new RetryableError('Shopify rate limit exceeded', 429, messages);
       }
       if (codes.includes('ACCESS_DENIED')) {
-        throw new TokenRevokedError();
+        throw new ScopeDeniedError(messages);
       }
       throw new ShopifyApiError(`Shopify GraphQL error: ${messages}`, 200, messages);
     }

@@ -5,7 +5,7 @@ import type { NormalizedShopifyRow, ShopifyOrder, ShopifyProduct } from './types
 // order.
 export function normalizeOrder(order: ShopifyOrder): NormalizedShopifyRow[] {
   const date = new Date(order.createdAt);
-  const label = order.customer?.displayName ?? order.name;
+  const label = order.name;
   const lineItems = order.lineItems?.edges ?? [];
 
   const orderRows: NormalizedShopifyRow[] =

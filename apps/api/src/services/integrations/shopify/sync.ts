@@ -28,7 +28,7 @@ export interface SyncResult {
   datasetId: number;
 }
 
-const ORDERS_QUERY = `
+export const ORDERS_QUERY = `
   query OrdersSync($first: Int!, $after: String, $query: String) {
     orders(first: $first, after: $after, query: $query) {
       edges {
@@ -39,7 +39,6 @@ const ORDERS_QUERY = `
           updatedAt
           displayFinancialStatus
           currentTotalPriceSet { shopMoney { amount currencyCode } }
-          customer { displayName }
           lineItems(first: 50) {
             edges { node { id title quantity originalTotalSet { shopMoney { amount currencyCode } } } }
           }
@@ -56,7 +55,7 @@ const ORDERS_QUERY = `
   }
 `;
 
-const PRODUCTS_QUERY = `
+export const PRODUCTS_QUERY = `
   query ProductsSync($first: Int!, $after: String, $query: String) {
     products(first: $first, after: $after, query: $query) {
       edges {

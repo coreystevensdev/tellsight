@@ -24,7 +24,6 @@ export interface ShopifyOrder {
   updatedAt: string;
   displayFinancialStatus?: string;
   currentTotalPriceSet?: { shopMoney: ShopifyMoney };
-  customer?: { displayName?: string } | null;
   lineItems?: { edges: { node: ShopifyLineItem }[] };
   refunds?: ShopifyRefund[];
 }
