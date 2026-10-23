@@ -11,6 +11,12 @@ vi.mock('../../db/queries/index.js', () => ({
   statCorrectionsQueries: {
     getActiveCorrectionStatIds: vi.fn().mockResolvedValue([]),
   },
+  categoryPlansQueries: {
+    // Defaults to no plans, which is the state of every org that has not set
+    // one. The variance producer returns [] for that, so these tests keep
+    // asserting the stat set they were written against.
+    listCategoryPlans: vi.fn().mockResolvedValue([]),
+  },
 }));
 
 vi.mock('../../lib/logger.js', () => ({
@@ -49,7 +55,7 @@ vi.mock('../aiInterpretation/claudeClient.js', () => ({
   generateInterpretation: vi.fn(),
 }));
 
-import { dataRowsQueries, aiSummariesQueries, statCorrectionsQueries } from '../../db/queries/index.js';
+import { dataRowsQueries, aiSummariesQueries, statCorrectionsQueries, categoryPlansQueries } from '../../db/queries/index.js';
 import { generateInterpretation } from '../aiInterpretation/claudeClient.js';
 import { runCurationPipeline, runFullPipeline } from './index.js';
 
@@ -83,6 +89,36 @@ describe('runCurationPipeline', () => {
       expect(insight.stat).toHaveProperty('statType');
       expect(insight.stat).toHaveProperty('value');
     }
+  });
+
+  // Without the categoryPlans pass-through in runCurationPipeline this returns
+  // nothing: the fetch would run, the plans would be discarded, and every other
+  // test here would still pass because they all mock zero plans.
+  it('passes fetched plans into computation so a variance stat is produced', async () => {
+    vi.mocked(dataRowsQueries.getRowsByDataset).mockResolvedValue(fixtureRows as never);
+    vi.mocked(categoryPlansQueries.listCategoryPlans).mockResolvedValue([
+      { category: 'Marketing', plannedMonthly: 500 },
+    ]);
+
+    const insights = await runCurationPipeline(1, 1);
+    const variance = insights.find((i) => i.stat.statType === 'category_variance');
+
+    expect(variance?.stat.category).toBe('Marketing');
+    expect(variance?.stat.details).toMatchObject({ plannedMonthly: 500 });
+  });
+
+  // The client is what carries RLS context, and plans are fetched with the same
+  // one the rows are, so a worker passing dbAdmin gets both and a request-scoped
+  // caller gets both. Pinned because passing the default instead would fail the
+  // tenant_isolation policy only in production.
+  it('fetches plans with the org and the caller client, like the rows', async () => {
+    vi.mocked(dataRowsQueries.getRowsByDataset).mockResolvedValue(fixtureRows as never);
+    const client = { marker: 'caller-client' } as never;
+
+    await runCurationPipeline(7, 1, client);
+
+    expect(categoryPlansQueries.listCategoryPlans).toHaveBeenCalledWith(7, client);
+    expect(dataRowsQueries.getRowsByDataset).toHaveBeenCalledWith(7, 1, client);
   });
 
   it('returns sorted by score descending', async () => {
