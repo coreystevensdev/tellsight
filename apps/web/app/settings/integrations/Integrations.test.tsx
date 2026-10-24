@@ -227,3 +227,57 @@ describe('Integrations actions', () => {
     expect(screen.queryByText('Intuit is unavailable')).not.toBeInTheDocument();
   });
 });
+
+// Shopify is the only card whose Connect needs input, so it is the only one
+// that can present an enabled-looking button that does nothing. It was already
+// disabled on an empty domain, and said nothing about why, which is how a real
+// reconnect stalled: the button looked live, the click did nothing, and the
+// card went on reading "Connect".
+describe('Shopify needs a store domain before Connect does anything', () => {
+  function shopifyCard() {
+    return section(/shopify/i);
+  }
+
+  async function renderDisconnected() {
+    respondWith({ connected: false }, { connected: false });
+    render(<Integrations />);
+    await waitFor(() => expect(shopifyCard()).toBeTruthy());
+  }
+
+  it('says what is missing rather than silently disabling', async () => {
+    await renderDisconnected();
+
+    expect(within(shopifyCard()).getByText(/enter your store domain/i)).toBeInTheDocument();
+    expect(within(shopifyCard()).getByRole('button', { name: /^connect$/i })).toBeDisabled();
+  });
+
+  it('rejects a domain the server would reject, before sending it', async () => {
+    const user = userEvent.setup({ delay: null });
+    await renderDisconnected();
+
+    await user.type(within(shopifyCard()).getByLabelText(/store domain/i), 'https://my-store.com');
+
+    expect(within(shopifyCard()).getByText(/not a store domain/i)).toBeInTheDocument();
+    expect(within(shopifyCard()).getByRole('button', { name: /^connect$/i })).toBeDisabled();
+    // The point of validating here is that nothing is sent at all.
+    expect(apiClient.mock.calls.filter((c) => String(c[0]).includes('shopify/connect'))).toHaveLength(0);
+  });
+
+  it('enables Connect once the domain matches what Shopify accepts', async () => {
+    const user = userEvent.setup({ delay: null });
+    await renderDisconnected();
+
+    await user.type(within(shopifyCard()).getByLabelText(/store domain/i), 'my-store.myshopify.com');
+
+    expect(within(shopifyCard()).getByRole('button', { name: /^connect$/i })).toBeEnabled();
+  });
+
+  it('marks the field invalid for assistive tech, not just visually', async () => {
+    const user = userEvent.setup({ delay: null });
+    await renderDisconnected();
+    const field = within(shopifyCard()).getByLabelText(/store domain/i);
+
+    await user.type(field, 'nope');
+    expect(field).toHaveAttribute('aria-invalid', 'true');
+  });
+});

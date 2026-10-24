@@ -3,11 +3,12 @@ import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
 import { env } from '../../../config.js';
 import { logger } from '../../../lib/logger.js';
 import { ExternalServiceError } from '../../../lib/appError.js';
+import { isShopifyShopDomain } from 'shared/constants';
 
 // read-only across the whole app posture: this connector only ever reads,
 // never writes back to the merchant's store.
 export const SHOPIFY_SCOPES = 'read_orders,read_products,read_inventory';
-const SHOP_DOMAIN_RE = /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/;
+
 const TOKEN_TIMEOUT_MS = 10_000;
 
 interface AuthUrlResult {
@@ -26,7 +27,7 @@ interface TokenResponse {
 }
 
 export function isValidShopDomain(shop: string): boolean {
-  return SHOP_DOMAIN_RE.test(shop);
+  return isShopifyShopDomain(shop);
 }
 
 export function generateAuthUrl(shop: string): AuthUrlResult {

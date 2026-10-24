@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { RATE_LIMITS } from './index.js';
+import { RATE_LIMITS, isShopifyShopDomain } from './index.js';
 
 // NFR14 names three of these numbers: auth 10/min/IP, AI generation 5/min/user,
 // public 60/min/IP. Nothing referenced RATE_LIMITS from a test, so the constants
@@ -27,5 +27,30 @@ describe('RATE_LIMITS matches NFR14', () => {
   // loosely, so check the unit itself.
   it.each(['auth', 'ai', 'public'] as const)('expresses %s as a per-minute window', (tier) => {
     expect(RATE_LIMITS[tier].windowMs).toBe(60_000);
+  });
+});
+
+// The server rejects a bad shop domain and the Connect button disables on one.
+// They were separate regexes in separate packages until this moved here, so
+// this pins the shape both now read.
+describe('isShopifyShopDomain', () => {
+  it.each([
+    'my-store.myshopify.com',
+    'a.myshopify.com',
+    'store123.myshopify.com',
+  ])('accepts %s', (shop) => {
+    expect(isShopifyShopDomain(shop)).toBe(true);
+  });
+
+  it.each([
+    ['https://my-store.myshopify.com', 'a scheme'],
+    ['my-store.myshopify.com/admin', 'a path'],
+    ['My-Store.myshopify.com', 'uppercase, which Shopify does not use'],
+    ['my-store.myshopify.com ', 'a trailing space'],
+    ['my-store.com', 'the wrong host'],
+    ['-store.myshopify.com', 'a leading hyphen'],
+    ['', 'nothing at all'],
+  ])('rejects %s (%s)', (shop) => {
+    expect(isShopifyShopDomain(shop)).toBe(false);
   });
 });
