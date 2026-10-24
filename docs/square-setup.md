@@ -10,11 +10,17 @@ Sales and refunds across every location on the account, via `ListLocations` then
 
 | Scope | Why |
 |---|---|
-| `ORDERS_READ` | the orders themselves |
-| `PAYMENTS_READ` | payment detail on those orders |
+| `ORDERS_READ` | the orders themselves, and the refunds Square attaches to them |
 | `MERCHANT_PROFILE_READ` | `ListLocations`, because a Square token is seller-scoped and carries no location id while `SearchOrders` demands them explicitly |
 
 It does not read inventory, does not read customers, and never writes.
+
+`PAYMENTS_READ` used to be requested and never was needed. Refunds arrive on the
+order rather than from the Payments API, and `SearchOrders` populates
+`order.refunds` with `ORDERS_READ` alone. Measured against a sandbox account
+with two tokens differing only in that scope: 14 orders and 2 refunds either
+way. The scope reads as if it covers refunds, and it does, for the Payments and
+Refunds API endpoints this code never calls.
 
 ## 1. Create the application
 
