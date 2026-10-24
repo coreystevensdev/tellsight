@@ -65,7 +65,7 @@ describe('InviteAccept validation', () => {
 describe('InviteAccept joining', () => {
   async function validated() {
     fetchMock.mockResolvedValueOnce(json({ data: { orgName: 'Acme Coffee' } }));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<InviteAccept token="tok-1" />);
     await screen.findByRole('heading', { name: /Join Acme Coffee/ });
     return user;

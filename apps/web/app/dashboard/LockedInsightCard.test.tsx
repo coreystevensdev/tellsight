@@ -25,7 +25,7 @@ describe('LockedInsightCard', () => {
   });
 
   it('enables submit when a valid value is typed', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<LockedInsightCard {...defaultProps} />);
 
     await user.type(screen.getByLabelText('Current cash balance'), '15000');
@@ -34,7 +34,7 @@ describe('LockedInsightCard', () => {
   });
 
   it('passes the parsed numeric value (not the string) to onSubmit', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(<LockedInsightCard {...defaultProps} onSubmit={onSubmit} />);
 
@@ -47,7 +47,7 @@ describe('LockedInsightCard', () => {
   });
 
   it('strips minus sign at input time so users never silently submit a positive value', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<LockedInsightCard {...defaultProps} />);
     const input = screen.getByLabelText('Current cash balance') as HTMLInputElement;
 
@@ -60,7 +60,7 @@ describe('LockedInsightCard', () => {
   });
 
   it('disables submit for values over inputMax', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<LockedInsightCard {...defaultProps} inputMax={1_000_000} />);
     const input = screen.getByLabelText('Current cash balance');
 
@@ -69,7 +69,7 @@ describe('LockedInsightCard', () => {
   });
 
   it('formats the value as currency on blur', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<LockedInsightCard {...defaultProps} />);
     const input = screen.getByLabelText('Current cash balance') as HTMLInputElement;
 
@@ -80,7 +80,7 @@ describe('LockedInsightCard', () => {
   });
 
   it('strips formatting on focus to allow editing', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<LockedInsightCard {...defaultProps} />);
     const input = screen.getByLabelText('Current cash balance') as HTMLInputElement;
 
@@ -93,7 +93,7 @@ describe('LockedInsightCard', () => {
   });
 
   it('surfaces an error when onSubmit rejects', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const onSubmit = vi.fn().mockRejectedValue(new Error('Network down'));
     render(<LockedInsightCard {...defaultProps} onSubmit={onSubmit} />);
 
@@ -106,7 +106,7 @@ describe('LockedInsightCard', () => {
   });
 
   it('disables input and button while submitting', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     let resolveSubmit: () => void;
     const onSubmit = vi.fn(() => new Promise<void>((r) => { resolveSubmit = r; }));
     render(<LockedInsightCard {...defaultProps} onSubmit={onSubmit} />);

@@ -8,7 +8,7 @@ const fetchMock = vi.fn();
 vi.stubGlobal('fetch', fetchMock);
 
 async function request(email = 'marcus@b.test') {
-  const user = userEvent.setup();
+  const user = userEvent.setup({ delay: null });
   render(<ForgotPasswordForm />);
   await user.type(screen.getByPlaceholderText('Email'), email);
   await user.click(screen.getByRole('button', { name: /send|reset/i }));

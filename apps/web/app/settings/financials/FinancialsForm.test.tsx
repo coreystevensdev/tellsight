@@ -36,7 +36,7 @@ describe('FinancialsForm, monthlyFixedCosts field', () => {
   });
 
   it('submits zero as a legitimate value (>= 0 path)', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockGetResponse({ monthlyFixedCosts: undefined });
     mockApiClient.mockResolvedValueOnce({ data: {} }); // PUT response
 
@@ -58,7 +58,7 @@ describe('FinancialsForm, monthlyFixedCosts field', () => {
   });
 
   it('skips the field entirely when input is blank (!= null gate)', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockGetResponse({ businessStartedDate: '2024-01-01' });
     mockApiClient.mockResolvedValueOnce({ data: {} });
 

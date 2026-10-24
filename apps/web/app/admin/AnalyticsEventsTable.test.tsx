@@ -163,7 +163,7 @@ describe('AnalyticsEventsTable', () => {
 
   it('submits filter change and resets to page 1', async () => {
     setupMocks();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<AnalyticsEventsTable />);
 
     await waitForLoaded();

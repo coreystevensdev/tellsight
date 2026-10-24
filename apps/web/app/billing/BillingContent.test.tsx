@@ -79,7 +79,7 @@ describe('BillingContent checkout', () => {
   it('redirects to the checkout URL the API returns', async () => {
     fetchMock.mockResolvedValueOnce(json({ data: { checkoutUrl: 'https://checkout.stripe.com/c/pay/cs_1' } }));
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<BillingContent />);
     await user.click(screen.getByRole('button', { name: /Upgrade to Pro/ }));
 
@@ -93,7 +93,7 @@ describe('BillingContent checkout', () => {
   it('shows the API message and does not navigate when checkout fails', async () => {
     fetchMock.mockResolvedValueOnce(json({ error: { message: 'No payment method on file' } }, 402));
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<BillingContent />);
     await user.click(screen.getByRole('button', { name: /Upgrade to Pro/ }));
 
@@ -104,7 +104,7 @@ describe('BillingContent checkout', () => {
   it('falls back to a generic message when the API sends none', async () => {
     fetchMock.mockResolvedValueOnce(json({}, 500));
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<BillingContent />);
     await user.click(screen.getByRole('button', { name: /Upgrade to Pro/ }));
 
@@ -114,7 +114,7 @@ describe('BillingContent checkout', () => {
   it('reports a network failure rather than throwing', async () => {
     fetchMock.mockRejectedValueOnce(new Error('offline'));
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<BillingContent />);
     await user.click(screen.getByRole('button', { name: /Upgrade to Pro/ }));
 
@@ -126,7 +126,7 @@ describe('BillingContent checkout', () => {
   it('re-enables the button after a failure', async () => {
     fetchMock.mockResolvedValueOnce(json({}, 500));
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<BillingContent />);
     await user.click(screen.getByRole('button', { name: /Upgrade to Pro/ }));
 
@@ -139,7 +139,7 @@ describe('BillingContent portal', () => {
     useSubscription.mockReturnValue({ tier: 'pro', isLoading: false });
     fetchMock.mockResolvedValueOnce(json({ data: { portalUrl: 'https://billing.stripe.com/p/session_1' } }));
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<BillingContent />);
     await user.click(screen.getByRole('button', { name: /Manage Subscription/ }));
 
@@ -151,7 +151,7 @@ describe('BillingContent portal', () => {
     useSubscription.mockReturnValue({ tier: 'pro', isLoading: false });
     fetchMock.mockResolvedValueOnce(json({ error: { message: 'No Stripe customer' } }, 400));
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<BillingContent />);
     await user.click(screen.getByRole('button', { name: /Manage Subscription/ }));
 

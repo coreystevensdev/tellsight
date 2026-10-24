@@ -109,7 +109,7 @@ describe('Integrations actions', () => {
       data: { authUrl: 'https://appcenter.intuit.com/connect/oauth2?x=1' },
     }));
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<Integrations />);
     await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(3));
     await user.click(within(section(/QuickBooks/)).getByRole('button', { name: 'Connect' }));
@@ -126,7 +126,7 @@ describe('Integrations actions', () => {
       data: { authUrl: 'https://store.myshopify.com/admin/oauth' },
     }));
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<Integrations />);
     await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(3));
     await user.type(screen.getByPlaceholderText('your-store.myshopify.com'), '  my-store.myshopify.com  ');
@@ -181,7 +181,7 @@ describe('Integrations actions', () => {
   it('shows the provider as disconnected immediately after disconnecting', async () => {
     respondWith({ connected: true, syncStatus: 'idle' }, { connected: false });
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<Integrations />);
     await waitFor(() =>
       expect(within(section(/QuickBooks/)).getByRole('button', { name: 'Disconnect' })).toBeInTheDocument(),
@@ -198,7 +198,7 @@ describe('Integrations actions', () => {
   it('reloads both statuses after a sync', async () => {
     respondWith({ connected: true, syncStatus: 'idle' }, { connected: false });
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<Integrations />);
     await waitFor(() =>
       expect(within(section(/QuickBooks/)).getByRole('button', { name: 'Sync now' })).toBeInTheDocument(),
@@ -217,7 +217,7 @@ describe('Integrations actions', () => {
       throw new Error('Intuit is unavailable');
     });
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<Integrations />);
     await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(3));
     await user.click(within(section(/QuickBooks/)).getByRole('button', { name: 'Connect' }));

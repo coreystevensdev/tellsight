@@ -61,7 +61,7 @@ describe('CashBalanceStaleBanner', () => {
   });
 
   it('opens inline input when Update is clicked, submits parsed value', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const onUpdate = vi.fn().mockResolvedValue(undefined);
 
     render(<CashBalanceStaleBanner cashAsOfDate={daysAgoISO(45)} now={NOW} onUpdate={onUpdate} />);
@@ -76,7 +76,7 @@ describe('CashBalanceStaleBanner', () => {
   });
 
   it('dismisses session-locally when X is clicked', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<CashBalanceStaleBanner cashAsOfDate={daysAgoISO(45)} now={NOW} onUpdate={vi.fn()} />);
 
     await user.click(screen.getByRole('button', { name: /dismiss banner/i }));
@@ -97,7 +97,7 @@ describe('CashBalanceStaleBanner', () => {
   });
 
   it('surfaces an error when onUpdate rejects', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const onUpdate = vi.fn().mockRejectedValue(new Error('API down'));
 
     render(<CashBalanceStaleBanner cashAsOfDate={daysAgoISO(45)} now={NOW} onUpdate={onUpdate} />);

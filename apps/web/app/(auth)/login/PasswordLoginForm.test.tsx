@@ -21,7 +21,7 @@ function ok() {
 }
 
 async function signIn(redirectPath = '/dashboard') {
-  const user = userEvent.setup();
+  const user = userEvent.setup({ delay: null });
   render(<PasswordLoginForm redirectPath={redirectPath} />);
   await user.type(screen.getByPlaceholderText('Email'), 'a@b.test');
   await user.type(screen.getByPlaceholderText('Password'), 'hunter2');

@@ -35,7 +35,7 @@ describe('OnboardingModal stepping', () => {
   });
 
   it('advances a step on each answer without saving yet', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<OnboardingModal onComplete={onComplete} />);
 
     await user.click(screen.getByRole('button', { name: 'Retail' }));
@@ -50,7 +50,7 @@ describe('OnboardingModal stepping', () => {
   // Skip has to close the modal without writing a partial profile, or a user
   // who bailed on question two ends up with half a profile feeding the prompt.
   it('closes without saving when skipped', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<OnboardingModal onComplete={onComplete} />);
     await user.click(screen.getByRole('button', { name: 'Retail' }));
 
@@ -63,7 +63,7 @@ describe('OnboardingModal stepping', () => {
 
 describe('OnboardingModal saving', () => {
   it('saves every answer in one PUT and then closes', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<OnboardingModal onComplete={onComplete} />);
 
     await answerAll(user);
@@ -87,7 +87,7 @@ describe('OnboardingModal saving', () => {
   it('closes anyway when the save fails', async () => {
     apiClient.mockRejectedValue(new Error('500 from the API'));
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<OnboardingModal onComplete={onComplete} />);
 
     await answerAll(user);

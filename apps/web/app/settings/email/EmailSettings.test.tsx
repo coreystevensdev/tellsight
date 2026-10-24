@@ -55,7 +55,7 @@ describe('EmailSettings', () => {
   });
 
   it('submits cadence + timezone via PUT (analytics emit lives on the server)', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockApiClient.mockResolvedValueOnce({ data: { cadence: 'monthly', timezone: 'UTC' } });
 
     render(<EmailSettings initial={defaultsResponse()} />);
@@ -72,7 +72,7 @@ describe('EmailSettings', () => {
   });
 
   it('shows an error message when the save fails', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockApiClient.mockRejectedValueOnce(new Error('Network down'));
 
     render(<EmailSettings initial={defaultsResponse()} />);
