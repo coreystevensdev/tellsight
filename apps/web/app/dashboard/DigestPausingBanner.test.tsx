@@ -61,7 +61,7 @@ describe('DigestPausingBanner interaction', () => {
   });
 
   it('stays dismissed for the rest of the session', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<DigestPausingBanner digestPausesAt={pausesIn(3)} now={NOW} />);
 
     await user.click(screen.getByRole('button', { name: /dismiss banner/i }));

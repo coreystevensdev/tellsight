@@ -25,7 +25,7 @@ beforeEach(() => {
   writeText.mockReset().mockResolvedValue(undefined);
 });
 
-// userEvent.setup() installs its own navigator.clipboard, so the stub has to go
+// userEvent.setup({ delay: null }) installs its own navigator.clipboard, so the stub has to go
 // in after it or the component writes to userEvent's copy and this spy never
 // sees the call.
 function stubClipboard() {
@@ -71,7 +71,7 @@ describe('Invites generation', () => {
       init?.method === 'POST' ? { data: generated() } : { data: [] },
     );
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<Invites />);
     await waitFor(() => expect(screen.getByRole('button')).toBeEnabled());
     const listCallsBefore = apiClient.mock.calls.filter(([, i]) => !i || !i.method).length;
@@ -88,7 +88,7 @@ describe('Invites generation', () => {
       return { data: [] };
     });
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<Invites />);
     await waitFor(() => expect(screen.getByRole('button')).toBeEnabled());
     await user.click(screen.getByRole('button'));
@@ -103,7 +103,7 @@ describe('Invites copying', () => {
     apiClient.mockImplementation(async (_path: string, init?: { method?: string }) =>
       init?.method === 'POST' ? { data: generated() } : { data: [] },
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     stubClipboard();
     render(<Invites />);
     await waitFor(() => expect(screen.getByRole('button')).toBeEnabled());

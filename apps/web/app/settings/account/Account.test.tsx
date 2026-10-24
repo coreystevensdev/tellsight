@@ -23,7 +23,7 @@ async function arm(user: ReturnType<typeof userEvent.setup>) {
 
 describe('Account deletion', () => {
   it('keeps the button disabled until the phrase is typed', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<Account />);
     const button = screen.getByRole('button', { name: /delete account/i });
 
@@ -36,7 +36,7 @@ describe('Account deletion', () => {
   });
 
   it('never calls the endpoint while the phrase is wrong', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<Account />);
 
     await user.type(screen.getByLabelText(/type .* to confirm/i), 'delete my acount');
@@ -46,7 +46,7 @@ describe('Account deletion', () => {
   });
 
   it('leaves the signed-in world once the account is gone', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     vi.mocked(global.fetch).mockResolvedValue(ok({ data: { deletedOrgIds: [1], leftOrgIds: [] } }) as never);
     render(<Account />);
 
@@ -59,7 +59,7 @@ describe('Account deletion', () => {
 
   // The one refusal the server has, and the only one a person can act on.
   it('names the orgs that need a new owner first', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     vi.mocked(global.fetch).mockResolvedValue(fail({
       error: { message: 'Transfer ownership', details: { organizations: [{ orgId: 3, orgName: 'Sunrise Cafe' }] } },
     }) as never);
@@ -73,7 +73,7 @@ describe('Account deletion', () => {
   });
 
   it('says the account survived when the request never lands', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     vi.mocked(global.fetch).mockRejectedValue(new Error('offline'));
     render(<Account />);
 

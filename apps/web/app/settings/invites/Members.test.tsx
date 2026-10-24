@@ -38,7 +38,7 @@ describe('Members', () => {
   });
 
   it('asks before removing, and does nothing until confirmed', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<Members />);
     await screen.findByText('Bo');
 
@@ -49,7 +49,7 @@ describe('Members', () => {
   });
 
   it('deletes and reloads once confirmed', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<Members />);
     await screen.findByText('Bo');
 
@@ -62,7 +62,7 @@ describe('Members', () => {
   });
 
   it('backs out without calling anything', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<Members />);
     await screen.findByText('Bo');
 
@@ -74,7 +74,7 @@ describe('Members', () => {
   });
 
   it('says so when the removal fails', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<Members />);
     await screen.findByText('Bo');
     apiClient.mockRejectedValueOnce(new Error('Owner access required'));

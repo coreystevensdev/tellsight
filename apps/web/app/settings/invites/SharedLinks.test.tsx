@@ -27,7 +27,7 @@ describe('SharedLinks', () => {
   });
 
   it('revokes and reloads', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<SharedLinks />);
     await screen.findAllByText(/Link #/);
 
@@ -37,7 +37,7 @@ describe('SharedLinks', () => {
   });
 
   it('surfaces a refusal rather than pretending it worked', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<SharedLinks />);
     await screen.findAllByText(/Link #/);
     apiClient.mockRejectedValueOnce(new Error('Only the owner or whoever made it can revoke a share'));

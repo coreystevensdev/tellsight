@@ -15,7 +15,10 @@ function ok() {
 }
 
 async function signUp(props: { redirectPath?: string; inviteToken?: string } = {}) {
-  const user = userEvent.setup();
+  // delay: null drops the event-loop yield between keystrokes. Thirty of them
+  // across three fields is free alone and real time under a full parallel run,
+  // which is the only place this ever failed.
+  const user = userEvent.setup({ delay: null });
   render(<SignupForm redirectPath={props.redirectPath ?? '/dashboard'} inviteToken={props.inviteToken} />);
   await user.type(screen.getByPlaceholderText('Name'), 'Marcus');
   await user.type(screen.getByPlaceholderText('Email'), 'marcus@b.test');

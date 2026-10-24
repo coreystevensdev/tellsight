@@ -79,7 +79,7 @@ describe('Datasets list', () => {
   // accident, which strands the user with a banner that will not go away.
   it('lets the user dismiss a load failure', async () => {
     apiClient.mockRejectedValue(new Error('Session expired'));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<Datasets />);
     await screen.findByText('Session expired');
 
@@ -110,7 +110,7 @@ describe('Datasets activate', () => {
   // deactivate the other in the same beat, without waiting for a refetch.
   it('moves the active badge without reloading the list', async () => {
     listReturns(TWO);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<Datasets />);
     await screen.findByText('Q2 revenue');
 
@@ -129,7 +129,7 @@ describe('Datasets rename', () => {
   // name is already in the list, so it appears without a round trip back for it.
   it('shows the new name without refetching the list', async () => {
     listReturns(TWO);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<Datasets />);
     await screen.findByText('Q3 revenue');
     const before = apiClient.mock.calls.filter(([p]) => p === '/datasets/manage').length;
@@ -150,7 +150,7 @@ describe('Datasets rename', () => {
   // nowhere but their screen.
   it('puts the old name back when the server rejects it', async () => {
     listReturns(TWO, () => Promise.reject(new Error('Name already taken')));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<Datasets />);
     await screen.findByText('Q3 revenue');
 
@@ -167,7 +167,7 @@ describe('Datasets rename', () => {
 
   it('does not call the API when the name comes back unchanged', async () => {
     listReturns(TWO);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<Datasets />);
     await screen.findByText('Q3 revenue');
 
@@ -187,7 +187,7 @@ describe('Datasets delete', () => {
         ? { data: { ...dataset(), summaryCount: 4, shareCount: 2 } }
         : { data: {} },
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<Datasets />);
     await screen.findByText('Q3 revenue');
 
@@ -205,7 +205,7 @@ describe('Datasets delete', () => {
       }
       return { data: {} };
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<Datasets />);
     await screen.findByText('Q3 revenue');
 
@@ -225,7 +225,7 @@ describe('Datasets delete', () => {
       }
       return Promise.reject(new Error('Forbidden: owner role required'));
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<Datasets />);
     await screen.findByText('Q3 revenue');
 

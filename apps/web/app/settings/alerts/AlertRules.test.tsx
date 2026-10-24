@@ -49,7 +49,7 @@ describe('AlertRules, list rendering', () => {
 
 describe('AlertRules, create flow', () => {
   it('switches the threshold input to a confidence dropdown when anomaly_fires is selected', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<AlertRules initial={[]} />);
 
     await user.click(screen.getByRole('button', { name: /create your first alert rule/i }));
@@ -60,7 +60,7 @@ describe('AlertRules, create flow', () => {
   });
 
   it('submits a runway rule and adds it to the list', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockApiClient.mockResolvedValueOnce({ data: runwayRule });
 
     render(<AlertRules initial={[]} />);
@@ -83,7 +83,7 @@ describe('AlertRules, create flow', () => {
   });
 
   it('shows an owner-only message on a 403 from the API', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const { ApiClientError } = await import('@/lib/api-client');
     mockApiClient.mockRejectedValueOnce(new ApiClientError('Owner access required', 403, null));
 
@@ -96,7 +96,7 @@ describe('AlertRules, create flow', () => {
   });
 
   it('blocks submission and shows an inline error when the months field is cleared', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<AlertRules initial={[]} />);
 
     await user.click(screen.getByRole('button', { name: /create your first alert rule/i }));
@@ -111,7 +111,7 @@ describe('AlertRules, create flow', () => {
   });
 
   it('blocks submission when a percent field is set to 0', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<AlertRules initial={[]} />);
 
     await user.click(screen.getByRole('button', { name: /create your first alert rule/i }));
@@ -127,7 +127,7 @@ describe('AlertRules, create flow', () => {
   });
 
   it('blocks submission when the months field is negative', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<AlertRules initial={[]} />);
 
     await user.click(screen.getByRole('button', { name: /create your first alert rule/i }));
@@ -142,7 +142,7 @@ describe('AlertRules, create flow', () => {
   });
 
   it('clears the inline error when switching to anomaly_fires', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<AlertRules initial={[]} />);
 
     await user.click(screen.getByRole('button', { name: /create your first alert rule/i }));
@@ -157,7 +157,7 @@ describe('AlertRules, create flow', () => {
 
 describe('AlertRules, edit flow', () => {
   it('prefills the form with the existing threshold and submits a PUT', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const updated: AlertRule = { ...runwayRule, threshold: { months: 6 } };
     mockApiClient.mockResolvedValueOnce({ data: updated });
 
@@ -182,7 +182,7 @@ describe('AlertRules, edit flow', () => {
   });
 
   it('blocks a Save changes submit when the field is cleared to invalid', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(<AlertRules initial={[runwayRule]} />);
 
     await user.click(screen.getByLabelText(/edit alert rule/i));
@@ -196,7 +196,7 @@ describe('AlertRules, edit flow', () => {
 
 describe('AlertRules, toggle flow', () => {
   it('flips enabled without touching kind or threshold', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockApiClient.mockResolvedValueOnce({ data: { ...runwayRule, enabled: false } });
 
     render(<AlertRules initial={[runwayRule]} />);
@@ -240,7 +240,7 @@ describe('AlertRules, mute state', () => {
   });
 
   it('clears the mute via a PUT with muteUntil: null', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockApiClient.mockResolvedValueOnce({ data: { ...mutedRule, muteUntil: null } });
 
     render(<AlertRules initial={[mutedRule]} />);
@@ -263,7 +263,7 @@ describe('AlertRules, mute state', () => {
 
 describe('AlertRules, delete flow', () => {
   it('removes the rule from the list after a successful delete', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockApiClient.mockResolvedValueOnce({ data: { deleted: true } });
 
     render(<AlertRules initial={[runwayRule]} />);
