@@ -11,7 +11,14 @@ import { encrypt, decrypt } from '../encryption.js';
 // the seller's account. MERCHANT_PROFILE_READ is not about the profile, it is
 // what ListLocations needs: a Square token is seller-scoped and carries no
 // location id, but SearchOrders wants them explicitly.
-const SQUARE_SCOPES = ['ORDERS_READ', 'PAYMENTS_READ', 'MERCHANT_PROFILE_READ'];
+//
+// PAYMENTS_READ was in here and was never used. Refunds arrive on the order
+// itself, and SearchOrders populates order.refunds with ORDERS_READ alone.
+// Measured against the sandbox with two tokens differing only in that scope:
+// 14 orders and 2 refunds either way. The scope's own description, "read access
+// to transaction and refund information", is about the Payments and Refunds API
+// endpoints, none of which this code calls.
+const SQUARE_SCOPES = ['ORDERS_READ', 'MERCHANT_PROFILE_READ'];
 
 // Square pins behaviour to a dated header rather than a URL segment, so
 // omitting it silently gets whatever default the application is pinned to.

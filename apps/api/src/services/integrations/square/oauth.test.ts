@@ -153,6 +153,6 @@ describe('revokeToken', () => {
 
 describe('squareScopes', () => {
   it('space-separates, which is what the authorize endpoint expects', () => {
-    expect(squareScopes()).toBe('ORDERS_READ PAYMENTS_READ MERCHANT_PROFILE_READ');
+    expect(squareScopes()).toBe('ORDERS_READ MERCHANT_PROFILE_READ');
   });
 });
