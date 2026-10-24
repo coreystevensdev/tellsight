@@ -332,3 +332,14 @@ const priceCents = PRO_PRICE_CENTS % 100;
 export const PRO_PRICE_DISPLAY = priceCents === 0
   ? `$${priceDollars}`
   : `$${priceDollars}.${String(priceCents).padStart(2, '0')}`;
+
+// Shopify is the only connector whose connect call needs input from the user,
+// so it is the only one that can be asked to start with a value the provider
+// will refuse. The rule lived in apps/api, which apps/web cannot import, so the
+// button either duplicated it or skipped the check and let the server answer.
+// It skipped it, and a disabled button with nothing to say was the result.
+export const SHOPIFY_SHOP_DOMAIN = /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/;
+
+export function isShopifyShopDomain(shop: string): boolean {
+  return SHOPIFY_SHOP_DOMAIN.test(shop);
+}

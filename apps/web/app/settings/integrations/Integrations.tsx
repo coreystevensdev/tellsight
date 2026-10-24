@@ -5,6 +5,7 @@ import { RefreshCw, Loader2, AlertCircle, X, Link2, Link2Off } from 'lucide-reac
 import { apiClient } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 import { BackLink } from '@/components/common/BackLink';
+import { isShopifyShopDomain } from 'shared/constants';
 
 interface QbStatus {
   connected: boolean;
@@ -44,6 +45,10 @@ export default function Integrations() {
   const [shopify, setShopify] = useState<ShopifyStatus | null>(null);
   const [square, setSquare] = useState<SquareStatus | null>(null);
   const [shopDomain, setShopDomain] = useState('');
+  const trimmedShop = shopDomain.trim();
+  // Same rule the server enforces, from shared so the two cannot drift. Without
+  // it the button is disabled on an invalid domain for a reason it never says.
+  const shopDomainOk = isShopifyShopDomain(trimmedShop);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [qbAction, setQbAction] = useState<'connecting' | 'syncing' | 'disconnecting' | null>(null);
@@ -170,7 +175,7 @@ export default function Integrations() {
     try {
       const { data } = await apiClient<{ authUrl: string }>('/integrations/shopify/connect', {
         method: 'POST',
-        body: JSON.stringify({ shop: shopDomain.trim() }),
+        body: JSON.stringify({ shop: trimmedShop }),
       });
       window.location.href = data.authUrl;
     } catch (err) {
@@ -326,14 +331,39 @@ export default function Integrations() {
                     ? `Connected to ${shopify.shopDomain ?? 'your store'}`
                     : 'Sync orders, refunds, and inventory for automated insights.'}
                 </p>
-                {!shopify?.connected && (
-                  <input
-                    type="text"
-                    value={shopDomain}
-                    onChange={(e) => setShopDomain(e.target.value)}
-                    placeholder="your-store.myshopify.com"
-                    className="mt-2 w-full max-w-xs rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
+                {!shopify?.connected && shopify?.configured !== false && (
+                  <>
+                    <input
+                      type="text"
+                      value={shopDomain}
+                      onChange={(e) => setShopDomain(e.target.value)}
+                      placeholder="your-store.myshopify.com"
+                      aria-label="Shopify store domain"
+                      aria-invalid={trimmedShop.length > 0 && !shopDomainOk}
+                      aria-describedby="shopify-domain-hint"
+                      className={cn(
+                        'mt-2 w-full max-w-xs rounded-md border bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1',
+                        trimmedShop.length > 0 && !shopDomainOk
+                          ? 'border-destructive focus:border-destructive focus:ring-destructive'
+                          : 'border-border focus:border-primary focus:ring-primary',
+                      )}
+                    />
+                    <p
+                      id="shopify-domain-hint"
+                      className={cn(
+                        'mt-1 text-xs',
+                        trimmedShop.length > 0 && !shopDomainOk
+                          ? 'text-destructive'
+                          : 'text-muted-foreground',
+                      )}
+                    >
+                      {trimmedShop.length === 0
+                        ? 'Enter your store domain to connect.'
+                        : shopDomainOk
+                          ? 'Looks right. Shopify will ask you to approve the connection.'
+                          : 'That is not a store domain. It ends in .myshopify.com, with no https:// and no /admin.'}
+                    </p>
+                  </>
                 )}
               </div>
             </div>
@@ -361,7 +391,7 @@ export default function Integrations() {
               ) : (
                 <button
                   onClick={connectShopify}
-                  disabled={!!shopifyAction || !shopDomain.trim()}
+                  disabled={!!shopifyAction || !shopDomainOk}
                   className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {shopifyAction === 'connecting' ? 'Connecting...' : 'Connect'}
