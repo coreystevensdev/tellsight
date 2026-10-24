@@ -60,4 +60,21 @@ describe('Sidebar admin nav', () => {
     expect(screen.getByText('Upload')).toBeInTheDocument();
     expect(screen.getByText('Settings')).toBeInTheDocument();
   });
+
+  // This nav is the only route to the settings pages, so a page missing from it
+  // is a page nobody can reach. /settings/plans shipped its API and its screen
+  // and sat unreachable because nothing linked to it, which is a state no test
+  // could see: the page worked, and no one could get to it.
+  it('links to every settings page that exists', () => {
+    mockSidebar({ isAdmin: false });
+    render(<Sidebar />);
+
+    const linked = [...document.querySelectorAll('a[href^="/settings/"]')].map((a) =>
+      a.getAttribute('href'),
+    );
+
+    expect(linked).toContain('/settings/plans');
+    expect(linked).toContain('/settings/integrations');
+    expect(linked).toContain('/settings/financials');
+  });
 });
