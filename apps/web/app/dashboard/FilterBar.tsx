@@ -307,7 +307,7 @@ export function FilterBar({
 
   return (
     <div
-      className="sticky top-0 z-30 -mx-4 border-b border-border bg-background/95 px-4 py-3 backdrop-blur-sm supports-[backdrop-filter]:bg-background/60 md:-mx-6 md:px-6 lg:-mx-8 lg:px-8"
+      className="sticky top-0 z-30 border-b border-border bg-background/95 px-4 py-3 backdrop-blur-sm supports-[backdrop-filter]:bg-background/60 md:px-6 lg:px-8"
       role="toolbar"
       aria-label="Chart filters"
     >

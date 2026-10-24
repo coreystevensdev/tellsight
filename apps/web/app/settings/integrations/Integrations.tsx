@@ -243,8 +243,8 @@ export default function Integrations() {
       <div className="flex flex-col gap-4">
         {/* QuickBooks */}
         <section className="border-t-2 border-border bg-card px-5 py-5">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-start gap-3">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex min-w-0 flex-1 items-start gap-3">
               <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
                 {qb?.connected ? (
                   <Link2 className="h-4.5 w-4.5 text-emerald-600 dark:text-emerald-400" />
@@ -252,9 +252,9 @@ export default function Integrations() {
                   <Link2Off className="h-4.5 w-4.5 text-muted-foreground" />
                 )}
               </div>
-              <div>
+              <div className="min-w-0">
                 <h2 className="font-serif text-sm font-medium text-foreground">QuickBooks Online</h2>
-                <p className="mt-0.5 text-sm text-muted-foreground">
+                <p className="mt-0.5 break-words text-sm text-muted-foreground">
                   {qb?.connected
                     ? `Connected to ${qb.companyName ?? 'your company'}`
                     : 'Sync your accounting data for automated insights.'}
@@ -315,8 +315,8 @@ export default function Integrations() {
 
         {/* Shopify */}
         <section className="border-t-2 border-border bg-card px-5 py-5">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-start gap-3">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex min-w-0 flex-1 items-start gap-3">
               <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
                 {shopify?.connected ? (
                   <Link2 className="h-4.5 w-4.5 text-emerald-600 dark:text-emerald-400" />
@@ -324,9 +324,9 @@ export default function Integrations() {
                   <Link2Off className="h-4.5 w-4.5 text-muted-foreground" />
                 )}
               </div>
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 <h2 className="font-serif text-sm font-medium text-foreground">Shopify</h2>
-                <p className="mt-0.5 text-sm text-muted-foreground">
+                <p className="mt-0.5 break-words text-sm text-muted-foreground">
                   {shopify?.connected
                     ? `Connected to ${shopify.shopDomain ?? 'your store'}`
                     : 'Sync orders, refunds, and inventory for automated insights.'}
@@ -421,8 +421,8 @@ export default function Integrations() {
 
         {/* Square */}
         <section className="border-t-2 border-border bg-card px-5 py-5">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-start gap-3">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex min-w-0 flex-1 items-start gap-3">
               <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800">
                 {square?.connected ? (
                   <Link2 className="h-4.5 w-4.5 text-foreground" />
@@ -430,9 +430,9 @@ export default function Integrations() {
                   <Link2Off className="h-4.5 w-4.5 text-muted-foreground" />
                 )}
               </div>
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 <h2 className="font-serif text-sm font-medium text-foreground">Square</h2>
-                <p className="mt-0.5 text-sm text-muted-foreground">
+                <p className="mt-0.5 break-words text-sm text-muted-foreground">
                   {square?.connected
                     ? `Connected to merchant ${square.merchantId ?? 'account'}`
                     : 'Sync sales and refunds from every location you run.'}
