@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Loader2, AlertCircle, X, Link2, Link2Off } from 'lucide-react';
+import { RefreshCw, Loader2, AlertCircle, X } from 'lucide-react';
+import { ConnectorMark } from '@/components/common/ConnectorMark';
 import { apiClient } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 import { BackLink } from '@/components/common/BackLink';
@@ -246,11 +247,13 @@ export default function Integrations() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex min-w-0 flex-1 items-start gap-3">
               <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
-                {qb?.connected ? (
-                  <Link2 className="h-4.5 w-4.5 text-emerald-600 dark:text-emerald-400" />
-                ) : (
-                  <Link2Off className="h-4.5 w-4.5 text-muted-foreground" />
-                )}
+                <ConnectorMark
+                  name="quickbooks"
+                  className={cn(
+                    'h-4.5 w-4.5',
+                    qb?.connected ? 'text-foreground' : 'text-muted-foreground',
+                  )}
+                />
               </div>
               <div className="min-w-0">
                 <h2 className="font-serif text-sm font-medium text-foreground">QuickBooks Online</h2>
@@ -318,11 +321,13 @@ export default function Integrations() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex min-w-0 flex-1 items-start gap-3">
               <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
-                {shopify?.connected ? (
-                  <Link2 className="h-4.5 w-4.5 text-emerald-600 dark:text-emerald-400" />
-                ) : (
-                  <Link2Off className="h-4.5 w-4.5 text-muted-foreground" />
-                )}
+                <ConnectorMark
+                  name="shopify"
+                  className={cn(
+                    'h-4.5 w-4.5',
+                    shopify?.connected ? 'text-foreground' : 'text-muted-foreground',
+                  )}
+                />
               </div>
               <div className="min-w-0 flex-1">
                 <h2 className="font-serif text-sm font-medium text-foreground">Shopify</h2>
@@ -424,11 +429,13 @@ export default function Integrations() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex min-w-0 flex-1 items-start gap-3">
               <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800">
-                {square?.connected ? (
-                  <Link2 className="h-4.5 w-4.5 text-foreground" />
-                ) : (
-                  <Link2Off className="h-4.5 w-4.5 text-muted-foreground" />
-                )}
+                <ConnectorMark
+                  name="square"
+                  className={cn(
+                    'h-4.5 w-4.5',
+                    square?.connected ? 'text-foreground' : 'text-muted-foreground',
+                  )}
+                />
               </div>
               <div className="min-w-0 flex-1">
                 <h2 className="font-serif text-sm font-medium text-foreground">Square</h2>

@@ -281,3 +281,31 @@ describe('Shopify needs a store domain before Connect does anything', () => {
     expect(field).toHaveAttribute('aria-invalid', 'true');
   });
 });
+
+// All three cards used to render the same lucide chain-link icon, and
+// QuickBooks and Shopify also shared an emerald tile, so two of the three were
+// identical but for their heading. Tile colour alone is not identification.
+describe('each connector card shows its own mark', () => {
+  it('gives the three cards three different marks', async () => {
+    respondWith({ connected: true, companyName: '9341457586501237' }, { connected: false }, undefined, {
+      connected: true,
+      merchantId: 'MLWEC01GRVSA3',
+    });
+    render(<Integrations />);
+    await waitFor(() => expect(section(/quickbooks/i)).toBeTruthy());
+
+    const marks = [...document.querySelectorAll('[data-mark]')].map((n) => n.getAttribute('data-mark'));
+
+    expect(marks).toEqual(['quickbooks', 'shopify', 'square']);
+    expect(new Set(marks).size).toBe(3);
+  });
+
+  it('keeps the provider mark when disconnected, rather than a generic slot', async () => {
+    respondWith({ connected: false }, { connected: false }, undefined, { connected: false });
+    render(<Integrations />);
+    await waitFor(() => expect(section(/shopify/i)).toBeTruthy());
+
+    expect(within(section(/shopify/i)).getByRole('heading', { name: /shopify/i })).toBeTruthy();
+    expect(section(/shopify/i).querySelector('[data-mark="shopify"]')).toBeTruthy();
+  });
+});
