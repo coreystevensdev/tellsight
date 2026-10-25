@@ -39,6 +39,13 @@ export async function findAnyByHash(
   });
 }
 
+/**
+ * Returns the row on success and undefined when the token was already revoked.
+ * The `isNull` predicate makes this a compare-and-swap: exactly one of several
+ * concurrent callers can flip `revoked_at` away from NULL, so the others learn
+ * they lost instead of each overwriting the timestamp and minting a successor
+ * of their own. Callers must check the result. See DW-216.
+ */
 export async function revokeToken(
   tokenId: number,
   client: typeof db | DbTransaction,
@@ -46,7 +53,7 @@ export async function revokeToken(
   const [token] = await client
     .update(refreshTokens)
     .set({ revokedAt: new Date() })
-    .where(eq(refreshTokens.id, tokenId))
+    .where(and(eq(refreshTokens.id, tokenId), isNull(refreshTokens.revokedAt)))
     .returning();
   return token;
 }

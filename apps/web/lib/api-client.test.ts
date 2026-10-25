@@ -93,6 +93,38 @@ describe('apiClient 401 recovery', () => {
     expect(retryInit.body).toBe('{"name":"x"}');
   });
 
+  it('replays the request when the refresh lost a race, since a sibling tab already rotated', async () => {
+    // 409 REFRESH_RACE. The winner's Set-Cookie has landed in the jar this tab
+    // shares, so the session is usable and only the original request needs
+    // replaying. Reading this as a failed refresh is what logged people out
+    // (DW-216).
+    fetchMock
+      .mockResolvedValueOnce(json({ error: { code: 'AUTH', message: 'expired' } }, 401))
+      .mockResolvedValueOnce(json({ error: { code: 'REFRESH_RACE', message: 'raced' } }, 409))
+      .mockResolvedValueOnce(json({ data: { id: 9 } }));
+    const { apiClient } = await freshClient();
+
+    await expect(apiClient('/datasets')).resolves.toEqual({ data: { id: 9 } });
+
+    const urls = fetchMock.mock.calls.map((c) => c[0]);
+    expect(urls).toEqual(['/api/datasets', '/api/auth/refresh', '/api/datasets']);
+  });
+
+  it('does not re-refresh after a raced refresh, so it cannot walk into reuse detection', async () => {
+    // The replay can still 401 if the winner's cookie has not landed yet. One
+    // retry only: a second refresh would present the token the winner revoked,
+    // which is the reuse path that revokes every session.
+    fetchMock
+      .mockResolvedValueOnce(json({}, 401))
+      .mockResolvedValueOnce(json({ error: { code: 'REFRESH_RACE', message: 'raced' } }, 409))
+      .mockResolvedValueOnce(json({ error: { code: 'AUTH', message: 'still expired' } }, 401));
+    const { apiClient, ApiClientError } = await freshClient();
+
+    await expect(apiClient('/datasets')).rejects.toThrow(ApiClientError);
+
+    expect(fetchMock.mock.calls.filter((c) => String(c[0]).includes('/auth/refresh'))).toHaveLength(1);
+  });
+
   it('throws the original 401 when the refresh fails', async () => {
     fetchMock
       .mockResolvedValueOnce(json({ error: { code: 'AUTH_EXPIRED', message: 'expired' } }, 401))

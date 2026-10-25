@@ -95,6 +95,11 @@ async function mintSession(request: NextRequest): Promise<string[] | null> {
       method: 'POST',
       headers: { cookie: `${REFRESH_TOKEN}=${refreshToken}` },
     });
+    // Includes 409 REFRESH_RACE, where a sibling request rotated this token
+    // first. Falling through unminted is correct and the retry that looks
+    // tempting is not: this request still holds the token the winner revoked,
+    // so presenting it again is reuse and takes every session down. The browser
+    // has the winner's cookie by the next navigation.
     if (!res.ok) return null;
     const cookies = res.headers.getSetCookie();
     return cookies.length > 0 ? cookies : null;

@@ -2,7 +2,7 @@ import { SignJWT, jwtVerify } from 'jose';
 import { randomBytes, createHash } from 'node:crypto';
 import { env } from '../../config.js';
 import { logger } from '../../lib/logger.js';
-import { AuthenticationError } from '../../lib/appError.js';
+import { AuthenticationError, RefreshRaceError } from '../../lib/appError.js';
 import * as refreshTokensQueries from '../../db/queries/refreshTokens.js';
 import * as usersQueries from '../../db/queries/users.js';
 import * as userOrgsQueries from '../../db/queries/userOrgs.js';
@@ -91,7 +91,24 @@ export async function rotateRefreshToken(rawToken: string) {
     throw new AuthenticationError('Invalid refresh token');
   }
 
-  await refreshTokensQueries.revokeToken(existing.id, dbAdmin);
+  const revoked = await refreshTokensQueries.revokeToken(existing.id, dbAdmin);
+  if (!revoked) {
+    // The token was live when findByHash read it and was spent in between, so a
+    // sibling request won. That is a race, not reuse: reuse means the token was
+    // already revoked before this request looked, which is the branch above.
+    // Deliberately mints nothing. The winner has set a fresh pair on its own
+    // response, and handing a second successor out here is the capability an
+    // attacker racing inside this window would want.
+    //
+    // Its own log line, separate from the reuse warning, because the two need
+    // counting separately and conflating them is what made the rate
+    // unmeasurable in the first place.
+    logger.info(
+      { userId: existing.userId, tokenHashPrefix: hash.slice(0, 8) },
+      'Refresh token rotation lost a race, no sessions revoked',
+    );
+    throw new RefreshRaceError();
+  }
 
   const user = await usersQueries.findUserById(existing.userId);
   if (!user) {

@@ -40,6 +40,17 @@ export class ConflictError extends AppError {
   }
 }
 
+// 409 and not 401 on purpose. The caller lost a race to rotate a refresh token
+// that was still live when it read it, which means a sibling request in the same
+// browser has just minted a fresh pair into the shared cookie jar. A 401 here
+// would be read as a dead session and log the user out, which is the outcome
+// this error exists to avoid. See DW-216.
+export class RefreshRaceError extends AppError {
+  constructor() {
+    super('Refresh token was rotated by a concurrent request', 'REFRESH_RACE', 409);
+  }
+}
+
 export class QuotaExceededError extends AppError {
   constructor(message: string, details?: unknown) {
     super(message, 'QUOTA_EXCEEDED', 402, details);
