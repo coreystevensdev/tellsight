@@ -36,12 +36,13 @@ resource "aws_security_group" "ec2" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  # No SSH ingress. Deploys reach this instance through SSM SendCommand over
+  # outbound 443, so port 22 was open to the whole internet for nothing: sshd
+  # was listening with zero authorized keys, which is an unauthenticatable
+  # daemon and a standing invitation to every scanner on the internet.
+  #
+  # The fallback if the SSM agent ever stops answering is EC2 Serial Console, or
+  # re-adding this rule, which is a one line change and a thirty second apply.
 
   egress {
     from_port   = 0
