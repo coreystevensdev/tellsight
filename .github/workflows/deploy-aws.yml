@@ -317,16 +317,38 @@ jobs:
           # log_skip drops it. Verified by behaviour rather than by reading the
           # docs: two health check requests produced no log line and two real
           # requests produced one each.
+          #
+          # The filter and the second log_skip are not optional. A URI carries
+          # credentials here: the connector callbacks arrive as ?code=&state=
+          # (integrations.ts reads both), password reset arrives as ?token=, and
+          # invite, share, mute and unsubscribe links put a bearer token in the
+          # path. Logging the raw URI writes all of them into CloudWatch, where
+          # anyone with logs:FilterLogEvents can replay them. The filter drops
+          # the three query parameters and keeps the path, so a callback still
+          # shows up as /integrations/quickbooks/callback and stays diagnosable;
+          # the path-token routes are skipped outright because there is nothing
+          # left to keep once the token is gone.
           caddyfile = f"""{domain} {{
               header {{
                   Strict-Transport-Security "max-age=31536000; includeSubDomains"
               }}
               log {{
                   output stdout
-                  format json
+                  format filter {{
+                      wrap json
+                      fields {{
+                          request>uri query {{
+                              delete code
+                              delete state
+                              delete token
+                          }}
+                      }}
+                  }}
               }}
               @healthcheck path /api/health/ready
               log_skip @healthcheck
+              @bearertoken path /invites/* /shares/* /share/* /mute/* /unsubscribe/*
+              log_skip @bearertoken
               handle /webhooks/* {{
                   reverse_proxy api:3001
               }}
