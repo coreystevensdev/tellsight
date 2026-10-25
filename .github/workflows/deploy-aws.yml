@@ -323,11 +323,26 @@ jobs:
           # (integrations.ts reads both), password reset arrives as ?token=, and
           # invite, share, mute and unsubscribe links put a bearer token in the
           # path. Logging the raw URI writes all of them into CloudWatch, where
-          # anyone with logs:FilterLogEvents can replay them. The filter drops
-          # the three query parameters and keeps the path, so a callback still
-          # shows up as /integrations/quickbooks/callback and stays diagnosable;
-          # the path-token routes are skipped outright because there is nothing
-          # left to keep once the token is gone.
+          # anyone with logs:FilterLogEvents can replay them.
+          #
+          # The whole query string goes, not a list of parameter names. A
+          # denylist only covers the parameters somebody remembered, so the next
+          # token-bearing parameter leaks by default; the path is what carries
+          # the diagnostic value anyway. A callback still logs as
+          # /integrations/quickbooks/callback, which is the visibility that
+          # would have caught the Shopify callback 404.
+          #
+          # Referer goes too. Referrer-Policy here is
+          # strict-origin-when-cross-origin, so a same-origin request from
+          # /reset-password?token=... sends the full URL, and Caddy logs every
+          # header the client sent. Confirmed by planting a token in a Referer
+          # against production and finding it in the log.
+          #
+          # [?] rather than \? on purpose: the Caddyfile parser eats one
+          # backslash, Go's regexp then reads \? as an optional literal
+          # backslash, that matches at position 0, and the replacement blanks
+          # the entire URI. Secrets gone, paths gone with them. A character
+          # class needs no escape.
           caddyfile = f"""{domain} {{
               header {{
                   Strict-Transport-Security "max-age=31536000; includeSubDomains"
@@ -337,17 +352,14 @@ jobs:
                   format filter {{
                       wrap json
                       fields {{
-                          request>uri query {{
-                              delete code
-                              delete state
-                              delete token
-                          }}
+                          request>uri regexp "[?].*" ""
+                          request>headers>Referer delete
                       }}
                   }}
               }}
               @healthcheck path /api/health/ready
               log_skip @healthcheck
-              @bearertoken path /invites/* /shares/* /share/* /mute/* /unsubscribe/*
+              @bearertoken path /invite/* /share/* /mute/* /unsubscribe/* /api/invites/* /api/shares/* /api/mute/* /api/digest/unsubscribe/*
               log_skip @bearertoken
               handle /webhooks/* {{
                   reverse_proxy api:3001

@@ -43,6 +43,12 @@ jobs:
       - name: Dependency audit
         run: pnpm -C apps/api exec tsx ../../scripts/check-dependency-audit.ts
 
+      # A token in a path reaches CloudWatch unless the Caddy matcher excludes
+      # it, and that matcher is a hand written list that was wrong the day it
+      # was written.
+      - name: Access log redaction covers token routes
+        run: pnpm -C apps/api exec tsx ../../scripts/check-log-redaction.ts
+
   # Deliberately not gated on `quality`: a leaked credential is worth knowing
   # about even when the build is broken for unrelated reasons.
   secret-scan:
