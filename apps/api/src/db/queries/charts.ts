@@ -1,7 +1,25 @@
 import { eq, and, sql, gte, lte, type SQL } from 'drizzle-orm';
-import type { ChartFilters, Granularity } from 'shared/types';
+import type { ChartData, ChartFilters, Granularity } from 'shared/types';
 import { db, type DbTransaction } from '../../lib/db.js';
 import { dataRows } from '../schema.js';
+
+// The slice of ChartData this query produces; the route wraps it with the org
+// and dataset fields. Derived from the schema rather than restated, so a change
+// to any of the point schemas is a compile error here instead of a wrong number
+// in the browser. Nothing parsed chartDataSchema at runtime and this function
+// declared no return type, which is how the same mislabelled year-over-year
+// field came to exist twice without either copy forcing the other to be right
+// (DW-31, DW-222).
+export type ChartSeries = Pick<
+  ChartData,
+  | 'revenueTrend'
+  | 'expenseBreakdown'
+  | 'expenseTrend'
+  | 'monthlyComparison'
+  | 'yoyComparison'
+  | 'availableCategories'
+  | 'dateRange'
+>;
 
 const MONTH_LABELS = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -51,7 +69,7 @@ export async function getChartData(
   _limit?: number,
   client: typeof db | DbTransaction = db,
   datasetId?: number,
-) {
+): Promise<ChartSeries> {
   const granularity: Granularity = filters?.granularity ?? 'monthly';
   const scope = scopeConditions(orgId, datasetId);
   const bucket = bucketSql(granularity);
