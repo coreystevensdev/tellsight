@@ -338,12 +338,6 @@ function computeYearOverYear(rows: DataRow[]): ComputedStat[] {
       details: {
         currentRevenue: current,
         priorRevenue: prior,
-        // Same two numbers under the old names, for one release. A rollback
-        // re-pins the previous image without rolling back the database, and
-        // the old reader looks for details.currentYear; finding nothing it
-        // drops the stat silently rather than failing. Remove with DW-220.
-        currentYear: current,
-        priorYear: prior,
         currentYearLabel: String(currentYear),
         priorYearLabel: String(priorYear),
         changePercent: Math.round(changePercent * 10) / 10,

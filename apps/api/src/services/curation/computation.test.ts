@@ -2013,18 +2013,22 @@ describe('year-over-year revenue field naming (DW-31)', () => {
       expect(yoy.details.priorYearLabel).toBe('2025');
     });
 
-    it('still writes the old currentYear/priorYear keys with identical values, so a rollback can read them', () => {
+    it('no longer writes the old currentYear/priorYear keys', () => {
       const rows = [revenueRow(2025, 2, 1000), revenueRow(2026, 2, 1500)];
 
       const yoy = computeStats(rows).find(
         (s): s is YearOverYearStat => s.statType === StatType.YearOverYear,
       )!;
 
-      // The deploy re-pins the previous image without rolling back the database,
-      // and the previous reader dereferences details.currentYear. Drop this pair
-      // only with DW-220, once nothing deployed reads them.
-      expect(yoy.details.currentYear).toBe(yoy.details.currentRevenue);
-      expect(yoy.details.priorYear).toBe(yoy.details.priorRevenue);
+      // The inverse of what this asserted between 2026-10-24 and 2026-10-25,
+      // when the pair was written under both names so a rollback had something
+      // to read. 0044 removed them from stored rows and this keeps them from
+      // coming back: a jsonb key nothing writes is invisible until something
+      // reads it and finds the wrong shape.
+      const details = yoy.details as unknown as Record<string, unknown>;
+      expect(Object.keys(details)).not.toContain('currentYear');
+      expect(Object.keys(details)).not.toContain('priorYear');
+      expect(details.currentYearLabel).toBe('2026');
     });
 
     it('keeps the year-over-year stat id on the revenue figure, since stored summaries embed it', () => {

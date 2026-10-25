@@ -83,14 +83,6 @@ export interface YearOverYearDetails {
   priorRevenue: number;
   currentYearLabel: string;
   priorYearLabel: string;
-  /**
-   * @deprecated Duplicates currentRevenue/priorRevenue under their old,
-   * mislabelled names. Written for one release only so that a rollback, which
-   * re-pins the previous image but never rolls back the database, leaves the
-   * old reader something to find. Dropping them is DW-220.
-   */
-  currentYear?: number;
-  priorYear?: number;
   changePercent: number;
   month: string;
 }
