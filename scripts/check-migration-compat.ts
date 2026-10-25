@@ -13,6 +13,20 @@
 // Migration files are content-hashed in __drizzle_migrations once applied, so
 // annotating an old file to silence this check would be a worse idea than it
 // looks. The list lives here instead.
+//
+// The SQL patterns below only see the relational schema, and most of this app's
+// structure is not there. key_stats, milestones, transparency_metadata and
+// threshold are jsonb, and the code dereferences named keys out of them on
+// every read: isComputedStat and hasValidDiscriminatorFields both do it to
+// key_stats. Removing a key from one of those documents breaks a rolled-back
+// reader exactly the way DROP COLUMN does, but it is written as an UPDATE and
+// matches no pattern here. That was DW-221, and it mattered because the
+// contract half of the year-over-year rename is precisely that migration.
+//
+// So any migration that writes to a jsonb column is flagged and needs an
+// acknowledgement. Whether a given write is additive or destructive is not
+// decidable from the SQL without modelling jsonb semantics, so the check does
+// not try: it asks for a human sentence instead.
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -20,6 +34,19 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = join(here, '../apps/api/drizzle/migrations');
+const SCHEMA = join(here, '../apps/api/src/db/schema.ts');
+
+// Read from the schema rather than restating it, or the list silently stops
+// matching the tables the moment somebody adds a jsonb column.
+function jsonbColumns(): string[] {
+  const src = readFileSync(SCHEMA, 'utf8');
+  const explicit = [...src.matchAll(/jsonb\('([a-z_]+)'\)/g)].map((m) => m[1]!);
+  // drizzle infers the column name from the property when jsonb() is bare
+  const inferred = [...src.matchAll(/(\w+)\s*:\s*jsonb\(\)/g)].map((m) => m[1]!);
+  return [...new Set([...explicit, ...inferred])];
+}
+
+const JSONB_COLUMNS = jsonbColumns();
 
 const PATTERNS: Array<{ label: string; re: RegExp }> = [
   { label: 'DROP COLUMN', re: /\bDROP\s+COLUMN\b/i },
@@ -39,6 +66,14 @@ const ACKNOWLEDGED = new Map<string, string>([
     '0022_drop-user-orgs-digest-opt-in.sql',
     'digest_opt_in was superseded by the digest_preferences table in Epic 9 and no deployed version read it',
   ],
+  [
+    '0032_add-digest-history-milestones-catalog-check.sql',
+    'adds a catalog key to each milestones entry and removes nothing, so a rolled-back reader still finds every key it dereferences',
+  ],
+  [
+    '0043_add-yoy-revenue-keys.sql',
+    'the expand half of the year-over-year rename: adds currentRevenue and priorRevenue to key_stats entries and leaves currentYear and priorYear in place, which is what lets the previous release keep reading them',
+  ],
 ]);
 
 const findings: string[] = [];
@@ -54,6 +89,15 @@ for (const file of readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql'))
     .join('\n');
 
   const hits = PATTERNS.filter((p) => p.re.test(statements)).map((p) => p.label);
+
+  // `SET "col" =` and not the bare word UPDATE: a foreign key clause carries
+  // ON UPDATE no action, which matched three migrations that touch no jsonb at
+  // all when this was first drafted.
+  const written = JSONB_COLUMNS.filter((c) =>
+    new RegExp(`\\bSET\\s+"?${c}"?\\s*=`, 'i').test(statements),
+  );
+  if (written.length > 0) hits.push(`JSONB WRITE (${written.join(', ')})`);
+
   if (hits.length === 0) continue;
 
   if (ACKNOWLEDGED.has(file)) {
