@@ -71,6 +71,10 @@ const ACKNOWLEDGED = new Map<string, string>([
     'adds a catalog key to each milestones entry and removes nothing, so a rolled-back reader still finds every key it dereferences',
   ],
   [
+    '0044_drop-yoy-legacy-keys.sql',
+    'the contract half of the year-over-year rename: removes currentYear and priorYear from key_stats entries that already carry currentRevenue. The reader changed in 1108052 and the last six deploys all read the new keys, so the first image that still needs the old pair is seven deploys back; a rollback that far degrades rather than breaks, since isComputedStat drops an entry with a missing discriminator instead of throwing',
+  ],
+  [
     '0043_add-yoy-revenue-keys.sql',
     'the expand half of the year-over-year rename: adds currentRevenue and priorRevenue to key_stats entries and leaves currentYear and priorYear in place, which is what lets the previous release keep reading them',
   ],
