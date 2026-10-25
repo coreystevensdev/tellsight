@@ -101,14 +101,14 @@ describe('statInstanceId', () => {
     expect(statInstanceId(avgStat, 1)).toBe('1:average:Expenses:category');
   });
 
-  it('discriminates year-over-year stats by currentYear-month', () => {
+  it('discriminates year-over-year stats by currentRevenue-month', () => {
     const yoyStat: ComputedStat = {
       statType: StatType.YearOverYear,
       category: 'Sales',
       value: 15,
       details: {
-        currentYear: 1300,
-        priorYear: 1130,
+        currentRevenue: 1300,
+        priorRevenue: 1130,
         currentYearLabel: '2026',
         priorYearLabel: '2025',
         changePercent: 15,

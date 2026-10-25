@@ -685,8 +685,8 @@ describe('branch constants in the score functions', () => {
       value: 1000,
       details: {
         changePercent,
-        currentYear: 1000,
-        priorYear: 900,
+        currentRevenue: 1000,
+        priorRevenue: 900,
         currentYearLabel: '2026',
         priorYearLabel: '2025',
         month: '2026-06',

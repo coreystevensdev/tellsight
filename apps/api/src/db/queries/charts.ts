@@ -185,13 +185,13 @@ export async function getChartData(
         const changePercent = prior > 0 ? Math.round(((current - prior) / prior) * 1000) / 10 : null;
         return {
           month: MONTH_LABELS[monthIdx]!,
-          currentYear: round2(current),
-          priorYear: round2(prior),
+          currentRevenue: round2(current),
+          priorRevenue: round2(prior),
           changePercent,
           currentYearLabel: currentYear,
           priorYearLabel: priorYear,
         };
-      }).filter((p) => p.currentYear > 0 || p.priorYear > 0)
+      }).filter((p) => p.currentRevenue > 0 || p.priorRevenue > 0)
     : [];
 
   return { revenueTrend, expenseBreakdown, expenseTrend, monthlyComparison, yoyComparison, availableCategories, dateRange };

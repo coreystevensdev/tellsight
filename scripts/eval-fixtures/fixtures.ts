@@ -166,8 +166,8 @@ export function seasonalAnomaly(): ComputedStat[] {
       category: 'Revenue',
       value: 50000,
       details: {
-        currentYear: 50000,
-        priorYear: 45000,
+        currentRevenue: 50000,
+        priorRevenue: 45000,
         currentYearLabel: '2026',
         priorYearLabel: '2025',
         changePercent: 11.1,

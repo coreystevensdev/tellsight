@@ -134,8 +134,8 @@ function nonFinancial(kind: NonFinancialType): ComputedStat {
         category: 'revenue',
         value: 10,
         details: {
-          currentYear: 50000,
-          priorYear: 45000,
+          currentRevenue: 50000,
+          priorRevenue: 45000,
           currentYearLabel: '2026',
           priorYearLabel: '2025',
           changePercent: 10,

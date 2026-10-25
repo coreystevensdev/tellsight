@@ -75,8 +75,8 @@ export function YoyChart({ data }: YoyChartProps) {
 
   const chartData = data.map((d) => ({
     month: d.month,
-    [currentLabel]: d.currentYear,
-    [priorLabel]: d.priorYear,
+    [currentLabel]: d.currentRevenue,
+    [priorLabel]: d.priorRevenue,
   }));
 
   return (

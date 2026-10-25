@@ -86,8 +86,8 @@ function classifyStatNumbers(stat: ComputedStat, sets: AllowedSets): void {
       addP(stat.details.percentage);
       return;
     case StatType.YearOverYear:
-      addC(stat.details.currentYear);
-      addC(stat.details.priorYear);
+      addC(stat.details.currentRevenue);
+      addC(stat.details.priorRevenue);
       addP(stat.details.changePercent);
       addP(Math.abs(stat.details.changePercent));
       return;

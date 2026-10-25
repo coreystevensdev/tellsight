@@ -27,8 +27,9 @@ export const monthlyComparisonPointSchema = z.object({
 
 export const yoyComparisonPointSchema = z.object({
   month: z.string(),
-  currentYear: z.number(),
-  priorYear: z.number(),
+  // Revenue dollars, not years; the years are the Label fields below.
+  currentRevenue: z.number(),
+  priorRevenue: z.number(),
   changePercent: z.number().nullable(),
   currentYearLabel: z.string(),
   priorYearLabel: z.string(),
