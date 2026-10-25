@@ -28,5 +28,16 @@ export default defineConfig({
       name: 'chromium',
       use: { browserName: 'chromium' },
     },
+    // WebKit runs one spec, not the suite. The mobile layout specs exist
+    // because Chromium and WebKit disagree about them: Chromium clips an
+    // over-wide child and reports the viewport width back from scrollWidth,
+    // and it wraps a flex row where WebKit collapses the shrinkable column
+    // instead. Both bugs this project has shipped to a phone were invisible in
+    // Chromium and obvious in Safari.
+    {
+      name: 'webkit-mobile',
+      use: { browserName: 'webkit' },
+      testMatch: /no-horizontal-overflow\.spec\.ts/,
+    },
   ],
 });
