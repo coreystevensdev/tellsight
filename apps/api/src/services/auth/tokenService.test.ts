@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+import { RefreshRaceError } from '../../lib/appError.js';
 import { SignJWT } from 'jose';
 
 const mockCreateRefreshToken = vi.fn();
@@ -233,6 +235,38 @@ describe('tokenService', () => {
       expect(result.refreshToken).toBeDefined();
       expect(result.userId).toBe(1);
       expect(result.orgId).toBe(10);
+    });
+
+    it('does not revoke any session when it loses the race to revoke a live token', async () => {
+      // findByHash saw the token live, so this is not reuse. The conditional
+      // update then returned nothing, meaning a sibling request spent it in
+      // between. Logging the user out here is the DW-216 defect.
+      mockFindByHash.mockResolvedValueOnce({ id: 5, userId: 42, orgId: 10 });
+      mockRevokeToken.mockResolvedValueOnce(undefined);
+
+      await expect(rotateRefreshToken('a'.repeat(64))).rejects.toThrow(RefreshRaceError);
+      expect(mockRevokeAllForUser).not.toHaveBeenCalled();
+    });
+
+    it('mints nothing when it loses the race, so no second successor exists', async () => {
+      // Before the conditional update, both racers revoked unconditionally and
+      // both minted, leaving two live tokens descended from one.
+      mockFindByHash.mockResolvedValueOnce({ id: 5, userId: 42, orgId: 10 });
+      mockRevokeToken.mockResolvedValueOnce(undefined);
+
+      await expect(rotateRefreshToken('a'.repeat(64))).rejects.toThrow(RefreshRaceError);
+      expect(mockCreateRefreshToken).not.toHaveBeenCalled();
+      expect(mockFindUserById).not.toHaveBeenCalled();
+    });
+
+    it('answers the race with 409 and not 401, so the client does not read it as a dead session', async () => {
+      mockFindByHash.mockResolvedValueOnce({ id: 5, userId: 42, orgId: 10 });
+      mockRevokeToken.mockResolvedValueOnce(undefined);
+
+      await expect(rotateRefreshToken('a'.repeat(64))).rejects.toMatchObject({
+        statusCode: 409,
+        code: 'REFRESH_RACE',
+      });
     });
 
     it('throws AuthenticationError when token not found and not revoked', async () => {

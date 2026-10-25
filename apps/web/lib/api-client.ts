@@ -30,7 +30,12 @@ async function postRefresh(): Promise<boolean> {
       method: 'POST',
       credentials: 'include',
     });
-    return response.ok;
+    // 409 is REFRESH_RACE: another tab rotated the same token a moment ago and
+    // its Set-Cookie has landed in the jar this request shares. The session is
+    // usable, so report success and let the caller retry the original request.
+    // Not retried here, because retrying would present the token the winner
+    // just revoked, and that is the reuse path that logs every device out.
+    return response.ok || response.status === 409;
   } catch {
     return false;
   }
