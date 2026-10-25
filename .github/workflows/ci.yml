@@ -36,6 +36,13 @@ jobs:
       - name: Migration rollback compatibility
         run: pnpm -C apps/api exec tsx ../../scripts/check-migration-compat.ts
 
+      # High and critical advisories in production dependencies. The script
+      # carries the acknowledgement list rather than this step carrying an
+      # --audit-level threshold, because a bare threshold goes red on dev-only
+      # noise and then gets muted. See the comment at the top of it.
+      - name: Dependency audit
+        run: pnpm -C apps/api exec tsx ../../scripts/check-dependency-audit.ts
+
   # Deliberately not gated on `quality`: a leaked credential is worth knowing
   # about even when the build is broken for unrelated reasons.
   secret-scan:
