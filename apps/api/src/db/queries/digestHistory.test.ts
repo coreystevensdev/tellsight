@@ -193,10 +193,10 @@ describe('getTrailingDigests', () => {
   });
 
   it('drops year_over_year/seasonal_projection/cash_flow entries with a missing discriminator field, since statInstanceId dereferences it on every compare_to_prior_periods match', async () => {
-    const validYoy = { statType: 'year_over_year', category: 'Revenue', value: 1000, details: { currentYear: 2026, month: 'Mar', priorYear: 2025, changePercent: 10 } };
+    const validYoy = { statType: 'year_over_year', category: 'Revenue', value: 1000, details: { currentRevenue: 1000, month: 'Mar', priorRevenue: 909, changePercent: 10 } };
     const keyStats = [
       validYoy,
-      { statType: 'year_over_year', category: 'Revenue', value: 900, details: { currentYear: 2026 } }, // missing details.month
+      { statType: 'year_over_year', category: 'Revenue', value: 900, details: { currentRevenue: 900 } }, // missing details.month
       { statType: 'seasonal_projection', category: 'Revenue', value: 800, details: {} }, // missing details.projectedMonth
       { statType: 'cash_flow', category: null, value: 700, details: { monthlyNet: 100 } }, // missing details.trailingMonths
     ];
@@ -209,7 +209,7 @@ describe('getTrailingDigests', () => {
 
   it('drops a year_over_year entry whose details.month is not a real month name, since mostRecentMatch ties break on MONTH_NAMES.indexOf', async () => {
     const keyStats = [
-      { statType: 'year_over_year', category: 'Revenue', value: 900, details: { currentYear: 2026, month: 'March' } }, // full name, not the 'Mar' MONTH_NAMES stores
+      { statType: 'year_over_year', category: 'Revenue', value: 900, details: { currentRevenue: 900, month: 'March' } }, // full name, not the 'Mar' MONTH_NAMES stores
     ];
     mockFindMany.mockResolvedValueOnce([{ id: 13, weekStart: new Date('2026-05-25T00:00:00Z'), keyStats }]);
 
@@ -220,7 +220,7 @@ describe('getTrailingDigests', () => {
 
   it('drops year_over_year/cash_flow entries whose numeric discriminator field is NaN or Infinity', async () => {
     const keyStats = [
-      { statType: 'year_over_year', category: 'Revenue', value: 900, details: { currentYear: NaN, month: 'Mar' } },
+      { statType: 'year_over_year', category: 'Revenue', value: 900, details: { currentRevenue: NaN, month: 'Mar' } },
       { statType: 'cash_flow', category: null, value: 700, details: { trailingMonths: Infinity } },
     ];
     mockFindMany.mockResolvedValueOnce([{ id: 14, weekStart: new Date('2026-05-25T00:00:00Z'), keyStats }]);

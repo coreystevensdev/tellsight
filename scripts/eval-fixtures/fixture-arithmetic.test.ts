@@ -50,11 +50,11 @@ describe('fixture stats are reachable by the production computations', () => {
     expect(stat.value).toBe(d.breakEvenRevenue);
   });
 
-  it.each(of('year_over_year'))('year_over_year change follows from its two years', (stat) => {
-    const d = stat.details as { currentYear: number; priorYear: number; changePercent: number };
+  it.each(of('year_over_year'))('year_over_year change follows from its two revenue figures', (stat) => {
+    const d = stat.details as { currentRevenue: number; priorRevenue: number; changePercent: number };
 
-    expect(d.changePercent).toBeCloseTo(((d.currentYear - d.priorYear) / d.priorYear) * 100, 1);
-    expect(stat.value).toBe(d.currentYear);
+    expect(d.changePercent).toBeCloseTo(((d.currentRevenue - d.priorRevenue) / d.priorRevenue) * 100, 1);
+    expect(stat.value).toBe(d.currentRevenue);
   });
 
   it.each(of('runway'))('runway months follow from cash and burn', (stat) => {

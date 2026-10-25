@@ -18,6 +18,7 @@ import {
   monthKey,
   marginTrendMonths,
   hasValidDiscriminatorFields,
+  statInstanceId,
   type MonthlyBucketMap,
   quantile,
 } from './computation.js';
@@ -1685,15 +1686,15 @@ describe('hasValidDiscriminatorFields', () => {
     expect(hasValidDiscriminatorFields({ statType: StatType.Total, details: {} })).toBe(false);
   });
 
-  it('requires a finite currentYear and a MONTH_NAMES month for year_over_year', () => {
+  it('requires a finite currentRevenue and a MONTH_NAMES month for year_over_year', () => {
     expect(
-      hasValidDiscriminatorFields({ statType: StatType.YearOverYear, details: { currentYear: 2026, month: 'Mar' } }),
+      hasValidDiscriminatorFields({ statType: StatType.YearOverYear, details: { currentRevenue: 13440, month: 'Mar' } }),
     ).toBe(true);
     expect(
-      hasValidDiscriminatorFields({ statType: StatType.YearOverYear, details: { currentYear: 2026, month: 'March' } }),
+      hasValidDiscriminatorFields({ statType: StatType.YearOverYear, details: { currentRevenue: 13440, month: 'March' } }),
     ).toBe(false); // full name, not the 'Mar' MONTH_NAMES stores
     expect(
-      hasValidDiscriminatorFields({ statType: StatType.YearOverYear, details: { currentYear: NaN, month: 'Mar' } }),
+      hasValidDiscriminatorFields({ statType: StatType.YearOverYear, details: { currentRevenue: NaN, month: 'Mar' } }),
     ).toBe(false);
     expect(
       hasValidDiscriminatorFields({ statType: StatType.YearOverYear, details: { month: 'Mar' } }),
@@ -1979,6 +1980,68 @@ describe('UTC month-boundary regression (DW-51/52)', () => {
 //
 // These fixtures are built so exactly one value sits outside the real fence and
 // comfortably inside a widened one.
+describe('year-over-year revenue field naming (DW-31)', () => {
+  function revenueRow(year: number, month: number, amount: number) {
+    return {
+      id: _ccfRowId++,
+      orgId: 1,
+      datasetId: 1,
+      sourceType: 'csv' as const,
+      category: 'Revenue',
+      parentCategory: 'Income' as const,
+      date: new Date(Date.UTC(year, month - 1, 1)),
+      amount: amount.toFixed(2),
+      label: null,
+      metadata: null,
+      createdAt: new Date(),
+    };
+  }
+
+    it('puts revenue dollars in currentRevenue/priorRevenue and the years only in the Label fields', () => {
+      const rows = [revenueRow(2025, 2, 1000), revenueRow(2026, 2, 1500)];
+
+      const yoy = computeStats(rows).find(
+        (s): s is YearOverYearStat => s.statType === StatType.YearOverYear,
+      )!;
+
+      expect(yoy.details.currentRevenue).toBe(1500);
+      expect(yoy.details.priorRevenue).toBe(1000);
+      // The whole point of the rename: neither numeric field may hold a year.
+      expect(yoy.details.currentRevenue).not.toBe(2026);
+      expect(yoy.details.priorRevenue).not.toBe(2025);
+      expect(yoy.details.currentYearLabel).toBe('2026');
+      expect(yoy.details.priorYearLabel).toBe('2025');
+    });
+
+    it('still writes the old currentYear/priorYear keys with identical values, so a rollback can read them', () => {
+      const rows = [revenueRow(2025, 2, 1000), revenueRow(2026, 2, 1500)];
+
+      const yoy = computeStats(rows).find(
+        (s): s is YearOverYearStat => s.statType === StatType.YearOverYear,
+      )!;
+
+      // The deploy re-pins the previous image without rolling back the database,
+      // and the previous reader dereferences details.currentYear. Drop this pair
+      // only with DW-220, once nothing deployed reads them.
+      expect(yoy.details.currentYear).toBe(yoy.details.currentRevenue);
+      expect(yoy.details.priorYear).toBe(yoy.details.priorRevenue);
+    });
+
+    it('keeps the year-over-year stat id on the revenue figure, since stored summaries embed it', () => {
+      const rows = [revenueRow(2025, 2, 1000), revenueRow(2026, 2, 1500)];
+
+      const yoy = computeStats(rows).find(
+        (s): s is YearOverYearStat => s.statType === StatType.YearOverYear,
+      )!;
+
+      // Was `${details.currentYear}-${month}` before the rename. The field was
+      // renamed; the string it produces must not change, or resolveStatById
+      // stops matching the <stat id="..."/> markers already written into
+      // ai_summaries.
+      expect(statInstanceId(yoy, 7)).toBe('7:year_over_year:Revenue:1500-Feb');
+    });
+});
+
 describe('anomaly boundary constants', () => {
   function row(id: number, amount: number, category = 'Sales') {
     return {

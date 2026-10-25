@@ -75,10 +75,22 @@ export interface CategoryVarianceDetails {
 }
 
 export interface YearOverYearDetails {
-  currentYear: number;
-  priorYear: number;
+  // Revenue dollars for the month, not years. The years are the two Label
+  // fields. These were called currentYear/priorYear until 2026-10-24, which
+  // made statInstanceId's year-over-year discriminator read as a dollar
+  // amount while looking like a year.
+  currentRevenue: number;
+  priorRevenue: number;
   currentYearLabel: string;
   priorYearLabel: string;
+  /**
+   * @deprecated Duplicates currentRevenue/priorRevenue under their old,
+   * mislabelled names. Written for one release only so that a rollback, which
+   * re-pins the previous image but never rolls back the database, leaves the
+   * old reader something to find. Dropping them is DW-220.
+   */
+  currentYear?: number;
+  priorYear?: number;
   changePercent: number;
   month: string;
 }

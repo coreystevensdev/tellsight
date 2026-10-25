@@ -276,8 +276,8 @@ describe('getChartData', () => {
       expect(result.yoyComparison).toHaveLength(2);
       expect(result.yoyComparison[0]).toMatchObject({
         month: 'Jan',
-        currentYear: 1200,
-        priorYear: 1000,
+        currentRevenue: 1200,
+        priorRevenue: 1000,
         currentYearLabel: '2026',
         priorYearLabel: '2025',
       });

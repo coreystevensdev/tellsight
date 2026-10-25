@@ -14,9 +14,9 @@ vi.mock('recharts', async () => {
 });
 
 const sampleData: YoyComparisonPoint[] = [
-  { month: 'Jan', currentYear: 13440, priorYear: 12000, changePercent: 12, currentYearLabel: '2025', priorYearLabel: '2024' },
-  { month: 'Feb', currentYear: 14054, priorYear: 12545, changePercent: 12, currentYearLabel: '2025', priorYearLabel: '2024' },
-  { month: 'Mar', currentYear: 14669, priorYear: 13091, changePercent: 12.1, currentYearLabel: '2025', priorYearLabel: '2024' },
+  { month: 'Jan', currentRevenue: 13440, priorRevenue: 12000, changePercent: 12, currentYearLabel: '2025', priorYearLabel: '2024' },
+  { month: 'Feb', currentRevenue: 14054, priorRevenue: 12545, changePercent: 12, currentYearLabel: '2025', priorYearLabel: '2024' },
+  { month: 'Mar', currentRevenue: 14669, priorRevenue: 13091, changePercent: 12.1, currentYearLabel: '2025', priorYearLabel: '2024' },
 ];
 
 describe('YoyChart', () => {

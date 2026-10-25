@@ -75,8 +75,8 @@ export function buildStatDetail(stat: IdentifiedStat): StatDetailView {
     }
 
     case StatType.YearOverYear: {
-      const current = `$${usd.format(stat.details.currentYear)}`;
-      const prior = `$${usd.format(stat.details.priorYear)}`;
+      const current = `$${usd.format(stat.details.currentRevenue)}`;
+      const prior = `$${usd.format(stat.details.priorRevenue)}`;
       const change = `${stat.details.changePercent >= 0 ? '+' : ''}${stat.details.changePercent.toFixed(1)}%`;
       return {
         kind: 'formula',

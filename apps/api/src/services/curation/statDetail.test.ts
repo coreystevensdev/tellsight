@@ -146,8 +146,8 @@ describe('buildStatDetail', () => {
 
     expect(detail.kind).toBe('formula');
     if (detail.kind !== 'formula') return;
-    expect(detail.expression).toContain(`$${usd.format(stat.details.currentYear)}`);
-    expect(detail.expression).toContain(`$${usd.format(stat.details.priorYear)}`);
+    expect(detail.expression).toContain(`$${usd.format(stat.details.currentRevenue)}`);
+    expect(detail.expression).toContain(`$${usd.format(stat.details.priorRevenue)}`);
   });
 
   it('margin_trend: formula-kind, recent/prior margin percentages trace to details', () => {

@@ -336,6 +336,12 @@ function computeYearOverYear(rows: DataRow[]): ComputedStat[] {
       value: current,
       comparison: prior,
       details: {
+        currentRevenue: current,
+        priorRevenue: prior,
+        // Same two numbers under the old names, for one release. A rollback
+        // re-pins the previous image without rolling back the database, and
+        // the old reader looks for details.currentYear; finding nothing it
+        // drops the stat silently rather than failing. Remove with DW-220.
         currentYear: current,
         priorYear: prior,
         currentYearLabel: String(currentYear),
@@ -1092,8 +1098,8 @@ export function hasValidDiscriminatorFields(stat: { statType: string; details: u
       return typeof details?.scope === 'string';
     case StatType.YearOverYear:
       return (
-        typeof details?.currentYear === 'number' &&
-        Number.isFinite(details.currentYear) &&
+        typeof details?.currentRevenue === 'number' &&
+        Number.isFinite(details.currentRevenue) &&
         typeof details?.month === 'string' &&
         (MONTH_NAMES as readonly string[]).includes(details.month)
       );
@@ -1112,7 +1118,13 @@ function statDiscriminator(stat: ComputedStat): string {
     case StatType.Average:
       return stat.details.scope;
     case StatType.YearOverYear:
-      return `${stat.details.currentYear}-${stat.details.month}`;
+      // Deliberately the revenue figure and not currentYearLabel, even though
+      // a year would read better in a citation id. These ids are embedded in
+      // stored summaries as <stat id="..."/> and resolveStatById recomputes to
+      // match them, so the string has to stay byte-identical to what the old
+      // details.currentYear produced. Unique only because computeStats emits
+      // one year-over-year window per call; see DW-219.
+      return `${stat.details.currentRevenue}-${stat.details.month}`;
     case StatType.SeasonalProjection:
       return stat.details.projectedMonth;
     case StatType.CashFlow:
