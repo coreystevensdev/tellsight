@@ -82,6 +82,41 @@ jobs:
           echo "sha=${out#sha-}" >> "$GITHUB_OUTPUT"
           echo "production is pinned to ${out:-<nothing>}"
 
+      # The image sha above only covers docker-compose.override.yml, which the
+      # deploy rewrites every run. The base docker-compose.yml is never touched
+      # by a deploy: it comes from the user_data heredoc, which runs once at
+      # first boot and is under ignore_changes, so editing it in Terraform
+      # changes nothing here and produces no diff to notice. Nothing read the
+      # deployed file back until this step.
+      - name: Fail if the instance compose file is not the one in the repo
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+        run: |
+          set -euo pipefail
+          cid=$(aws ssm send-command \
+            --instance-ids "$EC2_INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --parameters 'commands=["sha256sum /opt/tellsight/docker-compose.yml | cut -d\" \" -f1"]' \
+            --query 'Command.CommandId' --output text)
+          aws ssm wait command-executed --command-id "$cid" --instance-id "$EC2_INSTANCE_ID" || true
+          running=$(aws ssm get-command-invocation --command-id "$cid" --instance-id "$EC2_INSTANCE_ID" \
+            --query 'StandardOutputContent' --output text | tr -d '[:space:]')
+          expected=$(tr -d '[:space:]' < infra/compose/production.yml.sha256)
+          if [ -z "$running" ]; then
+            echo "Could not read the compose file off the instance." >&2
+            exit 1
+          fi
+          if [ "$running" = "$expected" ]; then
+            echo "instance compose file matches infra/compose/production.yml"
+            exit 0
+          fi
+          echo "DRIFT: instance compose file is $running, repo expects $expected" >&2
+          echo "Either the instance was changed by hand, or the heredoc in" >&2
+          echo "infra/terraform/ec2.tf was edited without being applied to the box." >&2
+          echo "See infra/compose/README.md for how to reconcile them." >&2
+          exit 1
+
       - name: Fail if production is not on main
         if: steps.gate.outputs.skip != 'true'
         env:

@@ -240,10 +240,32 @@ locals {
     # caddy is the only service published beyond 127.0.0.1; it reaches api/web
     # by Docker Compose's internal service-name DNS, not the host loopback.
     cat > /opt/tellsight/docker-compose.yml << 'COMPOSE'
-    # Docker's default json-file driver has no size limit. Steady state is not
-    # the concern (Caddy wrote 220K in 26 days); a crash-looping container is,
-    # since each restart writes a stack trace and the disk is 20GB. 10m x 3
-    # caps the whole box at 120MB and still leaves a useful window to read.
+    # api and web ship to CloudWatch. Under json-file their logs lived only
+    # inside the container that wrote them, and the deploy recreates both on
+    # every merge, so nothing older than the last deploy survived anywhere.
+    # The group and its retention are in monitoring.tf, which also records why
+    # the CloudWatch agent was not an option on 916MB of RAM.
+    #
+    # non-blocking matters: the default blocks the writing process when the
+    # driver cannot keep up, which turns a CloudWatch outage into an
+    # application outage. Dropping lines is the correct failure here.
+    #
+    # docker compose logs does not work against this driver. Use
+    # aws logs tail /tellsight/containers --follow instead.
+    x-logging-cloud: &logging-cloud
+      driver: awslogs
+      options:
+        awslogs-region: "${var.aws_region}"
+        awslogs-group: "/tellsight/containers"
+        awslogs-create-group: "false"
+        tag: "{{.Name}}"
+        mode: "non-blocking"
+        max-buffer-size: "4m"
+
+    # redis and caddy stay local. Neither has logs worth retaining (redis runs
+    # at loglevel warning, caddy wrote 220K in 26 days with no access log
+    # configured), and moving them would mean restarting the TLS terminator and
+    # the queue to gain nothing. 10m x 3 still caps them on a 20GB disk.
     #
     # Set per service rather than in /etc/docker/daemon.json so applying it
     # never needs a Docker daemon restart. Compose picks it up when a container
@@ -266,7 +288,7 @@ locals {
       api:
         image: ${aws_ecr_repository.api.repository_url}:latest
         restart: always
-        logging: *logging
+        logging: *logging-cloud
         env_file: /opt/tellsight/.env
         environment:
           NODE_ENV: production
@@ -280,7 +302,7 @@ locals {
       web:
         image: ${aws_ecr_repository.web.repository_url}:latest
         restart: always
-        logging: *logging
+        logging: *logging-cloud
         env_file: /opt/tellsight/.env
         environment:
           NODE_ENV: production

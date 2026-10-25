@@ -1,0 +1,93 @@
+# api and web ship to CloudWatch. Under json-file their logs lived only
+# inside the container that wrote them, and the deploy recreates both on
+# every merge, so nothing older than the last deploy survived anywhere.
+# The group and its retention are in monitoring.tf, which also records why
+# the CloudWatch agent was not an option on 916MB of RAM.
+#
+# non-blocking matters: the default blocks the writing process when the
+# driver cannot keep up, which turns a CloudWatch outage into an
+# application outage. Dropping lines is the correct failure here.
+#
+# docker compose logs does not work against this driver. Use
+# aws logs tail /tellsight/containers --follow instead.
+x-logging-cloud: &logging-cloud
+  driver: awslogs
+  options:
+    awslogs-region: "us-east-1"
+    awslogs-group: "/tellsight/containers"
+    awslogs-create-group: "false"
+    tag: "{{.Name}}"
+    mode: "non-blocking"
+    max-buffer-size: "4m"
+
+# redis and caddy stay local. Neither has logs worth retaining (redis runs
+# at loglevel warning, caddy wrote 220K in 26 days with no access log
+# configured), and moving them would mean restarting the TLS terminator and
+# the queue to gain nothing. 10m x 3 still caps them on a 20GB disk.
+#
+# Set per service rather than in /etc/docker/daemon.json so applying it
+# never needs a Docker daemon restart. Compose picks it up when a container
+# is recreated, which the deploy already does.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: always
+    logging: *logging
+    volumes:
+      - redis_data:/data
+    command: redis-server --save 60 1 --loglevel warning
+
+  api:
+    image: 401716295306.dkr.ecr.us-east-1.amazonaws.com/tellsight-api:latest
+    restart: always
+    logging: *logging-cloud
+    env_file: /opt/tellsight/.env
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "127.0.0.1:3001:3001"
+    depends_on:
+      - redis
+
+  web:
+    image: 401716295306.dkr.ecr.us-east-1.amazonaws.com/tellsight-web:latest
+    restart: always
+    logging: *logging-cloud
+    env_file: /opt/tellsight/.env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      API_INTERNAL_URL: http://api:3001
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    logging: *logging
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /opt/tellsight/Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    # No depends_on: Caddy proxies to api/web by DNS name at request
+    # time, not at container-start time -- it doesn't need them running
+    # to start, just to successfully proxy once they exist. depends_on
+    # would make `docker compose up -d caddy` at boot also try to pull
+    # api/web images, which don't exist in ECR yet (no deploy has run)
+    # and fail outright with no ECR login configured at boot time.
+
+volumes:
+  redis_data:
+  caddy_data:
+  caddy_config:

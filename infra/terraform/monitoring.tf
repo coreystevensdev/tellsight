@@ -60,3 +60,52 @@ resource "aws_cloudwatch_metric_alarm" "app_down" {
 
   tags = { Name = "${local.name}-endpoint-down" }
 }
+
+# ------------------------------------------------------------------
+# Container logs
+# ------------------------------------------------------------------
+
+# Container logs lived only in the container that wrote them, under json-file.
+# The deploy recreates api and web on every merge, so their logs were destroyed
+# several times a week and nothing older than the last deploy existed anywhere.
+# That made three deferred items unanswerable rather than merely unanswered:
+# DW-216 says to revisit "once Refresh token reuse detected appears in
+# production logs at all", which no retained log could ever show, and DW-103's
+# "no live traffic yet" was decided before launch with nothing since able to
+# report otherwise.
+#
+# The CloudWatch agent is the usual answer and is not affordable here: 916MB of
+# RAM with 259MB free and swap already in use, which is the same budget that
+# kept Prometheus off this box. The awslogs driver needs no agent because the
+# Docker daemon ships the stream itself.
+resource "aws_cloudwatch_log_group" "containers" {
+  name              = "/tellsight/containers"
+  retention_in_days = 30
+
+  tags = { Name = "${local.name}-container-logs" }
+}
+
+# CreateLogGroup is deliberately absent. The group above is the only one the
+# driver may write to, so a typo in awslogs-group fails the container rather
+# than silently creating a second group nothing queries.
+resource "aws_iam_role_policy" "ec2_container_logs" {
+  name = "${local.name}-ec2-container-logs"
+  role = aws_iam_role.ec2.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "ShipContainerLogs"
+      Effect = "Allow"
+      Action = [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+        "logs:DescribeLogStreams",
+      ]
+      Resource = [
+        aws_cloudwatch_log_group.containers.arn,
+        "${aws_cloudwatch_log_group.containers.arn}:log-stream:*",
+      ]
+    }]
+  })
+}
