@@ -307,10 +307,26 @@ jobs:
           # otherwise fail the same silent way. Safe as a prefix because Express
           # mounts nothing but the callbacks at /integrations, and Next.js owns
           # /settings/integrations rather than the bare prefix.
+          # Access logging to stdout, which the awslogs driver ships to
+          # CloudWatch. Until this existed there was no request-level view of
+          # production anywhere: DW-103 had been parked since July on "no live
+          # traffic yet" with nothing able to confirm or deny it.
+          #
+          # The Route53 health check hits /api/health/ready every 30 seconds,
+          # which is 2,880 entries a day of a request nobody will ever read.
+          # log_skip drops it. Verified by behaviour rather than by reading the
+          # docs: two health check requests produced no log line and two real
+          # requests produced one each.
           caddyfile = f"""{domain} {{
               header {{
                   Strict-Transport-Security "max-age=31536000; includeSubDomains"
               }}
+              log {{
+                  output stdout
+                  format json
+              }}
+              @healthcheck path /api/health/ready
+              log_skip @healthcheck
               handle /webhooks/* {{
                   reverse_proxy api:3001
               }}
