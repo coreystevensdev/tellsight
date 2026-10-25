@@ -97,3 +97,94 @@ test.describe(`nothing reaches past ${MOBILE.width}px`, () => {
     }
   });
 });
+
+// Fitting the viewport is not the same as being readable, and the fix for the
+// overflow above produced the proof. Giving the text column min-w-0 let it
+// shrink past its content instead of making the row wrap, so on a phone the
+// buttons kept their width, the text column collapsed toward zero, and
+// break-words put "Connected to 9341457586501237" on the screen one character
+// per line with the buttons painted over the connector name.
+//
+// Every assertion in the block above passed on that layout, because nothing
+// reached past 375px. It was unreadable and it fit.
+// Fitting the viewport is not the same as being readable, and the fix for the
+// overflow above produced the proof. Giving the text column min-w-0 let it
+// shrink past its content instead of making the row wrap, so on a phone the
+// buttons kept their width, the text column collapsed toward zero, and
+// break-words put "Connected to 9341457586501237" on the screen one character
+// per line with the buttons painted over the connector name.
+//
+// Every assertion in the block above passed on that layout, because nothing
+// reached past 375px. It was unreadable and it fit.
+//
+// The status responses are stubbed rather than seeded because only the
+// CONNECTED state can show this. Disconnected, each card carries one narrow
+// "Connect" button and the row fits at 375px however the flex rules are
+// written. A first version of this test ran against the real (empty) database,
+// passed on the broken layout, and was measuring a state that cannot fail.
+const CONNECTED = {
+  quickbooks: {
+    connected: true, configured: true, provider: 'quickbooks',
+    companyName: '9341457586501237', syncStatus: 'idle',
+  },
+  shopify: {
+    connected: true, configured: true, provider: 'shopify',
+    shopDomain: 'corey-stevens-4ypuyfhb.myshopify.com', syncStatus: 'idle',
+  },
+  square: {
+    connected: true, configured: true, provider: 'square',
+    merchantName: 'MLWEC01GRVSA3', syncStatus: 'idle',
+  },
+} as const;
+
+async function stubConnected(page: import('@playwright/test').Page) {
+  for (const [name, data] of Object.entries(CONNECTED)) {
+    await page.route(`**/api/integrations/${name}/status`, (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data }) }),
+    );
+  }
+}
+
+test.describe(`connector cards stay readable at ${MOBILE.width}px`, () => {
+  let user: { userId: number; orgId: number };
+
+  test.beforeAll(async () => {
+    user = await ensureTestUser(TEST_USER);
+  });
+
+  // A heading squeezed under about this width is wrapping per word or per
+  // character rather than laying out. The real cards are far wider; this is a
+  // floor, not a target.
+  const MIN_READABLE = 120;
+
+  async function openConnected(page: import('@playwright/test').Page, context: import('@playwright/test').BrowserContext) {
+    await authenticateAs(context, { ...user, role: 'owner', isAdmin: true });
+    await stubConnected(page);
+    await page.setViewportSize(MOBILE);
+    await page.goto('/settings/integrations');
+    // Wait for the connected state specifically, or the assertions below race
+    // the fetch and measure an empty card.
+    await page.getByRole('button', { name: /disconnect/i }).first().waitFor({ timeout: 15_000 });
+  }
+
+  test('connector names and status lines keep a usable width', async ({ page, context }) => {
+    await openConnected(page, context);
+
+    const narrow = await page.evaluate((min) => {
+      const out: string[] = [];
+      for (const h of document.querySelectorAll<HTMLElement>('section h2')) {
+        const box = h.getBoundingClientRect();
+        if (box.width > 0 && box.width < min) out.push(`h2 "${h.textContent?.trim().slice(0, 24)}" width=${Math.round(box.width)}`);
+        const status = h.parentElement?.querySelector('p');
+        if (status) {
+          const sb = status.getBoundingClientRect();
+          if (sb.width > 0 && sb.width < min) out.push(`p "${status.textContent?.trim().slice(0, 24)}" width=${Math.round(sb.width)}`);
+        }
+      }
+      return out;
+    }, MIN_READABLE);
+
+    expect(narrow, `collapsed to under ${MIN_READABLE}px: ${narrow.join(' | ')}`).toEqual([]);
+  });
+
+});

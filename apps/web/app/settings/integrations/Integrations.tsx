@@ -244,8 +244,8 @@ export default function Integrations() {
       <div className="flex flex-col gap-4">
         {/* QuickBooks */}
         <section className="border-t-2 border-border bg-card px-5 py-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="flex min-w-0 flex-1 items-start gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+            <div className="flex min-w-0 flex-1 basis-full items-start gap-3 sm:basis-auto">
               <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
                 <ConnectorMark
                   name="quickbooks"
@@ -264,7 +264,7 @@ export default function Integrations() {
                 </p>
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
               {qb?.connected ? (
                 <>
                   <button
@@ -318,8 +318,8 @@ export default function Integrations() {
 
         {/* Shopify */}
         <section className="border-t-2 border-border bg-card px-5 py-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="flex min-w-0 flex-1 items-start gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+            <div className="flex min-w-0 flex-1 basis-full items-start gap-3 sm:basis-auto">
               <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
                 <ConnectorMark
                   name="shopify"
@@ -372,7 +372,7 @@ export default function Integrations() {
                 )}
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
               {shopify?.connected ? (
                 <>
                   <button
@@ -426,8 +426,8 @@ export default function Integrations() {
 
         {/* Square */}
         <section className="border-t-2 border-border bg-card px-5 py-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="flex min-w-0 flex-1 items-start gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+            <div className="flex min-w-0 flex-1 basis-full items-start gap-3 sm:basis-auto">
               <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800">
                 <ConnectorMark
                   name="square"
@@ -446,7 +446,7 @@ export default function Integrations() {
                 </p>
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
               {square?.connected ? (
                 <>
                   <button
