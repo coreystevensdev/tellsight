@@ -1518,7 +1518,7 @@ describe('checkClaudeHealth', () => {
   });
 
   it('reports ok when the API answers, with a latency it measured', async () => {
-    mockModelsList.mockResolvedValueOnce({ data: [] });
+    mockCreate.mockResolvedValueOnce({ content: [{ type: 'text', text: 'ok' }] });
 
     const health = await probe();
 
@@ -1527,15 +1527,25 @@ describe('checkClaudeHealth', () => {
     expect(Number.isFinite(health.latencyMs)).toBe(true);
   });
 
-  // The cheapest call that proves credentials and reachability. A probe that ran
-  // a completion would cost money on every dashboard load.
-  it('asks for one model rather than generating anything', async () => {
-    mockModelsList.mockResolvedValueOnce({ data: [] });
+  // This asserted the opposite until 2026-10-25, on the reasoning that listing a
+  // model is the cheapest call proving credentials and reachability and a
+  // completion would cost money on every dashboard load. The reasoning was
+  // sound and the blind spot turned out to cost more: models.list is metadata,
+  // it is free, and it therefore succeeds against an account that cannot buy a
+  // single completion. On 2026-10-25 the boot log said the key was verified
+  // twice while every real request failed on an exhausted balance, and the
+  // admin tile read healthy for nine and a half hours.
+  //
+  // The price of the reversal is one output token per probe, bounded by the
+  // five minute memoization to at most 288 a day, which is pennies a month.
+  it('buys a one-token completion rather than listing models', async () => {
+    mockCreate.mockResolvedValueOnce({ content: [{ type: 'text', text: 'ok' }] });
 
     await probe();
 
-    expect(mockModelsList).toHaveBeenCalledWith({ limit: 1 });
-    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockCreate.mock.calls[0]![0]).toMatchObject({ max_tokens: 1 });
+    expect(mockModelsList).not.toHaveBeenCalled();
     expect(mockStream).not.toHaveBeenCalled();
   });
 
@@ -1547,7 +1557,7 @@ describe('checkClaudeHealth', () => {
     ['a 403', { status: 403 }],
     ['a typed authentication error', { name: 'AuthenticationError' }],
   ])('reports error on %s', async (_label, shape) => {
-    mockModelsList.mockRejectedValueOnce(Object.assign(new Error('nope'), shape));
+    mockCreate.mockRejectedValueOnce(Object.assign(new Error('nope'), shape));
 
     const health = await probe();
 
@@ -1555,12 +1565,28 @@ describe('checkClaudeHealth', () => {
     expect(health.detail).toMatch(/rejected/i);
   });
 
+  // An empty balance is not Anthropic having a bad minute, it is an invoice
+  // nobody paid, and it stays broken until someone acts. Anthropic reports it
+  // as a 400 invalid_request_error rather than a 402, so the message is the
+  // only thing separating it from a genuine bad request. This asserted
+  // 'degraded' until 2026-10-25, which was both the wrong severity and
+  // unreachable: models.list never saw a balance error to classify.
+  it('reports error on an exhausted balance, and says so', async () => {
+    mockCreate.mockRejectedValueOnce(
+      Object.assign(new Error('400 credit balance is too low'), { status: 400 }),
+    );
+
+    const health = await probe();
+
+    expect(health.status).toBe('error');
+    expect(health.detail).toMatch(/credit/i);
+  });
+
   it.each([
-    ['a low balance', new Error('credit balance is too low')],
     ['a 500', Object.assign(new Error('upstream'), { status: 500 })],
     ['a bare failure', new Error('boom')],
   ])('reports degraded, not error, on %s', async (_label, err) => {
-    mockModelsList.mockRejectedValueOnce(err);
+    mockCreate.mockRejectedValueOnce(err);
 
     expect((await probe()).status).toBe('degraded');
   });
@@ -1569,10 +1595,10 @@ describe('checkClaudeHealth', () => {
   // would fail the whole endpoint rather than its own tile. This one swallows,
   // and that has to stay true.
   it('never throws, whatever the API does', async () => {
-    mockModelsList.mockRejectedValueOnce(new Error('boom'));
+    mockCreate.mockRejectedValueOnce(new Error('boom'));
     await expect(probe()).resolves.toBeDefined();
 
-    mockModelsList.mockImplementationOnce(() => {
+    mockCreate.mockImplementationOnce(() => {
       throw new Error('synchronous');
     });
     // Resolving is the point here, not which non-ok it resolves to.
@@ -1583,15 +1609,18 @@ describe('checkClaudeHealth', () => {
 // Last in the file: the cache is module-level, so anything after this reads its
 // result rather than its own.
 describe('checkClaudeHealth caching', () => {
+  // The memoization is what bounds the cost now that the probe buys a
+  // completion rather than listing models: three reads of the admin tile are
+  // one token, not three.
   it('asks Anthropic once, not once per health check', async () => {
-    mockModelsList.mockReset();
-    mockModelsList.mockResolvedValue({ data: [] });
+    mockCreate.mockReset();
+    mockCreate.mockResolvedValue({ content: [{ type: 'text', text: 'ok' }] });
     const { checkClaudeHealth } = await import('./claudeClient.js');
 
     await checkClaudeHealth();
     await checkClaudeHealth();
     await checkClaudeHealth();
 
-    expect(mockModelsList).toHaveBeenCalledTimes(1);
+    expect(mockCreate).toHaveBeenCalledTimes(1);
   });
 });

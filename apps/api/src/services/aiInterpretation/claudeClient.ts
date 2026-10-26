@@ -100,19 +100,43 @@ export function modelFor(path: 'prose' | 'tools'): string {
 export async function probeClaudeHealth(): Promise<ProviderHealth> {
   const start = Date.now();
   try {
-    await client.models.list({ limit: 1 });
+    // A one-token completion, not models.list. Listing models is a metadata
+    // call that costs nothing, so it succeeds against an account that cannot
+    // buy a single completion: on 2026-10-25 this logged "Claude key verified"
+    // twice, five hours after every real request had started failing on an
+    // exhausted balance, and the admin panel said AI was fine throughout. A
+    // check blind to the likeliest reason its subject breaks is worse than no
+    // check, because it reads as reassurance.
+    //
+    // The cost is one output token per boot and per admin health read. The
+    // model is the one the prose path actually uses, so this also fails if that
+    // model is retired rather than discovering it on the next digest.
+    await client.messages.create({
+      model: modelFor('prose'),
+      max_tokens: 1,
+      messages: [{ role: 'user', content: 'ping' }],
+    });
     return { status: 'ok', latencyMs: Date.now() - start };
   } catch (err) {
     const latencyMs = Date.now() - start;
     const status = (err as { status?: number }).status;
     const name = (err as Error).name;
+    const message = (err as Error).message ?? '';
 
     if (status === 401 || status === 403 || name === 'AuthenticationError') {
-      logger.error({ err: (err as Error).message }, 'Claude rejected the configured API key');
+      logger.error({ err: message }, 'Claude rejected the configured API key');
       return { status: 'error', latencyMs, detail: 'Anthropic rejected the configured API key' };
     }
 
-    logger.warn({ err: (err as Error).message }, 'Could not verify the Claude key');
+    // Anthropic reports an empty balance as a 400 invalid_request_error rather
+    // than a 402, so it is only separable by the message. Worth separating:
+    // "key rejected" sends someone to rotate a credential that is fine.
+    if (status === 400 && /credit balance/i.test(message)) {
+      logger.error({ err: message }, 'Anthropic account is out of credit');
+      return { status: 'error', latencyMs, detail: 'Anthropic account has no credit, every AI feature is down' };
+    }
+
+    logger.warn({ err: message }, 'Could not verify the Claude key');
     return { status: 'degraded', latencyMs, detail: 'Anthropic unreachable, key not verified' };
   }
 }
@@ -747,5 +771,5 @@ export async function logClaudeKeyStatus(): Promise<void> {
     return;
   }
 
-  logger.info({ latencyMs: health.latencyMs }, 'Claude key verified');
+  logger.info({ latencyMs: health.latencyMs }, 'Claude reachable and billable');
 }
