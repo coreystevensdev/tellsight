@@ -109,3 +109,97 @@ resource "aws_iam_role_policy" "ec2_container_logs" {
     }]
   })
 }
+
+# ------------------------------------------------------------------
+# Job failures
+# ------------------------------------------------------------------
+
+# There was an alarm for the endpoint being down and none for a job that fails,
+# so on 2026-10-25 the weekly digest failed three times for a paying org and
+# nobody knew for nine and a half hours. The digest is the retention loop; its
+# entire delivery path could fail in silence.
+#
+# A metric filter rather than publishing from the worker's `failed` listener:
+# the listener runs inside the process that is already having a bad time, and
+# an SNS call from there fails exactly when it is most needed. CloudWatch reads
+# the log after the fact, so it still fires if the container dies.
+#
+# BullMQ retries three times and logs three lines. That is fine: an alarm is a
+# state machine, so three datapoints inside one period are one transition into
+# ALARM and one notification.
+resource "aws_cloudwatch_log_metric_filter" "digest_job_failed" {
+  name           = "${local.name}-digest-job-failed"
+  log_group_name = aws_cloudwatch_log_group.containers.name
+  pattern        = "{ $.msg = \"Digest worker job failed\" }"
+
+  metric_transformation {
+    name      = "DigestJobFailed"
+    namespace = "Tellsight/Jobs"
+    value     = "1"
+    # Absent means no failures, so the alarm below can treat missing data as
+    # healthy rather than reading a quiet week as an outage.
+    default_value = 0
+  }
+}
+
+# notBreaching, unlike the endpoint alarm above. A health check that stops
+# reporting is itself bad news; a failure counter that reports nothing is the
+# good case, and treating its absence as breaching would page every week the
+# digest worked.
+resource "aws_cloudwatch_metric_alarm" "digest_job_failed" {
+  alarm_name          = "${local.name}-digest-job-failed"
+  alarm_description   = "A digest worker job failed. The weekly digest is the retention loop and a failure here means a paying org silently received nothing."
+  namespace           = aws_cloudwatch_log_metric_filter.digest_job_failed.metric_transformation[0].namespace
+  metric_name         = aws_cloudwatch_log_metric_filter.digest_job_failed.metric_transformation[0].name
+  statistic           = "Sum"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  threshold           = 1
+  period              = 300
+  evaluation_periods  = 1
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
+  tags = { Name = "${local.name}-digest-job-failed" }
+}
+
+# Separate from the digest alarm on purpose. The 2026-10-25 root cause was an
+# exhausted Anthropic balance, which breaks every AI surface at once: summaries,
+# alerts and NL Q&A as well as the digest. The digest alarm would only have
+# fired because the weekly cron happened to run that evening; a browser hitting
+# a summary would have failed the same way and said nothing.
+#
+# Non-retryable specifically, since that is the class nothing recovers from on
+# its own: billing, auth, and malformed requests. Transient errors already
+# retry and are logged at warn.
+resource "aws_cloudwatch_log_metric_filter" "claude_non_retryable" {
+  name           = "${local.name}-claude-non-retryable"
+  log_group_name = aws_cloudwatch_log_group.containers.name
+  pattern        = "{ $.msg = \"Claude API non-retryable error\" || $.msg = \"Claude API stream non-retryable error\" }"
+
+  metric_transformation {
+    name          = "ClaudeNonRetryableError"
+    namespace     = "Tellsight/AI"
+    value         = "1"
+    default_value = 0
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "claude_non_retryable" {
+  alarm_name          = "${local.name}-claude-non-retryable"
+  alarm_description   = "The Anthropic API refused a request in a way that will not fix itself: billing, auth, or a malformed request. Every AI surface is affected, not just the digest."
+  namespace           = aws_cloudwatch_log_metric_filter.claude_non_retryable.metric_transformation[0].namespace
+  metric_name         = aws_cloudwatch_log_metric_filter.claude_non_retryable.metric_transformation[0].name
+  statistic           = "Sum"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  threshold           = 1
+  period              = 300
+  evaluation_periods  = 1
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
+  tags = { Name = "${local.name}-claude-non-retryable" }
+}
