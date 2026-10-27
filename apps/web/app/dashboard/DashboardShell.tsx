@@ -1,10 +1,8 @@
 'use client';
 
-import { Component, type ReactNode, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
 import useSWR from 'swr';
-import { Filter } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import type { ChartData, SubscriptionTier, TransparencyMetadata } from 'shared/types';
@@ -13,17 +11,17 @@ import { apiClient } from '@/lib/api-client';
 import { trackClientEvent } from '@/lib/analytics';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { useSubscription } from '@/lib/hooks/useSubscription';
+import { useDashboardFinancials } from '@/lib/hooks/useDashboardFinancials';
 import { useSidebar } from './SidebarContext';
-import { RevenueChart } from './charts/RevenueChart';
-import { ExpenseChart } from './charts/ExpenseChart';
-import { ExpenseTrendChart } from './charts/ExpenseTrendChart';
-import { RevenueVsExpensesChart } from './charts/RevenueVsExpensesChart';
-import { ProfitMarginChart } from './charts/ProfitMarginChart';
-import { YoyChart } from './charts/YoyChart';
-import { ChartSkeleton } from './charts/ChartSkeleton';
-import { LazyChart } from './charts/LazyChart';
+import { DashboardCharts } from './DashboardCharts';
 import { FilterBar, computeDateRange } from './FilterBar';
-import { EMPTY_FILTERS, customRange, filtersFromQuery, filtersToQuery, type FilterState } from './filterParams';
+import {
+  EMPTY_FILTERS,
+  customRange,
+  filtersFromQuery,
+  filtersToQuery,
+  type FilterState,
+} from './filterParams';
 import { questionForChartPoint, type ChartPoint } from './suggestedQuestions';
 import { IndustryBenchmark } from '@/components/IndustryBenchmark';
 import type { BusinessProfile } from 'shared/schemas';
@@ -47,7 +45,6 @@ import { DigestPausingBanner } from './DigestPausingBanner';
 import { DigestClickTracker } from './DigestClickTracker';
 import { AlertClickTracker } from './AlertClickTracker';
 import { LastDigestIndicator } from '@/components/LastDigestIndicator';
-import type { OrgFinancials } from 'shared/types';
 
 interface DashboardShellProps {
   initialData: ChartData;
@@ -67,7 +64,8 @@ function buildSwrKey(filters: FilterState): string {
   const params = new URLSearchParams();
   // A custom range wins when it is complete and in order; otherwise fall back to
   // the preset, which is also what a half-filled custom range resolves to.
-  const range = customRange(filters) ?? (filters.datePreset ? computeDateRange(filters.datePreset) : null);
+  const range =
+    customRange(filters) ?? (filters.datePreset ? computeDateRange(filters.datePreset) : null);
   if (range) {
     params.set('from', range.from);
     params.set('to', range.to);
@@ -88,91 +86,17 @@ async function fetchChartData(key: string): Promise<ChartData> {
   return res.data;
 }
 
-class ChartErrorBoundary extends Component<
-  { children: ReactNode; onRetry: () => void },
-  { hasError: boolean }
-> {
-  state = { hasError: false };
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="col-span-full flex min-h-[200px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-6 text-center">
-          <p className="text-sm text-muted-foreground">Unable to load charts</p>
-          <button
-            onClick={() => {
-              this.setState({ hasError: false });
-              this.props.onRetry();
-            }}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-          >
-            Retry
-          </button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
-function EmptyStateIllustration() {
-  return (
-    <svg width="64" height="64" viewBox="0 0 64 64" fill="none" aria-hidden="true" className="mb-1">
-      {/* stylized CSV file with upward arrow */}
-      <rect x="14" y="8" width="28" height="36" rx="3" className="stroke-muted-foreground/40" strokeWidth="1.5" fill="none" />
-      <line x1="20" y1="18" x2="36" y2="18" className="stroke-muted-foreground/30" strokeWidth="1.5" />
-      <line x1="20" y1="24" x2="32" y2="24" className="stroke-muted-foreground/30" strokeWidth="1.5" />
-      <line x1="20" y1="30" x2="34" y2="30" className="stroke-muted-foreground/30" strokeWidth="1.5" />
-      {/* arrow */}
-      <path d="M42 52 L42 38 M36 44 L42 38 L48 44" className="stroke-primary" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      {/* insight dot */}
-      <circle cx="48" cy="14" r="4" className="fill-accent-warm/60" />
-    </svg>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="col-span-full mt-6 flex min-h-[240px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border/60 bg-muted/30 p-8 text-center">
-      <EmptyStateIllustration />
-      <p className="text-sm font-medium text-foreground">Your data is waiting</p>
-      <p className="max-w-[260px] text-sm text-muted-foreground">
-        Drop a CSV and we&apos;ll turn it into charts and plain-English insights
-      </p>
-      <Link
-        href="/upload"
-        className="mt-3 rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-      >
-        Upload a CSV
-      </Link>
-    </div>
-  );
-}
-
-function FilteredEmptyState({ onReset }: { onReset: () => void }) {
-  return (
-    <div className="col-span-full mt-6 flex min-h-[240px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border/60 bg-muted/30 p-8 text-center">
-      <Filter className="mb-1 h-8 w-8 text-muted-foreground/50" />
-      <p className="text-sm font-medium text-foreground">Nothing here for those filters</p>
-      <p className="max-w-[260px] text-sm text-muted-foreground">
-        Try a wider date range or clear the category filter
-      </p>
-      <button
-        type="button"
-        onClick={onReset}
-        className="mt-3 rounded-md px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-      >
-        Reset filters
-      </button>
-    </div>
-  );
-}
-
-export function DashboardShell({ initialData, chartsUnavailable = false, cachedSummary, cachedMetadata, cachedStaleAt, tier: serverTier, needsOnboarding, businessType, teamSize }: DashboardShellProps) {
+export function DashboardShell({
+  initialData,
+  chartsUnavailable = false,
+  cachedSummary,
+  cachedMetadata,
+  cachedStaleAt,
+  tier: serverTier,
+  needsOnboarding,
+  businessType,
+  teamSize,
+}: DashboardShellProps) {
   const router = useRouter();
   const [showOnboarding, setShowOnboarding] = useState(needsOnboarding ?? false);
   const { setOrgName } = useSidebar();
@@ -210,18 +134,19 @@ export function DashboardShell({ initialData, chartsUnavailable = false, cachedS
   const [metadata, setMetadata] = useState<TransparencyMetadata | null>(cachedMetadata ?? null);
   const firedRef = useRef(false);
   const swrKey = buildSwrKey(filters);
-  const hasActiveFilters = filters.datePreset !== null || filters.category !== null || filters.granularity !== 'monthly';
+  const hasActiveFilters =
+    filters.datePreset !== null || filters.category !== null || filters.granularity !== 'monthly';
 
-  const { data = initialData, isLoading, mutate } = useSWR(
-    swrKey,
-    fetchChartData,
-    {
-      fallbackData: initialData,
-      revalidateOnFocus: true,
-      revalidateOnReconnect: false,
-      keepPreviousData: true,
-    },
-  );
+  const {
+    data = initialData,
+    isLoading,
+    mutate,
+  } = useSWR(swrKey, fetchChartData, {
+    fallbackData: initialData,
+    revalidateOnFocus: true,
+    revalidateOnReconnect: false,
+    keepPreviousData: true,
+  });
 
   useEffect(() => {
     setOrgName(data.orgName);
@@ -254,7 +179,9 @@ export function DashboardShell({ initialData, chartsUnavailable = false, cachedS
           datasetId: data.datasetId,
         });
         // reset after a tick to allow re-firing on future opens
-        setTimeout(() => { firedRef.current = false; }, 300);
+        setTimeout(() => {
+          firedRef.current = false;
+        }, 300);
       }
       return opening;
     });
@@ -272,87 +199,41 @@ export function DashboardShell({ initialData, chartsUnavailable = false, cachedS
   const handleStreamComplete = useCallback(() => setAiDone(true), []);
 
   const captureRef = useRef<HTMLDivElement>(null);
-  const { status: shareStatus, generatePng, downloadPng, copyToClipboard } = useShareInsight(captureRef);
-  const { status: linkStatus, clipboardFailed: linkClipboardFailed, createLink } = useCreateShareLink();
+  const {
+    status: shareStatus,
+    generatePng,
+    downloadPng,
+    copyToClipboard,
+  } = useShareInsight(captureRef);
+  const {
+    status: linkStatus,
+    clipboardFailed: linkClipboardFailed,
+    createLink,
+  } = useCreateShareLink();
   const { status: pdfStatus, exportPdf } = useExportPdf(captureRef);
 
   const handleCopyLink = useCallback(async () => {
     if (data.datasetId != null) await createLink(data.datasetId);
   }, [data.datasetId, createLink]);
 
-  const hasRevenue = data.revenueTrend.length > 0;
-  const hasExpenses = data.expenseBreakdown.length > 0;
-  const hasData = hasRevenue || hasExpenses;
+  const hasData = data.revenueTrend.length > 0 || data.expenseBreakdown.length > 0;
   const hasAnyData = initialData.revenueTrend.length > 0 || initialData.expenseBreakdown.length > 0;
 
-  // hasAuth as well as hasAnyData: the seed dataset makes hasAnyData true for a
-  // signed-out visitor, so this fired /org/financials on every public dashboard
-  // load and took a 401. apiClient then attempted a refresh on that 401, which
-  // also failed, so one ungated read cost two failing requests and spent budget
-  // on the auth rate limiter. Nothing rendered differently, because the flags
-  // below already treat undefined as "do not offer to set this", which is why it
-  // survived until an e2e guard started asserting on failing responses.
-  const { data: financials, mutate: refreshFinancials } = useSWR<OrgFinancials>(
-    hasAuth && hasAnyData ? '/org/financials' : null,
-    async (key: string) => (await apiClient<OrgFinancials>(key)).data,
-    { revalidateOnFocus: false },
-  );
-
-  // Cash history feeds the runway thumbnail. Only fetch once the user has
-  // data (demo datasets get no runway) and only when they've saved at least
-  // one balance (no history = no chart).
-  const { data: cashHistory, mutate: refreshCashHistory } = useSWR<{ balance: number; asOfDate: string }[]>(
-    hasAnyData && financials?.cashOnHand != null ? '/org/financials/cash-history?limit=24' : null,
-    async (key: string) => (await apiClient<{ balance: number; asOfDate: string }[]>(key)).data,
-    { revalidateOnFocus: false },
-  );
-
-  // Three-month forward forecast, point estimate trajectory. Client-side gate
-  // mirrors the server's suppression logic: the API returns `data: null` when
-  // cashOnHand/cashAsOfDate are missing, so we don't issue the round trip when
-  // we already know it can't form a forecast. Staleness + thin-history cases
-  // still reach the server since those need row context to evaluate.
-  const { data: cashForecastResponse, mutate: refreshCashForecast } = useSWR<
-    { forecast: { balance: number; asOfDate: string }[] } | null
-  >(
-    hasAnyData && financials?.cashOnHand != null && financials?.cashAsOfDate != null
-      ? '/org/financials/cash-forecast?months=3'
-      : null,
-    async (key: string) => (await apiClient<
-      { forecast: { balance: number; asOfDate: string }[] } | null
-    >(key)).data,
-    { revalidateOnFocus: false },
-  );
-  const cashForecast = cashForecastResponse?.forecast;
-
-  // Gate on `financials !== undefined` so the Locked Insight card doesn't flash
-  // during initial SWR fetch for users who already have a cash balance set.
-  const needsCashBalance = hasAnyData && financials !== undefined && !financials.cashOnHand;
-  const hasBalance = !!financials?.cashAsOfDate;
-  const needsBreakEvenEnable = hasAnyData
-    && data.hasMarginSignal === true
-    && financials !== undefined
-    && financials.monthlyFixedCosts == null;
-
-  async function saveCashBalance(value: number) {
-    await apiClient('/org/financials', {
-      method: 'PUT',
-      body: JSON.stringify({ cashOnHand: value }),
-    });
-    // revalidate all three keys, cash-history and cash-forecast both depend
-    // on the updated balance; this closes the latent staleness gap from 8.2
-    await Promise.all([refreshFinancials(), refreshCashHistory(), refreshCashForecast()]);
-    router.refresh();
-  }
-
-  async function saveMonthlyFixedCosts(value: number) {
-    await apiClient('/org/financials', {
-      method: 'PUT',
-      body: JSON.stringify({ monthlyFixedCosts: value }),
-    });
-    await Promise.all([refreshFinancials(), refreshCashHistory(), refreshCashForecast()]);
-    router.refresh();
-  }
+  const {
+    cashAsOfDate,
+    cashHistory,
+    cashForecast,
+    needsCashBalance,
+    hasBalance,
+    needsBreakEvenEnable,
+    saveCashBalance,
+    saveMonthlyFixedCosts,
+  } = useDashboardFinancials({
+    hasAuth,
+    hasAnyData,
+    hasMarginSignal: data.hasMarginSignal === true,
+    onSaved: router.refresh,
+  });
 
   const aiSummaryCard = (
     <AiSummaryCard
@@ -434,10 +315,15 @@ export function DashboardShell({ initialData, chartsUnavailable = false, cachedS
       {/* pb-24 on mobile: clears the fixed ShareFab (bottom-4, 48px tall) so it
           doesn't sit on top of the page's last interactive element. Desktop
           has no FAB, so pb-16 is enough there. */}
-      <section className="mx-auto max-w-7xl px-4 pt-6 pb-24 md:px-6 md:pb-16 lg:px-8" aria-labelledby="dashboard-heading">
+      <section
+        className="mx-auto max-w-7xl px-4 pt-6 pb-24 md:px-6 md:pb-16 lg:px-8"
+        aria-labelledby="dashboard-heading"
+      >
         {hasData && (
           <div className="mb-6">
-            <h1 id="dashboard-heading" className="font-serif text-3xl font-medium text-foreground">{data.orgName}</h1>
+            <h1 id="dashboard-heading" className="font-serif text-3xl font-medium text-foreground">
+              {data.orgName}
+            </h1>
             {data.dateRange && (
               <p className="mt-1 text-sm text-muted-foreground">
                 {data.dateRange.min} to {data.dateRange.max}
@@ -451,73 +337,17 @@ export function DashboardShell({ initialData, chartsUnavailable = false, cachedS
 
         <div ref={captureRef}>
           {hasData && (
-            <KpiCards
-              revenueTrend={data.revenueTrend}
-              expenseBreakdown={data.expenseBreakdown}
-            />
+            <KpiCards revenueTrend={data.revenueTrend} expenseBreakdown={data.expenseBreakdown} />
           )}
 
-
-          <ChartErrorBoundary onRetry={() => mutate()}>
-            {isLoading && !hasData ? (
-              <div className="mt-6 grid gap-4 md:grid-cols-2 md:gap-6">
-                <ChartSkeleton variant="line" />
-                <ChartSkeleton variant="bar" />
-              </div>
-            ) : !hasData && hasActiveFilters ? (
-              <FilteredEmptyState onReset={resetFilters} />
-            ) : !hasData ? (
-              <EmptyState />
-            ) : (
-              <>
-                <div className="mt-6 grid gap-4 md:grid-cols-2 md:gap-6">
-                  {hasRevenue && (
-                    <LazyChart skeletonVariant="line">
-                      <RevenueChart
-                        data={data.revenueTrend}
-                        onPointClick={(month) => askAboutChartPoint({ chart: 'revenue', month })}
-                      />
-                    </LazyChart>
-                  )}
-                  {hasExpenses && (
-                    <LazyChart skeletonVariant="bar">
-                      <ExpenseChart
-                        data={data.expenseBreakdown}
-                        onCategoryClick={(category) => askAboutChartPoint({ chart: 'expense', category })}
-                      />
-                    </LazyChart>
-                  )}
-                </div>
-                {data.monthlyComparison?.length > 0 && (
-                  <div className="mt-4 grid gap-4 md:mt-6 md:grid-cols-2 md:gap-6">
-                    <LazyChart skeletonVariant="line">
-                      <RevenueVsExpensesChart data={data.monthlyComparison} />
-                    </LazyChart>
-                    <LazyChart skeletonVariant="line">
-                      <ProfitMarginChart data={data.monthlyComparison} />
-                    </LazyChart>
-                  </div>
-                )}
-                {data.expenseTrend?.length > 0 && (
-                  <div className="mt-4 md:mt-6">
-                    <LazyChart skeletonVariant="line">
-                      <ExpenseTrendChart
-                        data={data.expenseTrend}
-                        categories={data.availableCategories}
-                      />
-                    </LazyChart>
-                  </div>
-                )}
-                {data.yoyComparison?.length > 0 && (
-                  <div className="mt-4 md:mt-6">
-                    <LazyChart skeletonVariant="bar">
-                      <YoyChart data={data.yoyComparison} />
-                    </LazyChart>
-                  </div>
-                )}
-              </>
-            )}
-          </ChartErrorBoundary>
+          <DashboardCharts
+            data={data}
+            isLoading={isLoading}
+            hasActiveFilters={hasActiveFilters}
+            onRetry={() => mutate()}
+            onResetFilters={resetFilters}
+            onAskAboutPoint={askAboutChartPoint}
+          />
 
           {/* The summary describes the charts, so it follows them. FR24 was
               amended for this: its acquisition rationale is the shared-link
@@ -527,7 +357,10 @@ export function DashboardShell({ initialData, chartsUnavailable = false, cachedS
             {isMobile ? (
               <div>
                 {aiSummaryCard}
-                <Sheet open={transparencyOpen} onOpenChange={(open) => !open && handleCloseTransparency()}>
+                <Sheet
+                  open={transparencyOpen}
+                  onOpenChange={(open) => !open && handleCloseTransparency()}
+                >
                   <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto rounded-t-xl">
                     <SheetTitle className="sr-only">How I reached this conclusion</SheetTitle>
                     <TransparencyPanel
@@ -567,7 +400,12 @@ export function DashboardShell({ initialData, chartsUnavailable = false, cachedS
 
           <AiSummaryErrorBoundary className="mt-6">
             <div ref={askBoxRef}>
-              <QaAskBox datasetId={data.datasetId} metadata={metadata} askFromChart={chartAsk} hasAuth={hasAuth} />
+              <QaAskBox
+                datasetId={data.datasetId}
+                metadata={metadata}
+                askFromChart={chartAsk}
+                hasAuth={hasAuth}
+              />
             </div>
 
             {/* After the interpretation, not beside the KPIs: these are someone
@@ -577,7 +415,7 @@ export function DashboardShell({ initialData, chartsUnavailable = false, cachedS
 
           {hasAnyData && hasBalance && (
             <CashBalanceStaleBanner
-              cashAsOfDate={financials?.cashAsOfDate ?? null}
+              cashAsOfDate={cashAsOfDate}
               onUpdate={saveCashBalance}
               className="mt-6"
             />

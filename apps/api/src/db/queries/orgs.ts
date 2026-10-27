@@ -1,8 +1,8 @@
-import { eq, isNotNull } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { SEED_ORG } from 'shared/constants';
 import { businessProfileSchema } from 'shared/schemas';
 import type { BusinessProfile } from 'shared/types';
-import { db, dbAdmin, type DbTransaction } from '../../lib/db.js';
+import { db, type DbTransaction } from '../../lib/db.js';
 import { orgs } from '../schema.js';
 
 export async function createOrg(data: { name: string; slug: string }) {
@@ -41,7 +41,10 @@ export function resetSeedOrgCache(): void {
   cachedSeedOrgId = null;
 }
 
-export async function getBusinessProfile(orgId: number, client: typeof db | DbTransaction = db): Promise<BusinessProfile | null> {
+export async function getBusinessProfile(
+  orgId: number,
+  client: typeof db | DbTransaction = db,
+): Promise<BusinessProfile | null> {
   const org = await findOrgById(orgId, client);
   if (!org?.businessProfile) return null;
   const result = businessProfileSchema.safeParse(org.businessProfile);
@@ -65,24 +68,7 @@ export async function setActiveDataset(
   return updated ?? null;
 }
 
-/**
- * Admin query, bypasses RLS to list all orgs that have an active dataset.
- *
- * @deprecated Filters only on activeDatasetId. Does NOT check subscription tier
- * or dataset recency, so it over-returns for any digest, billing, or
- * eligibility-style enumeration. Use `findEligibleOrgs()` from
- * `db/queries/digestEligibility.ts` for that shape.
- */
-export async function getAllOrgsWithActiveDataset() {
-  return dbAdmin.query.orgs.findMany({
-    where: isNotNull(orgs.activeDatasetId),
-  });
-}
-
-export async function getActiveDatasetId(
-  orgId: number,
-  client: typeof db | DbTransaction = db,
-) {
+export async function getActiveDatasetId(orgId: number, client: typeof db | DbTransaction = db) {
   const org = await client.query.orgs.findFirst({
     where: eq(orgs.id, orgId),
   });
