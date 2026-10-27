@@ -1,25 +1,23 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
-import { RefreshCw, Info } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAiStream, stripDisplayTags } from '@/lib/hooks/useAiStream';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { trackClientEvent } from '@/lib/analytics';
-import { UpgradeCta } from '@/components/common/UpgradeCta';
 import { Spinner } from '@/components/ui/spinner';
 import { AiSummarySkeleton } from './AiSummarySkeleton';
-import { ShareMenu, type ShareStatus, type LinkStatus } from './ShareMenu';
+import type { ShareStatus, LinkStatus } from './ShareMenu';
 import { parseStatBindings, type StatBinding } from './parseStatBindings';
 import { parseCiteBindings, type CiteBinding } from './parseCiteBindings';
-import { NUMBER_PATTERN } from './numberPattern';
-import { InsightChartThumbnail } from './InsightChartThumbnail';
-import { InsightChartChip } from './InsightChartChip';
 import { InsightChartSheet } from './InsightChartSheet';
 import { StatDetailSheet } from './StatDetailSheet';
 import { type CashBalancePoint } from './charts/RunwayTrendChart';
-import { FREE_PREVIEW_WORD_LIMIT, ANALYTICS_EVENTS, AI_DISCLAIMER } from 'shared/constants';
+import { SummaryText } from './SummaryText';
+import { FreePreviewOverlay, PostCompletionFooter } from './AiSummaryCompletion';
+import { FREE_PREVIEW_WORD_LIMIT, ANALYTICS_EVENTS } from 'shared/constants';
 
 import type { SubscriptionTier, TransparencyMetadata } from 'shared/types';
 
@@ -81,137 +79,13 @@ export function truncateAtWordBoundary(
 
 function StreamingCursor() {
   return (
-    <span
-      className="animate-blink motion-reduce:animate-none"
-      aria-hidden="true"
-    >
+    <span className="animate-blink motion-reduce:animate-none" aria-hidden="true">
       ▋
     </span>
   );
 }
 
-function highlightNumbers(
-  text: string,
-  citesByNumber?: Map<number, string[]>,
-  onOpenCite?: (statId: string) => void,
-): React.ReactNode[] {
-  // NUMBER_PATTERN has one capture group, split() alternates plain text at
-  // even indices with matched numbers at odd indices, more reliable than
-  // re-testing each part's content (and avoids re-running a shared /g regex
-  // via .test(), which would carry lastIndex state across calls).
-  const parts = text.split(NUMBER_PATTERN);
-  let numberIndex = -1;
-
-  return parts.map((part, i) => {
-    if (i % 2 === 0) return <span key={i}>{part}</span>;
-
-    numberIndex++;
-    const statIds = citesByNumber?.get(numberIndex) ?? [];
-
-    return (
-      <span key={i} className="font-mono font-medium text-accent-warm">
-        {part}
-        {onOpenCite && statIds.map((statId, citeIndex) => (
-          <button
-            key={`${statId}-${citeIndex}`}
-            type="button"
-            onClick={() => onOpenCite(statId)}
-            className="ml-0.5 inline-flex h-3.5 w-3.5 align-super text-accent-warm/60 hover:text-accent-warm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-warm"
-            aria-label={
-              statIds.length > 1
-                ? `Show how ${part} was calculated (source ${citeIndex + 1} of ${statIds.length})`
-                : `Show how ${part} was calculated`
-            }
-          >
-            <Info className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
-          </button>
-        ))}
-      </span>
-    );
-  });
-}
-
-interface SummaryTextProps {
-  text: string;
-  bindings?: StatBinding[];
-  citations?: CiteBinding[];
-  onOpenStat?: (statId: string, paragraphIndex: number) => void;
-  onOpenCite?: (statId: string) => void;
-  cashHistory?: CashBalancePoint[];
-  cashForecast?: CashBalancePoint[];
-  isMobile?: boolean;
-}
-
-function SummaryText({ text, bindings, citations, onOpenStat, onOpenCite, cashHistory, cashForecast, isMobile }: SummaryTextProps) {
-  const paragraphs = text.split('\n\n').filter(Boolean);
-  const bindingByIndex = new Map<number, string>();
-  for (const b of bindings ?? []) bindingByIndex.set(b.paragraphIndex, b.statId);
-
-  // a number can carry more than one citation (e.g. two consecutive <cite>
-  // tags after one number), so each numberIndex maps to a list, not a single id.
-  const citesByParagraph = new Map<number, Map<number, string[]>>();
-  for (const c of citations ?? []) {
-    let byNumber = citesByParagraph.get(c.paragraphIndex);
-    if (!byNumber) {
-      byNumber = new Map();
-      citesByParagraph.set(c.paragraphIndex, byNumber);
-    }
-    const ids = byNumber.get(c.numberIndex);
-    if (ids) ids.push(c.statId);
-    else byNumber.set(c.numberIndex, [c.statId]);
-  }
-
-  return (
-    <div className="font-serif text-[15px] leading-[1.7] text-card-foreground/85 md:text-base md:leading-[1.75] [&>p+p]:mt-[1.1em]">
-      {paragraphs.flatMap((p, i) => {
-        const statId = bindingByIndex.get(i);
-        const paragraphCites = citesByParagraph.get(i);
-        const elements = [
-          <p
-            key={i}
-            className={
-              i === 0
-                ? 'text-card-foreground font-medium first-letter:float-left first-letter:mr-1 first-letter:font-serif first-letter:text-[2.6em] first-letter:font-medium first-letter:leading-[0.8] first-letter:text-primary'
-                : undefined
-            }
-          >
-            {highlightNumbers(p, paragraphCites, onOpenCite)}
-          </p>,
-        ];
-
-        // Rendered as its own paragraph rather than inline at the tail of the
-        // text: a 180x120px thumbnail dropped inline mid-prose forces the
-        // browser to wrap surrounding text around it unpredictably.
-        if (statId && onOpenStat) {
-          elements.push(
-            <p key={`${i}-chart`}>
-              {isMobile ? (
-                <InsightChartChip statId={statId} onOpen={() => onOpenStat(statId, i)} />
-              ) : (
-                <InsightChartThumbnail
-                  statId={statId}
-                  cashHistory={cashHistory}
-                  cashForecast={cashForecast}
-                  onOpen={() => onOpenStat(statId, i)}
-                />
-              )}
-            </p>,
-          );
-        }
-
-        return elements;
-      })}
-    </div>
-  );
-}
-
-function StaleBanner({
-  onRefresh,
-  disabled,
-}: {
-  onRefresh: () => void;
-  disabled?: boolean;
-}) {
+function StaleBanner({ onRefresh, disabled }: { onRefresh: () => void; disabled?: boolean }) {
   return (
     <div
       role="status"
@@ -220,9 +94,7 @@ function StaleBanner({
     >
       <RefreshCw className="mt-0.5 h-4 w-4 shrink-0 text-accent-warm" aria-hidden="true" />
       <div className="flex-1">
-        <p className="text-sm font-medium text-card-foreground">
-          Your data has been updated
-        </p>
+        <p className="text-sm font-medium text-card-foreground">Your data has been updated</p>
         <p className="mt-0.5 text-xs text-muted-foreground">
           These insights were written before your latest sync. Refresh to regenerate them.
         </p>
@@ -235,134 +107,6 @@ function StaleBanner({
       >
         Refresh insights
       </button>
-    </div>
-  );
-}
-
-interface PostCompletionFooterProps {
-  onToggleTransparency?: () => void;
-  transparencyOpen?: boolean;
-  onShare?: () => Promise<void>;
-  onShareDownload?: () => void;
-  onShareCopy?: () => Promise<void>;
-  shareState?: ShareStatus;
-  onShareCopyLink?: () => Promise<void>;
-  shareLinkStatus?: LinkStatus;
-  shareLinkClipboardFailed?: boolean;
-  onExportPdf?: () => Promise<void>;
-  pdfStatus?: 'idle' | 'generating' | 'done' | 'error';
-}
-
-// Required on every AI summary by the legal posture, so it lives in one place
-// and both the paid and the free-preview paths render it. It used to sit inside
-// PostCompletionFooter, which free_preview deliberately hides in order to
-// withhold share, export and transparency. That correctly withheld the features
-// and incorrectly withheld the disclaimer, so a truncated free-tier summary
-// carried none.
-// Full opacity. At /60 this scored 2.56 against AA's 4.5 on the AI surface, and
-// only full opacity clears it in both themes: light at /85 still lands on 4.27.
-// The opacity was there to play legal text down, which is the one kind of text
-// that cannot afford to be unreadable.
-function AiDisclaimer() {
-  return (
-    <p className="mt-3 text-[11px] leading-tight text-muted-foreground">{AI_DISCLAIMER}</p>
-  );
-}
-
-function PostCompletionFooter({
-  onToggleTransparency,
-  transparencyOpen,
-  onShare,
-  onShareDownload,
-  onShareCopy,
-  shareState = 'idle',
-  onShareCopyLink,
-  shareLinkStatus,
-  shareLinkClipboardFailed,
-  onExportPdf,
-  pdfStatus,
-}: PostCompletionFooterProps) {
-  return (
-    <div className="mt-4 border-t border-border pt-4 animate-fade-in">
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          className="min-h-11 text-xs text-muted-foreground underline-offset-2 hover:underline"
-          onClick={onToggleTransparency}
-          aria-expanded={transparencyOpen}
-          disabled={!onToggleTransparency}
-        >
-          How I reached this conclusion
-          <span
-            className={cn(
-              'ml-1 inline-block transition-transform duration-150',
-              transparencyOpen && 'rotate-180',
-            )}
-            aria-hidden="true"
-          >
-            ▾
-          </span>
-        </button>
-        <div className="ml-auto">
-          {onShare && onShareDownload && onShareCopy ? (
-            <ShareMenu
-              status={shareState}
-              onGenerate={onShare}
-              onDownload={onShareDownload}
-              onCopy={onShareCopy}
-              onCopyLink={onShareCopyLink}
-              linkStatus={shareLinkStatus}
-              linkClipboardFailed={shareLinkClipboardFailed}
-              onExportPdf={onExportPdf}
-              pdfStatus={pdfStatus}
-            />
-          ) : (
-            <button
-              type="button"
-              className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
-              disabled
-            >
-              Share
-            </button>
-          )}
-        </div>
-      </div>
-      <AiDisclaimer />
-    </div>
-  );
-}
-
-function FreePreviewOverlay({ previewText, onUpgrade }: { previewText: string; onUpgrade: () => void }) {
-  const firedRef = useRef(false);
-  useEffect(() => {
-    if (firedRef.current) return;
-    firedRef.current = true;
-    trackClientEvent(ANALYTICS_EVENTS.AI_PREVIEW_VIEWED);
-  }, []);
-
-  return (
-    <div className="relative">
-      <SummaryText text={previewText} />
-
-      {/* gradient fade into blurred placeholder */}
-      <div className="relative mt-0" aria-hidden="true">
-        <div className="absolute inset-x-0 top-0 h-12 bg-gradient-to-b from-card/0 to-card z-10" />
-        <div className="select-none blur-sm opacity-60">
-          <div className="text-sm leading-[1.6] md:text-[15px] md:leading-[1.7] [&>p+p]:mt-[1em]">
-            <p>Continue reading to discover key trends in your revenue growth, expense patterns, and actionable recommendations for optimizing your business performance over the coming quarter.</p>
-            <p>Our analysis identifies several opportunities for cost reduction and revenue acceleration based on your historical data patterns.</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="relative z-20 -mt-8 flex justify-center">
-        <UpgradeCta
-          variant="overlay"
-          onUpgrade={onUpgrade}
-        />
-      </div>
-
-      <AiDisclaimer />
     </div>
   );
 }
@@ -411,8 +155,17 @@ export function AiSummaryCard({
     () => false,
   );
   const hasCached = !!cachedContent && !refreshing;
-  const { status, text, rawText, metadata: streamMetadata, error, code, retryable, maxRetriesReached, retry } =
-    useAiStream(hasCached ? null : datasetId);
+  const {
+    status,
+    text,
+    rawText,
+    metadata: streamMetadata,
+    error,
+    code,
+    retryable,
+    maxRetriesReached,
+    retry,
+  } = useAiStream(hasCached ? null : datasetId);
 
   const isMobile = useIsMobile();
   const [openStatId, setOpenStatId] = useState<string | null>(null);
@@ -423,7 +176,7 @@ export function AiSummaryCard({
   // useAiStream.rawText; cached path parses cachedContent directly. Both
   // strip tags for display via stripStatTags so the user never sees a
   // raw <stat id="..."/> token regardless of code path.
-  const sourceText = hasCached ? cachedContent ?? '' : rawText;
+  const sourceText = hasCached ? (cachedContent ?? '') : rawText;
   const bindings = useMemo<StatBinding[]>(() => {
     if (status !== 'done' && !hasCached) return [];
     return parseStatBindings(sourceText);
@@ -489,10 +242,7 @@ export function AiSummaryCard({
 
     return (
       <div
-        className={cn(
-          'min-w-0 border-t-2 border-accent-warm bg-ai-surface p-5 md:p-8',
-          className,
-        )}
+        className={cn('min-w-0 border-t-2 border-accent-warm bg-ai-surface p-5 md:p-8', className)}
         role="region"
         aria-label="AI business summary"
       >
@@ -518,7 +268,19 @@ export function AiSummaryCard({
               cashForecast={cashForecast}
               isMobile={isMobile}
             />
-            <PostCompletionFooter onToggleTransparency={onToggleTransparency} transparencyOpen={transparencyOpen} onShare={onShare} onShareDownload={onShareDownload} onShareCopy={onShareCopy} shareState={shareState} onShareCopyLink={onShareCopyLink} shareLinkStatus={shareLinkStatus} shareLinkClipboardFailed={shareLinkClipboardFailed} onExportPdf={onExportPdf} pdfStatus={pdfStatus} />
+            <PostCompletionFooter
+              onToggleTransparency={onToggleTransparency}
+              transparencyOpen={transparencyOpen}
+              onShare={onShare}
+              onShareDownload={onShareDownload}
+              onShareCopy={onShareCopy}
+              shareState={shareState}
+              onShareCopyLink={onShareCopyLink}
+              shareLinkStatus={shareLinkStatus}
+              shareLinkClipboardFailed={shareLinkClipboardFailed}
+              onExportPdf={onExportPdf}
+              pdfStatus={pdfStatus}
+            />
           </>
         )}
         <InsightChartSheet
@@ -545,10 +307,7 @@ export function AiSummaryCard({
   if (status === 'free_preview') {
     return (
       <div
-        className={cn(
-          'min-w-0 border-t-2 border-accent-warm bg-ai-surface p-5 md:p-8',
-          className,
-        )}
+        className={cn('min-w-0 border-t-2 border-accent-warm bg-ai-surface p-5 md:p-8', className)}
         role="region"
         aria-label="AI business summary"
       >
@@ -561,9 +320,7 @@ export function AiSummaryCard({
     return (
       <div className={cn('relative', className)}>
         <AiSummarySkeleton />
-        <p className="mt-2 text-sm text-muted-foreground animate-fade-in">
-          Analyzing your data...
-        </p>
+        <p className="mt-2 text-sm text-muted-foreground animate-fade-in">Analyzing your data...</p>
       </div>
     );
   }
@@ -571,10 +328,7 @@ export function AiSummaryCard({
   if (status === 'timeout') {
     return (
       <div
-        className={cn(
-          'min-w-0 border-t-2 border-accent-warm bg-ai-surface p-5 md:p-8',
-          className,
-        )}
+        className={cn('min-w-0 border-t-2 border-accent-warm bg-ai-surface p-5 md:p-8', className)}
         role="region"
         aria-label="AI business summary"
       >
@@ -594,7 +348,19 @@ export function AiSummaryCard({
         <p className="text-sm italic text-muted-foreground">
           We focused on the most important findings to keep things quick.
         </p>
-        <PostCompletionFooter onToggleTransparency={onToggleTransparency} transparencyOpen={transparencyOpen} onShare={onShare} onShareDownload={onShareDownload} onShareCopy={onShareCopy} shareState={shareState} onShareCopyLink={onShareCopyLink} shareLinkStatus={shareLinkStatus} shareLinkClipboardFailed={shareLinkClipboardFailed} onExportPdf={onExportPdf} pdfStatus={pdfStatus} />
+        <PostCompletionFooter
+          onToggleTransparency={onToggleTransparency}
+          transparencyOpen={transparencyOpen}
+          onShare={onShare}
+          onShareDownload={onShareDownload}
+          onShareCopy={onShareCopy}
+          shareState={shareState}
+          onShareCopyLink={onShareCopyLink}
+          shareLinkStatus={shareLinkStatus}
+          shareLinkClipboardFailed={shareLinkClipboardFailed}
+          onExportPdf={onExportPdf}
+          pdfStatus={pdfStatus}
+        />
         <InsightChartSheet
           open={openStatId !== null}
           onOpenChange={(open) => !open && setOpenStatId(null)}
@@ -624,12 +390,8 @@ export function AiSummaryCard({
         aria-label="AI business summary"
       >
         <div aria-live="assertive">
-          <p className="text-sm font-medium text-destructive">
-            {userMessage(code, error)}
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Your data and charts are unaffected.
-          </p>
+          <p className="text-sm font-medium text-destructive">{userMessage(code, error)}</p>
+          <p className="mt-1 text-sm text-muted-foreground">Your data and charts are unaffected.</p>
         </div>
         {retryable && !maxRetriesReached && (
           <button
@@ -665,10 +427,7 @@ export function AiSummaryCard({
       aria-label="AI business summary"
     >
       <h3 className="mb-4 font-serif text-lg font-medium text-card-foreground">Analysis</h3>
-      <div
-        aria-live="polite"
-        aria-busy={isActive}
-      >
+      <div aria-live="polite" aria-busy={isActive}>
         <SummaryText
           text={text}
           bindings={isDone ? bindings : undefined}
@@ -681,7 +440,21 @@ export function AiSummaryCard({
         />
         {isActive && <StreamingCursor />}
       </div>
-      {isDone && <PostCompletionFooter onToggleTransparency={onToggleTransparency} transparencyOpen={transparencyOpen} onShare={onShare} onShareDownload={onShareDownload} onShareCopy={onShareCopy} shareState={shareState} onShareCopyLink={onShareCopyLink} shareLinkStatus={shareLinkStatus} shareLinkClipboardFailed={shareLinkClipboardFailed} onExportPdf={onExportPdf} pdfStatus={pdfStatus} />}
+      {isDone && (
+        <PostCompletionFooter
+          onToggleTransparency={onToggleTransparency}
+          transparencyOpen={transparencyOpen}
+          onShare={onShare}
+          onShareDownload={onShareDownload}
+          onShareCopy={onShareCopy}
+          shareState={shareState}
+          onShareCopyLink={onShareCopyLink}
+          shareLinkStatus={shareLinkStatus}
+          shareLinkClipboardFailed={shareLinkClipboardFailed}
+          onExportPdf={onExportPdf}
+          pdfStatus={pdfStatus}
+        />
+      )}
       <InsightChartSheet
         open={openStatId !== null}
         onOpenChange={(open) => !open && setOpenStatId(null)}
