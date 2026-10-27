@@ -3,27 +3,18 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 import type { ChartData, SubscriptionTier, TransparencyMetadata } from 'shared/types';
-import { ANALYTICS_EVENTS } from 'shared/constants';
-import { trackClientEvent } from '@/lib/analytics';
-import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { useSubscription } from '@/lib/hooks/useSubscription';
 import { useDashboardFinancials } from '@/lib/hooks/useDashboardFinancials';
 import { useDashboardSharing } from '@/lib/hooks/useDashboardSharing';
 import { useSidebar } from './SidebarContext';
 import { DashboardCharts } from './DashboardCharts';
+import { DashboardInsights } from './DashboardInsights';
 import { FilterBar } from './FilterBar';
 import { useDashboardData } from './useDashboardData';
 import { questionForChartPoint, type ChartPoint } from './suggestedQuestions';
-import { IndustryBenchmark } from '@/components/IndustryBenchmark';
 import type { BusinessProfile } from 'shared/schemas';
-import { AiSummaryCard } from './AiSummaryCard';
-import { QaAskBox } from './QaAskBox';
-import { AiSummaryErrorBoundary } from './AiSummaryErrorBoundary';
-import { TransparencyPanel } from './TransparencyPanel';
 import { ShareFab } from './ShareMenu';
-import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { DemoModeBanner } from '@/components/common/DemoModeBanner';
 import { KpiCards } from './KpiCards';
 import { OnboardingModal } from './OnboardingModal';
@@ -34,7 +25,6 @@ import { CashBalanceStaleBanner } from './CashBalanceStaleBanner';
 import { DigestPausingBanner } from './DigestPausingBanner';
 import { DigestClickTracker } from './DigestClickTracker';
 import { AlertClickTracker } from './AlertClickTracker';
-import { LastDigestIndicator } from '@/components/LastDigestIndicator';
 
 interface DashboardShellProps {
   initialData: ChartData;
@@ -64,7 +54,6 @@ export function DashboardShell({
   const router = useRouter();
   const [showOnboarding, setShowOnboarding] = useState(needsOnboarding ?? false);
   const { setOrgName } = useSidebar();
-  const isMobile = useIsMobile();
   const hasAuth = serverTier !== undefined;
   const { tier } = useSubscription({ enabled: hasAuth, fallbackData: serverTier });
 
@@ -100,9 +89,6 @@ export function DashboardShell({
     askBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, []);
 
-  const [transparencyOpen, setTransparencyOpen] = useState(false);
-  const [metadata, setMetadata] = useState<TransparencyMetadata | null>(cachedMetadata ?? null);
-  const firedRef = useRef(false);
   useEffect(() => {
     setOrgName(data.orgName);
   }, [data.orgName, setOrgName]);
@@ -111,35 +97,11 @@ export function DashboardShell({
     router.push('/upload');
   }, [router]);
 
-  const toggleTransparency = useCallback(() => {
-    setTransparencyOpen((prev) => {
-      const opening = !prev;
-      if (opening && !firedRef.current) {
-        firedRef.current = true;
-        trackClientEvent(ANALYTICS_EVENTS.TRANSPARENCY_PANEL_OPENED, {
-          datasetId: data.datasetId,
-        });
-        // reset after a tick to allow re-firing on future opens
-        setTimeout(() => {
-          firedRef.current = false;
-        }, 300);
-      }
-      return opening;
-    });
-  }, [data.datasetId]);
-
-  const handleCloseTransparency = useCallback(() => {
-    setTransparencyOpen(false);
-  }, []);
-
-  const handleMetadataReady = useCallback((meta: TransparencyMetadata | null) => {
-    setMetadata(meta);
-  }, []);
-
   const [aiDone, setAiDone] = useState(false);
   const handleStreamComplete = useCallback(() => setAiDone(true), []);
 
   const captureRef = useRef<HTMLDivElement>(null);
+  const sharing = useDashboardSharing(captureRef, data.datasetId);
   const {
     shareStatus,
     generatePng,
@@ -150,7 +112,7 @@ export function DashboardShell({
     linkClipboardFailed,
     exportPdf,
     pdfStatus,
-  } = useDashboardSharing(captureRef, data.datasetId);
+  } = sharing;
 
   const {
     cashAsOfDate,
@@ -167,32 +129,6 @@ export function DashboardShell({
     hasMarginSignal: data.hasMarginSignal === true,
     onSaved: router.refresh,
   });
-
-  const aiSummaryCard = (
-    <AiSummaryCard
-      datasetId={data.datasetId}
-      cachedContent={cachedSummary}
-      cachedMetadata={cachedMetadata}
-      cachedStaleAt={cachedStaleAt}
-      hasAuth={hasAuth}
-      tier={tier}
-      onToggleTransparency={toggleTransparency}
-      transparencyOpen={transparencyOpen}
-      onMetadataReady={handleMetadataReady}
-      onStreamComplete={handleStreamComplete}
-      onShare={generatePng}
-      onShareDownload={downloadPng}
-      onShareCopy={copyToClipboard}
-      shareState={shareStatus}
-      onShareCopyLink={copyLink}
-      shareLinkStatus={linkStatus}
-      shareLinkClipboardFailed={linkClipboardFailed}
-      onExportPdf={exportPdf}
-      pdfStatus={pdfStatus}
-      cashHistory={cashHistory}
-      cashForecast={cashForecast}
-    />
-  );
 
   return (
     <>
@@ -282,69 +218,23 @@ export function DashboardShell({
             onAskAboutPoint={askAboutChartPoint}
           />
 
-          {/* The summary describes the charts, so it follows them. FR24 was
-              amended for this: its acquisition rationale is the shared-link
-              view at /share/[token], which renders the summary alone with no
-              charts and is untouched by this ordering. */}
-          <AiSummaryErrorBoundary>
-            {isMobile ? (
-              <div>
-                {aiSummaryCard}
-                <Sheet
-                  open={transparencyOpen}
-                  onOpenChange={(open) => !open && handleCloseTransparency()}
-                >
-                  <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto rounded-t-xl">
-                    <SheetTitle className="sr-only">How I reached this conclusion</SheetTitle>
-                    <TransparencyPanel
-                      metadata={metadata}
-                      isOpen={transparencyOpen}
-                      onClose={handleCloseTransparency}
-                    />
-                  </SheetContent>
-                </Sheet>
-              </div>
-            ) : (
-              <div>
-                <div
-                  className={cn(
-                    'grid transition-[grid-template-columns] duration-200 ease-in-out motion-reduce:duration-0',
-                    transparencyOpen ? 'grid-cols-[1fr_320px] gap-6' : 'grid-cols-[1fr_0fr]',
-                  )}
-                >
-                  {aiSummaryCard}
-                  <TransparencyPanel
-                    metadata={metadata}
-                    isOpen={transparencyOpen}
-                    onClose={handleCloseTransparency}
-                    className="overflow-hidden min-w-0"
-                  />
-                </div>
-              </div>
-            )}
-            {/* Single mount point, lifted above the mobile/desktop branch so a
-                useIsMobile flip after hydration doesn't double-fire the indicator's
-                fetch. SWR dedupe inside the component handles repeated mounts
-                across navigations. */}
-            <div className="mt-2 px-1">
-              <LastDigestIndicator enabled={hasAuth} />
-            </div>
-          </AiSummaryErrorBoundary>
-
-          <AiSummaryErrorBoundary className="mt-6">
-            <div ref={askBoxRef}>
-              <QaAskBox
-                datasetId={data.datasetId}
-                metadata={metadata}
-                askFromChart={chartAsk}
-                hasAuth={hasAuth}
-              />
-            </div>
-
-            {/* After the interpretation, not beside the KPIs: these are someone
-                else's numbers and should not read as one of yours. */}
-            <IndustryBenchmark businessType={businessType} teamSize={teamSize} className="mt-6" />
-          </AiSummaryErrorBoundary>
+          {/* The interpretation follows the charts it describes. */}
+          <DashboardInsights
+            datasetId={data.datasetId}
+            cachedSummary={cachedSummary}
+            cachedMetadata={cachedMetadata}
+            cachedStaleAt={cachedStaleAt}
+            hasAuth={hasAuth}
+            tier={tier}
+            cashHistory={cashHistory}
+            cashForecast={cashForecast}
+            sharing={sharing}
+            chartAsk={chartAsk}
+            askBoxRef={askBoxRef}
+            businessType={businessType}
+            teamSize={teamSize}
+            onStreamComplete={handleStreamComplete}
+          />
 
           {hasAnyData && hasBalance && (
             <CashBalanceStaleBanner
