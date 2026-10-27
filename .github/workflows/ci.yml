@@ -17,14 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-workspace
 
       - run: pnpm turbo lint
 
@@ -73,14 +66,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-workspace
 
       # Coverage thresholds live in each package's vitest.config.ts and are set
       # as a ratchet just under measured coverage, so this fails on a real drop
@@ -92,7 +78,7 @@ jobs:
           pnpm -C apps/web exec vitest run --coverage \
             --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/web.json"
         env:
-          CI: "true"
+          CI: 'true'
 
       - name: Record executed test count
         run: |
@@ -119,26 +105,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-
-      - name: Build shared package
-        run: pnpm -C packages/shared build
+      - uses: ./.github/actions/setup-workspace
 
       - name: Run API tests
         working-directory: apps/api
         run: |
-          npx vitest run \
+          npx vitest run --coverage \
             --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/api.json"
         env:
-          CI: "true"
-          NODE_OPTIONS: "--max-old-space-size=4096"
+          CI: 'true'
+          NODE_OPTIONS: '--max-old-space-size=4096'
 
       - name: Record executed test count
         run: node scripts/count-from-reports.mjs "$RUNNER_TEMP/api.json" > count-api
@@ -172,18 +148,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-
-      # No shared-package build step: vitest.integration.config.ts aliases
-      # shared/* straight to packages/shared/src. Standalone tsx scripts that
-      # resolve the package exports, such as seed-validation, build it first.
+      - uses: ./.github/actions/setup-workspace
 
       # app_user only gets privileges on tables created after this runs
       # (ALTER DEFAULT PRIVILEGES), so it has to happen before migrations,
@@ -233,17 +198,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-
-      - name: Build shared package
-        run: pnpm --filter shared build
+      - uses: ./.github/actions/setup-workspace
 
       - run: pnpm -C apps/api exec tsx ../../scripts/validate-seed.ts
         env:
@@ -270,14 +225,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-workspace
 
       - run: pnpm -C apps/api exec tsx ../../scripts/eval-proposal-precision.ts
 
@@ -289,14 +237,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-workspace
 
       - name: Run eval script tests
         run: |
@@ -320,14 +261,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-workspace
 
       # Keep apt and browser downloads separate so a slow runner says which
       # phase failed. System package work is not safe to interrupt and retry

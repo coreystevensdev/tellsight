@@ -14,19 +14,15 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text-summary', 'lcov'],
-      // Ratchet measured 2026-08-30: 88% lines, 89.7% branches, 81.2% functions.
-      //
-      // Local only, and no longer for the reason this used to give: CI dropped
-      // continue-on-error from the API job, but that job runs `vitest run` while
-      // shared and web run `test:coverage`, so this is the one ratchet in the repo
-      // that never gates. Turning it on is not a one-line change. Under v8
-      // instrumentation the suite goes from 56s to 376s and two tests exceed the
-      // 5s default timeout, so it needs those timeouts raised first.
+      // CI ratchet measured 2026-10-27: 88.51% statements, 82.77% branches,
+      // 84.78% functions and 89.18% lines. Keep these just below the measured
+      // baseline so normal instrumentation variance stays green while a real
+      // coverage regression fails the required API job.
       thresholds: {
-        statements: 85,
-        branches: 87,
-        functions: 78,
-        lines: 85,
+        statements: 88,
+        branches: 82,
+        functions: 84,
+        lines: 89,
       },
     },
     pool: 'forks',

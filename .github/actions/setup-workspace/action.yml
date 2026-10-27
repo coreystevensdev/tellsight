@@ -1,0 +1,21 @@
+name: Setup workspace
+description: Install the pinned Node and pnpm toolchain, dependencies, and shared package
+
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v6
+
+    - uses: actions/setup-node@v7
+      with:
+        node-version: '22'
+        cache: pnpm
+
+    - run: pnpm install --frozen-lockfile
+      shell: bash
+
+    # Standalone tsx scripts resolve shared/* through package exports rather
+    # than the Vitest source aliases, so every prepared workspace gets a fresh
+    # dist instead of each job having to remember whether it needs one.
+    - run: pnpm --filter shared build
+      shell: bash
