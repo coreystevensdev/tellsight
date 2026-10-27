@@ -148,18 +148,21 @@ describe('envSchema, production guards on non-email settings', () => {
     expect(issue?.message).toMatch(/must be a live key/);
   });
 
-  // computeCost prefix-matches the pricing table and returns null for a model it
+  // computeCost matches exact or dated model ids and returns null for a model it
   // does not know, and applyCostGate returns on null before reaching
   // exceedsBudget, so both the rolling cap and the absolute ceiling stop
   // applying. A typo in a model id should not be able to buy that.
-  it('rejects a model the pricing table has no entry for', () => {
-    const result = envSchema.safeParse(baseEnv({ CLAUDE_MODEL: 'claude-sonnet-9' }));
+  it.each(['claude-sonnet-9', 'claude-opus-5-5'])(
+    'rejects unpriced model %s',
+    (model) => {
+      const result = envSchema.safeParse(baseEnv({ CLAUDE_MODEL: model }));
 
-    expect(result.success).toBe(false);
-    if (result.success) return;
-    const issue = result.error.issues.find((i) => i.path[0] === 'CLAUDE_MODEL');
-    expect(issue?.message).toMatch(/pricing table/i);
-  });
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      const issue = result.error.issues.find((i) => i.path[0] === 'CLAUDE_MODEL');
+      expect(issue?.message).toMatch(/pricing table/i);
+    },
+  );
 
   it('rejects an unpriced tool model too, so the split cannot open a hole', () => {
     const result = envSchema.safeParse(baseEnv({ CLAUDE_MODEL_TOOLS: 'claude-sonnet-9' }));

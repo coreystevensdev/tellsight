@@ -15,15 +15,12 @@
  *     (15s) in claudeClient.ts. This file detects and reports anomalies.
  *   - Race window between read and append: two concurrent calls can both
  *     pass the check. Locking would not reduce spend already incurred.
- *   - Failing open: unknown model returns `null` cost; budget check is
- *     skipped. A defensive default, better than refusing service when an
- *     operator configures a new model variant.
+ *   - Failing open at this helper boundary: an unexpected runtime model returns
+ *     `null` cost and skips the budget check. Configured models are stricter:
+ *     config.ts refuses to boot unless their exact rate is known.
  *
- * Anthropic pricing per 1M tokens (as of 2026-04):
- *   claude-sonnet-4-5: input $3,  output $15
- *   claude-sonnet-4-6: input $3,  output $15
- *   claude-opus-4-7:   input $5,  output $25
- *   claude-haiku-4-5:  input $1,  output $5
+ * Rates are centralized in CLAUDE_PRICING under shared/constants so the
+ * runtime cost guard and admin estimates always use the same source.
  */
 
 import { env } from '../config.js';

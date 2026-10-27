@@ -12,9 +12,9 @@ export interface ClaudeModelPricing {
   outputPerMillion: number;
 }
 
-// Prefixes, not only dated model ids: Anthropic may append a release date to
-// any configured model. Keep the most specific prefix before a broader future
-// family prefix so pricingForClaudeModel cannot select a shadowing entry.
+// Base model ids, matched exactly or with Anthropic's eight-digit dated suffix.
+// Do not use unrestricted prefix matching here: `claude-opus-5-5` is a distinct
+// model from `claude-opus-5`, not a dated release of it.
 export const CLAUDE_PRICING: Record<string, ClaudeModelPricing> = {
   'claude-sonnet-4-5': { inputPerMillion: 3, outputPerMillion: 15 },
   'claude-sonnet-4-6': { inputPerMillion: 3, outputPerMillion: 15 },
@@ -30,7 +30,11 @@ export const CLAUDE_PRICING: Record<string, ClaudeModelPricing> = {
 export const DEFAULT_CLAUDE_MODEL_ID = 'claude-sonnet-4-6' as const;
 
 export function pricingForClaudeModel(model: string): ClaudeModelPricing | null {
-  const entry = Object.entries(CLAUDE_PRICING).find(([prefix]) => model.startsWith(prefix));
+  const entry = Object.entries(CLAUDE_PRICING).find(([baseModel]) => {
+    if (model === baseModel) return true;
+    const suffix = model.slice(baseModel.length);
+    return model.startsWith(baseModel) && /^-\d{8}$/.test(suffix);
+  });
   return entry?.[1] ?? null;
 }
 

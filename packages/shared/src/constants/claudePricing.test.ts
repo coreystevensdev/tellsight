@@ -63,6 +63,18 @@ describe('pricingForClaudeModel', () => {
     expect(pricingForClaudeModel('')).toBeNull();
   });
 
+  it('does not treat a newer model family as a dated variant', () => {
+    expect(pricingForClaudeModel('claude-opus-5-5')).toBeNull();
+    expect(pricingForClaudeModel('claude-sonnet-5-5')).toBeNull();
+    expect(pricingForClaudeModel('claude-sonnet-50')).toBeNull();
+  });
+
+  it('requires the dated suffix to contain exactly eight digits', () => {
+    expect(pricingForClaudeModel('claude-opus-5-preview')).toBeNull();
+    expect(pricingForClaudeModel('claude-opus-5-2026010')).toBeNull();
+    expect(pricingForClaudeModel('claude-opus-5-202601011')).toBeNull();
+  });
+
   it('prices Opus 4.7 at its own rate, not the retired 4.1 rate', () => {
     expect(pricingForClaudeModel('claude-opus-4-7-20260101')).toEqual({
       inputPerMillion: 5,
