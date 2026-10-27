@@ -326,8 +326,40 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Keep apt and browser downloads separate so a slow runner says which
+      # phase failed. System package work is not safe to interrupt and retry
+      # mid-transaction, but it is bounded so it cannot hold CI indefinitely.
+      - name: Install Playwright system dependencies
+        timeout-minutes: 10
+        run: npx playwright install-deps chromium webkit
+
+      - name: Restore Playwright browser cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      # Browser downloads are idempotent and safe to retry. Each attempt has
+      # its own deadline, while the step deadline guards the retry plumbing.
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium webkit
+        timeout-minutes: 12
+        run: |
+          set -euo pipefail
+          for attempt in 1 2; do
+            echo "Playwright browser install attempt ${attempt}/2"
+            if timeout --signal=TERM --kill-after=30s 5m \
+              npx playwright install chromium webkit; then
+              exit 0
+            fi
+
+            if [ "$attempt" -lt 2 ]; then
+              echo "::warning title=Playwright download retry::Browser installation timed out or failed; retrying in 15 seconds"
+              sleep 15
+            fi
+          done
+
+          echo "::error title=Playwright browser installation failed::Both bounded download attempts failed"
+          exit 1
 
       - name: Copy CI env file
         run: cp .env.ci .env
