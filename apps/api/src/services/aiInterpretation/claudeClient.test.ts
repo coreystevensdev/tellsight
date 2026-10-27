@@ -4,7 +4,7 @@ import type { Mock } from 'vitest';
 vi.mock('../../config.js', () => ({
   env: {
     CLAUDE_API_KEY: 'test-key',
-    CLAUDE_MODEL: 'claude-sonnet-4-5-20250929',
+    CLAUDE_MODEL: 'claude-sonnet-4-6',
   },
 }));
 
@@ -249,7 +249,7 @@ describe('generateInterpretation', () => {
 
     expect(result).toBe('Revenue is growing steadily.');
     expect(mockCreate).toHaveBeenCalledWith({
-      model: 'claude-sonnet-4-5-20250929',
+      model: 'claude-sonnet-4-6',
       // 2048 since 2026-09-18: the newer models spend output tokens on thinking,
       // and a max_tokens stop makes the tool paths drop every call in the response.
       max_tokens: 2048,

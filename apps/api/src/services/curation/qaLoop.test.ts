@@ -16,7 +16,7 @@ const mockConverseWithTools = vi.fn();
 vi.mock('../aiInterpretation/claudeClient.js', () => ({
   converseWithTools: (...args: unknown[]) => mockConverseWithTools(...args),
   // The loop costs its turns against whatever the tool paths run on.
-  modelFor: () => 'claude-sonnet-4-5-20250929',
+  modelFor: () => 'claude-sonnet-4-6',
 }));
 
 const mockGetMetricWithTrend = vi.fn();

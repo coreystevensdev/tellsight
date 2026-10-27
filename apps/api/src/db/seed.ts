@@ -179,7 +179,7 @@ async function seed() {
         const scored = scoreInsights(stats);
         const { system, user, metadata } = assemblePrompt(scored, dataset.id);
 
-        const model = process.env.CLAUDE_MODEL ?? 'claude-sonnet-4-5-20250929';
+        const model = process.env.CLAUDE_MODEL ?? 'claude-sonnet-4-6';
         const message = await claude.messages.create({
           model,
           max_tokens: 1024,

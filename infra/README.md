@@ -106,7 +106,7 @@ In the repo Settings > Secrets > Actions, add:
 | `DATABASE_URL` | `postgresql://app_user:<app_user password from Step 4>@<rds_endpoint>:5432/analytics` |
 | `DATABASE_ADMIN_URL` | `postgresql://app_admin:<db_password>@<rds_endpoint>:5432/analytics` |
 | `CLAUDE_API_KEY` | `sk-ant-...` |
-| `CLAUDE_MODEL` | `claude-sonnet-4-5-20250929` |
+| `CLAUDE_MODEL` | `claude-sonnet-4-6` |
 | `STRIPE_SECRET_KEY` | `sk_live_...` |
 | `STRIPE_WEBHOOK_SECRET` | `whsec_...` |
 | `STRIPE_PRICE_ID` | `price_...` |

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 vi.mock('../config.js', () => ({
-  env: { CLAUDE_MODEL: 'claude-sonnet-4-5-20250929' },
+  env: { CLAUDE_MODEL: 'claude-sonnet-4-6' },
 }));
 
 import {

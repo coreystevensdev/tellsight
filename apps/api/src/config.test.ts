@@ -176,7 +176,7 @@ describe('envSchema, production guards on non-email settings', () => {
   });
 
   it.each([
-    ['the dated default', 'claude-sonnet-4-5-20250929'],
+    ['the default', 'claude-sonnet-4-6'],
     ['a bare prefix', 'claude-haiku-4-5'],
     ['a priced opus', 'claude-opus-4-7'],
   ])('accepts %s', (_label, model) => {

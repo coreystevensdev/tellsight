@@ -2,11 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { AccountMenu } from './AccountMenu';
 
-const mockLocationAssign = vi.fn();
+const mockLocationReplace = vi.fn();
 
 beforeEach(() => {
-  vi.stubGlobal('location', { ...window.location, assign: mockLocationAssign });
-  mockLocationAssign.mockClear();
+  vi.stubGlobal('location', { ...window.location, replace: mockLocationReplace });
+  mockLocationReplace.mockClear();
 });
 
 afterEach(() => {
@@ -72,7 +72,7 @@ describe('AccountMenu', () => {
       });
     });
     await waitFor(() => {
-      expect(mockLocationAssign).toHaveBeenCalledWith('/login');
+      expect(mockLocationReplace).toHaveBeenCalledWith('/login');
     });
   });
 
@@ -84,7 +84,7 @@ describe('AccountMenu', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: /sign out/i }));
 
     await waitFor(() => {
-      expect(mockLocationAssign).toHaveBeenCalledWith('/login');
+      expect(mockLocationReplace).toHaveBeenCalledWith('/login');
     });
   });
 });

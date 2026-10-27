@@ -4,8 +4,8 @@ import userEvent from '@testing-library/user-event';
 
 vi.mock('@/components/common/BackLink', () => ({ BackLink: () => null }));
 
-const assign = vi.fn();
-Object.defineProperty(window, 'location', { value: { assign }, writable: true });
+const replace = vi.fn();
+Object.defineProperty(window, 'location', { value: { replace }, writable: true });
 
 import Account from './Account';
 
@@ -53,7 +53,7 @@ describe('Account deletion', () => {
     await arm(user);
     await user.click(screen.getByRole('button', { name: /delete account/i }));
 
-    await waitFor(() => expect(assign).toHaveBeenCalledWith('/'));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/'));
     expect(global.fetch).toHaveBeenCalledWith('/api/account', { method: 'DELETE' });
   });
 
@@ -69,7 +69,7 @@ describe('Account deletion', () => {
     await user.click(screen.getByRole('button', { name: /delete account/i }));
 
     expect(await screen.findByText('Sunrise Cafe')).toBeInTheDocument();
-    expect(assign).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
   });
 
   it('says the account survived when the request never lands', async () => {
@@ -81,6 +81,6 @@ describe('Account deletion', () => {
     await user.click(screen.getByRole('button', { name: /delete account/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/has not been deleted/i);
-    expect(assign).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
   });
 });

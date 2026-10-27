@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, cleanup, act } from '@testing-library/react';
 import { UploadDropzone } from './UploadDropzone';
 
-const mockLocationAssign = vi.fn();
+const mockLocationReplace = vi.fn();
 
 // Mock XMLHttpRequest, the component uses it instead of fetch for progress tracking
 class MockXHR {
@@ -35,14 +35,14 @@ const previewResponse = {
 
 beforeEach(() => {
   xhrInstance = new MockXHR();
-  mockLocationAssign.mockClear();
+  mockLocationReplace.mockClear();
   vi.stubGlobal(
     'XMLHttpRequest',
     vi.fn(function () {
       return xhrInstance;
     }),
   );
-  vi.stubGlobal('location', { ...window.location, assign: mockLocationAssign });
+  vi.stubGlobal('location', { ...window.location, replace: mockLocationReplace });
   vi.useFakeTimers({ shouldAdvanceTime: true });
 });
 
@@ -263,7 +263,7 @@ describe('UploadDropzone', () => {
       });
 
       expect(screen.queryByText(/could not find one/i)).not.toBeInTheDocument();
-      expect(mockLocationAssign).not.toHaveBeenCalled();
+      expect(mockLocationReplace).not.toHaveBeenCalled();
     });
 
     it('accepts another file after cancelling a preview', async () => {
@@ -285,7 +285,7 @@ describe('UploadDropzone', () => {
       await waitFor(() => {
         expect(screen.getByText(/40 rows detected/i)).toBeInTheDocument();
       });
-      expect(mockLocationAssign).not.toHaveBeenCalled();
+      expect(mockLocationReplace).not.toHaveBeenCalled();
     });
   });
 
@@ -463,7 +463,7 @@ describe('UploadDropzone', () => {
       // still serve /dashboard's pre-upload payload regardless of push/refresh
       // ordering, so this bypasses it entirely.
       await waitFor(() => {
-        expect(mockLocationAssign).toHaveBeenCalledWith('/dashboard');
+        expect(mockLocationReplace).toHaveBeenCalledWith('/dashboard');
       }, { timeout: 5000 });
     });
 

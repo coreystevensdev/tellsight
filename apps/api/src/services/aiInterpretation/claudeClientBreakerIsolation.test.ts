@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // That is what these cover, against the real class.
 
 vi.mock('../../config.js', () => ({
-  env: { CLAUDE_API_KEY: 'test-key', CLAUDE_MODEL: 'claude-sonnet-4-5-20250929' },
+  env: { CLAUDE_API_KEY: 'test-key', CLAUDE_MODEL: 'claude-sonnet-4-6' },
 }));
 
 vi.mock('../../lib/logger.js', () => ({

@@ -51,7 +51,7 @@ const FROZEN_NOW = new Date('2026-01-15T12:00:00Z');
 const SAMPLES = Number(process.env.EVAL_SAMPLES ?? 10);
 
 // Deliberately not CLAUDE_MODEL: the judge must not move when the subject does.
-const JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL ?? 'claude-sonnet-4-5-20250929';
+const JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL ?? 'claude-sonnet-4-6';
 
 // Diagnosing one fixture should not cost three. Misses are the thing worth
 // reading and they concentrate: cash-crunch carried 4 of the 6 in the last run.
@@ -445,7 +445,7 @@ async function main(): Promise<void> {
     checkHealth: () => { throw new Error('judge provider generates only'); },
   } as unknown as LlmProvider;
 
-  console.log(`  generating with: ${process.env.CLAUDE_MODEL ?? 'claude-sonnet-4-5-20250929'}`);
+  console.log(`  generating with: ${process.env.CLAUDE_MODEL ?? 'claude-sonnet-4-6'}`);
   console.log(`  judging with:    ${JUDGE_MODEL}`);
 
   console.log(`Running ${ONLY_FIXTURE ? 1 : FIXTURES.length} fixture(s) x ${SAMPLES} samples...`);

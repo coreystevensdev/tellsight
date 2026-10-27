@@ -33,7 +33,7 @@ export default function Account() {
 
       // The session cookies are gone, so a client-side route change would land
       // on a page that immediately bounces. Reload into the signed-out world.
-      window.location.assign('/');
+      window.location.replace('/');
     } catch {
       setError('Could not reach the server. Your account has not been deleted.');
     } finally {

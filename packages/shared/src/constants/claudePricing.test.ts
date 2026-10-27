@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { CLAUDE_PRICING, DEFAULT_CLAUDE_MODEL_ID, estimateClaudeCostUsd } from './index.js';
 
 describe('estimateClaudeCostUsd', () => {
-  it('computes cost against the default model (Sonnet 4.5) when no model id is passed', () => {
+  it('computes cost against the default model (Sonnet 4.6) when no model id is passed', () => {
     // 1M input × $3/M + 1M output × $15/M = $18.00
     expect(estimateClaudeCostUsd(1_000_000, 1_000_000)).toBeCloseTo(18.0, 2);
   });
@@ -30,7 +30,7 @@ describe('estimateClaudeCostUsd', () => {
 
   it('pricing table is monotonic: Haiku < Sonnet < Opus for same tokens', () => {
     const h = estimateClaudeCostUsd(1_000_000, 1_000_000, 'claude-haiku-4-5-20251001');
-    const s = estimateClaudeCostUsd(1_000_000, 1_000_000, 'claude-sonnet-4-5-20250929');
+    const s = estimateClaudeCostUsd(1_000_000, 1_000_000, 'claude-sonnet-4-6');
     const o = estimateClaudeCostUsd(1_000_000, 1_000_000, 'claude-opus-4-7');
     expect(h).toBeLessThan(s);
     expect(s).toBeLessThan(o);

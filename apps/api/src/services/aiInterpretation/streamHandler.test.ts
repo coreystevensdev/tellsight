@@ -14,7 +14,7 @@ import type { StreamOutcome } from './streamHandler.js';
 vi.mock('../../config.js', () => ({
   env: {
     CLAUDE_API_KEY: 'test-key',
-    CLAUDE_MODEL: 'claude-sonnet-4-5-20250929',
+    CLAUDE_MODEL: 'claude-sonnet-4-6',
   },
 }));
 

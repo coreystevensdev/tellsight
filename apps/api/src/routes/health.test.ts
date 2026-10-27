@@ -35,9 +35,19 @@ vi.mock('../lib/logger.js', () => ({
 }));
 
 const mockCheckRedisHealth = vi.hoisted(() => vi.fn());
+const mockCheckStripeHealth = vi.hoisted(() => vi.fn());
+const mockCheckClaudeHealth = vi.hoisted(() => vi.fn());
 
 vi.mock('../lib/redis.js', () => ({
   checkRedisHealth: mockCheckRedisHealth,
+}));
+
+vi.mock('../services/subscription/stripeHealth.js', () => ({
+  checkStripeHealth: mockCheckStripeHealth,
+}));
+
+vi.mock('../services/aiInterpretation/claudeClient.js', () => ({
+  checkClaudeHealth: mockCheckClaudeHealth,
 }));
 
 import { createTestApp } from '../test/helpers/testApp.js';
@@ -65,6 +75,10 @@ beforeEach(() => {
   mockCheckDatabaseHealth.mockResolvedValue({ status: 'ok', latencyMs: 1 });
   mockCheckRedisHealth.mockReset();
   mockCheckRedisHealth.mockResolvedValue({ status: 'ok', latencyMs: 1 });
+  mockCheckStripeHealth.mockReset();
+  mockCheckStripeHealth.mockResolvedValue({ status: 'ok', latencyMs: 1, livemode: false });
+  mockCheckClaudeHealth.mockReset();
+  mockCheckClaudeHealth.mockResolvedValue({ status: 'ok', latencyMs: 1 });
 });
 
 describe('GET /health', () => {

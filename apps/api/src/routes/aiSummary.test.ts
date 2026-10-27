@@ -9,7 +9,7 @@ import { statCitationTotal } from '../lib/metrics.js';
 vi.mock('../config.js', () => ({
   env: {
     CLAUDE_API_KEY: 'test-key',
-    CLAUDE_MODEL: 'claude-sonnet-4-5-20250929',
+    CLAUDE_MODEL: 'claude-sonnet-4-6',
   },
   // integrations.ts calls these in router-level guards that run ahead of every
   // route under /quickbooks and /shopify. Without them on the mock the call is

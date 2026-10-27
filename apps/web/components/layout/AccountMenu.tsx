@@ -37,7 +37,7 @@ export function AccountMenu() {
     } finally {
       // Hard navigation, a client-side push can leave stale authenticated
       // state in the Router Cache for pages we just lost the cookie for.
-      window.location.assign('/login');
+      window.location.replace('/login');
     }
   }, []);
 

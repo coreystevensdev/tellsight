@@ -8,7 +8,7 @@ export const envSchema = z
     DATABASE_ADMIN_URL: z.string().url(),
     REDIS_URL: z.string().url(),
     CLAUDE_API_KEY: z.string().min(1),
-    CLAUDE_MODEL: z.string().default('claude-sonnet-4-5-20250929'),
+    CLAUDE_MODEL: z.string().default('claude-sonnet-4-6'),
 
     // Optional second model for the tool-use paths, proposals and the Q&A loop.
     // Those want structured output and tool adherence; the interpretation wants

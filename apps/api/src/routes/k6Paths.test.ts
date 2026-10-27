@@ -3,6 +3,39 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { Server } from 'node:http';
 
+// This is a route-wiring suite. Importing the production router tree also
+// imports provider health checks and Redis-backed rate limiting, but whether
+// those vendors answer is outside the routing contract and unit tests must not
+// reach them. Their own suites exercise the real adapters against mocked SDKs.
+vi.mock('../lib/redis.js', () => ({
+  redis: { on: vi.fn(), connect: vi.fn(), ping: vi.fn() },
+  checkRedisHealth: vi.fn().mockResolvedValue({ status: 'ok', latencyMs: 1 }),
+}));
+
+vi.mock('../services/subscription/stripeHealth.js', () => ({
+  checkStripeHealth: vi.fn().mockResolvedValue({ status: 'ok', latencyMs: 1, livemode: false }),
+}));
+
+vi.mock('../services/aiInterpretation/claudeClient.js', () => ({
+  checkClaudeHealth: vi.fn().mockResolvedValue({ status: 'ok', latencyMs: 1 }),
+  streamInterpretation: vi.fn(),
+  generateInterpretation: vi.fn(),
+  generateWithTools: vi.fn(),
+  converseWithTools: vi.fn(),
+  modelFor: vi.fn(() => 'test-model'),
+}));
+
+vi.mock('../middleware/rateLimiter.js', () => {
+  const passThrough = (_req: unknown, _res: unknown, next: () => void) => next();
+  return {
+    rateLimitAuth: passThrough,
+    rateLimitAi: passThrough,
+    rateLimitPublic: passThrough,
+    rateLimitDashboardCompute: passThrough,
+    rateLimitStatCorrectionTier1: () => passThrough,
+  };
+});
+
 // authMiddleware answers 401 across the whole protected mount before routing gets
 // to run, so with real auth in front a path matching no route is indistinguishable
 // from one that does: both come back 401. That is exactly how k6 spent months

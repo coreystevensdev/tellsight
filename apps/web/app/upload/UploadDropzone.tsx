@@ -51,7 +51,7 @@ export function UploadDropzone() {
       // A hard navigation, not router.push(). The client Router Cache can
       // serve /dashboard's pre-upload (empty-state) RSC payload regardless
       // of push()+refresh() ordering, this guarantees a real server fetch.
-      window.location.assign('/dashboard');
+      window.location.replace('/dashboard');
       return;
     }
 
