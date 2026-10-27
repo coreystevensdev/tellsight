@@ -197,7 +197,12 @@ resource "aws_cloudwatch_metric_alarm" "claude_non_retryable" {
   comparison_operator = "GreaterThanOrEqualToThreshold"
   threshold           = 1
   period              = 300
-  evaluation_periods  = 1
+  # The health probe is cached for five minutes and /health runs every thirty
+  # seconds, so consecutive failures can land just over five minutes apart.
+  # Keep ALARM if either of the last two periods contains one rather than
+  # sending a false recovery and paging again at the next probe.
+  evaluation_periods  = 2
+  datapoints_to_alarm = 1
   treat_missing_data  = "notBreaching"
 
   alarm_actions = [aws_sns_topic.alerts.arn]
