@@ -41,13 +41,6 @@ const ACKNOWLEDGED: Acknowledgement[] = [
       'Not in the deployed artifact. `pnpm why vite` resolves it through vitest only, a devDependency, and the advisories are all Vite dev server issues (server.fs.deny bypass, arbitrary file read via the dev server). Nothing runs `vite dev` in this project; the web app builds with Next. An override to >=7.3.7 was tried and did not resolve, because vitest pins a narrower range.',
     revisit: 'vite becoming a real dependency of apps/web, or an advisory that is not dev-server-scoped.',
   },
-  {
-    module: 'zod',
-    reviewed: '2026-10-25',
-    reason:
-      'The fix exists only in zod 4.6.6 and this repo is pinned to 3.x. That pin is a measured decision recorded in CLAUDE.md, not drift: moving to 4.x was tried on 2026-09-14 and produced 4 type errors and 2 test failures. The advisory is memory exhaustion while validating oversized input, which is a denial of service rather than a disclosure, and the reachable path is bounded by the body-parser size limit and the auth rate limiter in front of it.',
-    revisit: 'the zod 4 migration landing, a 3.x backport being published, or any report of the API being OOM-killed.',
-  },
 ];
 
 function audit(): Advisory[] {
