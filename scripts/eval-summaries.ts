@@ -51,7 +51,7 @@ const FROZEN_NOW = new Date('2026-01-15T12:00:00Z');
 const SAMPLES = Number(process.env.EVAL_SAMPLES ?? 10);
 
 // Deliberately not CLAUDE_MODEL: the judge must not move when the subject does.
-const JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL ?? 'claude-sonnet-4-6';
+const JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL ?? 'claude-sonnet-4-5-20250929';
 
 // Diagnosing one fixture should not cost three. Misses are the thing worth
 // reading and they concentrate: cash-crunch carried 4 of the 6 in the last run.
