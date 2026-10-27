@@ -68,7 +68,13 @@ export async function logClaudeKeyStatus(): Promise<void> {
   const health = await probeClaudeHealth();
 
   if (health.status === 'error') {
-    logger.error({ latencyMs: health.latencyMs, detail: health.detail }, 'Claude key rejected');
+    // Not 'Claude key rejected'. That was accurate while a rejected key was the
+    // only thing this status could mean, and stopped being so once an exhausted
+    // balance started reporting error too: production logged "Anthropic account
+    // is out of credit" and "Claude key rejected" back to back on 2026-10-26,
+    // which points whoever reads it at rotating a credential that is fine. The
+    // detail already says which it is, so the message stops guessing.
+    logger.error({ latencyMs: health.latencyMs, detail: health.detail }, 'Claude unusable at boot');
     return;
   }
 
