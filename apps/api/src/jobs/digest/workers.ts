@@ -28,10 +28,18 @@ let nudgeWorker: Worker | null = null;
 
 function attachStandardListeners(worker: Worker, label: string): void {
   worker.on('failed', (job, err) => {
-    logger.error(
-      { label, jobId: job?.id, attemptsMade: job?.attemptsMade, err },
-      'Digest worker job failed',
-    );
+    const totalAttempts = job?.opts.attempts ?? 1;
+    const terminal = !job || job.attemptsMade >= totalAttempts;
+    const context = { label, jobId: job?.id, attemptsMade: job?.attemptsMade, totalAttempts, err };
+
+    if (terminal) {
+      // CloudWatch pages on this exact terminal-only message. A retryable
+      // attempt uses the warning below so a job that later succeeds does not
+      // claim that a customer silently missed their digest.
+      logger.error(context, 'Digest worker job terminal failure');
+    } else {
+      logger.warn(context, 'Digest worker job failed, retry scheduled');
+    }
   });
   worker.on('error', (err) => {
     logger.error({ label, err }, 'Digest worker error');

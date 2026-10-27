@@ -1563,6 +1563,10 @@ describe('checkClaudeHealth', () => {
 
     expect(health.status).toBe('error');
     expect(health.detail).toMatch(/rejected/i);
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ err: 'nope', source: 'health_probe' }),
+      'Claude API non-retryable error',
+    );
   });
 
   // An empty balance is not Anthropic having a bad minute, it is an invoice
@@ -1580,6 +1584,10 @@ describe('checkClaudeHealth', () => {
 
     expect(health.status).toBe('error');
     expect(health.detail).toMatch(/credit/i);
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ err: expect.stringMatching(/credit balance/i), source: 'health_probe' }),
+      'Claude API non-retryable error',
+    );
   });
 
   it.each([

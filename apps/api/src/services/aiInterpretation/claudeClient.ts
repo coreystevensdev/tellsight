@@ -124,7 +124,10 @@ export async function probeClaudeHealth(): Promise<ProviderHealth> {
     const message = (err as Error).message ?? '';
 
     if (status === 401 || status === 403 || name === 'AuthenticationError') {
-      logger.error({ err: message }, 'Claude rejected the configured API key');
+      // Keep the message identical to customer-traffic failures: the
+      // CloudWatch metric filter keys on it, so the paid probe can alert even
+      // when no customer happens to use an AI surface during the outage.
+      logger.error({ err: message, source: 'health_probe' }, 'Claude API non-retryable error');
       return { status: 'error', latencyMs, detail: 'Anthropic rejected the configured API key' };
     }
 
@@ -132,7 +135,7 @@ export async function probeClaudeHealth(): Promise<ProviderHealth> {
     // than a 402, so it is only separable by the message. Worth separating:
     // "key rejected" sends someone to rotate a credential that is fine.
     if (status === 400 && /credit balance/i.test(message)) {
-      logger.error({ err: message }, 'Anthropic account is out of credit');
+      logger.error({ err: message, source: 'health_probe' }, 'Claude API non-retryable error');
       return { status: 'error', latencyMs, detail: 'Anthropic account has no credit, every AI feature is down' };
     }
 

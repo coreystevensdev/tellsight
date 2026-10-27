@@ -124,13 +124,13 @@ resource "aws_iam_role_policy" "ec2_container_logs" {
 # an SNS call from there fails exactly when it is most needed. CloudWatch reads
 # the log after the fact, so it still fires if the container dies.
 #
-# BullMQ retries three times and logs three lines. That is fine: an alarm is a
-# state machine, so three datapoints inside one period are one transition into
-# ALARM and one notification.
+# BullMQ emits `failed` once per attempt. Intermediate failures use a different
+# warning message; only an exhausted attempt emits the error matched here. This
+# keeps a retry that later succeeds from paging and claiming delivery failed.
 resource "aws_cloudwatch_log_metric_filter" "digest_job_failed" {
   name           = "${local.name}-digest-job-failed"
   log_group_name = aws_cloudwatch_log_group.containers.name
-  pattern        = "{ $.msg = \"Digest worker job failed\" }"
+  pattern        = "{ $.msg = \"Digest worker job terminal failure\" }"
 
   metric_transformation {
     name      = "DigestJobFailed"
@@ -148,7 +148,7 @@ resource "aws_cloudwatch_log_metric_filter" "digest_job_failed" {
 # digest worked.
 resource "aws_cloudwatch_metric_alarm" "digest_job_failed" {
   alarm_name          = "${local.name}-digest-job-failed"
-  alarm_description   = "A digest worker job failed. The weekly digest is the retention loop and a failure here means a paying org silently received nothing."
+  alarm_description   = "A digest worker job exhausted its retries. The weekly digest is the retention loop and a terminal failure here means a paying org silently received nothing."
   namespace           = aws_cloudwatch_log_metric_filter.digest_job_failed.metric_transformation[0].namespace
   metric_name         = aws_cloudwatch_log_metric_filter.digest_job_failed.metric_transformation[0].name
   statistic           = "Sum"
@@ -168,7 +168,9 @@ resource "aws_cloudwatch_metric_alarm" "digest_job_failed" {
 # exhausted Anthropic balance, which breaks every AI surface at once: summaries,
 # alerts and NL Q&A as well as the digest. The digest alarm would only have
 # fired because the weekly cron happened to run that evening; a browser hitting
-# a summary would have failed the same way and said nothing.
+# a summary would have failed the same way and said nothing. The billable
+# health probe emits the same non-retryable message, so billing/auth outages
+# alert during quiet periods too.
 #
 # Non-retryable specifically, since that is the class nothing recovers from on
 # its own: billing, auth, and malformed requests. Transient errors already

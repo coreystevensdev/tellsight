@@ -179,7 +179,13 @@ describe('send worker retries-exhausted analytics (AC #8)', () => {
       .listeners.get('failed')!
       .forEach((fn) => fn(job, new Error('rate limited')));
 
+    const { logger } = await import('../../lib/logger.js');
     expect(mockTrackEvent).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ attemptsMade: 1, totalAttempts: 3 }),
+      'Digest worker job failed, retry scheduled',
+    );
+    expect(logger.error).not.toHaveBeenCalled();
   });
 
   it('emits DIGEST_FAILED with retries_exhausted reason when attemptsMade hits the budget', async () => {
@@ -198,6 +204,11 @@ describe('send worker retries-exhausted analytics (AC #8)', () => {
       .listeners.get('failed')!
       .forEach((fn) => fn(finalJob, new Error('still rate limited')));
 
+    const { logger } = await import('../../lib/logger.js');
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ attemptsMade: 3, totalAttempts: 3 }),
+      'Digest worker job terminal failure',
+    );
     expect(mockTrackEvent).toHaveBeenCalledWith(
       42,
       7,
