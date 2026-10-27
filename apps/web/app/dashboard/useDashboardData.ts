@@ -6,7 +6,7 @@ import useSWR from 'swr';
 import type { ChartData } from 'shared/types';
 
 import { apiClient } from '@/lib/api-client';
-import { computeDateRange } from './FilterBar';
+import { computeDateRange } from './dateRange';
 import {
   EMPTY_FILTERS,
   customRange,

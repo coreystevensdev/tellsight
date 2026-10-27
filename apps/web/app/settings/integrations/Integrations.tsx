@@ -1,43 +1,28 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Loader2, AlertCircle, X } from 'lucide-react';
-import { ConnectorMark } from '@/components/common/ConnectorMark';
+import { Loader2, AlertCircle, X } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 import { BackLink } from '@/components/common/BackLink';
 import { isShopifyShopDomain } from 'shared/constants';
+import { IntegrationCard, type IntegrationAction, type IntegrationStatus } from './IntegrationCard';
 
-interface QbStatus {
-  connected: boolean;
-  configured?: boolean;
+interface QbStatus extends IntegrationStatus {
   provider?: string;
   companyName?: string;
-  syncStatus?: string;
-  lastSyncedAt?: string;
-  syncError?: string;
   connectedAt?: string;
 }
 
-interface SquareStatus {
-  connected: boolean;
-  configured?: boolean;
+interface SquareStatus extends IntegrationStatus {
   provider?: string;
   merchantId?: string;
-  syncStatus?: string;
-  lastSyncedAt?: string;
-  syncError?: string;
   connectedAt?: string;
 }
 
-interface ShopifyStatus {
-  connected: boolean;
-  configured?: boolean;
+interface ShopifyStatus extends IntegrationStatus {
   provider?: string;
   shopDomain?: string;
-  syncStatus?: string;
-  lastSyncedAt?: string;
-  syncError?: string;
   connectedAt?: string;
 }
 
@@ -52,9 +37,9 @@ export default function Integrations() {
   const shopDomainOk = isShopifyShopDomain(trimmedShop);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [qbAction, setQbAction] = useState<'connecting' | 'syncing' | 'disconnecting' | null>(null);
-  const [shopifyAction, setShopifyAction] = useState<'connecting' | 'syncing' | 'disconnecting' | null>(null);
-  const [squareAction, setSquareAction] = useState<'connecting' | 'syncing' | 'disconnecting' | null>(null);
+  const [qbAction, setQbAction] = useState<IntegrationAction>(null);
+  const [shopifyAction, setShopifyAction] = useState<IntegrationAction>(null);
+  const [squareAction, setSquareAction] = useState<IntegrationAction>(null);
 
   const load = useCallback(async () => {
     try {
@@ -93,7 +78,9 @@ export default function Integrations() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   async function connectQb() {
     setQbAction('connecting');
@@ -242,261 +229,87 @@ export default function Integrations() {
       )}
 
       <div className="flex flex-col gap-4">
-        {/* QuickBooks */}
-        <section className="border-t-2 border-border bg-card px-5 py-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-            <div className="flex min-w-0 flex-1 basis-full items-start gap-3 sm:basis-auto">
-              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
-                <ConnectorMark
-                  name="quickbooks"
-                  className={cn(
-                    'h-4.5 w-4.5',
-                    qb?.connected ? 'text-foreground' : 'text-muted-foreground',
-                  )}
-                />
-              </div>
-              <div className="min-w-0">
-                <h2 className="font-serif text-sm font-medium text-foreground">QuickBooks Online</h2>
-                <p className="mt-0.5 break-words text-sm text-muted-foreground">
-                  {qb?.connected
-                    ? `Connected to ${qb.companyName ?? 'your company'}`
-                    : 'Sync your accounting data for automated insights.'}
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
-              {qb?.connected ? (
-                <>
-                  <button
-                    onClick={syncQb}
-                    disabled={!!qbAction || qb.syncStatus === 'syncing'}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <RefreshCw className={cn('h-3.5 w-3.5', (qbAction === 'syncing' || qb.syncStatus === 'syncing') && 'animate-spin')} />
-                    {qbAction === 'syncing' ? 'Syncing...' : 'Sync now'}
-                  </button>
-                  <button
-                    onClick={disconnectQb}
-                    disabled={!!qbAction}
-                    className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-destructive transition-colors hover:border-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {qbAction === 'disconnecting' ? 'Disconnecting...' : 'Disconnect'}
-                  </button>
-                </>
-              ) : qb?.configured === false ? (
-                <span className="text-xs text-muted-foreground">Not available in this deployment</span>
-              ) : (
-                <button
-                  onClick={connectQb}
-                  disabled={!!qbAction}
-                  className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {qbAction === 'connecting' ? 'Connecting...' : 'Connect'}
-                </button>
-              )}
-            </div>
-          </div>
-          {qb?.connected && (
-            <div className="mt-3 ml-12 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              {qb.lastSyncedAt && (
-                <span>Last synced: {new Date(qb.lastSyncedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
-              )}
-              {qb.syncStatus && (
-                <span className={cn(
-                  'inline-flex items-center gap-1',
-                  qb.syncStatus === 'error' && 'text-destructive',
-                )}>
-                  Status: {qb.syncStatus}
-                </span>
-              )}
-              {qb.syncError && (
-                <span className="text-destructive">Error: {qb.syncError}</span>
-              )}
-            </div>
-          )}
-        </section>
+        <IntegrationCard
+          connector="quickbooks"
+          title="QuickBooks Online"
+          description={
+            qb?.connected
+              ? `Connected to ${qb.companyName ?? 'your company'}`
+              : 'Sync your accounting data for automated insights.'
+          }
+          status={qb}
+          action={qbAction}
+          onConnect={connectQb}
+          onSync={syncQb}
+          onDisconnect={disconnectQb}
+        />
 
-        {/* Shopify */}
-        <section className="border-t-2 border-border bg-card px-5 py-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-            <div className="flex min-w-0 flex-1 basis-full items-start gap-3 sm:basis-auto">
-              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
-                <ConnectorMark
-                  name="shopify"
-                  className={cn(
-                    'h-4.5 w-4.5',
-                    shopify?.connected ? 'text-foreground' : 'text-muted-foreground',
-                  )}
-                />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h2 className="font-serif text-sm font-medium text-foreground">Shopify</h2>
-                <p className="mt-0.5 break-words text-sm text-muted-foreground">
-                  {shopify?.connected
-                    ? `Connected to ${shopify.shopDomain ?? 'your store'}`
-                    : 'Sync orders, refunds, and inventory for automated insights.'}
-                </p>
-                {!shopify?.connected && shopify?.configured !== false && (
-                  <>
-                    <input
-                      type="text"
-                      value={shopDomain}
-                      onChange={(e) => setShopDomain(e.target.value)}
-                      placeholder="your-store.myshopify.com"
-                      aria-label="Shopify store domain"
-                      aria-invalid={trimmedShop.length > 0 && !shopDomainOk}
-                      aria-describedby="shopify-domain-hint"
-                      className={cn(
-                        'mt-2 w-full max-w-xs rounded-md border bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1',
-                        trimmedShop.length > 0 && !shopDomainOk
-                          ? 'border-destructive focus:border-destructive focus:ring-destructive'
-                          : 'border-border focus:border-primary focus:ring-primary',
-                      )}
-                    />
-                    <p
-                      id="shopify-domain-hint"
-                      className={cn(
-                        'mt-1 text-xs',
-                        trimmedShop.length > 0 && !shopDomainOk
-                          ? 'text-destructive'
-                          : 'text-muted-foreground',
-                      )}
-                    >
-                      {trimmedShop.length === 0
-                        ? 'Enter your store domain to connect.'
-                        : shopDomainOk
-                          ? 'Looks right. Shopify will ask you to approve the connection.'
-                          : 'That is not a store domain. It ends in .myshopify.com, with no https:// and no /admin.'}
-                    </p>
-                  </>
+        <IntegrationCard
+          connector="shopify"
+          title="Shopify"
+          description={
+            shopify?.connected
+              ? `Connected to ${shopify.shopDomain ?? 'your store'}`
+              : 'Sync orders, refunds, and inventory for automated insights.'
+          }
+          status={shopify}
+          action={shopifyAction}
+          onConnect={connectShopify}
+          onSync={syncShopify}
+          onDisconnect={disconnectShopify}
+          connectDisabled={!shopDomainOk}
+        >
+          {!shopify?.connected && shopify?.configured !== false && (
+            <>
+              <input
+                type="text"
+                value={shopDomain}
+                onChange={(event) => setShopDomain(event.target.value)}
+                placeholder="your-store.myshopify.com"
+                aria-label="Shopify store domain"
+                aria-invalid={trimmedShop.length > 0 && !shopDomainOk}
+                aria-describedby="shopify-domain-hint"
+                className={cn(
+                  'mt-2 w-full max-w-xs rounded-md border bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1',
+                  trimmedShop.length > 0 && !shopDomainOk
+                    ? 'border-destructive focus:border-destructive focus:ring-destructive'
+                    : 'border-border focus:border-primary focus:ring-primary',
                 )}
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
-              {shopify?.connected ? (
-                <>
-                  <button
-                    onClick={syncShopify}
-                    disabled={!!shopifyAction || shopify.syncStatus === 'syncing'}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <RefreshCw className={cn('h-3.5 w-3.5', (shopifyAction === 'syncing' || shopify.syncStatus === 'syncing') && 'animate-spin')} />
-                    {shopifyAction === 'syncing' ? 'Syncing...' : 'Sync now'}
-                  </button>
-                  <button
-                    onClick={disconnectShopify}
-                    disabled={!!shopifyAction}
-                    className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-destructive transition-colors hover:border-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {shopifyAction === 'disconnecting' ? 'Disconnecting...' : 'Disconnect'}
-                  </button>
-                </>
-              ) : shopify?.configured === false ? (
-                <span className="text-xs text-muted-foreground">Not available in this deployment</span>
-              ) : (
-                <button
-                  onClick={connectShopify}
-                  disabled={!!shopifyAction || !shopDomainOk}
-                  className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {shopifyAction === 'connecting' ? 'Connecting...' : 'Connect'}
-                </button>
-              )}
-            </div>
-          </div>
-          {shopify?.connected && (
-            <div className="mt-3 ml-12 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              {shopify.lastSyncedAt && (
-                <span>Last synced: {new Date(shopify.lastSyncedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
-              )}
-              {shopify.syncStatus && (
-                <span className={cn(
-                  'inline-flex items-center gap-1',
-                  shopify.syncStatus === 'error' && 'text-destructive',
-                )}>
-                  Status: {shopify.syncStatus}
-                </span>
-              )}
-              {shopify.syncError && (
-                <span className="text-destructive">Error: {shopify.syncError}</span>
-              )}
-            </div>
+              />
+              <p
+                id="shopify-domain-hint"
+                className={cn(
+                  'mt-1 text-xs',
+                  trimmedShop.length > 0 && !shopDomainOk
+                    ? 'text-destructive'
+                    : 'text-muted-foreground',
+                )}
+              >
+                {trimmedShop.length === 0
+                  ? 'Enter your store domain to connect.'
+                  : shopDomainOk
+                    ? 'Looks right. Shopify will ask you to approve the connection.'
+                    : 'That is not a store domain. It ends in .myshopify.com, with no https:// and no /admin.'}
+              </p>
+            </>
           )}
-        </section>
+        </IntegrationCard>
 
-        {/* Square */}
-        <section className="border-t-2 border-border bg-card px-5 py-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-            <div className="flex min-w-0 flex-1 basis-full items-start gap-3 sm:basis-auto">
-              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800">
-                <ConnectorMark
-                  name="square"
-                  className={cn(
-                    'h-4.5 w-4.5',
-                    square?.connected ? 'text-foreground' : 'text-muted-foreground',
-                  )}
-                />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h2 className="font-serif text-sm font-medium text-foreground">Square</h2>
-                <p className="mt-0.5 break-words text-sm text-muted-foreground">
-                  {square?.connected
-                    ? `Connected to merchant ${square.merchantId ?? 'account'}`
-                    : 'Sync sales and refunds from every location you run.'}
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
-              {square?.connected ? (
-                <>
-                  <button
-                    onClick={syncSquare}
-                    disabled={!!squareAction || square.syncStatus === 'syncing'}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <RefreshCw className={cn('h-3.5 w-3.5', (squareAction === 'syncing' || square.syncStatus === 'syncing') && 'animate-spin')} />
-                    {squareAction === 'syncing' ? 'Syncing...' : 'Sync now'}
-                  </button>
-                  <button
-                    onClick={disconnectSquare}
-                    disabled={!!squareAction}
-                    className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-destructive transition-colors hover:border-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {squareAction === 'disconnecting' ? 'Disconnecting...' : 'Disconnect'}
-                  </button>
-                </>
-              ) : square?.configured === false ? (
-                <span className="text-xs text-muted-foreground">Not available in this deployment</span>
-              ) : (
-                <button
-                  onClick={connectSquare}
-                  disabled={!!squareAction}
-                  className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {squareAction === 'connecting' ? 'Connecting...' : 'Connect'}
-                </button>
-              )}
-            </div>
-          </div>
-          {square?.connected && (
-            <div className="mt-3 ml-12 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              {square.lastSyncedAt && (
-                <span>Last synced: {new Date(square.lastSyncedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
-              )}
-              {square.syncStatus && (
-                <span className={cn(
-                  'inline-flex items-center gap-1',
-                  square.syncStatus === 'error' && 'text-destructive',
-                )}>
-                  Status: {square.syncStatus}
-                </span>
-              )}
-              {square.syncError && (
-                <span className="text-destructive">Error: {square.syncError}</span>
-              )}
-            </div>
-          )}
-        </section>
+        <IntegrationCard
+          connector="square"
+          title="Square"
+          description={
+            square?.connected
+              ? `Connected to merchant ${square.merchantId ?? 'account'}`
+              : 'Sync sales and refunds from every location you run.'
+          }
+          status={square}
+          action={squareAction}
+          onConnect={connectSquare}
+          onSync={syncSquare}
+          onDisconnect={disconnectSquare}
+          iconClassName="bg-slate-100 dark:bg-slate-800"
+        />
       </div>
     </div>
   );

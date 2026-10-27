@@ -1,36 +1,17 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { Database, Check, Pencil, Trash2, Loader2, AlertCircle, X } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Loader2, AlertCircle, X } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
-import { cn } from '@/lib/utils';
 import { BackLink } from '@/components/common/BackLink';
+import {
+  DatasetCard,
+  type DatasetCardState,
+  type DatasetDetail,
+  type DatasetItem,
+} from './DatasetCard';
 
-interface DatasetItem {
-  id: number;
-  name: string;
-  rowCount: number;
-  sourceType: string;
-  uploadedBy: { id: number; name: string } | null;
-  createdAt: string;
-  isActive: boolean;
-}
-
-interface DatasetDetail extends DatasetItem {
-  summaryCount: number;
-  shareCount: number;
-}
-
-interface CardState {
-  renaming: boolean;
-  draftName: string;
-  deleting: boolean;
-  deleteDetail: DatasetDetail | null;
-  loadingDetail: boolean;
-  saving: boolean;
-}
-
-function emptyCardState(name: string): CardState {
+function emptyCardState(name: string): DatasetCardState {
   return {
     renaming: false,
     draftName: name,
@@ -46,12 +27,12 @@ export default function Datasets() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Per-card UI state keyed by dataset id
-  const [cardStates, setCardStates] = useState<Record<number, CardState>>({});
+  const [cardStates, setCardStates] = useState<Record<number, DatasetCardState>>({});
 
-  const patchCard = (id: number, patch: Partial<CardState>) =>
+  const patchCard = (id: number, patch: Partial<DatasetCardState>) =>
     setCardStates((prev) => ({
       ...prev,
-      [id]: { ...prev[id], ...patch } as CardState,
+      [id]: { ...prev[id], ...patch } as DatasetCardState,
     }));
 
   const load = useCallback(async () => {
@@ -59,7 +40,7 @@ export default function Datasets() {
       const { data } = await apiClient<DatasetItem[]>('/datasets/manage');
       setDatasets(data);
       setCardStates((prev) => {
-        const next: Record<number, CardState> = {};
+        const next: Record<number, DatasetCardState> = {};
         for (const ds of data) {
           next[ds.id] = prev[ds.id] ?? emptyCardState(ds.name);
         }
@@ -150,14 +131,6 @@ export default function Datasets() {
     }
   }
 
-  function formatDate(iso: string) {
-    return new Date(iso).toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  }
-
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -219,7 +192,7 @@ export default function Datasets() {
               return (
                 <DatasetCard
                   key={ds.id}
-                  ds={ds}
+                  dataset={ds}
                   state={state}
                   onActivate={() => handleActivate(ds.id)}
                   onRenameStart={() => patchCard(ds.id, { renaming: true, draftName: ds.name })}
@@ -229,154 +202,12 @@ export default function Datasets() {
                   onDeleteStart={() => handleDeleteStart(ds.id)}
                   onDeleteConfirm={() => handleDeleteConfirm(ds.id)}
                   onDeleteCancel={() => patchCard(ds.id, { deleting: false, deleteDetail: null })}
-                  formatDate={formatDate}
                 />
               );
             })}
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-interface CardProps {
-  ds: DatasetItem;
-  state: CardState;
-  onActivate: () => void;
-  onRenameStart: () => void;
-  onRenameChange: (v: string) => void;
-  onRenameSubmit: () => void;
-  onRenameCancel: () => void;
-  onDeleteStart: () => void;
-  onDeleteConfirm: () => void;
-  onDeleteCancel: () => void;
-  formatDate: (iso: string) => string;
-}
-
-function DatasetCard({
-  ds,
-  state,
-  onActivate,
-  onRenameStart,
-  onRenameChange,
-  onRenameSubmit,
-  onRenameCancel,
-  onDeleteStart,
-  onDeleteConfirm,
-  onDeleteCancel,
-  formatDate,
-}: CardProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (state.renaming) inputRef.current?.focus();
-  }, [state.renaming]);
-
-  return (
-    <div
-      className={cn(
-        'border-t-2 px-5 py-4 transition-colors',
-        ds.isActive ? 'border-primary bg-primary/5' : 'border-border bg-card',
-      )}
-    >
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <Database className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-          <div className="min-w-0">
-            {state.renaming ? (
-              <input
-                ref={inputRef}
-                value={state.draftName}
-                onChange={(e) => onRenameChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') onRenameSubmit();
-                  if (e.key === 'Escape') onRenameCancel();
-                }}
-                onBlur={onRenameSubmit}
-                disabled={state.saving}
-                maxLength={255}
-                className="w-full rounded border border-border bg-background px-2 py-0.5 text-sm font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-              />
-            ) : (
-              <p className="truncate text-sm font-medium text-foreground">{ds.name}</p>
-            )}
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              <span className="font-mono tabular-nums">{ds.rowCount.toLocaleString()}</span> rows &middot; uploaded {formatDate(ds.createdAt)}
-              {ds.uploadedBy && ` by ${ds.uploadedBy.name}`}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-2">
-          {ds.isActive && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-              <Check className="h-3 w-3" />
-              Active
-            </span>
-          )}
-          {!ds.isActive && (
-            <button
-              onClick={onActivate}
-              className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
-            >
-              Set active
-            </button>
-          )}
-          <button
-            onClick={onRenameStart}
-            disabled={state.renaming || state.deleting}
-            className="rounded-md border border-border bg-background p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-            aria-label="Rename dataset"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </button>
-          <button
-            onClick={onDeleteStart}
-            disabled={state.renaming || state.deleting}
-            className="rounded-md border border-border bg-background p-1.5 text-muted-foreground transition-colors hover:border-destructive hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40"
-            aria-label="Delete dataset"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </div>
-
-      {state.deleting && (
-        <div className="mt-4 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3">
-          {state.loadingDetail ? (
-            <div className="flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Loading details...</span>
-            </div>
-          ) : state.deleteDetail ? (
-            <>
-              <p className="text-sm text-foreground">
-                This will permanently remove{' '}
-                <span className="font-medium"><span className="font-mono tabular-nums">{state.deleteDetail.rowCount.toLocaleString()}</span> data rows</span>,{' '}
-                <span className="font-medium"><span className="font-mono tabular-nums">{state.deleteDetail.summaryCount}</span> AI summaries</span>, and{' '}
-                <span className="font-medium"><span className="font-mono tabular-nums">{state.deleteDetail.shareCount}</span> share links</span>.
-              </p>
-              <div className="mt-3 flex gap-2">
-                <button
-                  onClick={onDeleteConfirm}
-                  disabled={state.saving}
-                  className="rounded-md bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {state.saving ? 'Deleting...' : 'Yes, delete'}
-                </button>
-                <button
-                  onClick={onDeleteCancel}
-                  disabled={state.saving}
-                  className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-              </div>
-            </>
-          ) : null}
-        </div>
-      )}
     </div>
   );
 }
