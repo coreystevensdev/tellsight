@@ -1,27 +1,20 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import useSWR from 'swr';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import type { ChartData, SubscriptionTier, TransparencyMetadata } from 'shared/types';
 import { ANALYTICS_EVENTS } from 'shared/constants';
-import { apiClient } from '@/lib/api-client';
 import { trackClientEvent } from '@/lib/analytics';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { useSubscription } from '@/lib/hooks/useSubscription';
 import { useDashboardFinancials } from '@/lib/hooks/useDashboardFinancials';
+import { useDashboardSharing } from '@/lib/hooks/useDashboardSharing';
 import { useSidebar } from './SidebarContext';
 import { DashboardCharts } from './DashboardCharts';
-import { FilterBar, computeDateRange } from './FilterBar';
-import {
-  EMPTY_FILTERS,
-  customRange,
-  filtersFromQuery,
-  filtersToQuery,
-  type FilterState,
-} from './filterParams';
+import { FilterBar } from './FilterBar';
+import { useDashboardData } from './useDashboardData';
 import { questionForChartPoint, type ChartPoint } from './suggestedQuestions';
 import { IndustryBenchmark } from '@/components/IndustryBenchmark';
 import type { BusinessProfile } from 'shared/schemas';
@@ -30,11 +23,8 @@ import { QaAskBox } from './QaAskBox';
 import { AiSummaryErrorBoundary } from './AiSummaryErrorBoundary';
 import { TransparencyPanel } from './TransparencyPanel';
 import { ShareFab } from './ShareMenu';
-import { useShareInsight } from '@/lib/hooks/useShareInsight';
-import { useCreateShareLink } from '@/lib/hooks/useCreateShareLink';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { DemoModeBanner } from '@/components/common/DemoModeBanner';
-import { useExportPdf } from '@/lib/hooks/useExportPdf';
 import { KpiCards } from './KpiCards';
 import { OnboardingModal } from './OnboardingModal';
 import { DatasetChip } from '@/components/DatasetChip';
@@ -58,32 +48,6 @@ interface DashboardShellProps {
   needsOnboarding?: boolean;
   businessType?: BusinessProfile['businessType'] | null;
   teamSize?: BusinessProfile['teamSize'] | null;
-}
-
-function buildSwrKey(filters: FilterState): string {
-  const params = new URLSearchParams();
-  // A custom range wins when it is complete and in order; otherwise fall back to
-  // the preset, which is also what a half-filled custom range resolves to.
-  const range =
-    customRange(filters) ?? (filters.datePreset ? computeDateRange(filters.datePreset) : null);
-  if (range) {
-    params.set('from', range.from);
-    params.set('to', range.to);
-  }
-  if (filters.category) {
-    params.set('categories', filters.category);
-  }
-  if (filters.granularity && filters.granularity !== 'monthly') {
-    params.set('granularity', filters.granularity);
-  }
-  const qs = params.toString();
-  return qs ? `/dashboard/charts?${qs}` : '/dashboard/charts';
-}
-
-async function fetchChartData(key: string): Promise<ChartData> {
-  const path = key.startsWith('/') ? key : `/${key}`;
-  const res = await apiClient<ChartData>(path);
-  return res.data;
 }
 
 export function DashboardShell({
@@ -112,11 +76,17 @@ export function DashboardShell({
     prevTierRef.current = tier;
   }, [tier]);
 
-  const searchParams = useSearchParams();
-  // Read once. Filter changes below rewrite the URL with replaceState, which
-  // Next's router does not observe, so there is no second source to sync back
-  // from. A hand-edited URL is a real navigation and remounts this anyway.
-  const [filters, setFilters] = useState<FilterState>(() => filtersFromQuery(searchParams));
+  const {
+    data,
+    isLoading,
+    mutate,
+    filters,
+    applyFilters,
+    resetFilters,
+    hasData,
+    hasAnyData,
+    hasActiveFilters,
+  } = useDashboardData(initialData);
   // A chart click composes a question and hands it to the ask box. The nonce
   // rises every time so clicking the same bar twice asks twice; the box keys off
   // it rather than off the text.
@@ -133,38 +103,9 @@ export function DashboardShell({
   const [transparencyOpen, setTransparencyOpen] = useState(false);
   const [metadata, setMetadata] = useState<TransparencyMetadata | null>(cachedMetadata ?? null);
   const firedRef = useRef(false);
-  const swrKey = buildSwrKey(filters);
-  const hasActiveFilters =
-    filters.datePreset !== null || filters.category !== null || filters.granularity !== 'monthly';
-
-  const {
-    data = initialData,
-    isLoading,
-    mutate,
-  } = useSWR(swrKey, fetchChartData, {
-    fallbackData: initialData,
-    revalidateOnFocus: true,
-    revalidateOnReconnect: false,
-    keepPreviousData: true,
-  });
-
   useEffect(() => {
     setOrgName(data.orgName);
   }, [data.orgName, setOrgName]);
-
-  // replaceState rather than router.replace: this is the same route with
-  // different params, and a router navigation would re-run the server render for
-  // data SWR already owns. Replace rather than push, so toggling granularity five
-  // times does not cost five presses of back to leave the page.
-  const applyFilters = useCallback((next: FilterState) => {
-    setFilters(next);
-    const query = filtersToQuery(next);
-    window.history.replaceState(null, '', query ? `?${query}` : window.location.pathname);
-  }, []);
-
-  const resetFilters = useCallback(() => {
-    applyFilters(EMPTY_FILTERS);
-  }, [applyFilters]);
 
   const handleUploadClick = useCallback(() => {
     router.push('/upload');
@@ -200,24 +141,16 @@ export function DashboardShell({
 
   const captureRef = useRef<HTMLDivElement>(null);
   const {
-    status: shareStatus,
+    shareStatus,
     generatePng,
     downloadPng,
     copyToClipboard,
-  } = useShareInsight(captureRef);
-  const {
-    status: linkStatus,
-    clipboardFailed: linkClipboardFailed,
-    createLink,
-  } = useCreateShareLink();
-  const { status: pdfStatus, exportPdf } = useExportPdf(captureRef);
-
-  const handleCopyLink = useCallback(async () => {
-    if (data.datasetId != null) await createLink(data.datasetId);
-  }, [data.datasetId, createLink]);
-
-  const hasData = data.revenueTrend.length > 0 || data.expenseBreakdown.length > 0;
-  const hasAnyData = initialData.revenueTrend.length > 0 || initialData.expenseBreakdown.length > 0;
+    copyLink,
+    linkStatus,
+    linkClipboardFailed,
+    exportPdf,
+    pdfStatus,
+  } = useDashboardSharing(captureRef, data.datasetId);
 
   const {
     cashAsOfDate,
@@ -251,7 +184,7 @@ export function DashboardShell({
       onShareDownload={downloadPng}
       onShareCopy={copyToClipboard}
       shareState={shareStatus}
-      onShareCopyLink={handleCopyLink}
+      onShareCopyLink={copyLink}
       shareLinkStatus={linkStatus}
       shareLinkClipboardFailed={linkClipboardFailed}
       onExportPdf={exportPdf}
@@ -454,7 +387,7 @@ export function DashboardShell({
           onGenerate={generatePng}
           onDownload={downloadPng}
           onCopy={copyToClipboard}
-          onCopyLink={handleCopyLink}
+          onCopyLink={copyLink}
           linkStatus={linkStatus}
           linkClipboardFailed={linkClipboardFailed}
           onExportPdf={exportPdf}
