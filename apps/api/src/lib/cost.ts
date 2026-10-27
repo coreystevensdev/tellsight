@@ -22,12 +22,12 @@
  * Anthropic pricing per 1M tokens (as of 2026-04):
  *   claude-sonnet-4-5: input $3,  output $15
  *   claude-sonnet-4-6: input $3,  output $15
- *   claude-opus-4-7:   input $15, output $75
+ *   claude-opus-4-7:   input $5,  output $25
  *   claude-haiku-4-5:  input $1,  output $5
  */
 
 import { env } from '../config.js';
-import { pricingFor } from './modelPricing.js';
+import { pricingForClaudeModel } from 'shared/constants';
 
 export const CAP_MULTIPLIER = 3;
 export const ABSOLUTE_CEILING_USD = 1.0;
@@ -39,7 +39,7 @@ export interface Usage {
 }
 
 export function computeCost(usage: Usage, model: string = env.CLAUDE_MODEL): number | null {
-  const p = pricingFor(model);
+  const p = pricingForClaudeModel(model);
   if (!p) return null;
   return (
     (usage.input_tokens / 1_000_000) * p.inputPerMillion +

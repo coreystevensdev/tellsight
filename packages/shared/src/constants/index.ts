@@ -7,21 +7,42 @@ export const FREE_PREVIEW_WORD_LIMIT = 50;
 // via CLAUDE_MODEL env var, defaulting to claude-sonnet-4-6). These
 // are estimates for the admin dashboard cost tile, NOT billing. Update when
 // the default model changes or Anthropic publishes new rates.
-export const CLAUDE_PRICING = {
-  'claude-sonnet-4-5-20250929': { inputPerMillion: 3, outputPerMillion: 15 },
+export interface ClaudeModelPricing {
+  inputPerMillion: number;
+  outputPerMillion: number;
+}
+
+// Prefixes, not only dated model ids: Anthropic may append a release date to
+// any configured model. Keep the most specific prefix before a broader future
+// family prefix so pricingForClaudeModel cannot select a shadowing entry.
+export const CLAUDE_PRICING: Record<string, ClaudeModelPricing> = {
+  'claude-sonnet-4-5': { inputPerMillion: 3, outputPerMillion: 15 },
   'claude-sonnet-4-6': { inputPerMillion: 3, outputPerMillion: 15 },
-  'claude-haiku-4-5-20251001': { inputPerMillion: 1, outputPerMillion: 5 },
-  'claude-opus-4-7': { inputPerMillion: 15, outputPerMillion: 75 },
-} as const;
+  'claude-sonnet-5': { inputPerMillion: 2, outputPerMillion: 10 },
+  'claude-opus-4-5': { inputPerMillion: 5, outputPerMillion: 25 },
+  'claude-opus-4-6': { inputPerMillion: 5, outputPerMillion: 25 },
+  'claude-opus-4-7': { inputPerMillion: 5, outputPerMillion: 25 },
+  'claude-opus-4-8': { inputPerMillion: 5, outputPerMillion: 25 },
+  'claude-opus-5': { inputPerMillion: 5, outputPerMillion: 25 },
+  'claude-haiku-4-5': { inputPerMillion: 1, outputPerMillion: 5 },
+};
 
 export const DEFAULT_CLAUDE_MODEL_ID = 'claude-sonnet-4-6' as const;
+
+export function pricingForClaudeModel(model: string): ClaudeModelPricing | null {
+  const entry = Object.entries(CLAUDE_PRICING).find(([prefix]) => model.startsWith(prefix));
+  return entry?.[1] ?? null;
+}
+
+export const KNOWN_CLAUDE_MODEL_PREFIXES = Object.keys(CLAUDE_PRICING);
 
 export function estimateClaudeCostUsd(
   inputTokens: number,
   outputTokens: number,
-  modelId: keyof typeof CLAUDE_PRICING = DEFAULT_CLAUDE_MODEL_ID,
+  modelId: string = DEFAULT_CLAUDE_MODEL_ID,
 ): number {
-  const rates = CLAUDE_PRICING[modelId];
+  const rates = pricingForClaudeModel(modelId);
+  if (!rates) throw new Error(`No Claude pricing configured for model: ${modelId}`);
   return (inputTokens * rates.inputPerMillion + outputTokens * rates.outputPerMillion) / 1_000_000;
 }
 

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { pricingFor, KNOWN_MODEL_PREFIXES } from './lib/modelPricing.js';
+import { pricingForClaudeModel, KNOWN_CLAUDE_MODEL_PREFIXES } from 'shared/constants';
 
 export const envSchema = z
   .object({
@@ -96,14 +96,14 @@ export const envSchema = z
   // applying and nothing is recorded. The ceiling's own comment says it is there
   // to bound "a misconfigured first invocation on Opus", which is precisely the
   // switch that defeats it. Fail at boot instead: adding a price is one line.
-  .refine((data) => !data.CLAUDE_MODEL_TOOLS || pricingFor(data.CLAUDE_MODEL_TOOLS) !== null, {
+  .refine((data) => !data.CLAUDE_MODEL_TOOLS || pricingForClaudeModel(data.CLAUDE_MODEL_TOOLS) !== null, {
     message:
-      `CLAUDE_MODEL_TOOLS has no entry in the pricing table, so the cost cap would not apply to the tool paths. Add its per-million prices to lib/modelPricing.ts. Known prefixes: ${KNOWN_MODEL_PREFIXES.join(', ')}.`,
+      `CLAUDE_MODEL_TOOLS has no entry in the pricing table, so the cost cap would not apply to the tool paths. Add its per-million prices to shared/constants. Known prefixes: ${KNOWN_CLAUDE_MODEL_PREFIXES.join(', ')}.`,
     path: ['CLAUDE_MODEL_TOOLS'],
   })
-  .refine((data) => pricingFor(data.CLAUDE_MODEL) !== null, {
+  .refine((data) => pricingForClaudeModel(data.CLAUDE_MODEL) !== null, {
     message:
-      `CLAUDE_MODEL has no entry in the pricing table, so the cost cap would not apply to it. Add its per-million prices to lib/modelPricing.ts. Known prefixes: ${KNOWN_MODEL_PREFIXES.join(', ')}.`,
+      `CLAUDE_MODEL has no entry in the pricing table, so the cost cap would not apply to it. Add its per-million prices to shared/constants. Known prefixes: ${KNOWN_CLAUDE_MODEL_PREFIXES.join(', ')}.`,
     path: ['CLAUDE_MODEL'],
   })
   .refine(

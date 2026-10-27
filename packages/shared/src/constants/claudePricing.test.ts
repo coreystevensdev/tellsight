@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { CLAUDE_PRICING, DEFAULT_CLAUDE_MODEL_ID, estimateClaudeCostUsd } from './index.js';
+import {
+  CLAUDE_PRICING,
+  DEFAULT_CLAUDE_MODEL_ID,
+  KNOWN_CLAUDE_MODEL_PREFIXES,
+  estimateClaudeCostUsd,
+  pricingForClaudeModel,
+} from './index.js';
 
 describe('estimateClaudeCostUsd', () => {
   it('computes cost against the default model (Sonnet 4.6) when no model id is passed', () => {
@@ -23,9 +29,9 @@ describe('estimateClaudeCostUsd', () => {
   });
 
   it('applies the Opus rate card when Opus model id is passed', () => {
-    // Opus: $15/M input, $75/M output
-    // 100K × $15/M + 50K × $75/M = $1.50 + $3.75 = $5.25
-    expect(estimateClaudeCostUsd(100_000, 50_000, 'claude-opus-4-7')).toBeCloseTo(5.25, 2);
+    // Opus: $5/M input, $25/M output
+    // 100K × $5/M + 50K × $25/M = $0.50 + $1.25 = $1.75
+    expect(estimateClaudeCostUsd(100_000, 50_000, 'claude-opus-4-7')).toBeCloseTo(1.75, 2);
   });
 
   it('pricing table is monotonic: Haiku < Sonnet < Opus for same tokens', () => {
@@ -40,5 +46,50 @@ describe('estimateClaudeCostUsd', () => {
     expect(CLAUDE_PRICING[DEFAULT_CLAUDE_MODEL_ID]).toBeDefined();
     expect(CLAUDE_PRICING[DEFAULT_CLAUDE_MODEL_ID].inputPerMillion).toBeGreaterThan(0);
     expect(CLAUDE_PRICING[DEFAULT_CLAUDE_MODEL_ID].outputPerMillion).toBeGreaterThan(0);
+  });
+});
+
+describe('pricingForClaudeModel', () => {
+  it('matches a dated model id by its prefix', () => {
+    expect(pricingForClaudeModel('claude-sonnet-4-5-20250929')).toEqual({
+      inputPerMillion: 3,
+      outputPerMillion: 15,
+    });
+  });
+
+  it('returns null for a model it does not know', () => {
+    expect(pricingForClaudeModel('claude-sonnet-9')).toBeNull();
+    expect(pricingForClaudeModel('gpt-4')).toBeNull();
+    expect(pricingForClaudeModel('')).toBeNull();
+  });
+
+  it('prices Opus 4.7 at its own rate, not the retired 4.1 rate', () => {
+    expect(pricingForClaudeModel('claude-opus-4-7-20260101')).toEqual({
+      inputPerMillion: 5,
+      outputPerMillion: 25,
+    });
+  });
+
+  it('prices Sonnet 5 below Sonnet 4.5, per the published rates', () => {
+    const five = pricingForClaudeModel('claude-sonnet-5')!;
+    const fourFive = pricingForClaudeModel('claude-sonnet-4-5-20250929')!;
+
+    expect(five).toEqual({ inputPerMillion: 2, outputPerMillion: 10 });
+    expect(five.inputPerMillion).toBeLessThan(fourFive.inputPerMillion);
+    expect(five.outputPerMillion).toBeLessThan(fourFive.outputPerMillion);
+  });
+
+  it('has no prefix that shadows another', () => {
+    for (const a of KNOWN_CLAUDE_MODEL_PREFIXES) {
+      const shadowed = KNOWN_CLAUDE_MODEL_PREFIXES.filter((b) => b !== a && b.startsWith(a));
+      expect(shadowed, `${a} is a prefix of ${shadowed.join(', ')}`).toEqual([]);
+    }
+  });
+
+  it('prices every entry above zero on both halves', () => {
+    for (const [model, pricing] of Object.entries(CLAUDE_PRICING)) {
+      expect(pricing.inputPerMillion, model).toBeGreaterThan(0);
+      expect(pricing.outputPerMillion, model).toBeGreaterThan(0);
+    }
   });
 });

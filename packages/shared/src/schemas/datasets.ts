@@ -35,11 +35,11 @@ export const columnValidationErrorSchema = z.object({
 
 export const csvPreviewDataSchema = z.object({
   headers: z.array(z.string()),
-  sampleRows: z.array(z.record(z.string())),
+  sampleRows: z.array(z.record(z.string(), z.string())),
   rowCount: z.number().int(),
   validRowCount: z.number().int(),
   skippedRowCount: z.number().int(),
-  columnTypes: z.record(z.enum(['date', 'number', 'text'])),
+  columnTypes: z.record(z.string(), z.enum(['date', 'number', 'text'])),
   warnings: z.array(z.string()),
   fileName: z.string(),
   previewToken: z.string(),
@@ -60,6 +60,6 @@ export const dataRowSchema = z.object({
   date: z.coerce.date(),
   amount: z.string(), // numeric(12,2) returns string from Drizzle, parse in service layer
   label: z.string().max(255).nullable(),
-  metadata: z.record(z.unknown()).nullable(),
+  metadata: z.record(z.string(), z.unknown()).nullable(),
   createdAt: z.coerce.date(),
 });

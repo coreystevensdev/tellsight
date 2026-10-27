@@ -10,7 +10,7 @@ export const insightSnapshotSchema = z.object({
   orgName: z.string(),
   dateRange: z.string(),
   aiSummaryContent: z.string(),
-  chartConfig: z.record(z.unknown()),
+  chartConfig: z.record(z.string(), z.unknown()),
 });
 
 export type InsightSnapshot = z.infer<typeof insightSnapshotSchema>;
