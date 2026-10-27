@@ -234,6 +234,41 @@ export function AiSummaryCard({
     if (hasCached) onStreamComplete?.();
   }, [hasCached, onStreamComplete]);
 
+  const completionFooter = (
+    <PostCompletionFooter
+      onToggleTransparency={onToggleTransparency}
+      transparencyOpen={transparencyOpen}
+      onShare={onShare}
+      onShareDownload={onShareDownload}
+      onShareCopy={onShareCopy}
+      shareState={shareState}
+      onShareCopyLink={onShareCopyLink}
+      shareLinkStatus={shareLinkStatus}
+      shareLinkClipboardFailed={shareLinkClipboardFailed}
+      onExportPdf={onExportPdf}
+      pdfStatus={pdfStatus}
+    />
+  );
+
+  const detailSheets = (
+    <>
+      <InsightChartSheet
+        open={openStatId !== null}
+        onOpenChange={(open) => !open && setOpenStatId(null)}
+        statId={openStatId}
+        paragraphText={openParagraphText}
+        cashHistory={cashHistory}
+        cashForecast={cashForecast}
+      />
+      <StatDetailSheet
+        open={openCiteId !== null}
+        onOpenChange={(open) => !open && setOpenCiteId(null)}
+        datasetId={datasetId}
+        statId={openCiteId}
+      />
+    </>
+  );
+
   if (hasCached) {
     const isFree = tier === 'free';
     const { preview, wasTruncated } = isFree
@@ -268,35 +303,10 @@ export function AiSummaryCard({
               cashForecast={cashForecast}
               isMobile={isMobile}
             />
-            <PostCompletionFooter
-              onToggleTransparency={onToggleTransparency}
-              transparencyOpen={transparencyOpen}
-              onShare={onShare}
-              onShareDownload={onShareDownload}
-              onShareCopy={onShareCopy}
-              shareState={shareState}
-              onShareCopyLink={onShareCopyLink}
-              shareLinkStatus={shareLinkStatus}
-              shareLinkClipboardFailed={shareLinkClipboardFailed}
-              onExportPdf={onExportPdf}
-              pdfStatus={pdfStatus}
-            />
+            {completionFooter}
           </>
         )}
-        <InsightChartSheet
-          open={openStatId !== null}
-          onOpenChange={(open) => !open && setOpenStatId(null)}
-          statId={openStatId}
-          paragraphText={openParagraphText}
-          cashHistory={cashHistory}
-          cashForecast={cashForecast}
-        />
-        <StatDetailSheet
-          open={openCiteId !== null}
-          onOpenChange={(open) => !open && setOpenCiteId(null)}
-          datasetId={datasetId}
-          statId={openCiteId}
-        />
+        {detailSheets}
       </div>
     );
   }
@@ -348,33 +358,8 @@ export function AiSummaryCard({
         <p className="text-sm italic text-muted-foreground">
           We focused on the most important findings to keep things quick.
         </p>
-        <PostCompletionFooter
-          onToggleTransparency={onToggleTransparency}
-          transparencyOpen={transparencyOpen}
-          onShare={onShare}
-          onShareDownload={onShareDownload}
-          onShareCopy={onShareCopy}
-          shareState={shareState}
-          onShareCopyLink={onShareCopyLink}
-          shareLinkStatus={shareLinkStatus}
-          shareLinkClipboardFailed={shareLinkClipboardFailed}
-          onExportPdf={onExportPdf}
-          pdfStatus={pdfStatus}
-        />
-        <InsightChartSheet
-          open={openStatId !== null}
-          onOpenChange={(open) => !open && setOpenStatId(null)}
-          statId={openStatId}
-          paragraphText={openParagraphText}
-          cashHistory={cashHistory}
-          cashForecast={cashForecast}
-        />
-        <StatDetailSheet
-          open={openCiteId !== null}
-          onOpenChange={(open) => !open && setOpenCiteId(null)}
-          datasetId={datasetId}
-          statId={openCiteId}
-        />
+        {completionFooter}
+        {detailSheets}
       </div>
     );
   }
@@ -440,35 +425,8 @@ export function AiSummaryCard({
         />
         {isActive && <StreamingCursor />}
       </div>
-      {isDone && (
-        <PostCompletionFooter
-          onToggleTransparency={onToggleTransparency}
-          transparencyOpen={transparencyOpen}
-          onShare={onShare}
-          onShareDownload={onShareDownload}
-          onShareCopy={onShareCopy}
-          shareState={shareState}
-          onShareCopyLink={onShareCopyLink}
-          shareLinkStatus={shareLinkStatus}
-          shareLinkClipboardFailed={shareLinkClipboardFailed}
-          onExportPdf={onExportPdf}
-          pdfStatus={pdfStatus}
-        />
-      )}
-      <InsightChartSheet
-        open={openStatId !== null}
-        onOpenChange={(open) => !open && setOpenStatId(null)}
-        statId={openStatId}
-        paragraphText={openParagraphText}
-        cashHistory={cashHistory}
-        cashForecast={cashForecast}
-      />
-      <StatDetailSheet
-        open={openCiteId !== null}
-        onOpenChange={(open) => !open && setOpenCiteId(null)}
-        datasetId={datasetId}
-        statId={openCiteId}
-      />
+      {isDone && completionFooter}
+      {detailSheets}
     </div>
   );
 }
