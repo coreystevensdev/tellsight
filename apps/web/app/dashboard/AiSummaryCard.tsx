@@ -1,16 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAiStream, stripDisplayTags } from '@/lib/hooks/useAiStream';
-import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { trackClientEvent } from '@/lib/analytics';
 import type { ShareStatus, LinkStatus } from './ShareMenu';
-import { parseStatBindings, type StatBinding } from './parseStatBindings';
-import { parseCiteBindings, type CiteBinding } from './parseCiteBindings';
-import { InsightChartSheet } from './InsightChartSheet';
-import { StatDetailSheet } from './StatDetailSheet';
 import { type CashBalancePoint } from './charts/RunwayTrendChart';
 import { SummaryText } from './SummaryText';
 import { FreePreviewOverlay, PostCompletionFooter } from './AiSummaryCompletion';
@@ -20,6 +15,7 @@ import {
   StaleSummaryBanner,
   StreamingCursor,
 } from './AiSummaryStates';
+import { AiSummaryDetailSheets, useAiSummaryDetails } from './AiSummaryDetails';
 import { FREE_PREVIEW_WORD_LIMIT, ANALYTICS_EVENTS } from 'shared/constants';
 
 import type { SubscriptionTier, TransparencyMetadata } from 'shared/types';
@@ -116,44 +112,14 @@ export function AiSummaryCard({
     retry,
   } = useAiStream(hasCached ? null : datasetId);
 
-  const isMobile = useIsMobile();
-  const [openStatId, setOpenStatId] = useState<string | null>(null);
-  const [openParagraphText, setOpenParagraphText] = useState<string>('');
-  const [openCiteId, setOpenCiteId] = useState<string | null>(null);
-
   // bindings come from the raw buffer (tags intact). Streaming path uses
   // useAiStream.rawText; cached path parses cachedContent directly. Both
   // strip tags for display via stripStatTags so the user never sees a
   // raw <stat id="..."/> token regardless of code path.
   const sourceText = hasCached ? (cachedContent ?? '') : rawText;
-  const bindings = useMemo<StatBinding[]>(() => {
-    if (status !== 'done' && !hasCached) return [];
-    return parseStatBindings(sourceText);
-  }, [sourceText, status, hasCached]);
-
-  // same buffer as bindings, a different mechanism: many per-number <cite>
-  // markers instead of one per-paragraph <stat> chip.
-  const citations = useMemo<CiteBinding[]>(() => {
-    if (status !== 'done' && !hasCached) return [];
-    return parseCiteBindings(sourceText);
-  }, [sourceText, status, hasCached]);
+  const details = useAiSummaryDetails(sourceText, status === 'done' || hasCached);
 
   const displayText = hasCached ? stripDisplayTags(cachedContent ?? '') : text;
-
-  const handleOpenStat = (statId: string, paragraphIndex: number) => {
-    const paragraphs = stripDisplayTags(sourceText).split('\n\n').filter(Boolean);
-    setOpenStatId(statId);
-    setOpenParagraphText(paragraphs[paragraphIndex] ?? '');
-    trackClientEvent(ANALYTICS_EVENTS.INSIGHT_CHART_OPENED, {
-      statType: statId,
-      paragraphIndex,
-      viewport: isMobile ? 'mobile' : 'desktop',
-    });
-  };
-
-  const handleOpenCite = (statId: string) => {
-    setOpenCiteId(statId);
-  };
 
   const handleRefreshInsights = () => {
     trackClientEvent(ANALYTICS_EVENTS.AI_SUMMARY_REQUESTED, { reason: 'stale_refresh' });
@@ -200,22 +166,16 @@ export function AiSummaryCard({
   );
 
   const detailSheets = (
-    <>
-      <InsightChartSheet
-        open={openStatId !== null}
-        onOpenChange={(open) => !open && setOpenStatId(null)}
-        statId={openStatId}
-        paragraphText={openParagraphText}
-        cashHistory={cashHistory}
-        cashForecast={cashForecast}
-      />
-      <StatDetailSheet
-        open={openCiteId !== null}
-        onOpenChange={(open) => !open && setOpenCiteId(null)}
-        datasetId={datasetId}
-        statId={openCiteId}
-      />
-    </>
+    <AiSummaryDetailSheets
+      datasetId={datasetId}
+      openStatId={details.openStatId}
+      openParagraphText={details.openParagraphText}
+      openCiteId={details.openCiteId}
+      closeStat={details.closeStat}
+      closeCite={details.closeCite}
+      cashHistory={cashHistory}
+      cashForecast={cashForecast}
+    />
   );
 
   if (hasCached) {
@@ -244,13 +204,13 @@ export function AiSummaryCard({
           <>
             <SummaryText
               text={displayText}
-              bindings={bindings}
-              citations={citations}
-              onOpenStat={handleOpenStat}
-              onOpenCite={handleOpenCite}
+              bindings={details.bindings}
+              citations={details.citations}
+              onOpenStat={details.openStat}
+              onOpenCite={details.openCite}
               cashHistory={cashHistory}
               cashForecast={cashForecast}
-              isMobile={isMobile}
+              isMobile={details.isMobile}
             />
             {completionFooter}
           </>
@@ -289,13 +249,13 @@ export function AiSummaryCard({
         <div aria-live="polite">
           <SummaryText
             text={text}
-            bindings={bindings}
-            citations={citations}
-            onOpenStat={handleOpenStat}
-            onOpenCite={handleOpenCite}
+            bindings={details.bindings}
+            citations={details.citations}
+            onOpenStat={details.openStat}
+            onOpenCite={details.openCite}
             cashHistory={cashHistory}
             cashForecast={cashForecast}
-            isMobile={isMobile}
+            isMobile={details.isMobile}
           />
         </div>
         <hr className="my-4 border-muted" />
@@ -339,13 +299,13 @@ export function AiSummaryCard({
       <div aria-live="polite" aria-busy={isActive}>
         <SummaryText
           text={text}
-          bindings={isDone ? bindings : undefined}
-          citations={isDone ? citations : undefined}
-          onOpenStat={isDone ? handleOpenStat : undefined}
-          onOpenCite={isDone ? handleOpenCite : undefined}
+          bindings={isDone ? details.bindings : undefined}
+          citations={isDone ? details.citations : undefined}
+          onOpenStat={isDone ? details.openStat : undefined}
+          onOpenCite={isDone ? details.openCite : undefined}
           cashHistory={cashHistory}
           cashForecast={cashForecast}
-          isMobile={isMobile}
+          isMobile={details.isMobile}
         />
         {isActive && <StreamingCursor />}
       </div>
