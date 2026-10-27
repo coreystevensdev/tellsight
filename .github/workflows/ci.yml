@@ -182,8 +182,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # No shared-package build step: vitest.integration.config.ts aliases
-      # shared/* straight to packages/shared/src, same as proposal-precision-eval
-      # and seed-validation, which skip the build for the same reason.
+      # shared/* straight to packages/shared/src. Standalone tsx scripts that
+      # resolve the package exports, such as seed-validation, build it first.
 
       # app_user only gets privileges on tables created after this runs
       # (ALTER DEFAULT PRIVILEGES), so it has to happen before migrations,
@@ -241,6 +241,9 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      - name: Build shared package
+        run: pnpm --filter shared build
 
       - run: pnpm -C apps/api exec tsx ../../scripts/validate-seed.ts
         env:
