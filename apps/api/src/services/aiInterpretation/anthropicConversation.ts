@@ -41,13 +41,12 @@ function pendingToolUseIds(state: Anthropic.MessageParam[]): Set<string> {
   const content = state.at(-1)?.content;
   if (!Array.isArray(content)) return new Set();
 
+  // typeof is not redundant with the types: isMessageParamArray only proves each
+  // block has a string `type`, so an id-less tool_use block can reach here.
   return new Set(
-    content
-      .filter(
-        (block): block is Anthropic.ToolUseBlockParam =>
-          block.type === 'tool_use' && typeof block.id === 'string',
-      )
-      .map((block) => block.id),
+    content.flatMap((block) =>
+      block.type === 'tool_use' && typeof block.id === 'string' ? [block.id] : [],
+    ),
   );
 }
 
