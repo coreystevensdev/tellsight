@@ -1,94 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { apiClient, ApiClientError } from '@/lib/api-client';
-import type { OrgFinancials } from 'shared/types';
 import { cn } from '@/lib/utils';
 import { BackLink } from '@/components/common/BackLink';
-
-function formatCurrency(n: number | undefined | null): string {
-  if (n == null) return '';
-  return `$${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
-}
-
-function parseCurrency(raw: string): number | null {
-  const cleaned = raw.replace(/[^0-9.]/g, '');
-  if (!cleaned) return null;
-  const n = Number(cleaned);
-  return Number.isFinite(n) ? n : null;
-}
-
-function formatDateForInput(iso: string | undefined): string {
-  if (!iso) return '';
-  return iso.slice(0, 10); // YYYY-MM-DD from ISO
-}
+import { formatCurrency, parseCurrency, useFinancialsForm } from './useFinancialsForm';
 
 export default function FinancialsForm() {
-  const [loading, setLoading] = useState(true);
-  const [cash, setCash] = useState('');
-  const [fixedCosts, setFixedCosts] = useState('');
-  const [started, setStarted] = useState('');
-  const [asOf, setAsOf] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [flash, setFlash] = useState<{ kind: 'ok' | 'error'; message: string } | null>(null);
+  const financials = useFinancialsForm();
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await apiClient<OrgFinancials>('/org/financials');
-        setCash(formatCurrency(res.data.cashOnHand));
-        setFixedCosts(formatCurrency(res.data.monthlyFixedCosts));
-        setAsOf(formatDateForInput(res.data.cashAsOfDate));
-        setStarted(formatDateForInput(res.data.businessStartedDate));
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Could not load financials.';
-        setFlash({ kind: 'error', message: msg });
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  const parsedCash = parseCurrency(cash);
-  const parsedFixedCosts = parseCurrency(fixedCosts);
-
-  async function saveFinancials(e: React.FormEvent) {
-    e.preventDefault();
-    if (submitting) return;
-    if (parsedFixedCosts != null && parsedFixedCosts > 9_999_999) return;
-
-    setSubmitting(true);
-    setFlash(null);
-
-    const updates: Record<string, unknown> = {};
-    if (parsedCash != null && parsedCash > 0) updates.cashOnHand = parsedCash;
-    if (parsedFixedCosts != null && parsedFixedCosts >= 0 && parsedFixedCosts <= 9_999_999) {
-      updates.monthlyFixedCosts = parsedFixedCosts;
-    }
-    if (started) updates.businessStartedDate = started;
-    // cashAsOfDate: if a cash value is being saved, stamp it now. Otherwise preserve.
-    if (updates.cashOnHand != null) updates.cashAsOfDate = new Date().toISOString();
-
-    try {
-      await apiClient('/org/financials', {
-        method: 'PUT',
-        body: JSON.stringify(updates),
-      });
-      setFlash({ kind: 'ok', message: 'Financial baseline updated.' });
-      if (updates.cashAsOfDate) setAsOf(formatDateForInput(updates.cashAsOfDate as string));
-    } catch (err) {
-      if (err instanceof ApiClientError && err.status === 403) {
-        setFlash({ kind: 'error', message: 'Only organization owners can edit the financial baseline.' });
-      } else {
-        const msg = err instanceof Error ? err.message : 'Could not save.';
-        setFlash({ kind: 'error', message: msg });
-      }
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  if (loading) {
+  if (financials.loading) {
     return (
       <div className="mx-auto max-w-2xl px-6 py-8">
         <p className="text-sm text-muted-foreground">Loading…</p>
@@ -106,7 +25,7 @@ export default function FinancialsForm() {
         </p>
       </div>
 
-      <form onSubmit={saveFinancials} className="space-y-5">
+      <form onSubmit={financials.saveFinancials} className="space-y-5">
         <div>
           <label htmlFor="cash" className="block text-sm font-medium text-foreground">
             Current cash on hand
@@ -118,22 +37,22 @@ export default function FinancialsForm() {
             id="cash"
             type="text"
             inputMode="decimal"
-            value={cash}
-            onChange={(e) => setCash(e.target.value)}
+            value={financials.cash}
+            onChange={(event) => financials.setCash(event.target.value)}
             onBlur={() => {
-              const n = parseCurrency(cash);
-              if (n != null) setCash(formatCurrency(n));
+              const amount = parseCurrency(financials.cash);
+              if (amount != null) financials.setCash(formatCurrency(amount));
             }}
             onFocus={() => {
-              const n = parseCurrency(cash);
-              if (n != null) setCash(String(n));
+              const amount = parseCurrency(financials.cash);
+              if (amount != null) financials.setCash(String(amount));
             }}
-            disabled={submitting}
+            disabled={financials.submitting}
             placeholder="$0"
             className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
           />
-          {asOf && (
-            <p className="mt-1.5 text-xs text-muted-foreground">Last updated {asOf}</p>
+          {financials.asOf && (
+            <p className="mt-1.5 text-xs text-muted-foreground">Last updated {financials.asOf}</p>
           )}
         </div>
 
@@ -148,22 +67,26 @@ export default function FinancialsForm() {
             id="fixed-costs"
             type="text"
             inputMode="decimal"
-            value={fixedCosts}
-            onChange={(e) => setFixedCosts(e.target.value)}
+            value={financials.fixedCosts}
+            onChange={(event) => financials.setFixedCosts(event.target.value)}
             onBlur={() => {
-              const n = parseCurrency(fixedCosts);
-              if (n != null) setFixedCosts(formatCurrency(n));
+              const amount = parseCurrency(financials.fixedCosts);
+              if (amount != null) financials.setFixedCosts(formatCurrency(amount));
             }}
             onFocus={() => {
-              const n = parseCurrency(fixedCosts);
-              if (n != null) setFixedCosts(String(n));
+              const amount = parseCurrency(financials.fixedCosts);
+              if (amount != null) financials.setFixedCosts(String(amount));
             }}
-            disabled={submitting}
+            disabled={financials.submitting}
             placeholder="$0"
-            aria-invalid={parsedFixedCosts != null && parsedFixedCosts > 9_999_999 ? 'true' : undefined}
+            aria-invalid={
+              financials.parsedFixedCosts != null && financials.parsedFixedCosts > 9_999_999
+                ? 'true'
+                : undefined
+            }
             className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
           />
-          {parsedFixedCosts != null && parsedFixedCosts > 9_999_999 && (
+          {financials.parsedFixedCosts != null && financials.parsedFixedCosts > 9_999_999 && (
             <p role="alert" className="mt-1.5 text-xs text-destructive">
               Must be $9,999,999 or less.
             </p>
@@ -180,9 +103,9 @@ export default function FinancialsForm() {
           <input
             id="started"
             type="date"
-            value={started}
-            onChange={(e) => setStarted(e.target.value)}
-            disabled={submitting}
+            value={financials.started}
+            onChange={(event) => financials.setStarted(event.target.value)}
+            disabled={financials.submitting}
             className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
           />
         </div>
@@ -190,26 +113,29 @@ export default function FinancialsForm() {
         <div className="flex items-center gap-3 pt-2">
           <button
             type="submit"
-            disabled={submitting}
+            disabled={financials.submitting}
             className={cn(
               'rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground',
               'hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/40',
               'disabled:cursor-not-allowed disabled:opacity-50',
             )}
           >
-            {submitting ? 'Saving…' : 'Save changes'}
+            {financials.submitting ? 'Saving…' : 'Save changes'}
           </button>
           <a href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground">
             Cancel
           </a>
         </div>
 
-        {flash && (
+        {financials.flash && (
           <p
-            role={flash.kind === 'error' ? 'alert' : 'status'}
-            className={cn('text-sm', flash.kind === 'error' ? 'text-destructive' : 'text-primary')}
+            role={financials.flash.kind === 'error' ? 'alert' : 'status'}
+            className={cn(
+              'text-sm',
+              financials.flash.kind === 'error' ? 'text-destructive' : 'text-primary',
+            )}
           >
-            {flash.message}
+            {financials.flash.message}
           </p>
         )}
       </form>
