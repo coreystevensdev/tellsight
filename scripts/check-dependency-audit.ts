@@ -34,13 +34,6 @@ type Acknowledgement = {
 };
 
 const ACKNOWLEDGED: Acknowledgement[] = [
-  {
-    module: 'vite',
-    reviewed: '2026-10-25',
-    reason:
-      'Not in the deployed artifact. `pnpm why vite` resolves it through vitest only, a devDependency, and the advisories are all Vite dev server issues (server.fs.deny bypass, arbitrary file read via the dev server). Nothing runs `vite dev` in this project; the web app builds with Next. An override to >=7.3.7 was tried and did not resolve, because vitest pins a narrower range.',
-    revisit: 'vite becoming a real dependency of apps/web, or an advisory that is not dev-server-scoped.',
-  },
 ];
 
 function audit(): Advisory[] {
