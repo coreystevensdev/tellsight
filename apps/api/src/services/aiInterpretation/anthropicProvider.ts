@@ -8,7 +8,7 @@ import type {
 } from './provider.js';
 import { createAnthropicBreakerRunners } from './anthropicBreakers.js';
 import { createAnthropicHealthProbe } from './anthropicHealth.js';
-import { modelFor } from './anthropicProviderSupport.js';
+import { modelFor } from './anthropicRequest.js';
 import { createAnthropicProseMethods } from './anthropicProseProvider.js';
 import { createAnthropicStream } from './anthropicStreamProvider.js';
 import { createAnthropicToolMethods } from './anthropicToolProvider.js';

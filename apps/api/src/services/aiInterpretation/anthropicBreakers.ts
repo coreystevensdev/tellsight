@@ -1,6 +1,6 @@
 import { CostBudgetExceededError } from '../../lib/appError.js';
 import { CircuitBreaker } from '../../lib/circuitBreaker.js';
-import { AbortedByClient } from './anthropicProviderSupport.js';
+import { AbortedByClient } from './anthropicRuntime.js';
 
 export type BreakerRunner = <T>(operation: () => Promise<T>) => Promise<T>;
 

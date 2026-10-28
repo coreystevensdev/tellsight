@@ -5,12 +5,12 @@ import { logger } from '../../lib/logger.js';
 import { aiCostBudgetExceeded } from '../../lib/metrics.js';
 import type { BreakerRunner } from './anthropicBreakers.js';
 import {
-  AbortedByClient,
   MAX_OUTPUT_TOKENS,
   firstText,
   modelFor,
   systemParam,
-} from './anthropicProviderSupport.js';
+} from './anthropicRequest.js';
+import { AbortedByClient } from './anthropicRuntime.js';
 import type { LlmProvider } from './provider.js';
 
 interface AnthropicStreamDependencies {

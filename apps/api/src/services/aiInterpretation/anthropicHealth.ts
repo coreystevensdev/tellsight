@@ -1,7 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 
 import { logger } from '../../lib/logger.js';
-import { modelFor } from './anthropicProviderSupport.js';
+import { modelFor } from './anthropicRequest.js';
 import type { ProviderHealth } from './provider.js';
 
 export function createAnthropicHealthProbe(client: Anthropic): () => Promise<ProviderHealth> {

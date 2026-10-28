@@ -4,12 +4,11 @@ import { logger } from '../../lib/logger.js';
 import type { BreakerRunner } from './anthropicBreakers.js';
 import {
   MAX_OUTPUT_TOKENS,
-  applyCostGate,
   firstText,
-  mapAnthropicError,
   modelFor,
   systemParam,
-} from './anthropicProviderSupport.js';
+} from './anthropicRequest.js';
+import { applyCostGate, mapAnthropicError } from './anthropicRuntime.js';
 import type { LlmProvider, PromptInput } from './provider.js';
 
 interface AnthropicProseDependencies {

@@ -1,7 +1,8 @@
 import type Anthropic from '@anthropic-ai/sdk';
 
+import { logger } from '../../lib/logger.js';
 import { aiToolCallsDropped } from '../../lib/metrics.js';
-import type { ToolCall } from './provider.js';
+import type { ConversationTurn, ToolCall } from './provider.js';
 
 type StopReason = Anthropic.Message['stop_reason'];
 type ToolCaller = 'generateTool' | 'converseWithTools';
@@ -45,4 +46,40 @@ export function retainCompleteToolCalls(
     });
   }
   return [];
+}
+
+export function buildConversationTurn(
+  message: Anthropic.Message,
+  messages: Anthropic.MessageParam[],
+  model: string,
+): ConversationTurn {
+  const parsedToolCalls = extractToolCalls(message.content);
+  const text = extractText(message.content);
+
+  if (text.length > 0 && parsedToolCalls.length > 0) {
+    logger.info(
+      { model, toolCallCount: parsedToolCalls.length },
+      'Claude API multi-turn tool conversation turn included text alongside tool calls',
+    );
+  }
+
+  const toolCalls = retainCompleteToolCalls(
+    parsedToolCalls,
+    message.stop_reason,
+    'converseWithTools',
+  );
+
+  // Anthropic documents feeding response blocks directly into the next
+  // assistant message, though its input/output SDK types differ.
+  const assistantContent = message.content as unknown as Anthropic.MessageParam['content'];
+
+  return {
+    state: [...messages, { role: 'assistant', content: assistantContent }],
+    toolCalls,
+    text,
+    usage: {
+      inputTokens: message.usage.input_tokens,
+      outputTokens: message.usage.output_tokens,
+    },
+  };
 }
