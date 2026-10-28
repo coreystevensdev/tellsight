@@ -1,11 +1,7 @@
 import {
-  sum,
   mean,
-  median,
   standardDeviation,
   linearRegression,
-  min,
-  max,
 } from 'simple-statistics';
 
 import type { CategoryPlan } from 'shared/types';
@@ -34,6 +30,11 @@ import {
   groupByCategory,
   type CategoryGroup,
 } from './categoryMetrics.js';
+import {
+  computeAverages,
+  computeCategoryBreakdowns,
+  computeTotals,
+} from './descriptiveMetrics.js';
 
 export { MONTH_NAMES, monthKey } from './computationPrimitives.js';
 export {
@@ -59,64 +60,6 @@ export {
 } from './statIdentity.js';
 export { marginTrendMonths } from './marginMetrics.js';
 export { computeCategoryVariance } from './categoryMetrics.js';
-
-function computeTotals(
-  groups: Map<string, CategoryGroup>,
-  allAmounts: number[],
-): ComputedStat[] {
-  const stats: ComputedStat[] = [];
-
-  for (const [cat, group] of groups) {
-    stats.push({
-      statType: StatType.Total,
-      category: cat,
-      value: sum(group.amounts),
-      details: { scope: 'category', count: group.amounts.length },
-    });
-  }
-
-  if (allAmounts.length > 0) {
-    stats.push({
-      statType: StatType.Total,
-      category: null,
-      value: sum(allAmounts),
-      details: { scope: 'overall', count: allAmounts.length },
-    });
-  }
-
-  return stats;
-}
-
-function computeAverages(
-  groups: Map<string, CategoryGroup>,
-  allAmounts: number[],
-): ComputedStat[] {
-  const stats: ComputedStat[] = [];
-
-  for (const [cat, group] of groups) {
-    const med = median(group.amounts);
-    stats.push({
-      statType: StatType.Average,
-      category: cat,
-      value: mean(group.amounts),
-      comparison: med,
-      details: { scope: 'category', median: med },
-    });
-  }
-
-  if (allAmounts.length > 0) {
-    const med = median(allAmounts);
-    stats.push({
-      statType: StatType.Average,
-      category: null,
-      value: mean(allAmounts),
-      comparison: med,
-      details: { scope: 'overall', median: med },
-    });
-  }
-
-  return stats;
-}
 
 // Sums a category's transactions into calendar months, returning one point per
 // month keyed to the month's first instant, ascending. UTC throughout, matching
@@ -238,40 +181,6 @@ function detectAnomalies(groups: Map<string, CategoryGroup>): ComputedStat[] {
         });
       }
     }
-  }
-
-  return stats;
-}
-
-function computeCategoryBreakdowns(
-  groups: Map<string, CategoryGroup>,
-): ComputedStat[] {
-  const stats: ComputedStat[] = [];
-
-  let totalAbsolute = 0;
-  for (const group of groups.values()) {
-    totalAbsolute += group.amounts.reduce((acc, n) => acc + Math.abs(n), 0);
-  }
-
-  if (totalAbsolute === 0) return stats;
-
-  for (const [cat, group] of groups) {
-    const catAbsolute = group.amounts.reduce((acc, n) => acc + Math.abs(n), 0);
-    const percentage = (catAbsolute / totalAbsolute) * 100;
-    const catSum = sum(group.amounts);
-
-    stats.push({
-      statType: StatType.CategoryBreakdown,
-      category: cat,
-      value: catSum,
-      details: {
-        percentage,
-        absoluteTotal: catAbsolute,
-        transactionCount: group.amounts.length,
-        min: min(group.amounts),
-        max: max(group.amounts),
-      },
-    });
   }
 
   return stats;
