@@ -1,26 +1,17 @@
 import Anthropic from '@anthropic-ai/sdk';
 
 import { env } from '../../config.js';
-import { logger } from '../../lib/logger.js';
 import { CostBudgetExceededError } from '../../lib/appError.js';
 import { CircuitBreaker } from '../../lib/circuitBreaker.js';
-import { computeCost, exceedsBudget, recordCost } from '../../lib/cost.js';
-import { aiCostBudgetExceeded } from '../../lib/metrics.js';
 import type {
   LlmProvider,
   PromptInput,
-  StreamResult,
   ProviderHealth,
 } from './provider.js';
 import { createAnthropicHealthProbe } from './anthropicHealth.js';
-import {
-  AbortedByClient,
-  MAX_OUTPUT_TOKENS,
-  firstText,
-  modelFor,
-  systemParam,
-} from './anthropicProviderSupport.js';
+import { AbortedByClient, modelFor } from './anthropicProviderSupport.js';
 import { createAnthropicProseMethods } from './anthropicProseProvider.js';
+import { createAnthropicStream } from './anthropicStreamProvider.js';
 import { createAnthropicToolMethods } from './anthropicToolProvider.js';
 import { registerProvider } from './provider.js';
 
@@ -112,84 +103,7 @@ const {
   runConverse: runConverseInBreaker,
 });
 
-async function anthropicStream(
-  input: PromptInput,
-  onText: (delta: string) => void,
-  signal?: AbortSignal,
-): Promise<StreamResult> {
-  // client-initiated aborts are intentional, don't let them trip the breaker
-  return runInBreaker(async () => {
-    try {
-      const stream = client.messages.stream({
-        model: modelFor('prose'),
-        max_tokens: MAX_OUTPUT_TOKENS,
-        ...(systemParam(input) && { system: systemParam(input) }),
-        messages: [{ role: 'user', content: input.user }],
-      });
-
-      if (signal) {
-        const onAbort = () => stream.abort();
-        signal.addEventListener('abort', onAbort, { once: true });
-        stream.on('end', () => signal.removeEventListener('abort', onAbort));
-      }
-
-      stream.on('text', (delta) => onText(delta));
-
-      const finalMessage = await stream.finalMessage();
-
-      // Streaming is log-only on overrun: the content already shipped to the
-      // user via onText callbacks. Throwing here would be wasted, they got
-      // the answer. We still skip recording into median history so the floor
-      // stays representative of normal cost.
-      // Same model this call actually used, not the global default: with a
-      // per-path override those differ and the cap would cost the stream wrong.
-      const cost = computeCost(finalMessage.usage, modelFor('prose'));
-      if (cost !== null) {
-        const budget = exceedsBudget(cost);
-        if (budget.exceeded) {
-          aiCostBudgetExceeded.inc({ caller: 'stream' });
-          logger.warn(
-            { cost, cap: budget.cap, median: budget.median, model: modelFor('prose') },
-            'Claude API stream cost budget exceeded, content delivered, anomaly logged',
-          );
-        } else {
-          recordCost(cost);
-        }
-      }
-
-      logger.info(
-        { model: modelFor('prose'), usage: finalMessage.usage, cost },
-        'Claude API stream completed',
-      );
-
-      const fullText = firstText(finalMessage.content);
-
-      return {
-        fullText,
-        usage: {
-          inputTokens: finalMessage.usage.input_tokens,
-          outputTokens: finalMessage.usage.output_tokens,
-        },
-      };
-    } catch (err) {
-      if (signal?.aborted) {
-        logger.info({ aborted: true }, 'Claude API stream aborted by client');
-        throw new AbortedByClient();
-      }
-
-      if (
-        err instanceof Anthropic.AuthenticationError ||
-        err instanceof Anthropic.BadRequestError
-      ) {
-        logger.error({ err: (err as Error).message }, 'Claude API stream non-retryable error');
-      } else {
-        logger.warn({ err: (err as Error).message }, 'Claude API stream retryable error exhausted');
-      }
-
-      throw err;
-    }
-  });
-}
+const anthropicStream = createAnthropicStream({ client, runInBreaker });
 
 export const anthropicProvider: LlmProvider = {
   name: 'anthropic',
