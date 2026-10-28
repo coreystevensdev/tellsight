@@ -2,7 +2,6 @@ import type Anthropic from '@anthropic-ai/sdk';
 
 import { CostBudgetExceededError } from '../../lib/appError.js';
 import { logger } from '../../lib/logger.js';
-import { aiToolCallsDropped } from '../../lib/metrics.js';
 import type { BreakerRunner } from './anthropicBreakers.js';
 import { buildConversationMessages } from './anthropicConversation.js';
 import {
@@ -14,6 +13,13 @@ import {
   systemParam,
   toolParams,
 } from './anthropicProviderSupport.js';
+import {
+  countTextBlocks,
+  extractText,
+  extractToolCalls,
+  isAbnormalToolStop,
+  retainCompleteToolCalls,
+} from './anthropicToolResponse.js';
 import type {
   ConversationTurn,
   LlmProvider,
@@ -69,11 +75,9 @@ export function createAnthropicToolMethods({
           );
         }
 
-        const calls: ToolCall[] = message.content
-          .filter((block): block is Anthropic.ToolUseBlock => block.type === 'tool_use')
-          .map((block) => ({ id: block.id, name: block.name, input: block.input }));
+        const calls = extractToolCalls(message.content);
 
-        const textBlockCount = message.content.filter((block) => block.type === 'text').length;
+        const textBlockCount = countTextBlocks(message.content);
         if (textBlockCount > 0) {
           logger.info(
             { model, textBlockCount, toolCallCount: calls.length },
@@ -89,19 +93,7 @@ export function createAnthropicToolMethods({
           'Claude API tool-use response received',
         );
 
-        // There is no signal for which tool_use block an abnormal stop clipped,
-        // so drop the batch rather than act on possibly incomplete JSON.
-        if (message.stop_reason !== 'end_turn' && message.stop_reason !== 'tool_use') {
-          if (calls.length > 0) {
-            aiToolCallsDropped.inc({
-              caller: 'generateTool',
-              reason: message.stop_reason === 'max_tokens' ? 'max_tokens' : 'abnormal_stop_reason',
-            });
-          }
-          return [];
-        }
-
-        return calls;
+        return retainCompleteToolCalls(calls, message.stop_reason, 'generateTool');
       } catch (err) {
         mapAnthropicError(err);
       }
@@ -136,8 +128,7 @@ export function createAnthropicToolMethods({
           { signal },
         );
 
-        const isAbnormalStop =
-          message.stop_reason !== 'end_turn' && message.stop_reason !== 'tool_use';
+        const isAbnormalStop = isAbnormalToolStop(message.stop_reason);
 
         if (message.stop_reason === 'max_tokens') {
           logger.warn(
@@ -151,31 +142,21 @@ export function createAnthropicToolMethods({
           );
         }
 
-        let toolCalls: ToolCall[] = message.content
-          .filter((block): block is Anthropic.ToolUseBlock => block.type === 'tool_use')
-          .map((block) => ({ id: block.id, name: block.name, input: block.input }));
+        const parsedToolCalls = extractToolCalls(message.content);
+        const text = extractText(message.content);
 
-        const text = message.content
-          .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-          .map((block) => block.text)
-          .join('');
-
-        if (text.length > 0 && toolCalls.length > 0) {
+        if (text.length > 0 && parsedToolCalls.length > 0) {
           logger.info(
-            { model, toolCallCount: toolCalls.length },
+            { model, toolCallCount: parsedToolCalls.length },
             'Claude API multi-turn tool conversation turn included text alongside tool calls',
           );
         }
 
-        if (isAbnormalStop) {
-          if (toolCalls.length > 0) {
-            aiToolCallsDropped.inc({
-              caller: 'converseWithTools',
-              reason: message.stop_reason === 'max_tokens' ? 'max_tokens' : 'abnormal_stop_reason',
-            });
-          }
-          toolCalls = [];
-        }
+        const toolCalls = retainCompleteToolCalls(
+          parsedToolCalls,
+          message.stop_reason,
+          'converseWithTools',
+        );
 
         const cost = applyCostGate(message.usage, 'converseWithTools', model);
 
