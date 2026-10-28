@@ -12,6 +12,7 @@ import type {
   StreamResult,
   ProviderHealth,
 } from './provider.js';
+import { createAnthropicHealthProbe } from './anthropicHealth.js';
 import {
   AbortedByClient,
   MAX_OUTPUT_TOKENS,
@@ -80,60 +81,10 @@ const runConverseInBreaker = converseBreaker.exec.bind(converseBreaker);
 
 export { modelFor };
 
-// Reports a rejected key as 'error' and anything else as 'degraded'. Collapsing
-// both to 'error', which this did, means the check calls the key broken every
-// time Anthropic has a bad minute, and a check that cries wolf gets ignored on
-// the morning it is right. config.ts only asserts the key is a non-empty string,
-// so a mistyped one boots fine and fails first for a user.
+const runHealthProbe = createAnthropicHealthProbe(client);
+
 export async function probeClaudeHealth(): Promise<ProviderHealth> {
-  const start = Date.now();
-  try {
-    // A one-token completion, not models.list. Listing models is a metadata
-    // call that costs nothing, so it succeeds against an account that cannot
-    // buy a single completion: on 2026-10-25 this logged "Claude key verified"
-    // twice, five hours after every real request had started failing on an
-    // exhausted balance, and the admin panel said AI was fine throughout. A
-    // check blind to the likeliest reason its subject breaks is worse than no
-    // check, because it reads as reassurance.
-    //
-    // The cost is one output token per boot and per admin health read. The
-    // model is the one the prose path actually uses, so this also fails if that
-    // model is retired rather than discovering it on the next digest.
-    await client.messages.create({
-      model: modelFor('prose'),
-      max_tokens: 1,
-      messages: [{ role: 'user', content: 'ping' }],
-    });
-    return { status: 'ok', latencyMs: Date.now() - start };
-  } catch (err) {
-    const latencyMs = Date.now() - start;
-    const status = (err as { status?: number }).status;
-    const name = (err as Error).name;
-    const message = (err as Error).message ?? '';
-
-    if (status === 401 || status === 403 || name === 'AuthenticationError') {
-      // Keep the message identical to customer-traffic failures: the
-      // CloudWatch metric filter keys on it, so the paid probe can alert even
-      // when no customer happens to use an AI surface during the outage.
-      logger.error({ err: message, source: 'health_probe' }, 'Claude API non-retryable error');
-      return { status: 'error', latencyMs, detail: 'Anthropic rejected the configured API key' };
-    }
-
-    // Anthropic reports an empty balance as a 400 invalid_request_error rather
-    // than a 402, so it is only separable by the message. Worth separating:
-    // "key rejected" sends someone to rotate a credential that is fine.
-    if (status === 400 && /credit balance/i.test(message)) {
-      logger.error({ err: message, source: 'health_probe' }, 'Claude API non-retryable error');
-      return {
-        status: 'error',
-        latencyMs,
-        detail: 'Anthropic account has no credit, every AI feature is down',
-      };
-    }
-
-    logger.warn({ err: message }, 'Could not verify the Claude key');
-    return { status: 'degraded', latencyMs, detail: 'Anthropic unreachable, key not verified' };
-  }
+  return runHealthProbe();
 }
 
 const anthropicHealth = probeClaudeHealth;
