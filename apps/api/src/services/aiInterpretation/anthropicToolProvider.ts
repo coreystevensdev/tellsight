@@ -3,6 +3,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { CostBudgetExceededError } from '../../lib/appError.js';
 import { logger } from '../../lib/logger.js';
 import { aiToolCallsDropped } from '../../lib/metrics.js';
+import type { BreakerRunner } from './anthropicBreakers.js';
 import { buildConversationMessages } from './anthropicConversation.js';
 import {
   AbortedByClient,
@@ -21,8 +22,6 @@ import type {
   ToolDefinition,
   ToolResultInput,
 } from './provider.js';
-
-type BreakerRunner = <T>(operation: () => Promise<T>) => Promise<T>;
 
 interface AnthropicToolDependencies {
   client: Anthropic;

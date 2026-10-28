@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { computeCost, exceedsBudget, recordCost } from '../../lib/cost.js';
 import { logger } from '../../lib/logger.js';
 import { aiCostBudgetExceeded } from '../../lib/metrics.js';
+import type { BreakerRunner } from './anthropicBreakers.js';
 import {
   AbortedByClient,
   MAX_OUTPUT_TOKENS,
@@ -11,8 +12,6 @@ import {
   systemParam,
 } from './anthropicProviderSupport.js';
 import type { LlmProvider } from './provider.js';
-
-type BreakerRunner = <T>(operation: () => Promise<T>) => Promise<T>;
 
 interface AnthropicStreamDependencies {
   client: Anthropic;

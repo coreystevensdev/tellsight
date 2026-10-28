@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 
 import { logger } from '../../lib/logger.js';
+import type { BreakerRunner } from './anthropicBreakers.js';
 import {
   MAX_OUTPUT_TOKENS,
   applyCostGate,
@@ -10,8 +11,6 @@ import {
   systemParam,
 } from './anthropicProviderSupport.js';
 import type { LlmProvider, PromptInput } from './provider.js';
-
-type BreakerRunner = <T>(operation: () => Promise<T>) => Promise<T>;
 
 interface AnthropicProseDependencies {
   client: Anthropic;
