@@ -2,36 +2,41 @@ import Anthropic from '@anthropic-ai/sdk';
 
 import { env } from '../../config.js';
 import { logger } from '../../lib/logger.js';
-import { ExternalServiceError, CostBudgetExceededError } from '../../lib/appError.js';
+import { CostBudgetExceededError } from '../../lib/appError.js';
 import { CircuitBreaker } from '../../lib/circuitBreaker.js';
-import { computeCost, exceedsBudget, recordCost, type Usage } from '../../lib/cost.js';
-import { aiCostBudgetExceeded, aiToolCallsDropped } from '../../lib/metrics.js';
+import { computeCost, exceedsBudget, recordCost } from '../../lib/cost.js';
+import { aiCostBudgetExceeded } from '../../lib/metrics.js';
 import type {
   LlmProvider,
   PromptInput,
   StreamResult,
   ProviderHealth,
+} from './provider.js';
+import {
+  AbortedByClient,
+  MAX_OUTPUT_TOKENS,
+  applyCostGate,
+  firstText,
+  mapAnthropicError,
+  modelFor,
+  systemParam,
+} from './anthropicProviderSupport.js';
+import { createAnthropicToolMethods } from './anthropicToolProvider.js';
+import { registerProvider } from './provider.js';
+
+export type {
+  StreamResult,
   ToolDefinition,
   ToolCall,
   ToolResultInput,
   ConversationTurn,
 } from './provider.js';
-import { buildConversationMessages } from './anthropicConversation.js';
-import { registerProvider } from './provider.js';
-
-export type { StreamResult, ToolDefinition, ToolCall, ToolResultInput, ConversationTurn };
 
 const client = new Anthropic({
   apiKey: env.CLAUDE_API_KEY,
   maxRetries: 2,
   timeout: 15_000,
 });
-
-class AbortedByClient extends Error {
-  constructor() {
-    super('aborted by client');
-  }
-}
 
 // Each breaker independently needs 3 consecutive failures to open for 30s.
 // Anthropic SDK already retries twice per call, so 3 trips = 9 failed
@@ -73,27 +78,7 @@ const runInBreaker = breaker.exec.bind(breaker);
 const runToolInBreaker = toolBreaker.exec.bind(toolBreaker);
 const runConverseInBreaker = converseBreaker.exec.bind(converseBreaker);
 
-// Raised from 1024 on 2026-09-18. Sonnet 4.5 uses about 291 output tokens on a
-// representative fixture, but the newer models spend output tokens on thinking:
-// Sonnet 5 used 856 on the same one, 84% of the old cap. A max_tokens stop makes
-// the tool paths drop every tool call in the response, so the headroom is not
-// optional if a model that thinks is ever selected.
-const MAX_OUTPUT_TOKENS = 2048;
-
-/**
- * Which model a given path uses.
- *
- * 'prose' is the interpretation, the digest and the alert copy: the product's
- * claim is that it explains numbers well, so this is the one worth paying for.
- * 'tools' is proposals and the Q&A loop, which want a tool call in the right
- * shape more than they want good sentences.
- *
- * Unset CLAUDE_MODEL_TOOLS means both resolve to the same model, which is what
- * shipped before this existed.
- */
-export function modelFor(path: 'prose' | 'tools'): string {
-  return path === 'tools' ? (env.CLAUDE_MODEL_TOOLS ?? env.CLAUDE_MODEL) : env.CLAUDE_MODEL;
-}
+export { modelFor };
 
 // Reports a rejected key as 'error' and anything else as 'degraded'. Collapsing
 // both to 'error', which this did, means the check calls the key broken every
@@ -153,80 +138,6 @@ export async function probeClaudeHealth(): Promise<ProviderHealth> {
 
 const anthropicHealth = probeClaudeHealth;
 
-// The first text block, not the first block.
-//
-// A response is a list, and a model that thinks puts a thinking block in it. When
-// one landed at index 0 this returned '' and the caller got a blank summary with
-// no error: the eval saw judges replying "I need to see the actual summary
-// content to grade it" on roughly one Sonnet 5 sample in ten. The tool paths
-// already filtered across every block; the prose paths did not.
-function firstText(content: Array<{ type: string }>): string {
-  const block = content.find((b) => b.type === 'text');
-  return block && 'text' in block ? String((block as { text: unknown }).text) : '';
-}
-
-// Build the SDK system parameter from PromptInput. Returns undefined when
-// the system half is empty (digest template, legacy single-file versions) so
-// the call shape matches the pre-caching path exactly.
-function systemParam(input: PromptInput) {
-  if (!input.system) return undefined;
-  return [
-    {
-      type: 'text' as const,
-      text: input.system,
-      cache_control: { type: 'ephemeral' as const },
-    },
-  ];
-}
-
-// Post-call cost gate shared by anthropicGenerate and anthropicGenerateTool.
-// Tokens are already spent by the time we know the cost, so this is an
-// anomaly detector, the next request gets the benefit. Real prevention is
-// upstream (max_tokens, timeout). Anomalies are NOT recorded into median
-// history; recording would raise the floor and let the next anomaly slip
-// through. anthropicStream keeps its own log-only variant, it can't throw
-// after content has already streamed to the client.
-function applyCostGate(usage: Usage, caller: string, model: string): number | null {
-  const cost = computeCost(usage, model);
-  if (cost === null) {
-    // config.ts refuses an unpriced CLAUDE_MODEL at boot, so reaching this means
-    // a caller passed a model of its own. Not thrown: the tokens are spent and
-    // failing the request would turn an accounting gap into a 500. Logged loudly
-    // because an uncapped call is exactly the thing that must not pass quietly.
-    logger.error({ model, caller }, 'No pricing for model, cost gate skipped');
-    return null;
-  }
-
-  const budget = exceedsBudget(cost);
-  if (budget.exceeded) {
-    aiCostBudgetExceeded.inc({ caller });
-    logger.warn(
-      { cost, cap: budget.cap, median: budget.median, model },
-      'Claude API cost budget exceeded, request refused',
-    );
-    throw new CostBudgetExceededError(cost, budget.cap);
-  }
-  recordCost(cost);
-  return cost;
-}
-
-// Error mapping shared by anthropicGenerate and anthropicGenerateTool.
-function mapAnthropicError(err: unknown): never {
-  // Cost gate threw our domain error, propagate unchanged so the error
-  // handler returns 503 with the typed COST_BUDGET_EXCEEDED code.
-  if (err instanceof CostBudgetExceededError) throw err;
-
-  if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.BadRequestError) {
-    logger.error({ err: (err as Error).message }, 'Claude API non-retryable error');
-  } else {
-    logger.warn({ err: (err as Error).message }, 'Claude API retryable error exhausted');
-  }
-
-  throw new ExternalServiceError('Claude API', {
-    originalError: (err as Error).message,
-  });
-}
-
 /**
  * Generate against a named model rather than whatever the path resolves to.
  *
@@ -280,200 +191,14 @@ async function anthropicGenerate(input: PromptInput): Promise<string> {
   });
 }
 
-async function anthropicGenerateTool(
-  input: PromptInput,
-  tools: ToolDefinition[],
-  onCost?: (cost: number | null) => void,
-): Promise<ToolCall[]> {
-  // No tools to offer means the API call can't return a tool_use block --
-  // skip the request entirely rather than spend tokens on a call that can
-  // only ever come back empty.
-  if (tools.length === 0) return [];
-
-  return runToolInBreaker(async () => {
-    try {
-      const message = await client.messages.create({
-        model: modelFor('tools'),
-        max_tokens: MAX_OUTPUT_TOKENS,
-        ...(systemParam(input) && { system: systemParam(input) }),
-        messages: [{ role: 'user', content: input.user }],
-        tools: tools.map((tool) => ({
-          name: tool.name,
-          description: tool.description,
-          input_schema: tool.inputSchema as Anthropic.Tool.InputSchema,
-        })),
-        tool_choice: { type: 'auto' },
-      });
-
-      if (message.stop_reason === 'max_tokens') {
-        logger.warn(
-          { model: modelFor('tools'), usage: message.usage },
-          'Claude API tool-use response truncated at max_tokens, dropping all tool calls from this response',
-        );
-      } else if (message.stop_reason !== 'end_turn' && message.stop_reason !== 'tool_use') {
-        logger.warn(
-          { model: modelFor('tools'), usage: message.usage, stopReason: message.stop_reason },
-          'Claude API tool-use response ended for an unexpected reason, dropping all tool calls from this response',
-        );
-      }
-
-      const calls: ToolCall[] = message.content
-        .filter((block): block is Anthropic.ToolUseBlock => block.type === 'tool_use')
-        .map((block) => ({ id: block.id, name: block.name, input: block.input }));
-
-      const textBlockCount = message.content.filter((block) => block.type === 'text').length;
-      if (textBlockCount > 0) {
-        logger.info(
-          { model: modelFor('tools'), textBlockCount, toolCallCount: calls.length },
-          'Claude API tool-use response included text alongside or instead of tool calls',
-        );
-      }
-
-      const cost = applyCostGate(message.usage, 'generateTool', modelFor('tools'));
-      onCost?.(cost);
-
-      logger.info(
-        { model: modelFor('tools'), usage: message.usage, cost, toolCallCount: calls.length },
-        'Claude API tool-use response received',
-      );
-
-      // no signal for which tool_use block an abnormal stop actually clipped,
-      // so drop the whole batch rather than gamble one's JSON closed cleanly
-      if (message.stop_reason !== 'end_turn' && message.stop_reason !== 'tool_use') {
-        if (calls.length > 0) {
-          aiToolCallsDropped.inc({
-            caller: 'generateTool',
-            reason: message.stop_reason === 'max_tokens' ? 'max_tokens' : 'abnormal_stop_reason',
-          });
-        }
-        return [];
-      }
-
-      return calls;
-    } catch (err) {
-      mapAnthropicError(err);
-    }
-  });
-}
-
-async function anthropicConverseWithTools(
-  state: unknown,
-  input: PromptInput,
-  tools: ToolDefinition[],
-  toolResults: ToolResultInput[],
-  signal?: AbortSignal,
-): Promise<ConversationTurn> {
-  // Built outside the breaker: a caller-contract violation (mismatched
-  // state/toolResults) is a programmer error, not a Claude API failure, and
-  // must not trip the circuit breaker or surface as an ExternalServiceError.
-  const messages = buildConversationMessages(state, input, tools, toolResults);
-
-  return runConverseInBreaker(async () => {
-    try {
-      const message = await client.messages.create(
-        {
-          model: modelFor('tools'),
-          max_tokens: MAX_OUTPUT_TOKENS,
-          ...(systemParam(input) && { system: systemParam(input) }),
-          messages,
-          ...(tools.length > 0 && {
-            tools: tools.map((tool) => ({
-              name: tool.name,
-              description: tool.description,
-              input_schema: tool.inputSchema as Anthropic.Tool.InputSchema,
-            })),
-            tool_choice: { type: 'auto' as const },
-          }),
-        },
-        { signal },
-      );
-
-      const isAbnormalStop =
-        message.stop_reason !== 'end_turn' && message.stop_reason !== 'tool_use';
-
-      if (message.stop_reason === 'max_tokens') {
-        logger.warn(
-          { model: modelFor('tools'), usage: message.usage },
-          'Claude API multi-turn tool conversation truncated at max_tokens, tool_use input or text may be incomplete',
-        );
-      } else if (isAbnormalStop) {
-        logger.warn(
-          { model: modelFor('tools'), usage: message.usage, stopReason: message.stop_reason },
-          'Claude API multi-turn tool conversation ended for an unexpected reason',
-        );
-      }
-
-      let toolCalls: ToolCall[] = message.content
-        .filter((block): block is Anthropic.ToolUseBlock => block.type === 'tool_use')
-        .map((block) => ({ id: block.id, name: block.name, input: block.input }));
-
-      const text = message.content
-        .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-        .map((block) => block.text)
-        .join('');
-
-      if (text.length > 0 && toolCalls.length > 0) {
-        logger.info(
-          { model: modelFor('tools'), toolCallCount: toolCalls.length },
-          'Claude API multi-turn tool conversation turn included text alongside tool calls',
-        );
-      }
-
-      // Same rationale as generateTool: no signal for which tool_use block an
-      // abnormal stop actually clipped, so drop the whole batch rather than
-      // risk acting on a call whose JSON didn't close cleanly. text and usage
-      // are untouched, qaLoop.ts falls back to turn.text on an empty
-      // toolCalls array instead of acting on a possibly-truncated call.
-      if (isAbnormalStop) {
-        if (toolCalls.length > 0) {
-          aiToolCallsDropped.inc({
-            caller: 'converseWithTools',
-            reason: message.stop_reason === 'max_tokens' ? 'max_tokens' : 'abnormal_stop_reason',
-          });
-        }
-        toolCalls = [];
-      }
-
-      const cost = applyCostGate(message.usage, 'converseWithTools', modelFor('tools'));
-
-      logger.info(
-        { model: modelFor('tools'), usage: message.usage, cost, toolCallCount: toolCalls.length },
-        'Claude API multi-turn tool conversation turn received',
-      );
-
-      // message.content (response ContentBlocks) isn't the same TS type as
-      // what MessageParam accepts back as input (ContentBlockParams), but
-      // it's the standard Anthropic multi-turn tool-use pattern to feed a
-      // turn's own response straight back in as the next assistant message.
-      const assistantContent = message.content as unknown as Anthropic.MessageParam['content'];
-      const nextState: Anthropic.MessageParam[] = [
-        ...messages,
-        { role: 'assistant', content: assistantContent },
-      ];
-
-      return {
-        state: nextState,
-        toolCalls,
-        text,
-        usage: {
-          inputTokens: message.usage.input_tokens,
-          outputTokens: message.usage.output_tokens,
-        },
-      };
-    } catch (err) {
-      // Cost gate takes precedence over the abort check: a signal that's
-      // already aborted for unrelated reasons (e.g. the request just also
-      // happened to be cancelled) shouldn't mask a real budget error and
-      // report a benign-looking abort instead.
-      if (err instanceof CostBudgetExceededError) throw err;
-      if (signal?.aborted) {
-        logger.info({ aborted: true }, 'Claude API multi-turn tool conversation aborted by client');
-        throw new AbortedByClient();
-      }
-      mapAnthropicError(err);
-    }
-  });
-}
+const {
+  generateTool: anthropicGenerateTool,
+  converseWithTools: anthropicConverseWithTools,
+} = createAnthropicToolMethods({
+  client,
+  runGenerateTool: runToolInBreaker,
+  runConverse: runConverseInBreaker,
+});
 
 async function anthropicStream(
   input: PromptInput,
