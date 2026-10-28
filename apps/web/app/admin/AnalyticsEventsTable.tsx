@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import {
   Table,
   TableBody,
@@ -13,12 +12,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { ANALYTICS_EVENTS } from 'shared/constants';
-import { apiClient } from '@/lib/api-client';
-import { useResource } from '@/lib/hooks/useResource';
-import type { AnalyticsEventRow, AnalyticsEventsMeta, AdminOrgRow } from './types';
 import { dateTimeFmt } from './formatters';
-
-const PAGE_SIZE = 50;
+import { useAnalyticsEvents } from './useAnalyticsEvents';
 
 const EVENT_OPTIONS = Object.values(ANALYTICS_EVENTS);
 
@@ -79,71 +74,8 @@ function SkeletonRows() {
   ));
 }
 
-interface Filters {
-  eventName: string;
-  orgId: string;
-  datePreset: string;
-}
-
-function buildParams(page: number, f: Filters): URLSearchParams {
-  const params = new URLSearchParams();
-
-  if (f.eventName) params.set('eventName', f.eventName);
-  if (f.orgId) params.set('orgId', f.orgId);
-
-  if (f.datePreset) {
-    const days = Number(f.datePreset);
-    const start = new Date();
-    if (days === 0) {
-      start.setHours(0, 0, 0, 0);
-    } else {
-      start.setDate(start.getDate() - days);
-    }
-    params.set('startDate', start.toISOString());
-    params.set('endDate', new Date().toISOString());
-  }
-
-  params.set('limit', String(PAGE_SIZE));
-  params.set('offset', String((page - 1) * PAGE_SIZE));
-  return params;
-}
-
 export function AnalyticsEventsTable() {
-  const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState<Filters>({ eventName: '', orgId: '', datePreset: '' });
-
-  // Page and filters together are the request, so they are the key. Changing
-  // either drops the previous page's rows in the same render that starts the
-  // new request, which is what keeps the table from showing page 1 under a
-  // "page 2" header for a frame.
-  const key = JSON.stringify({ page, filters });
-  const result = useResource(key, async (signal) => {
-    const res = await apiClient<AnalyticsEventRow[]>(`/admin/analytics-events?${buildParams(page, filters)}`, {
-      signal,
-    });
-    return { rows: res.data, meta: res.meta as unknown as AnalyticsEventsMeta };
-  });
-
-  const orgList = useResource('admin-orgs', async (signal) => {
-    const res = await apiClient<AdminOrgRow[]>('/admin/orgs', { signal });
-    return res.data;
-  });
-
-  // A failed page reads as an empty one, which is what this table did before and
-  // is the right answer for an admin view: the filter controls stay usable so the
-  // reader can try a narrower query rather than staring at a dead page.
-  const events = result.data?.rows ?? [];
-  const meta = result.data?.meta ?? null;
-  const loading = result.status === 'loading';
-  const orgs = orgList.data ?? [];
-  const orgsFailed = orgList.status === 'error';
-
-  function handleFilterChange(key: keyof Filters, value: string) {
-    setFilters((prev) => ({ ...prev, [key]: value }));
-    setPage(1);
-  }
-
-  const totalPages = meta?.pagination?.totalPages ?? 1;
+  const analytics = useAnalyticsEvents();
 
   return (
     <Card>
@@ -154,8 +86,8 @@ export function AnalyticsEventsTable() {
         {/* Filter bar */}
         <div className="flex flex-wrap gap-3" role="search" aria-label="Filter analytics events">
           <select
-            value={filters.eventName}
-            onChange={(e) => handleFilterChange('eventName', e.target.value)}
+            value={analytics.filters.eventName}
+            onChange={(event) => analytics.changeFilter('eventName', event.target.value)}
             className="rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
             aria-label="Filter by event type"
           >
@@ -166,21 +98,21 @@ export function AnalyticsEventsTable() {
           </select>
 
           <select
-            value={filters.orgId}
-            onChange={(e) => handleFilterChange('orgId', e.target.value)}
+            value={analytics.filters.orgId}
+            onChange={(event) => analytics.changeFilter('orgId', event.target.value)}
             className="rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
             aria-label="Filter by organization"
-            disabled={orgsFailed}
+            disabled={analytics.orgsFailed}
           >
-            <option value="">{orgsFailed ? 'Failed to load orgs' : 'All organizations'}</option>
-            {orgs.map((org) => (
+            <option value="">{analytics.orgsFailed ? 'Failed to load orgs' : 'All organizations'}</option>
+            {analytics.orgs.map((org) => (
               <option key={org.id} value={String(org.id)}>{org.name}</option>
             ))}
           </select>
 
           <select
-            value={filters.datePreset}
-            onChange={(e) => handleFilterChange('datePreset', e.target.value)}
+            value={analytics.filters.datePreset}
+            onChange={(event) => analytics.changeFilter('datePreset', event.target.value)}
             className="rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
             aria-label="Filter by date range"
           >
@@ -203,16 +135,16 @@ export function AnalyticsEventsTable() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {loading ? (
+            {analytics.loading ? (
               <SkeletonRows />
-            ) : events.length === 0 ? (
+            ) : analytics.events.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
                   No events found
                 </TableCell>
               </TableRow>
             ) : (
-              events.map((ev) => (
+              analytics.events.map((ev) => (
                 <TableRow key={ev.id}>
                   <TableCell>{eventBadge(ev.eventName)}</TableCell>
                   <TableCell className="font-medium">{ev.orgName ?? 'system'}</TableCell>
@@ -230,26 +162,28 @@ export function AnalyticsEventsTable() {
         {/* Pagination */}
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
-            {meta ? `${meta.total} event${meta.total !== 1 ? 's' : ''} total` : '\u00A0'}
+            {analytics.meta
+              ? `${analytics.meta.total} event${analytics.meta.total !== 1 ? 's' : ''} total`
+              : '\u00A0'}
           </p>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1 || loading}
+              onClick={analytics.previousPage}
+              disabled={analytics.page <= 1 || analytics.loading}
               aria-label="Previous page"
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="text-sm" style={{ fontFeatureSettings: '"tnum"' }} aria-label={`Page ${page} of ${totalPages}`}>
-              {page} / {totalPages}
+            <span className="text-sm" style={{ fontFeatureSettings: '"tnum"' }} aria-label={`Page ${analytics.page} of ${analytics.totalPages}`}>
+              {analytics.page} / {analytics.totalPages}
             </span>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages || loading}
+              onClick={analytics.nextPage}
+              disabled={analytics.page >= analytics.totalPages || analytics.loading}
               aria-label="Next page"
             >
               <ChevronRight className="h-4 w-4" />
