@@ -1,22 +1,17 @@
 'use client';
 
-import { useState } from 'react';
 import { Bell, BellOff, Pencil, Trash2, Loader2, AlertCircle, X, Plus } from 'lucide-react';
-import { apiClient, ApiClientError } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 import { BackLink } from '@/components/common/BackLink';
 import { AlertRuleForm } from './AlertRuleForm';
 import {
   describeThreshold,
-  emptyAlertRuleForm,
-  formToPayload,
   formatAlertDate,
   isAlertMuted,
   KIND_META,
-  ruleToForm,
   type AlertRule,
-  type AlertRuleFormState,
 } from './alertRuleModel';
+import { useAlertRules } from './useAlertRules';
 
 export type { AlertRule } from './alertRuleModel';
 
@@ -25,128 +20,25 @@ interface Props {
 }
 
 export default function AlertRules({ initial }: Props) {
-  const [rules, setRules] = useState<AlertRule[]>(initial);
-  const [error, setError] = useState<string | null>(null);
-  const [formOpen, setFormOpen] = useState(false);
-  const [form, setForm] = useState<AlertRuleFormState>(emptyAlertRuleForm());
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [busyId, setBusyId] = useState<number | null>(null);
-
-  const parsedNumericValue = Number(form.numericValue);
-  const numericInvalid =
-    form.kind !== 'anomaly_fires' &&
-    (!Number.isFinite(parsedNumericValue) || parsedNumericValue <= 0);
-
-  function reportError(err: unknown, fallback: string) {
-    if (err instanceof ApiClientError && err.status === 403) {
-      setError('Only organization owners can manage alert rules.');
-      return;
-    }
-    setError(err instanceof Error ? err.message : fallback);
-  }
-
-  function openCreateForm() {
-    setEditingId(null);
-    setForm(emptyAlertRuleForm());
-    setFormOpen(true);
-    setError(null);
-  }
-
-  function openEditForm(rule: AlertRule) {
-    setEditingId(rule.id);
-    setForm(ruleToForm(rule));
-    setFormOpen(true);
-    setError(null);
-  }
-
-  function closeForm() {
-    setFormOpen(false);
-    setEditingId(null);
-  }
-
-  async function submitForm(e: React.FormEvent) {
-    e.preventDefault();
-    if (submitting) return;
-    if (numericInvalid) return;
-
-    setSubmitting(true);
-    setError(null);
-    const payload = formToPayload(form);
-
-    try {
-      if (editingId != null) {
-        const { data } = await apiClient<AlertRule>(`/org/alert-rules/${editingId}`, {
-          method: 'PUT',
-          body: JSON.stringify(payload),
-        });
-        setRules((prev) => prev.map((r) => (r.id === editingId ? data : r)));
-      } else {
-        const { data } = await apiClient<AlertRule>('/org/alert-rules', {
-          method: 'POST',
-          body: JSON.stringify(payload),
-        });
-        setRules((prev) => [data, ...prev]);
-      }
-      closeForm();
-    } catch (err) {
-      reportError(
-        err,
-        editingId != null ? 'Failed to update alert rule' : 'Failed to create alert rule',
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function toggleEnabled(rule: AlertRule) {
-    setBusyId(rule.id);
-    setError(null);
-    try {
-      const { data } = await apiClient<AlertRule>(`/org/alert-rules/${rule.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          kind: rule.kind,
-          threshold: rule.threshold,
-          enabled: !rule.enabled,
-        }),
-      });
-      setRules((prev) => prev.map((r) => (r.id === rule.id ? data : r)));
-    } catch (err) {
-      reportError(err, 'Failed to update alert rule');
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function unmuteRule(rule: AlertRule) {
-    setBusyId(rule.id);
-    setError(null);
-    try {
-      const { data } = await apiClient<AlertRule>(`/org/alert-rules/${rule.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ kind: rule.kind, threshold: rule.threshold, muteUntil: null }),
-      });
-      setRules((prev) => prev.map((r) => (r.id === rule.id ? data : r)));
-    } catch (err) {
-      reportError(err, 'Failed to unmute alert rule');
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function deleteRule(id: number) {
-    setBusyId(id);
-    setError(null);
-    try {
-      await apiClient(`/org/alert-rules/${id}`, { method: 'DELETE' });
-      setRules((prev) => prev.filter((r) => r.id !== id));
-    } catch (err) {
-      reportError(err, 'Failed to delete alert rule');
-    } finally {
-      setBusyId(null);
-    }
-  }
+  const {
+    rules,
+    error,
+    dismissError,
+    formOpen,
+    form,
+    setForm,
+    editingId,
+    submitting,
+    busyId,
+    numericInvalid,
+    openCreateForm,
+    openEditForm,
+    closeForm,
+    submitForm,
+    toggleEnabled,
+    unmuteRule,
+    deleteRule,
+  } = useAlertRules(initial);
 
   return (
     <div className="min-h-screen bg-background">
@@ -175,7 +67,7 @@ export default function AlertRules({ initial }: Props) {
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
             <p className="flex-1 text-sm text-destructive">{error}</p>
             <button
-              onClick={() => setError(null)}
+              onClick={dismissError}
               className="shrink-0 rounded-md p-0.5 text-destructive/60 transition-colors hover:text-destructive"
               aria-label="Dismiss error"
             >
