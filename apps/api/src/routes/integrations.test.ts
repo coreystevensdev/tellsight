@@ -55,6 +55,12 @@ const mockShopifyIsValidShopDomain = vi.fn();
 const mockShopifyExchangeCode = vi.fn();
 const mockShopifyRevokeToken = vi.fn();
 const mockShopifyVerifyHmac = vi.fn();
+const mockSquareGenerateAuthUrl = vi.fn();
+const mockSquareExchangeCode = vi.fn();
+const mockSquareRevokeToken = vi.fn();
+const mockSquareEnqueueSyncJob = vi.fn();
+const mockSquareRegisterDailySync = vi.fn();
+const mockSquareRemoveDailySync = vi.fn();
 
 // lib/db.ts opens two postgres clients at module load, and this graph now
 // reaches it. Without the mock every such test file leaks a pool.
@@ -78,6 +84,7 @@ vi.mock('../config.js', () => ({
   },
   isQbConfigured: () => true,
   isShopifyConfigured: () => true,
+  isSquareConfigured: () => true,
 }));
 
 vi.mock('../db/queries/index.js', () => ({
@@ -109,6 +116,21 @@ vi.mock('../services/integrations/shopify/worker.js', () => ({
 vi.mock('../services/integrations/shopify/scheduler.js', () => ({
   registerDailySync: vi.fn(),
   removeDailySync: vi.fn(),
+}));
+
+vi.mock('../services/integrations/square/oauth.js', () => ({
+  generateAuthUrl: mockSquareGenerateAuthUrl,
+  exchangeCode: mockSquareExchangeCode,
+  revokeToken: mockSquareRevokeToken,
+}));
+
+vi.mock('../services/integrations/square/worker.js', () => ({
+  enqueueSyncJob: mockSquareEnqueueSyncJob,
+}));
+
+vi.mock('../services/integrations/square/scheduler.js', () => ({
+  registerDailySync: mockSquareRegisterDailySync,
+  removeDailySync: mockSquareRemoveDailySync,
 }));
 
 vi.mock('../services/integrations/encryption.js', () => ({
@@ -737,6 +759,247 @@ describe('integrations routes', () => {
       await handler(req, res, vi.fn());
 
       expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?shopify=error');
+    });
+  });
+
+  describe('Square integration', () => {
+    it('starts the connect flow and sets identity cookies', async () => {
+      mockGetByOrgAndProvider.mockResolvedValueOnce(null);
+      mockSquareGenerateAuthUrl.mockReturnValueOnce({
+        authUrl: 'https://connect.squareup.com/oauth2/authorize?client_id=square-id',
+        state: 'square-state',
+      });
+
+      const { integrationsRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsRouter, 'POST', '/square/connect');
+      const res = createMockRes();
+
+      await handler(createMockReq(), res, vi.fn());
+
+      expect(res._json).toEqual({
+        data: { authUrl: 'https://connect.squareup.com/oauth2/authorize?client_id=square-id' },
+      });
+      expect(res._cookies.square_oauth_state?.value).toBe('square-state');
+      expect(res._cookies.square_oauth_org_id?.value).toBe('10');
+      expect(res._cookies.square_oauth_user_id?.value).toBe('1');
+    });
+
+    it('rejects a duplicate connection', async () => {
+      mockGetByOrgAndProvider.mockResolvedValueOnce({ id: 3 });
+
+      const { integrationsRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsRouter, 'POST', '/square/connect');
+      const res = createMockRes();
+
+      await handler(createMockReq(), res, vi.fn());
+
+      expect(res.statusCode).toBe(409);
+      expect(res._json?.error?.code).toBe('ALREADY_CONNECTED');
+      expect(mockSquareGenerateAuthUrl).not.toHaveBeenCalled();
+    });
+
+    it('returns connected status with the merchant id', async () => {
+      mockGetByOrgAndProvider.mockResolvedValueOnce({
+        providerTenantId: 'merchant-123',
+        syncStatus: 'idle',
+        lastSyncedAt: new Date('2026-04-15T03:00:00Z'),
+        syncError: null,
+        createdAt: new Date('2026-04-10T14:00:00Z'),
+      });
+
+      const { integrationsRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsRouter, 'GET', '/square/status');
+      const res = createMockRes();
+
+      await handler(createMockReq(), res, vi.fn());
+
+      expect(res._json?.data).toMatchObject({
+        connected: true,
+        provider: 'square',
+        merchantId: 'merchant-123',
+      });
+    });
+
+    it('returns disconnected status when no connection exists', async () => {
+      mockGetByOrgAndProvider.mockResolvedValueOnce(null);
+
+      const { integrationsRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsRouter, 'GET', '/square/status');
+      const res = createMockRes();
+
+      await handler(createMockReq(), res, vi.fn());
+
+      expect(res._json?.data?.connected).toBe(false);
+    });
+
+    it('queues a manual sync', async () => {
+      mockGetByOrgAndProvider.mockResolvedValueOnce({ id: 33 });
+
+      const { integrationsRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsRouter, 'POST', '/square/sync');
+      const res = createMockRes();
+
+      await handler(createMockReq(), res, vi.fn());
+
+      expect(mockSquareEnqueueSyncJob).toHaveBeenCalledWith(33, 'manual');
+      expect(res._json?.data?.message).toBe('Sync started');
+    });
+
+    it('returns 404 when syncing without a connection', async () => {
+      mockGetByOrgAndProvider.mockResolvedValueOnce(null);
+
+      const { integrationsRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsRouter, 'POST', '/square/sync');
+      const res = createMockRes();
+
+      await handler(createMockReq(), res, vi.fn());
+
+      expect(res.statusCode).toBe(404);
+      expect(mockSquareEnqueueSyncJob).not.toHaveBeenCalled();
+    });
+
+    it('revokes and deletes a connection', async () => {
+      mockGetByOrgAndProvider.mockResolvedValueOnce({
+        id: 33,
+        encryptedAccessToken: 'encrypted-square-token',
+      });
+      mockDecrypt.mockReturnValueOnce('square-access-token');
+      mockSquareRevokeToken.mockResolvedValueOnce(undefined);
+      mockDeleteByOrgAndProvider.mockResolvedValueOnce(1);
+
+      const { integrationsRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsRouter, 'DELETE', '/square');
+      const res = createMockRes();
+
+      await handler(createMockReq(), res, vi.fn());
+
+      expect(mockSquareRevokeToken).toHaveBeenCalledWith('square-access-token');
+      expect(mockSquareRemoveDailySync).toHaveBeenCalledWith(10);
+      expect(mockDeleteByOrgAndProvider).toHaveBeenCalledWith(10, 'square', expect.anything());
+      expect(mockTrackEvent).toHaveBeenCalledWith(
+        10,
+        1,
+        'integration.disconnected',
+        expect.objectContaining({ provider: 'square' }),
+      );
+      expect(mockAuditAuth).toHaveBeenCalledWith(
+        expect.anything(),
+        'integration.disconnected',
+        expect.objectContaining({ targetId: 'square' }),
+      );
+    });
+
+    it('persists tokens and schedules sync after a valid callback', async () => {
+      const expiresAt = new Date('2026-04-15T03:00:00Z');
+      mockSquareExchangeCode.mockResolvedValueOnce({
+        accessToken: 'square-access',
+        refreshToken: 'square-refresh',
+        expiresAt,
+        merchantId: 'merchant-123',
+        scope: 'ORDERS_READ',
+      });
+      mockEncrypt.mockReturnValueOnce('enc-refresh').mockReturnValueOnce('enc-access');
+      mockUpsert.mockResolvedValueOnce({ id: 33 });
+
+      const { integrationsCallbackRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/square/callback');
+      const req = createMockReq({
+        query: { code: 'square-code', state: 'square-state' },
+        cookies: {
+          square_oauth_state: 'square-state',
+          square_oauth_org_id: '10',
+          square_oauth_user_id: '1',
+        },
+      });
+      const res = createMockRes();
+
+      await handler(req, res, vi.fn());
+
+      expect(mockSquareExchangeCode).toHaveBeenCalledWith('square-code');
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orgId: 10,
+          provider: 'square',
+          providerTenantId: 'merchant-123',
+          encryptedRefreshToken: 'enc-refresh',
+          encryptedAccessToken: 'enc-access',
+          accessTokenExpiresAt: expiresAt,
+        }),
+        expect.anything(),
+      );
+      expect(mockSquareEnqueueSyncJob).toHaveBeenCalledWith(33, 'initial');
+      expect(mockSquareRegisterDailySync).toHaveBeenCalledWith(10, 33);
+      expect(mockAudit).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ targetId: 'square' }),
+      );
+      expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?square=connected');
+    });
+
+    it('rejects a callback with mismatched state before token exchange', async () => {
+      const { integrationsCallbackRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/square/callback');
+      const req = createMockReq({
+        query: { code: 'square-code', state: 'wrong-state' },
+        cookies: { square_oauth_state: 'square-state' },
+      });
+      const res = createMockRes();
+
+      await handler(req, res, vi.fn());
+
+      expect(mockSquareExchangeCode).not.toHaveBeenCalled();
+      expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?square=error');
+    });
+
+    it('redirects denied callbacks without token exchange', async () => {
+      const { integrationsCallbackRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/square/callback');
+      const res = createMockRes();
+
+      await handler(
+        createMockReq({ query: { error: 'access_denied' } }),
+        res,
+        vi.fn(),
+      );
+
+      expect(mockSquareExchangeCode).not.toHaveBeenCalled();
+      expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?square=denied');
+    });
+
+    it('redirects with error when identity cookies are missing', async () => {
+      const { integrationsCallbackRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/square/callback');
+      const req = createMockReq({
+        query: { code: 'square-code', state: 'square-state' },
+        cookies: { square_oauth_state: 'square-state' },
+      });
+      const res = createMockRes();
+
+      await handler(req, res, vi.fn());
+
+      expect(mockSquareExchangeCode).not.toHaveBeenCalled();
+      expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?square=error');
+    });
+
+    it('redirects with error when token exchange fails', async () => {
+      mockSquareExchangeCode.mockRejectedValueOnce(new Error('Square unavailable'));
+
+      const { integrationsCallbackRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/square/callback');
+      const req = createMockReq({
+        query: { code: 'square-code', state: 'square-state' },
+        cookies: {
+          square_oauth_state: 'square-state',
+          square_oauth_org_id: '10',
+          square_oauth_user_id: '1',
+        },
+      });
+      const res = createMockRes();
+
+      await handler(req, res, vi.fn());
+
+      expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?square=error');
+      expect(mockUpsert).not.toHaveBeenCalled();
     });
   });
 });

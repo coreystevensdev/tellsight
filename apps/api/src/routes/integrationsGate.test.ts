@@ -26,6 +26,7 @@ vi.mock('../config.js', () => ({
   env: { APP_URL: 'http://localhost:3000', NODE_ENV: 'test' },
   isQbConfigured: () => false,
   isShopifyConfigured: () => false,
+  isSquareConfigured: () => false,
 }));
 
 vi.mock('../lib/logger.js', () => ({
@@ -77,6 +78,11 @@ const GATED = [
   ['POST', '/integrations/shopify/sync'],
   ['DELETE', '/integrations/shopify'],
   ['GET', '/integrations/shopify/callback'],
+  ['POST', '/integrations/square/connect'],
+  ['GET', '/integrations/square/status'],
+  ['POST', '/integrations/square/sync'],
+  ['DELETE', '/integrations/square'],
+  ['GET', '/integrations/square/callback'],
 ] as const;
 
 describe('connector routes with no partner credentials configured', () => {

@@ -17,14 +17,12 @@ import { removeDailySync } from '../services/integrations/scheduler.js';
 import * as shopifyOAuth from '../services/integrations/shopify/oauth.js';
 import { enqueueSyncJob as enqueueShopifySyncJob } from '../services/integrations/shopify/worker.js';
 import { removeDailySync as removeShopifyDailySync } from '../services/integrations/shopify/scheduler.js';
-import * as squareOAuth from '../services/integrations/square/oauth.js';
-import { enqueueSyncJob as enqueueSquareSyncJob } from '../services/integrations/square/worker.js';
-import { removeDailySync as removeSquareDailySync } from '../services/integrations/square/scheduler.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
 import { auditAuth } from '../services/audit/auditService.js';
 import { sessionCookieOptions } from '../lib/cookies.js';
 import { AUDIT_ACTIONS } from 'shared/constants';
 import { registerIntegrationCallbacks } from './integrationCallbacks.js';
+import { registerSquareIntegrationRoutes } from './squareIntegrationRoutes.js';
 
 function qbGuard(_req: Request, res: Response, next: () => void) {
   if (!isQbConfigured(env)) {
@@ -300,105 +298,7 @@ integrationsRouter.delete('/shopify', roleGuard('owner'), async (req: Request, r
   res.json({ data: { message: 'Shopify disconnected' } });
 });
 
-// Unlike Shopify, a Square authorize URL is the same for every seller, so
-// /connect needs nothing from the caller: which merchant is connecting only
-// becomes known when the callback returns a merchant_id.
-integrationsRouter.post('/square/connect', async (req: Request, res: Response) => {
-  const user = requireUser(req);
-  const orgId = user.org_id;
-
-  const existing = await withRlsContext(orgId, user.isAdmin, (tx) =>
-    integrationConnectionsQueries.getByOrgAndProvider(orgId, 'square', tx),
-  );
-  if (existing) {
-    res.status(409).json({
-      error: { code: 'ALREADY_CONNECTED', message: 'Square is already connected' },
-    });
-    return;
-  }
-
-  const { authUrl, state } = squareOAuth.generateAuthUrl();
-  const cookieOpts = sessionCookieOptions(10 * 60);
-
-  res.cookie('square_oauth_state', state, cookieOpts);
-  res.cookie('square_oauth_org_id', String(orgId), cookieOpts);
-  res.cookie('square_oauth_user_id', user.sub, cookieOpts);
-
-  res.json({ data: { authUrl } });
-});
-
-integrationsRouter.get('/square/status', async (req: Request, res: Response) => {
-  const user = requireUser(req);
-  const connection = await withRlsContext(user.org_id, user.isAdmin, (tx) =>
-    integrationConnectionsQueries.getByOrgAndProvider(user.org_id, 'square', tx),
-  );
-
-  if (!connection) {
-    res.json({ data: { connected: false } });
-    return;
-  }
-
-  res.json({
-    data: {
-      connected: true,
-      provider: 'square',
-      merchantId: connection.providerTenantId,
-      syncStatus: connection.syncStatus,
-      lastSyncedAt: connection.lastSyncedAt,
-      syncError: connection.syncError,
-      connectedAt: connection.createdAt,
-    },
-  });
-});
-
-integrationsRouter.post('/square/sync', async (req: Request, res: Response) => {
-  const user = requireUser(req);
-  const connection = await withRlsContext(user.org_id, user.isAdmin, (tx) =>
-    integrationConnectionsQueries.getByOrgAndProvider(user.org_id, 'square', tx),
-  );
-
-  if (!connection) {
-    res.status(404).json({
-      error: { code: 'NOT_CONNECTED', message: 'No Square connection found' },
-    });
-    return;
-  }
-
-  await enqueueSquareSyncJob(connection.id, 'manual');
-  res.json({ data: { message: 'Sync started' } });
-});
-
-integrationsRouter.delete('/square', roleGuard('owner'), async (req: Request, res: Response) => {
-  const user = requireUser(req);
-  const connection = await withRlsContext(user.org_id, user.isAdmin, (tx) =>
-    integrationConnectionsQueries.getByOrgAndProvider(user.org_id, 'square', tx),
-  );
-
-  if (!connection) {
-    res.status(404).json({
-      error: { code: 'NOT_CONNECTED', message: 'No Square connection found' },
-    });
-    return;
-  }
-
-  await squareOAuth.revokeToken(decrypt(connection.encryptedAccessToken));
-  await removeSquareDailySync(user.org_id);
-  await withRlsContext(user.org_id, user.isAdmin, (tx) =>
-    integrationConnectionsQueries.deleteByOrgAndProvider(user.org_id, 'square', tx),
-  );
-
-  trackEvent(user.org_id, Number(user.sub), ANALYTICS_EVENTS.INTEGRATION_DISCONNECTED, {
-    provider: 'square',
-  });
-
-  auditAuth(req, AUDIT_ACTIONS.INTEGRATION_DISCONNECTED, {
-    targetType: 'integration',
-    targetId: 'square',
-  });
-
-  logger.info({ orgId: user.org_id }, 'Square disconnected');
-  res.json({ data: { message: 'Square disconnected' } });
-});
+registerSquareIntegrationRoutes(integrationsRouter);
 
 // Public callback routes (providers redirect the browser here, no auth cookies)
 export const integrationsCallbackRouter = Router();
