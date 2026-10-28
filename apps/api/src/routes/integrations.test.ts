@@ -889,6 +889,34 @@ describe('integrations routes', () => {
       );
     });
 
+    it('returns 404 when disconnecting without a connection', async () => {
+      mockGetByOrgAndProvider.mockResolvedValueOnce(null);
+
+      const { integrationsRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsRouter, 'DELETE', '/square');
+      const res = createMockRes();
+
+      await handler(createMockReq(), res, vi.fn());
+
+      expect(res.statusCode).toBe(404);
+      expect(mockSquareRevokeToken).not.toHaveBeenCalled();
+      expect(mockDeleteByOrgAndProvider).not.toHaveBeenCalled();
+    });
+
+    it('requires an owner to disconnect Square', async () => {
+      const { integrationsRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsRouter, 'DELETE', '/square');
+      const req = createMockReq({
+        user: { sub: '2', org_id: 10, role: 'member', isAdmin: false },
+      });
+
+      await expect(handler(req, createMockRes(), vi.fn())).rejects.toMatchObject({
+        statusCode: 403,
+        code: 'FORBIDDEN',
+      });
+      expect(mockGetByOrgAndProvider).not.toHaveBeenCalled();
+    });
+
     it('persists tokens and schedules sync after a valid callback', async () => {
       const expiresAt = new Date('2026-04-15T03:00:00Z');
       mockSquareExchangeCode.mockResolvedValueOnce({
@@ -981,6 +1009,26 @@ describe('integrations routes', () => {
       expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?square=error');
     });
 
+    it('clears validated state and rejects a callback without a code', async () => {
+      const { integrationsCallbackRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/square/callback');
+      const req = createMockReq({
+        query: { state: 'square-state' },
+        cookies: {
+          square_oauth_state: 'square-state',
+          square_oauth_org_id: '10',
+          square_oauth_user_id: '1',
+        },
+      });
+      const res = createMockRes();
+
+      await handler(req, res, vi.fn());
+
+      expect(res._clearedCookies).toContain('square_oauth_state');
+      expect(mockSquareExchangeCode).not.toHaveBeenCalled();
+      expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?square=error');
+    });
+
     it('redirects with error when token exchange fails', async () => {
       mockSquareExchangeCode.mockRejectedValueOnce(new Error('Square unavailable'));
 
@@ -1000,6 +1048,36 @@ describe('integrations routes', () => {
 
       expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?square=error');
       expect(mockUpsert).not.toHaveBeenCalled();
+    });
+
+    it('redirects with error when connection persistence fails', async () => {
+      mockSquareExchangeCode.mockResolvedValueOnce({
+        accessToken: 'square-access',
+        refreshToken: 'square-refresh',
+        expiresAt: new Date('2026-04-15T03:00:00Z'),
+        merchantId: 'merchant-123',
+        scope: 'ORDERS_READ',
+      });
+      mockEncrypt.mockReturnValueOnce('enc-refresh').mockReturnValueOnce('enc-access');
+      mockUpsert.mockRejectedValueOnce(new Error('Database unavailable'));
+
+      const { integrationsCallbackRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/square/callback');
+      const req = createMockReq({
+        query: { code: 'square-code', state: 'square-state' },
+        cookies: {
+          square_oauth_state: 'square-state',
+          square_oauth_org_id: '10',
+          square_oauth_user_id: '1',
+        },
+      });
+      const res = createMockRes();
+
+      await handler(req, res, vi.fn());
+
+      expect(mockSquareEnqueueSyncJob).not.toHaveBeenCalled();
+      expect(mockSquareRegisterDailySync).not.toHaveBeenCalled();
+      expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?square=error');
     });
   });
 });
