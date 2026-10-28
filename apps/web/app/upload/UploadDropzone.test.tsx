@@ -382,6 +382,41 @@ describe('UploadDropzone', () => {
     expect(clickSpy).toHaveBeenCalled();
   });
 
+  it('keeps drag-hover active until every nested drag target has left', () => {
+    render(<UploadDropzone />);
+
+    const dropzone = screen.getByRole('button', { name: /tap to select your csv file/i });
+    fireEvent.dragEnter(dropzone);
+    fireEvent.dragEnter(dropzone);
+
+    expect(screen.getByText('Drop to upload')).toBeInTheDocument();
+
+    fireEvent.dragLeave(dropzone);
+    expect(screen.getByText('Drop to upload')).toBeInTheDocument();
+
+    fireEvent.dragLeave(dropzone);
+    expect(screen.getByText(/tap to select your csv file/i)).toBeInTheDocument();
+  });
+
+  it('starts uploading the first file dropped onto the dropzone', async () => {
+    render(<UploadDropzone />);
+
+    const dropzone = screen.getByRole('button', { name: /tap to select your csv file/i });
+    const file = new File(
+      ['date,amount,category\n2024-01-01,100,Food'],
+      'dropped.csv',
+      { type: 'text/csv' },
+    );
+
+    fireEvent.drop(dropzone, { dataTransfer: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByText(/validating your data/i)).toBeInTheDocument();
+    });
+    expect(xhrInstance.open).toHaveBeenCalledWith('POST', '/api/datasets');
+    expect(xhrInstance.send).toHaveBeenCalled();
+  });
+
   it('retains file name reference after error', async () => {
     render(<UploadDropzone />);
 
