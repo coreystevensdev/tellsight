@@ -964,6 +964,44 @@ describe('integrations routes', () => {
       expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?square=connected');
     });
 
+    it('clears all OAuth cookies and tracks a successful connection', async () => {
+      mockSquareExchangeCode.mockResolvedValueOnce({
+        accessToken: 'square-access',
+        refreshToken: 'square-refresh',
+        expiresAt: new Date('2026-04-15T03:00:00Z'),
+        merchantId: 'merchant-123',
+        scope: 'ORDERS_READ',
+      });
+      mockEncrypt.mockReturnValueOnce('enc-refresh').mockReturnValueOnce('enc-access');
+      mockUpsert.mockResolvedValueOnce({ id: 33 });
+
+      const { integrationsCallbackRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/square/callback');
+      const req = createMockReq({
+        query: { code: 'square-code', state: 'square-state' },
+        cookies: {
+          square_oauth_state: 'square-state',
+          square_oauth_org_id: '10',
+          square_oauth_user_id: '1',
+        },
+      });
+      const res = createMockRes();
+
+      await handler(req, res, vi.fn());
+
+      expect(res._clearedCookies).toEqual([
+        'square_oauth_state',
+        'square_oauth_org_id',
+        'square_oauth_user_id',
+      ]);
+      expect(mockTrackEvent).toHaveBeenCalledWith(
+        10,
+        1,
+        'integration.connected',
+        { provider: 'square', merchantId: 'merchant-123' },
+      );
+    });
+
     it('rejects a callback with mismatched state before token exchange', async () => {
       const { integrationsCallbackRouter } = await import('./integrations.js');
       const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/square/callback');
@@ -976,6 +1014,7 @@ describe('integrations routes', () => {
       await handler(req, res, vi.fn());
 
       expect(mockSquareExchangeCode).not.toHaveBeenCalled();
+      expect(res._clearedCookies).not.toContain('square_oauth_state');
       expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?square=error');
     });
 
