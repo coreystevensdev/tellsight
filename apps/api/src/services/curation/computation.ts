@@ -13,12 +13,10 @@ import type { CategoryPlan } from 'shared/types';
 import type {
   ComputedStat,
   IdentifiedStat,
-  MarginTrendStat,
-  CategoryVarianceStat,
 } from './types.js';
 import { StatType } from './types.js';
 
-import { monthKey, parseAmount, type DataRow } from './computationPrimitives.js';
+import { monthKey, type DataRow } from './computationPrimitives.js';
 import {
   computeBreakEven,
   computeCashFlow,
@@ -30,6 +28,12 @@ import {
 } from './financialMetrics.js';
 import { assignIds, findMatchingStat } from './statIdentity.js';
 import { computeSeasonalProjection, computeYearOverYear } from './revenueMetrics.js';
+import { computeMarginTrend } from './marginMetrics.js';
+import {
+  computeCategoryVariance,
+  groupByCategory,
+  type CategoryGroup,
+} from './categoryMetrics.js';
 
 export { MONTH_NAMES, monthKey } from './computationPrimitives.js';
 export {
@@ -53,31 +57,8 @@ export {
   matchesStatShape,
   statInstanceId,
 } from './statIdentity.js';
-
-interface CategoryGroup {
-  amounts: number[];
-  timeSeries: [number, number][];
-}
-
-function groupByCategory(rows: DataRow[]): Map<string, CategoryGroup> {
-  const groups = new Map<string, CategoryGroup>();
-
-  for (const row of rows) {
-    const amt = parseAmount(row.amount);
-    if (amt === null) continue;
-
-    let group = groups.get(row.category);
-    if (!group) {
-      group = { amounts: [], timeSeries: [] };
-      groups.set(row.category, group);
-    }
-
-    group.amounts.push(amt);
-    group.timeSeries.push([row.date.getTime(), amt]);
-  }
-
-  return groups;
-}
+export { marginTrendMonths } from './marginMetrics.js';
+export { computeCategoryVariance } from './categoryMetrics.js';
 
 function computeTotals(
   groups: Map<string, CategoryGroup>,
@@ -289,151 +270,6 @@ function computeCategoryBreakdowns(
         transactionCount: group.amounts.length,
         min: min(group.amounts),
         max: max(group.amounts),
-      },
-    });
-  }
-
-  return stats;
-}
-
-// Recent/prior month split for margin trend analysis: the trailing half of
-// months with Income or Expenses activity vs. the leading half. Extracted
-// from computeMarginTrend so resolveSourceRows (sourceRows.ts) can recompute
-// the same window without duplicating the split logic.
-export function marginTrendMonths(rows: DataRow[]): { recentMonths: string[]; priorMonths: string[] } | null {
-  const months = new Set<string>();
-  for (const row of rows) {
-    const amt = parseAmount(row.amount);
-    if (amt === null) continue;
-    if (row.parentCategory === 'Income' || row.parentCategory === 'Expenses') {
-      months.add(monthKey(row.date));
-    }
-  }
-
-  const sorted = [...months].sort();
-  if (sorted.length < 4) return null;
-
-  const half = Math.floor(sorted.length / 2);
-  return { recentMonths: sorted.slice(half), priorMonths: sorted.slice(0, half) };
-}
-
-function computeMarginTrend(rows: DataRow[]): MarginTrendStat[] {
-  const revenueByMonth = new Map<string, number>();
-  const expenseByMonth = new Map<string, number>();
-
-  for (const row of rows) {
-    const amt = parseAmount(row.amount);
-    if (amt === null) continue;
-
-    const key = monthKey(row.date);
-    if (row.parentCategory === 'Income') {
-      revenueByMonth.set(key, (revenueByMonth.get(key) ?? 0) + amt);
-    } else if (row.parentCategory === 'Expenses') {
-      expenseByMonth.set(key, (expenseByMonth.get(key) ?? 0) + amt);
-    }
-  }
-
-  const monthSplit = marginTrendMonths(rows);
-  if (!monthSplit) return [];
-  const { recentMonths, priorMonths } = monthSplit;
-
-  const recentRevenue = recentMonths.reduce((s, m) => s + (revenueByMonth.get(m) ?? 0), 0);
-  const recentExpense = recentMonths.reduce((s, m) => s + (expenseByMonth.get(m) ?? 0), 0);
-  const priorRevenue = priorMonths.reduce((s, m) => s + (revenueByMonth.get(m) ?? 0), 0);
-  const priorExpense = priorMonths.reduce((s, m) => s + (expenseByMonth.get(m) ?? 0), 0);
-
-  if (recentRevenue === 0 || priorRevenue === 0) return [];
-
-  const recentMargin = ((recentRevenue - recentExpense) / recentRevenue) * 100;
-  const priorMargin = ((priorRevenue - priorExpense) / priorRevenue) * 100;
-  const diff = recentMargin - priorMargin;
-
-  const direction = Math.abs(diff) < 2 ? 'stable' as const
-    : diff > 0 ? 'expanding' as const
-    : 'shrinking' as const;
-
-  const revenueGrowth = ((recentRevenue - priorRevenue) / priorRevenue) * 100;
-  const expenseGrowth = ((recentExpense - priorExpense) / priorExpense) * 100;
-
-  return [{
-    statType: StatType.MarginTrend,
-    category: null,
-    value: recentMargin,
-    comparison: priorMargin,
-    details: {
-      recentMarginPercent: Math.round(recentMargin * 10) / 10,
-      priorMarginPercent: Math.round(priorMargin * 10) / 10,
-      direction,
-      revenueGrowthPercent: Math.round(revenueGrowth * 10) / 10,
-      expenseGrowthPercent: Math.round(expenseGrowth * 10) / 10,
-    },
-  }];
-}
-
-// Plan versus actual, for the latest month the data covers in full.
-//
-// The current calendar month is excluded on purpose. A plan is a whole month's
-// figure, so comparing it against three days of spend reports every category as
-// massively under plan, which is the kind of confidently wrong insight this
-// pipeline exists to avoid. One month of lag beats a wrong number.
-//
-// Only categories the owner actually planned produce a stat. A plan with no
-// matching rows in that month still does, with an actual of zero: "you planned
-// 2,400 for rent and nothing went out" is a real finding, not a gap.
-export function computeCategoryVariance(
-  groups: Map<string, CategoryGroup>,
-  plans: CategoryPlan[] | null | undefined,
-  now: Date = new Date(),
-): CategoryVarianceStat[] {
-  if (!plans?.length) return [];
-
-  const currentMonth = monthKey(now);
-  const months = new Set<string>();
-  for (const group of groups.values()) {
-    for (const [ts] of group.timeSeries) months.add(monthKey(new Date(ts)));
-  }
-
-  const complete = [...months].filter((m) => m !== currentMonth).sort();
-  const target = complete[complete.length - 1];
-  if (!target) return [];
-
-  const stats: CategoryVarianceStat[] = [];
-
-  // One stat per category, enforced here rather than trusted from the caller.
-  // statDiscriminator returns a fixed placeholder for this type, so a second
-  // stat for the same category would collide and assignIds would silently drop
-  // it. The table has a unique index, but this function takes a plain array.
-  const seen = new Set<string>();
-
-  for (const plan of plans) {
-    if (seen.has(plan.category)) continue;
-    seen.add(plan.category);
-
-    const group = groups.get(plan.category);
-    let actualMonthly = 0;
-    if (group) {
-      for (const [ts, amt] of group.timeSeries) {
-        if (monthKey(new Date(ts)) === target) actualMonthly += Math.abs(amt);
-      }
-    }
-
-    const variance = actualMonthly - plan.plannedMonthly;
-    // A zero plan has no percentage to report. Guard rather than emit Infinity,
-    // which validateSummary would then have to recognise as not-a-figure.
-    const variancePercent = plan.plannedMonthly === 0 ? 0 : (variance / plan.plannedMonthly) * 100;
-    const direction = Math.abs(variancePercent) < 5 ? 'on_plan' : variance > 0 ? 'over' : 'under';
-
-    stats.push({
-      statType: StatType.CategoryVariance,
-      category: plan.category,
-      value: variance,
-      details: {
-        plannedMonthly: plan.plannedMonthly,
-        actualMonthly,
-        variance,
-        variancePercent: Math.round(variancePercent * 10) / 10,
-        monthLabel: target,
-        direction,
       },
     });
   }
