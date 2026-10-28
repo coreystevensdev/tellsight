@@ -16,12 +16,11 @@ import { createAnthropicHealthProbe } from './anthropicHealth.js';
 import {
   AbortedByClient,
   MAX_OUTPUT_TOKENS,
-  applyCostGate,
   firstText,
-  mapAnthropicError,
   modelFor,
   systemParam,
 } from './anthropicProviderSupport.js';
+import { createAnthropicProseMethods } from './anthropicProseProvider.js';
 import { createAnthropicToolMethods } from './anthropicToolProvider.js';
 import { registerProvider } from './provider.js';
 
@@ -89,6 +88,9 @@ export async function probeClaudeHealth(): Promise<ProviderHealth> {
 
 const anthropicHealth = probeClaudeHealth;
 
+const { generate: anthropicGenerate, generateWithModel: runGenerateWithModel } =
+  createAnthropicProseMethods({ client, runInBreaker });
+
 /**
  * Generate against a named model rather than whatever the path resolves to.
  *
@@ -98,48 +100,7 @@ const anthropicHealth = probeClaudeHealth;
  * everything else, so a judge run is bounded and costed like any other call.
  */
 export async function generateWithModel(input: PromptInput, model: string): Promise<string> {
-  return runInBreaker(async () => {
-    try {
-      const message = await client.messages.create({
-        model,
-        max_tokens: MAX_OUTPUT_TOKENS,
-        ...(systemParam(input) && { system: systemParam(input) }),
-        messages: [{ role: 'user', content: input.user }],
-      });
-
-      const text = firstText(message.content);
-      applyCostGate(message.usage, 'generateWithModel', model);
-
-      return text;
-    } catch (err) {
-      mapAnthropicError(err);
-    }
-  });
-}
-
-async function anthropicGenerate(input: PromptInput): Promise<string> {
-  return runInBreaker(async () => {
-    try {
-      const message = await client.messages.create({
-        model: modelFor('prose'),
-        max_tokens: MAX_OUTPUT_TOKENS,
-        ...(systemParam(input) && { system: systemParam(input) }),
-        messages: [{ role: 'user', content: input.user }],
-      });
-
-      const text = firstText(message.content);
-      const cost = applyCostGate(message.usage, 'generate', modelFor('prose'));
-
-      logger.info(
-        { model: modelFor('prose'), usage: message.usage, cost },
-        'Claude API response received',
-      );
-
-      return text;
-    } catch (err) {
-      mapAnthropicError(err);
-    }
-  });
+  return runGenerateWithModel(input, model);
 }
 
 const {
