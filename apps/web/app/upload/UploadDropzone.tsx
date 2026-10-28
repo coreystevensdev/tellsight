@@ -1,272 +1,45 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { MAX_FILE_SIZE, ACCEPTED_FILE_TYPES } from 'shared/constants';
 import { cn } from '@/lib/utils';
-import type { CsvPreviewData, ColumnValidationError } from 'shared/types';
-import { attemptRefresh } from '@/lib/api-client';
 import { CsvPreview } from './CsvPreview';
+import { useDatasetUploadWorkflow } from './useDatasetUploadWorkflow';
+import { useUploadDropzoneInteractions } from './useUploadDropzoneInteractions';
 import {
   UploadErrorAlert,
   UploadStatusContent,
   UploadSuccess,
-  type UploadError,
 } from './UploadDropzoneFeedback';
 
-type DropzoneState = 'default' | 'dragHover' | 'processing' | 'preview' | 'success' | 'error';
-
-const REDIRECT_DELAY_S = 3;
-
 export function UploadDropzone() {
-  const [state, setState] = useState<DropzoneState>('default');
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [error, setError] = useState<UploadError | null>(null);
-  const [lastFile, setLastFile] = useState<File | null>(null);
-  const [previewData, setPreviewData] = useState<CsvPreviewData | null>(null);
-  const [isConfirming, setIsConfirming] = useState(false);
-  const [confirmedRowCount, setConfirmedRowCount] = useState(0);
-  const [countdown, setCountdown] = useState(REDIRECT_DELAY_S);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const dropzoneRef = useRef<HTMLDivElement>(null);
-  const alertRef = useRef<HTMLDivElement>(null);
-  const dragCountRef = useRef(0);
+  const upload = useDatasetUploadWorkflow();
 
-  // Redirect countdown after successful confirm
-  useEffect(() => {
-    if (state !== 'success') return;
-
-    if (countdown <= 0) {
-      // A hard navigation, not router.push(). The client Router Cache can
-      // serve /dashboard's pre-upload (empty-state) RSC payload regardless
-      // of push()+refresh() ordering, this guarantees a real server fetch.
-      window.location.replace('/dashboard');
-      return;
-    }
-
-    const timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [state, countdown]);
-
-  const validateClientSide = useCallback((file: File): string | null => {
-    if (file.size > MAX_FILE_SIZE) {
-      return 'File size exceeds 10MB limit. Try splitting your data into smaller files.';
-    }
-
-    const hasValidExt = file.name.toLowerCase().endsWith('.csv');
-    const hasValidMime = (ACCEPTED_FILE_TYPES as readonly string[]).includes(file.type);
-    if (!hasValidExt && !hasValidMime) {
-      return `We expected a .csv file, but received a ${file.type || 'unknown'} file type.`;
-    }
-
-    if (file.size === 0) {
-      return 'This file appears to be empty. Download our sample template to see the expected format.';
-    }
-
-    return null;
-  }, []);
-
-  const uploadFile = useCallback(async (file: File) => {
-    setState('processing');
-    setUploadProgress(0);
-    setLastFile(file);
-
-    const clientError = validateClientSide(file);
-    if (clientError) {
-      setError({ message: clientError, fileName: file.name });
-      setState('error');
-      setTimeout(() => alertRef.current?.focus(), 100);
-      return;
-    }
-
-    try {
-      const sendUpload = () =>
-        new Promise<{ ok: boolean; status: number; data: unknown }>((resolve, reject) => {
-          const formData = new FormData();
-          formData.append('file', file);
-
-          const xhr = new XMLHttpRequest();
-
-          xhr.upload.addEventListener('progress', (e) => {
-            if (e.lengthComputable) {
-              setUploadProgress(Math.round((e.loaded / e.total) * 100));
-            }
-          });
-
-          xhr.addEventListener('load', () => {
-            try {
-              const data = JSON.parse(xhr.responseText);
-              resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, data });
-            } catch {
-              reject(new Error('Failed to parse server response'));
-            }
-          });
-
-          xhr.addEventListener('error', () => reject(new Error('Network error during upload')));
-          xhr.addEventListener('abort', () => reject(new Error('Upload cancelled')));
-
-          xhr.open('POST', '/api/datasets');
-          xhr.withCredentials = true;
-          xhr.send(formData);
-        });
-
-      let response = await sendUpload();
-
-      // Access tokens expire after 15 minutes; a user can easily sit on this
-      // page longer than that before picking a file. XHR uploads don't go
-      // through apiClient()'s automatic refresh, so retry once here.
-      if (response.status === 401 && (await attemptRefresh())) {
-        response = await sendUpload();
-      }
-
-      if (!response.ok) {
-        const errData = (response.data as { error?: { message?: string; details?: { errors?: ColumnValidationError[]; fileName?: string } } }).error;
-        setError({
-          message: errData?.message || 'Upload failed',
-          errors: errData?.details?.errors,
-          fileName: errData?.details?.fileName || file.name,
-        });
-        setState('error');
-        setTimeout(() => alertRef.current?.focus(), 100);
-        return;
-      }
-
-      const preview = (response.data as { data: CsvPreviewData }).data;
-      setPreviewData(preview);
-      setState('preview');
-    } catch (err) {
-      setError({
-        message: err instanceof Error ? err.message : 'The upload did not finish.',
-        fileName: file.name,
-      });
-      setState('error');
-      setTimeout(() => alertRef.current?.focus(), 100);
-    }
-  }, [validateClientSide]);
-
-  const handleConfirm = useCallback(async () => {
-    if (!lastFile || !previewData) return;
-
-    setIsConfirming(true);
-
-    try {
-      const sendConfirm = () => {
-        const formData = new FormData();
-        formData.append('file', lastFile);
-        formData.append('previewToken', previewData.previewToken);
-        return fetch('/api/datasets/confirm', {
-          method: 'POST',
-          body: formData,
-          credentials: 'include',
-        });
-      };
-
-      let response = await sendConfirm();
-      if (response.status === 401 && (await attemptRefresh())) {
-        response = await sendConfirm();
-      }
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        const errMsg = result?.error?.message || 'Your data could not be saved.';
-        setError({ message: errMsg, fileName: lastFile.name });
-        setIsConfirming(false);
-        setState('error');
-        setTimeout(() => alertRef.current?.focus(), 100);
-        return;
-      }
-
-      const { rowCount } = result.data as { datasetId: number; rowCount: number };
-      setConfirmedRowCount(rowCount);
-      setIsConfirming(false);
-      setLastFile(null);
-      setPreviewData(null);
-      setCountdown(REDIRECT_DELAY_S);
-      setState('success');
-    } catch (err) {
-      setError({
-        message: err instanceof Error ? err.message : 'Network error while saving your data.',
-        fileName: lastFile.name,
-      });
-      setIsConfirming(false);
-      setState('error');
-      setTimeout(() => alertRef.current?.focus(), 100);
-    }
-  }, [lastFile, previewData]);
-
-  const handleCancel = useCallback(() => {
-    setPreviewData(null);
-    setIsConfirming(false);
-    setState('default');
-    // lastFile preserved so user sees "Last attempt: file.csv" if they re-enter error state
-  }, []);
-
-  const handleFileSelect = useCallback((file: File | undefined) => {
-    if (file) uploadFile(file);
-  }, [uploadFile]);
-
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCountRef.current++;
-    setState('dragHover');
-  }, []);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCountRef.current--;
-    if (dragCountRef.current <= 0) {
-      dragCountRef.current = 0;
-      setState((s) => (s === 'dragHover' ? 'default' : s));
-    }
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCountRef.current = 0;
-    const file = e.dataTransfer.files[0];
-    handleFileSelect(file);
-  }, [handleFileSelect]);
-
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    handleFileSelect(e.target.files?.[0]);
-    e.target.value = '';
-  }, [handleFileSelect]);
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      fileInputRef.current?.click();
-    }
-  }, []);
-
-  const openFilePicker = useCallback(() => {
-    fileInputRef.current?.click();
-  }, []);
+  const {
+    fileInputRef,
+    handleDragEnter,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+    handleInputChange,
+    handleKeyDown,
+    openFilePicker,
+  } = useUploadDropzoneInteractions(upload.selectFile, upload.setState);
 
   // Preview and success states render outside the dropzone
-  if (state === 'preview' && previewData) {
+  if (upload.state === 'preview' && upload.previewData) {
     return (
       <div className="space-y-4">
         <CsvPreview
-          previewData={previewData}
-          onConfirm={handleConfirm}
-          onCancel={handleCancel}
-          isConfirming={isConfirming}
+          previewData={upload.previewData}
+          onConfirm={upload.confirmUpload}
+          onCancel={upload.cancelPreview}
+          isConfirming={upload.isConfirming}
         />
       </div>
     );
   }
 
-  if (state === 'success') {
-    return <UploadSuccess rowCount={confirmedRowCount} countdown={countdown} />;
+  if (upload.state === 'success') {
+    return <UploadSuccess rowCount={upload.confirmedRowCount} countdown={upload.countdown} />;
   }
 
   return (
@@ -286,7 +59,6 @@ export function UploadDropzone() {
         tabIndex={-1}
       />
       <div
-        ref={dropzoneRef}
         role="button"
         tabIndex={0}
         // Named by its content, not an aria-label. The visible text changes with
@@ -301,17 +73,17 @@ export function UploadDropzone() {
         onDrop={handleDrop}
         className={cn(
           'relative flex min-h-[240px] cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-          state === 'default' && 'border-border hover:border-muted-foreground/50 hover:bg-muted/50',
-          state === 'dragHover' && 'border-primary bg-accent',
-          state === 'processing' && 'border-primary/50 bg-muted/30',
-          state === 'error' && 'border-destructive bg-destructive/5',
+          upload.state === 'default' && 'border-border hover:border-muted-foreground/50 hover:bg-muted/50',
+          upload.state === 'dragHover' && 'border-primary bg-accent',
+          upload.state === 'processing' && 'border-primary/50 bg-muted/30',
+          upload.state === 'error' && 'border-destructive bg-destructive/5',
         )}
       >
 
         <UploadStatusContent
-          state={state}
-          uploadProgress={uploadProgress}
-          lastFile={lastFile}
+          state={upload.state}
+          uploadProgress={upload.uploadProgress}
+          lastFile={upload.lastFile}
         />
       </div>
 
@@ -320,7 +92,7 @@ export function UploadDropzone() {
           which leaves a keyboard user with two controls in one stop. The
           stopPropagation handlers it used to carry only ever fixed the mouse
           case. */}
-      {state === 'default' && (
+      {upload.state === 'default' && (
         <a
           href="/templates/sample-data.csv"
           download="sample-data.csv"
@@ -330,8 +102,8 @@ export function UploadDropzone() {
         </a>
       )}
 
-      {state === 'error' && error && (
-        <UploadErrorAlert error={error} alertRef={alertRef} />
+      {upload.state === 'error' && upload.error && (
+        <UploadErrorAlert error={upload.error} alertRef={upload.alertRef} />
       )}
     </div>
   );
