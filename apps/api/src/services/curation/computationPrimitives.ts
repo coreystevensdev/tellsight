@@ -8,6 +8,21 @@ export interface DataRow {
   [key: string]: unknown;
 }
 
+export const MONTH_NAMES = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const;
+
 export function parseAmount(raw: string): number | null {
   const n = Number(raw);
   return Number.isFinite(n) ? n : null;
