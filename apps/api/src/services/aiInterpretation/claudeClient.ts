@@ -74,16 +74,14 @@ export async function converseWithTools(
 
 /**
  * Runs once at boot so a rejected key is visible before someone asks for a
- * summary. Uncached, since the cache is empty this early and boot wants a fresh
- * answer. Never throws: the AI being unreachable should not stop the dashboard,
- * the connectors or the digests from serving.
+ * summary, and so /health has an answer to report: it peeks at this cache
+ * rather than probing. An unreachable AI resolves rather than throwing, so the
+ * only rejection left is an unregistered provider, which index.ts catches.
  */
 export async function logClaudeKeyStatus(): Promise<void> {
-  // checkClaudeHealth, not probeClaudeHealth: the cached wrapper probes for
-  // real on an empty cache, so this is just as fresh, and it leaves the result
-  // behind. /health and /health/ready read that cache rather than probing, so
-  // without this they report "not probed since boot" until somebody happens to
-  // open the admin panel. Production did exactly that after #295 shipped.
+  // The cached wrapper, not the bare probe. It probes for real on an empty
+  // cache so boot is no less fresh, and it leaves the answer behind: without
+  // it, #295 left both health endpoints on "not probed since boot".
   const health = await checkClaudeHealth();
 
   if (health.status === 'error') {
