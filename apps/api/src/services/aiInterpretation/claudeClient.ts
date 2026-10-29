@@ -40,6 +40,20 @@ export const checkClaudeHealth = cachedHealth(5 * 60 * 1000, async (): Promise<P
   getProvider().checkHealth(),
 );
 
+/**
+ * Last known Claude health, without probing for it.
+ *
+ * A separate export rather than a property on checkClaudeHealth: this codebase
+ * mocks modules by listing their exports, so a function carrying a second
+ * function as a field is invisible to every `vi.mock` that does not know to
+ * rebuild it. The first version of this shipped as `checkClaudeHealth.peek`
+ * and took out fourteen health route tests with a 500, because the mock was a
+ * bare vi.fn and the property was undefined.
+ */
+export function peekClaudeHealth(): ProviderHealth | null {
+  return checkClaudeHealth.peek();
+}
+
 export async function generateWithTools(
   input: PromptInput,
   tools: ToolDefinition[],

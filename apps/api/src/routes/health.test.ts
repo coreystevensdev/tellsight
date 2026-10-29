@@ -37,6 +37,7 @@ vi.mock('../lib/logger.js', () => ({
 const mockCheckRedisHealth = vi.hoisted(() => vi.fn());
 const mockCheckStripeHealth = vi.hoisted(() => vi.fn());
 const mockCheckClaudeHealth = vi.hoisted(() => vi.fn());
+const mockPeekClaudeHealth = vi.hoisted(() => vi.fn());
 
 vi.mock('../lib/redis.js', () => ({
   checkRedisHealth: mockCheckRedisHealth,
@@ -48,6 +49,10 @@ vi.mock('../services/subscription/stripeHealth.js', () => ({
 
 vi.mock('../services/aiInterpretation/claudeClient.js', () => ({
   checkClaudeHealth: mockCheckClaudeHealth,
+  // The health routes read the cache rather than probing, so this is the one
+  // they call. Returning what the probe mock resolves to keeps the payload
+  // assertions below meaningful instead of testing the null fallback.
+  peekClaudeHealth: mockPeekClaudeHealth,
 }));
 
 import { createTestApp } from '../test/helpers/testApp.js';
@@ -79,6 +84,8 @@ beforeEach(() => {
   mockCheckStripeHealth.mockResolvedValue({ status: 'ok', latencyMs: 1, livemode: false });
   mockCheckClaudeHealth.mockReset();
   mockCheckClaudeHealth.mockResolvedValue({ status: 'ok', latencyMs: 1 });
+  mockPeekClaudeHealth.mockReset();
+  mockPeekClaudeHealth.mockReturnValue({ status: 'ok', latencyMs: 1 });
 });
 
 describe('GET /health', () => {
@@ -209,6 +216,38 @@ describe('GET /health/ready', () => {
 
 // SELECT 1 passed against a database with no tables, so a dev container once
 // reported ready and then 500ed on every request. These pin the difference.
+describe('health endpoints do not buy Claude calls', () => {
+  // The Claude probe spends money: it sends a one-token completion so it can
+  // tell an exhausted account from a healthy one. Route53 curls /health/ready
+  // every thirty seconds and the container healthcheck curls /health on its own
+  // timer, so probing from either turns monitoring into a standing order for
+  // paid requests. Both read the cache instead.
+  it.each(['/health/ready', '/health'])('%s reports Claude without probing it', async (path) => {
+    mockPeekClaudeHealth.mockReturnValue({ status: 'ok', latencyMs: 7 });
+
+    const res = await fetch(`${baseUrl}${path}`);
+    const body = (await res.json()) as { services: { claude: { status: string } } };
+
+    expect(body.services.claude.status).toBe('ok');
+    expect(mockPeekClaudeHealth).toHaveBeenCalled();
+    expect(mockCheckClaudeHealth).not.toHaveBeenCalled();
+  });
+
+  // Between process start and the boot probe landing there is no cached answer,
+  // and the payload still has to say something. 'degraded' is what the rest of
+  // this payload uses for "could not determine".
+  it('says degraded when nothing has probed yet, rather than claiming ok', async () => {
+    mockPeekClaudeHealth.mockReturnValue(null);
+
+    const res = await fetch(`${baseUrl}/health/ready`);
+    const body = (await res.json()) as { services: { claude: { status: string } } };
+
+    expect(res.status).toBe(200);
+    expect(body.services.claude.status).toBe('degraded');
+    expect(mockCheckClaudeHealth).not.toHaveBeenCalled();
+  });
+});
+
 describe('GET /health/ready schema awareness', () => {
   it('is ready when every required table is there', async () => {
     const res = await fetch(`${baseUrl}/health/ready`);
