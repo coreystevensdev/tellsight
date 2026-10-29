@@ -10,7 +10,8 @@ import { logger } from '../lib/logger.js';
 import { checkRedisHealth } from '../lib/redis.js';
 import { getEmailProvider } from '../services/email/index.js';
 import { checkStripeHealth } from '../services/subscription/stripeHealth.js';
-import { checkClaudeHealth } from '../services/aiInterpretation/claudeClient.js';
+import { peekClaudeHealth } from '../services/aiInterpretation/claudeClient.js';
+import type { ProviderHealth } from '../services/aiInterpretation/provider.js';
 
 const router = Router();
 
@@ -24,6 +25,35 @@ function reportDatabase({ missing, ...rest }: DbHealth) {
   return rest;
 }
 
+// Reads the cached Claude result instead of probing. Both of these handlers are
+// polled by machines, not people: Route53 curls /health/ready every thirty
+// seconds and the container healthcheck curls /health on its own timer. The
+// Claude probe buys a one-token completion so that it can tell an exhausted
+// account from a healthy one, which is the whole point of it, and letting an
+// infrastructure poll trigger that turned a monitoring loop into a standing
+// order for paid requests, one every five minutes forever.
+//
+// Memoizing already cut this down once for Stripe; see lib/cachedHealth.ts. It
+// could not cut it to zero, because a cache miss still probes and the pollers
+// never stop arriving. peek has no miss.
+//
+// The answer is no less true for being a few minutes old: a live call would
+// have returned the cached number anyway for most of that window. Boot and the
+// admin panel still probe for real, so nothing loses its freshness where a
+// person is actually looking.
+function lastKnownClaudeHealth(): ProviderHealth {
+  return (
+    peekClaudeHealth() ?? {
+      status: 'degraded',
+      latencyMs: 0,
+      // 'degraded' means "could not determine" everywhere else in this payload,
+      // which is exactly the state between process start and the boot probe
+      // landing a second or two later.
+      detail: 'not probed since boot',
+    }
+  );
+}
+
 // liveness, is the process alive? Never check external deps here.
 // A failed liveness probe restarts the container, so keep it trivial.
 router.get('/health/live', (_req, res) => {
@@ -33,13 +63,14 @@ router.get('/health/live', (_req, res) => {
 // readiness, can this instance serve traffic? Check DB + Redis.
 // A failed readiness probe stops routing traffic but doesn't restart.
 router.get('/health/ready', async (_req, res) => {
-  const [rawDb, redisHealth, emailHealth, stripeHealth, claudeHealth] = await Promise.all([
+  const [rawDb, redisHealth, emailHealth, stripeHealth] = await Promise.all([
     checkDatabaseHealth(),
     checkRedisHealth(),
     checkEmailHealth(),
     checkStripeHealth(),
-    checkClaudeHealth(),
   ]);
+
+  const claudeHealth = lastKnownClaudeHealth();
 
   const dbHealth = reportDatabase(rawDb);
   const ready = dbHealth.status === 'ok' && redisHealth.status === 'ok';
@@ -55,13 +86,14 @@ router.get('/health/ready', async (_req, res) => {
 // polls. Without it, confirming what is deployed means reading the image tag
 // off the instance over SSM, which only CI can do.
 router.get('/health', async (_req, res) => {
-  const [rawDb, redisHealth, emailHealth, stripeHealth, claudeHealth] = await Promise.all([
+  const [rawDb, redisHealth, emailHealth, stripeHealth] = await Promise.all([
     checkDatabaseHealth(),
     checkRedisHealth(),
     checkEmailHealth(),
     checkStripeHealth(),
-    checkClaudeHealth(),
   ]);
+
+  const claudeHealth = lastKnownClaudeHealth();
 
   const dbHealth = reportDatabase(rawDb);
   const status = dbHealth.status === 'ok' && redisHealth.status === 'ok' ? 'ok' : 'degraded';
