@@ -11,6 +11,20 @@ vi.mock('./worker.js', () => ({
   }),
 }));
 
+vi.mock('./shopify/worker.js', () => ({
+  getSyncQueue: () => ({
+    upsertJobScheduler: mockUpsertJobScheduler,
+    removeJobScheduler: mockRemoveJobScheduler,
+  }),
+}));
+
+vi.mock('./square/worker.js', () => ({
+  getSyncQueue: () => ({
+    upsertJobScheduler: mockUpsertJobScheduler,
+    removeJobScheduler: mockRemoveJobScheduler,
+  }),
+}));
+
 vi.mock('../../db/queries/index.js', () => ({
   integrationConnectionsQueries: {
     getAllByProvider: mockGetAllByProvider,
@@ -76,9 +90,21 @@ describe('scheduler', () => {
       await initScheduler();
 
       expect(mockUpsertJobScheduler).toHaveBeenCalledTimes(3);
-      expect(mockUpsertJobScheduler).toHaveBeenCalledWith('qb-daily-100', expect.any(Object), expect.any(Object));
-      expect(mockUpsertJobScheduler).toHaveBeenCalledWith('qb-daily-200', expect.any(Object), expect.any(Object));
-      expect(mockUpsertJobScheduler).toHaveBeenCalledWith('qb-daily-300', expect.any(Object), expect.any(Object));
+      expect(mockUpsertJobScheduler).toHaveBeenCalledWith(
+        'qb-daily-100',
+        expect.any(Object),
+        expect.any(Object),
+      );
+      expect(mockUpsertJobScheduler).toHaveBeenCalledWith(
+        'qb-daily-200',
+        expect.any(Object),
+        expect.any(Object),
+      );
+      expect(mockUpsertJobScheduler).toHaveBeenCalledWith(
+        'qb-daily-300',
+        expect.any(Object),
+        expect.any(Object),
+      );
     });
 
     it('no-ops when no connections exist', async () => {
@@ -98,5 +124,52 @@ describe('scheduler', () => {
 
       expect(mockUpsertJobScheduler).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('provider scheduler configurations', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('keeps provider ids and staggered cron schedules distinct', async () => {
+    const shopify = await import('./shopify/scheduler.js');
+    const square = await import('./square/scheduler.js');
+
+    await shopify.registerDailySync(20, 200);
+    await square.registerDailySync(30, 300);
+
+    expect(mockUpsertJobScheduler).toHaveBeenNthCalledWith(
+      1,
+      'shopify-daily-20',
+      { pattern: '0 4 * * *' },
+      expect.objectContaining({
+        name: 'shopify-daily-20',
+        data: { connectionId: 200, trigger: 'scheduled' },
+      }),
+    );
+    expect(mockUpsertJobScheduler).toHaveBeenNthCalledWith(
+      2,
+      'square-daily-30',
+      { pattern: '0 5 * * *' },
+      expect.objectContaining({
+        name: 'square-daily-30',
+        data: { connectionId: 300, trigger: 'scheduled' },
+      }),
+    );
+  });
+
+  it('loads connections under each configured provider name', async () => {
+    mockGetAllByProvider.mockResolvedValue([]);
+    const shopify = await import('./shopify/scheduler.js');
+    const square = await import('./square/scheduler.js');
+
+    await shopify.initScheduler();
+    await square.initScheduler();
+
+    expect(mockGetAllByProvider.mock.calls.map(([provider]) => provider)).toEqual([
+      'shopify',
+      'square',
+    ]);
   });
 });
