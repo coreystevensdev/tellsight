@@ -79,7 +79,12 @@ export async function converseWithTools(
  * the connectors or the digests from serving.
  */
 export async function logClaudeKeyStatus(): Promise<void> {
-  const health = await probeClaudeHealth();
+  // checkClaudeHealth, not probeClaudeHealth: the cached wrapper probes for
+  // real on an empty cache, so this is just as fresh, and it leaves the result
+  // behind. /health and /health/ready read that cache rather than probing, so
+  // without this they report "not probed since boot" until somebody happens to
+  // open the admin panel. Production did exactly that after #295 shipped.
+  const health = await checkClaudeHealth();
 
   if (health.status === 'error') {
     // Not 'Claude key rejected'. That was accurate while a rejected key was the
