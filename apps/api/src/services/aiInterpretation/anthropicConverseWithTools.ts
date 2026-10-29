@@ -7,7 +7,7 @@ import { buildConversationMessages } from './anthropicConversation.js';
 import {
   MAX_OUTPUT_TOKENS,
   modelFor,
-  systemParam,
+  systemParams,
   toolParams,
 } from './anthropicRequest.js';
 import { AbortedByClient, applyCostGate, mapAnthropicError } from './anthropicRuntime.js';
@@ -36,7 +36,7 @@ export function createAnthropicConverseWithTools({
           {
             model,
             max_tokens: MAX_OUTPUT_TOKENS,
-            ...(systemParam(input) && { system: systemParam(input) }),
+            ...systemParams(input),
             messages,
             ...(tools.length > 0 && {
               tools: toolParams(tools),

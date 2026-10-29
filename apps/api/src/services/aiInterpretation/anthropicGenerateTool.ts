@@ -5,7 +5,7 @@ import type { BreakerRunner } from './anthropicBreakers.js';
 import {
   MAX_OUTPUT_TOKENS,
   modelFor,
-  systemParam,
+  singleTurnPrompt,
   toolParams,
 } from './anthropicRequest.js';
 import { applyCostGate, mapAnthropicError } from './anthropicRuntime.js';
@@ -34,8 +34,7 @@ export function createAnthropicGenerateTool({
         const message = await client.messages.create({
           model,
           max_tokens: MAX_OUTPUT_TOKENS,
-          ...(systemParam(input) && { system: systemParam(input) }),
-          messages: [{ role: 'user', content: input.user }],
+          ...singleTurnPrompt(input),
           tools: toolParams(tools),
           tool_choice: { type: 'auto' },
         });

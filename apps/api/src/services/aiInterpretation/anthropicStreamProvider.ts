@@ -8,7 +8,7 @@ import {
   MAX_OUTPUT_TOKENS,
   firstText,
   modelFor,
-  systemParam,
+  singleTurnPrompt,
 } from './anthropicRequest.js';
 import { AbortedByClient } from './anthropicRuntime.js';
 import type { LlmProvider } from './provider.js';
@@ -30,8 +30,7 @@ export function createAnthropicStream({
         const sdkStream = client.messages.stream({
           model,
           max_tokens: MAX_OUTPUT_TOKENS,
-          ...(systemParam(input) && { system: systemParam(input) }),
-          messages: [{ role: 'user', content: input.user }],
+          ...singleTurnPrompt(input),
         });
 
         if (signal) {

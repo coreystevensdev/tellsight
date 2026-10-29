@@ -6,7 +6,7 @@ import {
   MAX_OUTPUT_TOKENS,
   firstText,
   modelFor,
-  systemParam,
+  singleTurnPrompt,
 } from './anthropicRequest.js';
 import { applyCostGate, mapAnthropicError } from './anthropicRuntime.js';
 import type { LlmProvider, PromptInput } from './provider.js';
@@ -31,8 +31,7 @@ export function createAnthropicProseMethods({
         const message = await client.messages.create({
           model,
           max_tokens: MAX_OUTPUT_TOKENS,
-          ...(systemParam(input) && { system: systemParam(input) }),
-          messages: [{ role: 'user', content: input.user }],
+          ...singleTurnPrompt(input),
         });
 
         const text = firstText(message.content);
@@ -51,8 +50,7 @@ export function createAnthropicProseMethods({
         const message = await client.messages.create({
           model,
           max_tokens: MAX_OUTPUT_TOKENS,
-          ...(systemParam(input) && { system: systemParam(input) }),
-          messages: [{ role: 'user', content: input.user }],
+          ...singleTurnPrompt(input),
         });
 
         const text = firstText(message.content);

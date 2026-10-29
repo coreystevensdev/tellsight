@@ -23,17 +23,26 @@ export function firstText(content: Array<{ type: string }>): string {
   return block && 'text' in block ? String((block as { text: unknown }).text) : '';
 }
 
-// Omit the system parameter entirely when empty so the request retains the
-// pre-caching shape.
-export function systemParam(input: PromptInput) {
-  if (!input.system) return undefined;
-  return [
-    {
-      type: 'text' as const,
-      text: input.system,
-      cache_control: { type: 'ephemeral' as const },
-    },
-  ];
+// Return a spreadable fragment so empty prompts omit `system` entirely and
+// callers do not need to compute the cached block twice.
+export function systemParams(input: PromptInput) {
+  if (!input.system) return {};
+  return {
+    system: [
+      {
+        type: 'text' as const,
+        text: input.system,
+        cache_control: { type: 'ephemeral' as const },
+      },
+    ],
+  };
+}
+
+export function singleTurnPrompt(input: PromptInput) {
+  return {
+    ...systemParams(input),
+    messages: [{ role: 'user' as const, content: input.user }],
+  };
 }
 
 export function toolParams(tools: ToolDefinition[]): Anthropic.Tool[] {
