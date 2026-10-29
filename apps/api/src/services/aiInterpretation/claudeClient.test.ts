@@ -1632,3 +1632,39 @@ describe('checkClaudeHealth caching', () => {
     expect(mockCreate).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('logClaudeKeyStatus warms the cache', () => {
+  // /health and /health/ready stopped probing in #295 and read the cache
+  // instead, which left nothing to populate it: boot called the uncached probe,
+  // so both endpoints reported "not probed since boot" indefinitely until
+  // somebody opened the admin panel. Production did exactly that.
+  //
+  // Nothing covered this function at all, which is why it shipped.
+  it('leaves a result behind for the health endpoints to read', async () => {
+    vi.resetModules();
+    mockCreate.mockReset();
+    mockCreate.mockResolvedValue({ content: [{ type: 'text', text: 'ok' }] });
+    const { logClaudeKeyStatus, peekClaudeHealth } = await import('./claudeClient.js');
+
+    await logClaudeKeyStatus();
+
+    expect(peekClaudeHealth()).toMatchObject({ status: 'ok' });
+  });
+
+  // The failure case is the one that matters: an exhausted account is exactly
+  // when somebody looks at the tile, and caching only on success would leave it
+  // blank during the outage it exists to show.
+  it('caches the failure too, so the tile shows the outage rather than nothing', async () => {
+    vi.resetModules();
+    mockCreate.mockReset();
+    mockCreate.mockRejectedValue(
+      Object.assign(new Error('400 credit balance is too low'), { status: 400 }),
+    );
+    const { logClaudeKeyStatus, peekClaudeHealth } = await import('./claudeClient.js');
+
+    await logClaudeKeyStatus();
+
+    expect(peekClaudeHealth()).toMatchObject({ status: 'error' });
+    expect(peekClaudeHealth()?.detail).toMatch(/credit/i);
+  });
+});
