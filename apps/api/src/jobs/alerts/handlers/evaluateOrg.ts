@@ -17,16 +17,11 @@ import {
   analyticsEventsQueries,
   statCorrectionsQueries,
 } from '../../../db/queries/index.js';
-import { runCurationPipeline, StatType } from '../../../services/curation/index.js';
-import type { ScoredInsight } from '../../../services/curation/index.js';
+import { runCurationPipeline } from '../../../services/curation/index.js';
 import { cashFlowForAlerting } from '../../../services/curation/computation.js';
 import { scoreInsights } from '../../../services/curation/scoring.js';
 import type { AlertRuleRow } from '../../../db/queries/alertRules.js';
-import * as runwayBands from '../bands/runwayBands.js';
-import * as marginBands from '../bands/marginBands.js';
-import * as cashBurnBands from '../bands/cashBurnBands.js';
-import * as breakevenBands from '../bands/breakevenBands.js';
-import * as anomalyBands from '../bands/anomalyBands.js';
+import { evaluateRule } from '../ruleEvaluation.js';
 import {
   getSendQueue,
   JOB_PREFIX_SEND,
@@ -44,109 +39,6 @@ const SEND_JOB_ATTEMPTS = 3;
 const SEND_JOB_BACKOFF_MS = 30_000;
 
 type Outcome = 'fired' | 'suppressed_dedup' | 'suppressed_quota' | 'suppressed_below_threshold' | 'error';
-
-interface RuleEvaluation {
-  currentValue: number;
-  band: number | null;
-  insight: ScoredInsight;
-}
-
-function evaluateRunway(insights: ScoredInsight[], threshold: number): RuleEvaluation | null {
-  const insight = insights.find((i) => i.stat.statType === StatType.Runway);
-  if (!insight || insight.stat.statType !== StatType.Runway) return null;
-  const currentValue = insight.stat.details.runwayMonths;
-  return { currentValue, band: runwayBands.getBand(currentValue, threshold), insight };
-}
-
-function evaluateMargin(insights: ScoredInsight[], threshold: number): RuleEvaluation | null {
-  const insight = insights.find((i) => i.stat.statType === StatType.MarginTrend);
-  if (!insight || insight.stat.statType !== StatType.MarginTrend) return null;
-  // Positive when margin has contracted; negative (expanding margin) never
-  // clears a positive threshold, so no separate direction check is needed.
-  const currentValue = insight.stat.details.priorMarginPercent - insight.stat.details.recentMarginPercent;
-  return { currentValue, band: marginBands.getBand(currentValue, threshold), insight };
-}
-
-function evaluateCashBurn(
-  cashFlowInsight: ScoredInsight | null,
-  threshold: number,
-): RuleEvaluation | null {
-  if (!cashFlowInsight || cashFlowInsight.stat.statType !== StatType.CashFlow) return null;
-
-  const months = cashFlowInsight.stat.details.recentMonths;
-  if (months.length < 2) return { currentValue: 0, band: null, insight: cashFlowInsight };
-
-  const latest = months[months.length - 1]!;
-  const priorMonths = months.slice(0, -1);
-  const priorAvgExpenses = priorMonths.reduce((sum, m) => sum + m.expenses, 0) / priorMonths.length;
-  // A zero prior average is a divide-by-zero guard, not "no change": going from
-  // $0 to any real spend is the worst possible spike. threshold * 3 clears the
-  // top band (>= threshold * 2) without an Infinity/NaN sentinel, which would
-  // silently become null crossing BullMQ's JSON-serialized job boundary.
-  const currentValue =
-    priorAvgExpenses > 0
-      ? ((latest.expenses - priorAvgExpenses) / priorAvgExpenses) * 100
-      : latest.expenses > 0
-        ? threshold * 3
-        : 0;
-
-  return { currentValue, band: cashBurnBands.getBand(currentValue, threshold), insight: cashFlowInsight };
-}
-
-function evaluateBreakeven(insights: ScoredInsight[], threshold: number): RuleEvaluation | null {
-  const insight = insights.find((i) => i.stat.statType === StatType.BreakEven);
-  if (!insight || insight.stat.statType !== StatType.BreakEven) return null;
-
-  const { gap, breakEvenRevenue } = insight.stat.details;
-  // Same zero-denominator guard as evaluateCashBurn: a $0 break-even revenue
-  // with a real positive gap is the worst case, not a no-op.
-  const currentValue =
-    breakEvenRevenue > 0 ? (gap / breakEvenRevenue) * 100 : gap > 0 ? threshold * 3 : 0;
-  return { currentValue, band: breakevenBands.getBand(currentValue, threshold), insight };
-}
-
-function evaluateAnomaly(
-  insights: ScoredInsight[],
-  threshold: 'low' | 'moderate' | 'high',
-): RuleEvaluation | null {
-  const anomalyInsights = insights.filter((i) => i.stat.statType === StatType.Anomaly);
-  if (anomalyInsights.length === 0) return null;
-
-  // Multiple anomalies can surface in one pass (one per category); the most
-  // statistically extreme one drives the rule's confidence tier.
-  const mostSevere = anomalyInsights.reduce((max, i) => {
-    if (i.stat.statType !== StatType.Anomaly || max.stat.statType !== StatType.Anomaly) return max;
-    return Math.abs(i.stat.details.zScore) > Math.abs(max.stat.details.zScore) ? i : max;
-  });
-  if (mostSevere.stat.statType !== StatType.Anomaly) return null;
-
-  const currentValue = anomalyBands.confidenceOrdinalFromZScore(mostSevere.stat.details.zScore);
-  return { currentValue, band: anomalyBands.getBand(currentValue, threshold), insight: mostSevere };
-}
-
-function evaluateRule(
-  insights: ScoredInsight[],
-  cashFlowForAlertingInsight: ScoredInsight | null,
-  rule: AlertRuleRow,
-): RuleEvaluation | null {
-  switch (rule.kind) {
-    case 'runway_runs_short':
-      return evaluateRunway(insights, (rule.threshold as { months: number }).months);
-    case 'margin_drops':
-      return evaluateMargin(insights, (rule.threshold as { percent: number }).percent);
-    case 'cash_burn_spikes':
-      return evaluateCashBurn(cashFlowForAlertingInsight, (rule.threshold as { percent: number }).percent);
-    case 'breakeven_gap_widens':
-      return evaluateBreakeven(insights, (rule.threshold as { percent: number }).percent);
-    case 'anomaly_fires':
-      return evaluateAnomaly(insights, (rule.threshold as { confidence: 'low' | 'moderate' | 'high' }).confidence);
-    default: {
-      const exhaustive: never = rule.kind;
-      logger.error({ ruleId: rule.id, ruleKind: exhaustive }, 'Unknown alert rule kind, no evaluator wired');
-      return null;
-    }
-  }
-}
 
 function sendJobName(fireId: number): string {
   return `${JOB_PREFIX_SEND}-${fireId}`;

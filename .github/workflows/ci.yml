@@ -6,13 +6,10 @@ on:
   pull_request:
     branches: [main]
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   quality:
     name: Lint & Type Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v7
@@ -46,7 +43,7 @@ jobs:
   # about even when the build is broken for unrelated reasons.
   secret-scan:
     name: Secret Scan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v7
@@ -61,7 +58,7 @@ jobs:
   test-shared-web:
     name: Tests (shared + web)
     needs: quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v7
@@ -85,10 +82,11 @@ jobs:
           node scripts/count-from-reports.mjs \
             "$RUNNER_TEMP/shared.json" "$RUNNER_TEMP/web.json" > count-shared-web
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: test-count-shared-web
           path: count-shared-web
+          if-no-files-found: error
           retention-days: 1
 
   # This job was continue-on-error for a long time, on the theory that the
@@ -100,7 +98,7 @@ jobs:
   test-api:
     name: Tests (API)
     needs: quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v7
@@ -119,16 +117,17 @@ jobs:
       - name: Record executed test count
         run: node scripts/count-from-reports.mjs "$RUNNER_TEMP/api.json" > count-api
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: test-count-api
           path: count-api
+          if-no-files-found: error
           retention-days: 1
 
   test-api-rls-integration:
     name: Tests (API RLS integration)
     needs: quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     services:
       postgres:
@@ -184,16 +183,17 @@ jobs:
       - name: Record executed test count
         run: node scripts/count-from-reports.mjs "$RUNNER_TEMP/integration.json" > count-integration
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: test-count-integration
           path: count-integration
+          if-no-files-found: error
           retention-days: 1
 
   seed-validation:
     name: Seed Data Validation
     needs: [test-shared-web]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v7
@@ -220,7 +220,7 @@ jobs:
   proposal-precision-eval:
     name: Proposal Precision Eval
     needs: [test-shared-web]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v7
@@ -232,7 +232,7 @@ jobs:
   test-eval:
     name: Eval Script Tests
     needs: [test-shared-web]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v7
@@ -247,16 +247,17 @@ jobs:
       - name: Record executed test count
         run: node scripts/count-from-reports.mjs "$RUNNER_TEMP/eval.json" > count-eval
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: test-count-eval
           path: count-eval
+          if-no-files-found: error
           retention-days: 1
 
   e2e:
     name: E2E Tests
     needs: seed-validation
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v7
@@ -333,10 +334,11 @@ jobs:
         run: |
           node scripts/count-from-reports.mjs --playwright e2e-results.json > count-e2e
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: test-count-e2e
           path: count-e2e
+          if-no-files-found: error
           retention-days: 1
 
       # A retried pass is a green tick, so a test that only passes on the second
@@ -376,6 +378,7 @@ jobs:
           path: |
             test-results/
             playwright-report/
+          if-no-files-found: ignore
           retention-days: 7
 
       - name: Stop Docker Compose
@@ -385,7 +388,7 @@ jobs:
   docker-smoke:
     name: Docker Smoke Test
     needs: e2e
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v7
@@ -410,7 +413,7 @@ jobs:
     # Every suite that contributes to the badge, because the numbers now come
     # from those runs rather than from a separate collection here.
     needs: [test-shared-web, test-api, test-api-rls-integration, test-eval, e2e]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
