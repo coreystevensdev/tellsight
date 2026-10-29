@@ -116,8 +116,10 @@ jobs:
           build-args: |
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
             SENTRY_PROJECT=${{ vars.SENTRY_PROJECT }}
-          secrets: |
-            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
+          # An empty `NAME=` entry is rejected by build-push-action. Return an
+          # empty input instead so source-map upload stays optional until the
+          # repository secret is configured.
+          secrets: ${{ secrets.SENTRY_AUTH_TOKEN != '' && format('SENTRY_AUTH_TOKEN={0}', secrets.SENTRY_AUTH_TOKEN) || '' }}
           tags: |
             ${{ steps.tags.outputs.web_image }}
             ${{ secrets.ECR_WEB_REPO }}:latest
