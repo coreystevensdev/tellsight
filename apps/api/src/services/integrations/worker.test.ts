@@ -6,6 +6,8 @@ const mockQueueRemoveJobScheduler = vi.fn().mockResolvedValue(true);
 const mockWorkerClose = vi.fn().mockResolvedValue(undefined);
 const mockWorkerOn = vi.fn();
 const mockRunSync = vi.fn();
+const mockShopifyRunSync = vi.fn();
+const mockSquareRunSync = vi.fn();
 
 let capturedProcessor: ((job: unknown) => Promise<unknown>) | null = null;
 
@@ -13,7 +15,10 @@ class FakeQueue {
   add = mockQueueAdd;
   close = mockQueueClose;
   removeJobScheduler = mockQueueRemoveJobScheduler;
-  constructor(public name: string, public opts: unknown) {}
+  constructor(
+    public name: string,
+    public opts: unknown,
+  ) {}
 }
 
 class FakeWorker {
@@ -51,6 +56,14 @@ vi.mock('../../lib/logger.js', () => ({
 
 vi.mock('./quickbooks/sync.js', () => ({
   runSync: mockRunSync,
+}));
+
+vi.mock('./shopify/sync.js', () => ({
+  runSync: mockShopifyRunSync,
+}));
+
+vi.mock('./square/sync.js', () => ({
+  runSync: mockSquareRunSync,
 }));
 
 describe('worker', () => {
@@ -119,7 +132,10 @@ describe('worker', () => {
       initSyncWorker();
 
       expect(capturedProcessor).toBeTruthy();
-      const result = await capturedProcessor!({ id: 'job-1', data: { connectionId: 10, trigger: 'manual' } });
+      const result = await capturedProcessor!({
+        id: 'job-1',
+        data: { connectionId: 10, trigger: 'manual' },
+      });
 
       expect(mockRunSync).toHaveBeenCalledWith(10, 'manual');
       expect(result).toEqual({ rowsSynced: 47, datasetId: 99 });
@@ -132,7 +148,10 @@ describe('worker', () => {
       const { initSyncWorker } = await import('./worker.js');
       initSyncWorker();
 
-      const caught = await capturedProcessor!({ id: 'job-2', data: { connectionId: 20, trigger: 'scheduled' } })
+      const caught = await capturedProcessor!({
+        id: 'job-2',
+        data: { connectionId: 20, trigger: 'scheduled' },
+      })
         .then(() => null)
         .catch((e: Error) => e);
 
@@ -147,7 +166,10 @@ describe('worker', () => {
       const { initSyncWorker } = await import('./worker.js');
       initSyncWorker();
 
-      const caught = await capturedProcessor!({ id: 'job-4', data: { connectionId: 20, trigger: 'scheduled' } })
+      const caught = await capturedProcessor!({
+        id: 'job-4',
+        data: { connectionId: 20, trigger: 'scheduled' },
+      })
         .then(() => null)
         .catch((e: Error) => e);
 
@@ -188,5 +210,99 @@ describe('worker', () => {
       expect(mockQueueClose).not.toHaveBeenCalled();
       expect(mockWorkerClose).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('provider worker configurations', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    capturedProcessor = null;
+    vi.resetModules();
+  });
+
+  it('keeps provider queues and job prefixes isolated', async () => {
+    const quickBooks = await import('./worker.js');
+    const shopify = await import('./shopify/worker.js');
+    const square = await import('./square/worker.js');
+
+    const queues = [
+      quickBooks.getSyncQueue() as unknown as FakeQueue,
+      shopify.getSyncQueue() as unknown as FakeQueue,
+      square.getSyncQueue() as unknown as FakeQueue,
+    ];
+    expect(queues.map((queue) => queue.name)).toEqual([
+      'quickbooks-sync',
+      'shopify-sync',
+      'square-sync',
+    ]);
+
+    await shopify.enqueueSyncJob(12, 'scheduled');
+    await square.enqueueSyncJob(13, 'initial');
+    expect(mockQueueAdd).toHaveBeenNthCalledWith(
+      1,
+      'shopify-scheduled-12',
+      { connectionId: 12, trigger: 'scheduled' },
+      expect.any(Object),
+    );
+    expect(mockQueueAdd).toHaveBeenNthCalledWith(
+      2,
+      'square-initial-13',
+      { connectionId: 13, trigger: 'initial' },
+      expect.any(Object),
+    );
+  });
+
+  it.each([
+    ['token revocation', 'TokenRevokedError'],
+    ['a missing connection', 'ConnectionNotFoundError'],
+    ['a missing scope', 'ScopeDeniedError'],
+  ] as const)('marks Shopify %s as unrecoverable', async (_case, errorName) => {
+    const errors = await import('./shopify/errors.js');
+    const error =
+      errorName === 'ConnectionNotFoundError'
+        ? new errors.ConnectionNotFoundError(21)
+        : errorName === 'ScopeDeniedError'
+          ? new errors.ScopeDeniedError('read_orders')
+          : new errors.TokenRevokedError('revoked');
+    mockShopifyRunSync.mockRejectedValueOnce(error);
+
+    const { initSyncWorker } = await import('./shopify/worker.js');
+    initSyncWorker();
+
+    await expect(
+      capturedProcessor!({ id: 'shopify-job', data: { connectionId: 21, trigger: 'manual' } }),
+    ).rejects.toBeInstanceOf(FakeUnrecoverableError);
+  });
+
+  it.each([
+    ['token revocation', 'TokenRevokedError'],
+    ['a missing connection', 'ConnectionNotFoundError'],
+  ] as const)('marks Square %s as unrecoverable', async (_case, errorName) => {
+    const errors = await import('./square/errors.js');
+    const error =
+      errorName === 'ConnectionNotFoundError'
+        ? new errors.ConnectionNotFoundError(22)
+        : new errors.TokenRevokedError('revoked');
+    mockSquareRunSync.mockRejectedValueOnce(error);
+
+    const { initSyncWorker } = await import('./square/worker.js');
+    initSyncWorker();
+
+    await expect(
+      capturedProcessor!({ id: 'square-job', data: { connectionId: 22, trigger: 'manual' } }),
+    ).rejects.toBeInstanceOf(FakeUnrecoverableError);
+  });
+
+  it('leaves provider retryable errors unchanged', async () => {
+    const { RetryableError } = await import('./square/errors.js');
+    const error = new RetryableError('temporarily unavailable', 503);
+    mockSquareRunSync.mockRejectedValueOnce(error);
+
+    const { initSyncWorker } = await import('./square/worker.js');
+    initSyncWorker();
+
+    await expect(
+      capturedProcessor!({ id: 'square-job', data: { connectionId: 23, trigger: 'scheduled' } }),
+    ).rejects.toBe(error);
   });
 });
