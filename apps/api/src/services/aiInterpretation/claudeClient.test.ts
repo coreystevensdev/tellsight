@@ -1614,8 +1614,8 @@ describe('checkClaudeHealth', () => {
   });
 });
 
-// Last in the file: the cache is module-level, so anything after this reads its
-// result rather than its own.
+// The cache is module-level, so anything from here down reads its result
+// rather than its own. Append only behind a vi.resetModules(), as below.
 describe('checkClaudeHealth caching', () => {
   // The memoization is what bounds the cost now that the probe buys a
   // completion rather than listing models: three reads of the admin tile are
@@ -1666,5 +1666,10 @@ describe('logClaudeKeyStatus warms the cache', () => {
 
     expect(peekClaudeHealth()).toMatchObject({ status: 'error' });
     expect(peekClaudeHealth()?.detail).toMatch(/credit/i);
+    // The two assertions above stayed green when the logger.error call was deleted.
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: expect.stringMatching(/credit/i) }),
+      'Claude unusable at boot',
+    );
   });
 });

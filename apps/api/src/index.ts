@@ -159,9 +159,13 @@ async function start() {
   // the digests and the connectors all work without billing, and coupling their
   // availability to Stripe's would be worse than a broken checkout.
   void logStripeKeyStatus();
-// Same reason: config.ts asserts the Claude key is a non-empty string and
-// nothing else looks until a user asks for a summary.
-void logClaudeKeyStatus();
+
+  // Same reason: config.ts asserts the Claude key is a non-empty string and
+  // nothing else looks until a user asks for a summary. Caught, unlike Stripe's,
+  // because this one resolves the provider and so can reject.
+  void logClaudeKeyStatus().catch((err: unknown) => {
+    logger.error({ err }, 'Claude boot probe failed');
+  });
 
   if (isQbConfigured(env)) {
     initSyncWorker();
