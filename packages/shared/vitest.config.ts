@@ -9,14 +9,14 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text-summary', 'lcov'],
-      // Mostly schemas and constants, so line coverage reads low here and
-      // branch coverage is the honest signal.
-      // Ratchet measured 2026-08-30: 51.3% lines, 76.6% branches, 45.8% functions.
+      // Ratchet measured 2026-10-29: 89.88% statements, 87.93% branches,
+      // 72.91% functions and 91.77% lines. Keep these just below the measured
+      // baseline and raise them as coverage climbs.
       thresholds: {
-        statements: 48,
-        branches: 73,
-        functions: 42,
-        lines: 48,
+        statements: 89,
+        branches: 87,
+        functions: 72,
+        lines: 91,
       },
     },
   },

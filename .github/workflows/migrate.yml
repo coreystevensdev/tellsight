@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Image tag holding the migration, e.g. sha-a1b2c3d. Blank uses what is deployed."
+        description: 'Image tag holding the migration, e.g. sha-a1b2c3d. Blank uses what is deployed.'
         required: false
         type: string
       confirm:
@@ -33,12 +33,12 @@ permissions:
 
 env:
   AWS_REGION: us-east-1
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   migrate:
     name: Migrate production
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
 
     steps:
       - name: Check the confirmation
@@ -51,7 +51,7 @@ jobs:
           fi
 
       - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v6
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -63,12 +63,17 @@ jobs:
           IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           python3 - <<'PY'
-          import json, os, subprocess, sys, time
+          import json, os, re, subprocess, sys, time
 
           instance_id = os.environ["EC2_INSTANCE_ID"]
           repo = os.environ["ECR_API_REPO"]
           tag = os.environ.get("IMAGE_TAG", "").strip()
           ecr_host = repo.split("/")[0]
+
+          # IMAGE_TAG is interpolated into the remote shell command below. A
+          # typo should fail here, and metacharacters must never reach SSM.
+          if tag and not re.fullmatch(r"sha-[0-9a-f]{7,40}", tag):
+              sys.exit("image_tag must match sha- followed by 7-40 lowercase hex characters")
 
           # Blank means "whatever is deployed", read off the pin the deploy wrote.
           # Reading the override rather than deploy-history: history's head is the
@@ -105,7 +110,14 @@ jobs:
               "aws", "ssm", "send-command",
               "--instance-ids", instance_id,
               "--document-name", "AWS-RunShellScript",
-              "--parameters", json.dumps({"commands": commands}),
+              # Bound both delivery and remote execution. Without the document
+              # parameter, AWS-RunShellScript can keep running for an hour after
+              # this workflow has already stopped watching it.
+              "--timeout-seconds", "60",
+              "--parameters", json.dumps({
+                  "commands": commands,
+                  "executionTimeout": ["600"],
+              }),
               "--query", "Command.CommandId",
               "--output", "text",
           ], capture_output=True, text=True)
@@ -117,7 +129,9 @@ jobs:
           cmd_id = send.stdout.strip()
           print(f"SSM command ID: {cmd_id}")
 
-          for _ in range(60):
+          # Ten minutes of execution plus a minute for delivery/status
+          # propagation, still inside the job's 15-minute hard limit.
+          for _ in range(132):
               time.sleep(5)
               poll = subprocess.run([
                   "aws", "ssm", "get-command-invocation",

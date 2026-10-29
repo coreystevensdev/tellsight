@@ -16,6 +16,7 @@ on:
 permissions:
   id-token: write
   contents: read
+  actions: read
 
 env:
   AWS_REGION: us-east-1
@@ -23,11 +24,13 @@ env:
 jobs:
   drift:
     name: Compare production against main
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 1
+          persist-credentials: false
 
       # Only compare once main's newest commit has actually finished deploying.
       # The first version of this gate only skipped while a deploy was running,
@@ -35,6 +38,12 @@ jobs:
       # starting: CI still had to pass first. Asking for a completed deploy run
       # for this exact sha covers all three states at once, no deploy created
       # yet, one in flight, or one finished.
+      #
+      # A workflow_run run's own headSha is the revision that supplied this
+      # workflow file, not reliably the CI commit that triggered it. Two
+      # consecutive deploys can therefore report the same headSha even though
+      # they deploy different commits. deploy-aws puts the triggering CI sha in
+      # displayTitle explicitly; correlate on that stable identity instead.
       #
       # A deploy that finished and failed is not skipped. Production really is
       # behind in that case, which is the thing worth saying out loud.
@@ -47,9 +56,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          status=$(gh run list --workflow=deploy-aws.yml --limit 20 \
-            --json headSha,status \
-            -q "[.[] | select(.headSha == \"$GITHUB_SHA\")] | first | .status // \"none\"")
+          status=$(gh run list --workflow=deploy-aws.yml --limit 100 \
+            --json displayTitle,status \
+            -q "[.[] | select(.displayTitle == \"Deploy $GITHUB_SHA\")] | first | .status // \"none\"")
           if [ "$status" != "completed" ]; then
             echo "no completed deploy for ${GITHUB_SHA:0:7} yet (status: $status), nothing to compare"
             echo "skip=true" >> "$GITHUB_OUTPUT"
@@ -60,7 +69,7 @@ jobs:
 
       - name: Configure AWS credentials via OIDC
         if: steps.gate.outputs.skip != 'true'
-        uses: aws-actions/configure-aws-credentials@v6
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
