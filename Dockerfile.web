@@ -16,15 +16,18 @@ CMD ["pnpm", "--filter", "web", "dev"]
 
 FROM deps AS build
 # Sentry source map upload fires during `next build` when SENTRY_AUTH_TOKEN is
-# present. Callers pass these via `docker build --build-arg` from CI secrets.
+# present. The token is a BuildKit secret so it exists only for this RUN and
+# never becomes image metadata or a layer environment variable.
 ARG SENTRY_ORG
 ARG SENTRY_PROJECT
-ARG SENTRY_AUTH_TOKEN
 ENV SENTRY_ORG=${SENTRY_ORG} \
-    SENTRY_PROJECT=${SENTRY_PROJECT} \
-    SENTRY_AUTH_TOKEN=${SENTRY_AUTH_TOKEN}
+    SENTRY_PROJECT=${SENTRY_PROJECT}
 COPY . .
-RUN pnpm --filter shared build && pnpm --filter web build
+RUN --mount=type=secret,id=SENTRY_AUTH_TOKEN \
+  if [ -f /run/secrets/SENTRY_AUTH_TOKEN ]; then \
+    export SENTRY_AUTH_TOKEN="$(cat /run/secrets/SENTRY_AUTH_TOKEN)"; \
+  fi; \
+  pnpm --filter shared build && pnpm --filter web build
 
 FROM base AS production
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*

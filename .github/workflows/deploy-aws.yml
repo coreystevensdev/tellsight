@@ -33,22 +33,25 @@ concurrency:
 permissions:
   id-token: write
   contents: read
-  actions: read  # reads CI's conclusion for this sha on a manual run
+  actions: read # reads CI's conclusion for this sha on a manual run
 
 env:
   AWS_REGION: us-east-1
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   deploy:
     name: Build, Push, Deploy
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # Bound a wedged build or network call without cutting off the guarded
+    # rollback path, which can itself need several minutes to pull old images.
+    timeout-minutes: 30
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
 
       # A manual run skips the workflow_run gate, so it has to ask the question
       # that gate answers. Deploying a commit CI has not passed is sometimes the
@@ -72,14 +75,14 @@ jobs:
           fi
 
       - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v6
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Log in to Amazon ECR
         id: ecr-login
-        uses: aws-actions/amazon-ecr-login@v2
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2
 
       - name: Set image tags
         id: tags
@@ -93,7 +96,7 @@ jobs:
           echo "web_image=${ECR_WEB}:sha-${SHORT}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push API image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           file: Dockerfile.api
@@ -104,12 +107,17 @@ jobs:
             ${{ secrets.ECR_API_REPO }}:latest
 
       - name: Build and push web image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           file: Dockerfile.web
           target: production
           push: true
+          build-args: |
+            SENTRY_ORG=${{ vars.SENTRY_ORG }}
+            SENTRY_PROJECT=${{ vars.SENTRY_PROJECT }}
+          secrets: |
+            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
           tags: |
             ${{ steps.tags.outputs.web_image }}
             ${{ secrets.ECR_WEB_REPO }}:latest
@@ -512,13 +520,14 @@ jobs:
           PROD_URL: ${{ secrets.PRODUCTION_URL }}
         run: |
           echo "Polling $PROD_URL/api/health/ready..."
-          for i in $(seq 1 18); do
-            body=$(curl -fsS "$PROD_URL/api/health/ready" 2>/dev/null || true)
+          started=$SECONDS
+          for i in $(seq 1 12); do
+            body=$(curl --connect-timeout 3 --max-time 5 -fsS "$PROD_URL/api/health/ready" 2>/dev/null || true)
             if echo "$body" | grep -q '"status":"ok"'; then
-              echo "Healthy after $((i * 10))s"
+              echo "Healthy after $((SECONDS - started))s"
               exit 0
             fi
-            sleep 10
+            [ "$i" -eq 12 ] || sleep 10
           done
           echo "Production did not become healthy within 3 minutes"
           exit 1
@@ -537,7 +546,7 @@ jobs:
           set -euo pipefail
           host=$(echo "$PROD_URL" | sed -E 's#^https?://##; s#/.*##')
 
-          hsts=$(curl -sSI "https://$host/" | tr -d '\r' | grep -i '^strict-transport-security:' || true)
+          hsts=$(curl --connect-timeout 5 --max-time 15 -sSI "https://$host/" | tr -d '\r' | grep -i '^strict-transport-security:' || true)
           if [ -z "$hsts" ]; then
             echo "FAIL: no Strict-Transport-Security header on https://$host/"
             exit 1
@@ -552,7 +561,7 @@ jobs:
             exit 1
           fi
 
-          code=$(curl -sS -o /dev/null -w '%{http_code}' "http://$host/")
+          code=$(curl --connect-timeout 5 --max-time 15 -sS -o /dev/null -w '%{http_code}' "http://$host/")
           case "$code" in
             30[1278]) echo "plain HTTP redirects ($code)" ;;
             *) echo "FAIL: http://$host/ answered $code, expected a redirect"; exit 1 ;;
@@ -571,7 +580,7 @@ jobs:
           # handed it to Next.js, which has no route for it.
           for provider in quickbooks shopify square; do
             path="/integrations/$provider/callback"
-            code=$(curl -sS -o /dev/null -w '%{http_code}' "https://$host$path")
+            code=$(curl --connect-timeout 5 --max-time 15 -sS -o /dev/null -w '%{http_code}' "https://$host$path")
             case "$code" in
               404) echo "FAIL: $path answered 404, Caddy is not routing it to the API"; exit 1 ;;
               # Fail closed. An unreachable host or a curl that never ran leaves
@@ -630,12 +639,13 @@ jobs:
             exit 1
           fi
 
-          for i in $(seq 1 18); do
-            if curl -fsS "$PROD_URL/api/health/ready" 2>/dev/null | grep -q '"status":"ok"'; then
-              echo "Rolled back and healthy after $((i * 10))s"
+          started=$SECONDS
+          for i in $(seq 1 12); do
+            if curl --connect-timeout 3 --max-time 5 -fsS "$PROD_URL/api/health/ready" 2>/dev/null | grep -q '"status":"ok"'; then
+              echo "Rolled back and healthy after $((SECONDS - started))s"
               exit 0
             fi
-            sleep 10
+            [ "$i" -eq 12 ] || sleep 10
           done
           echo "ROLLBACK FAILED: not healthy on the previous build either." >&2
           exit 1
