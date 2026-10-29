@@ -7,25 +7,14 @@ import { trackEventOrg } from '../../../services/analytics/trackEvent.js';
 import { dbAdmin } from '../../../lib/db.js';
 import {
   agentProposalsQueries,
-  aiSummariesQueries,
   dataRowsQueries,
   datasetsQueries,
   digestEligibilityQueries,
   digestHistoryQueries,
   milestoneAwardsQueries,
   orgsQueries,
-  subscriptionsQueries,
 } from '../../../db/queries/index.js';
-import {
-  runCurationPipeline,
-  assemblePrompt,
-  validateStatRefs,
-  stripInvalidStatRefs,
-  validateCiteRefs,
-  stripInvalidCiteRefs,
-  transparencyMetadataSchema,
-} from '../../../services/curation/index.js';
-import { generateInterpretation } from '../../../services/aiInterpretation/claudeClient.js';
+import { runCurationPipeline } from '../../../services/curation/index.js';
 import type { ComputedStat } from '../../../services/curation/types.js';
 import { classifyValence } from '../valence.js';
 import { buildPriorContext, type PriorContextEntry } from '../buildPriorContext.js';
@@ -33,6 +22,8 @@ import { detectTransitionMilestones, type TransitionMilestone } from '../milesto
 import { detectFirstTimeMilestones } from '../firstTimeMilestones.js';
 import { composePriorContext } from '../composePriorContext.js';
 import { generateSubjectLine } from '../subjectLine.js';
+import { loadDigestAgentFindings } from '../loadDigestAgentFindings.js';
+import { resolveDigestSummary } from '../resolveDigestSummary.js';
 import {
   getSendQueue,
   JOB_PREFIX_SEND,
@@ -40,14 +31,8 @@ import {
   type SendJobData,
 } from '../queue.js';
 
-const DIGEST_AUDIENCE = 'digest-weekly' as const;
-
 const SEND_JOB_ATTEMPTS = 3;
 const SEND_JOB_BACKOFF_MS = 30_000;
-
-// Per-group cap on agent findings folded into one digest, so a multi-week
-// outage can't turn a single email into a wall of bullets.
-const AGENT_PROPOSAL_FOLD_IN_CAP = 5;
 
 function sendJobName(userId: number, weekStart: Date): string {
   return `${JOB_PREFIX_SEND}-${userId}-${weekStart.getTime()}`;
@@ -251,139 +236,31 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
   );
   const promptVersion = priorContext.length > 0 ? 'v2-digest' : 'v1-digest';
 
-  // dbAdmin, like the other platform-level reads in this handler. ai_summaries
-  // has RLS and this job runs off a cron with no request and no
-  // app.current_org_id, so the default client silently matches nothing here and
-  // fails outright on the insert below.
-  const cached = await aiSummariesQueries.getCachedDigest(orgId, datasetId, weekStart, dbAdmin);
-  let summaryId: number;
-  let cacheHit: boolean;
-  let insightCount: number;
-  let content: string;
-  let generatedPromptVersion: string;
-
-  if (cached) {
-    summaryId = cached.id;
-    cacheHit = true;
-    content = cached.content;
-    const meta = cached.transparencyMetadata as { statTypes?: unknown[]; promptVersion?: string } | null;
-    insightCount = Array.isArray(meta?.statTypes) ? meta!.statTypes!.length : 0;
-    // The cached summary may have been generated under an earlier promptVersion
-    // than what this run's fresh diff would pick, so log what actually produced
-    // the content being sent, not what would be selected generating fresh now.
-    generatedPromptVersion = meta?.promptVersion ?? promptVersion;
-  } else {
-    insightCount = insights.length;
-
-    const { system, user, metadata } = assemblePrompt(
-      insights,
-      datasetId,
-      promptVersion,
-      businessProfile,
-      new Date(),
-      priorContext,
-    );
-    const validatedMetadata = transparencyMetadataSchema.parse(metadata);
-
-    const generated = await generateInterpretation({ system, user });
-    const refReport = validateStatRefs(generated, insights.map((i) => i.stat));
-    const chartRefsStripped =
-      refReport.invalidRefs.length > 0
-        ? stripInvalidStatRefs(generated, refReport.invalidRefs)
-        : generated;
-
-    // Tier 2b, same defense-in-depth as index.ts/streamHandler.ts: v1-digest
-    // and v2-digest never ask the LLM for a <cite> tag, but formatStat
-    // appends the [cite: <id>] suffix to every stat line regardless of which
-    // template renders it, so a hallucinated citation is still possible here.
-    const citeReport = validateCiteRefs(chartRefsStripped, insights.map((i) => i.stat), datasetId);
-    const cleaned =
-      citeReport.invalidRefs.length > 0
-        ? stripInvalidCiteRefs(chartRefsStripped, citeReport.invalidRefs)
-        : chartRefsStripped;
-    if (citeReport.invalidRefs.length > 0) {
-      logger.warn(
-        { orgId, datasetId, invalidRefs: citeReport.invalidRefs, promptVersion },
-        'AI summary referenced unknown stat instance IDs, stripped before cache',
-      );
-    }
-
-    const stored = await aiSummariesQueries.storeSummary({
-      orgId,
-      datasetId,
-      content: cleaned,
-      metadata: validatedMetadata,
-      promptVersion,
-      audience: DIGEST_AUDIENCE,
-      weekStart,
-      client: dbAdmin,
-    });
-    summaryId = stored.id;
-    cacheHit = false;
-    content = cleaned;
-    generatedPromptVersion = promptVersion;
-  }
+  const {
+    summaryId,
+    cacheHit,
+    insightCount,
+    content,
+    generatedPromptVersion,
+  } = await resolveDigestSummary({
+    orgId,
+    datasetId,
+    weekStart,
+    promptVersion,
+    businessProfile,
+    priorContext,
+    insights,
+  });
 
   const stateSentence = extractStateSentence(content);
   const valence = classifyValence(currentStats);
   const subjectLine = generateSubjectLine(valence, firstTimeMilestones, dedupedTransitionMilestones, org.name);
 
-  // Auto-notify agent findings accumulated during the week, plus expired
-  // findings nobody reviewed, fold into this digest as extra bullets.
-  // Fetched once, before the recipient loop, so every recipient's
-  // SendJobData carries the identical bullet list -- markNotified below
-  // fires once per org, not once per recipient, so a second recipient's send
-  // never re-queries and finds nothing left. Each group is capped at
-  // AGENT_PROPOSAL_FOLD_IN_CAP so a multi-week outage can't turn one email
-  // into an unbounded list; anything past the cap collapses into a single
-  // "+N more" note instead of vanishing without a trace. Both groups pass
-  // through the same markNotified call, so an expired-and-folded proposal
-  // actually leaves 'expired' this time instead of sitting there forever and
-  // re-folding into every following retry and digest.
-  // Re-verified here, not just at generation time: an org can downgrade out
-  // of the Agent tier between when a proposal was generated and this week's
-  // digest, and an entitlement gate should never fail open (same posture as
-  // evaluateOrg.ts's own re-check).
-  // Isolated in its own try/catch: this fold-in is additive to an
-  // already-shipped digest send, a transient error here should cost the org
-  // its agent bullets for the week, not the whole digest.
-  let autoNotifyProposals: Awaited<ReturnType<typeof agentProposalsQueries.getPendingProposals>> = [];
-  let expiredProposals: Awaited<ReturnType<typeof agentProposalsQueries.getExpiredUnfoldedProposals>> = [];
-  let expiredTotal = 0;
-  try {
-    const agentEnabled = await subscriptionsQueries.getAgentEnabled(orgId, dbAdmin);
-    if (agentEnabled) {
-      const pendingProposals = await agentProposalsQueries.getPendingProposals(orgId);
-      autoNotifyProposals = pendingProposals.filter((p) => p.lane === 'auto_notify');
-      expiredProposals = await agentProposalsQueries.getExpiredUnfoldedProposals(
-        orgId,
-        weekStart,
-        AGENT_PROPOSAL_FOLD_IN_CAP,
-      );
-      // Conservative fallback if the count query below throws: assume
-      // nothing was omitted rather than reporting a number we can't confirm.
-      expiredTotal = expiredProposals.length;
-      expiredTotal = await agentProposalsQueries.countExpiredUnfoldedProposals(orgId, weekStart);
-    }
-  } catch (err) {
-    logger.error(
-      { correlationId, orgId, err },
-      'Failed to fetch some agent proposals for the digest, continuing with whatever was already fetched',
-    );
-  }
-
-  const autoNotifyToFold = autoNotifyProposals.slice(0, AGENT_PROPOSAL_FOLD_IN_CAP);
-  const autoNotifyOmitted = Math.max(0, autoNotifyProposals.length - AGENT_PROPOSAL_FOLD_IN_CAP);
-  const expiredOmitted = Math.max(0, expiredTotal - expiredProposals.length);
-  const omitted = autoNotifyOmitted + expiredOmitted;
-
-  const agentBullets = [
-    ...autoNotifyToFold.map((p) => `${p.title}: ${p.recommendation}`),
-    ...expiredProposals.map((p) => `${p.title} (expired without review): ${p.recommendation}`),
-  ];
-  if (omitted > 0) {
-    agentBullets.push(`+${omitted} more agent finding${omitted === 1 ? '' : 's'} not shown this week`);
-  }
+  const { bullets: agentBullets, notifiedProposalIds } = await loadDigestAgentFindings(
+    orgId,
+    weekStart,
+    correlationId,
+  );
 
   const recipients = await digestEligibilityQueries.findOrgRecipients(orgId);
   const queue = getSendQueue();
@@ -481,11 +358,7 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
       // omitted stay 'expired' but are gone for good once weekStart moves
       // past their resolvedAt -- no backfill, by design (2026-08-02).
       if (enqueued > 0) {
-        await agentProposalsQueries.markNotified(
-          orgId,
-          [...autoNotifyToFold, ...expiredProposals].map((p) => p.id),
-          tx,
-        );
+        await agentProposalsQueries.markNotified(orgId, notifiedProposalIds, tx);
       }
     });
   } catch (err) {

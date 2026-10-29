@@ -72,6 +72,7 @@ interface PreviewBody {
     rowCount: number;
     validRowCount: number;
     skippedRowCount: number;
+    columnTypes: Record<string, 'date' | 'number' | 'text'>;
     previewToken: string;
     fileName: string;
   };
@@ -198,6 +199,25 @@ describe('POST /datasets', () => {
     // Original-cased keys should NOT be present
     expect(firstRow).not.toHaveProperty('Date');
     expect(firstRow).not.toHaveProperty('Amount');
+  });
+
+  it('uses ingestion date semantics when inferring preview column types', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(userPayload());
+    const csv = [
+      'date,amount,category',
+      '23/03/1976,100,Revenue',
+      '10/09/1982,-25,Expense',
+    ].join('\n');
+
+    const res = await uploadCsv(csv);
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as PreviewBody;
+    expect(body.data.columnTypes).toEqual({
+      date: 'date',
+      amount: 'number',
+      category: 'text',
+    });
   });
 
   it('returns 400 for CSV with missing required columns', async () => {

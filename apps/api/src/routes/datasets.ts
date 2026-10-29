@@ -5,7 +5,7 @@ import multer from 'multer';
 import { MAX_FILE_SIZE, CSV_MAX_ROWS, MAX_DATASETS_PER_ORG, ANALYTICS_EVENTS, AUDIT_ACTIONS } from 'shared/constants';
 import { requireUser } from '../lib/requireUser.js';
 import { ValidationError } from '../lib/appError.js';
-import { csvAdapter } from '../services/dataIngestion/index.js';
+import { csvAdapter, detectDayFirst, parseDate } from '../services/dataIngestion/index.js';
 import { normalizeRows } from '../services/dataIngestion/normalizer.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
 import { auditAuth } from '../services/audit/auditService.js';
@@ -40,24 +40,22 @@ function handleMulterError(err: unknown, _req: Request, _res: Response, next: Ne
   next(err);
 }
 
-const DATE_SHAPE = /\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4}/;
-
-function inferColumnType(value: string): 'date' | 'number' | 'text' {
+function inferColumnType(value: string, dayFirst: boolean): 'date' | 'number' | 'text' {
   const trimmed = value.trim().replace(/,/g, '');
   if (!isNaN(Number(trimmed)) && trimmed !== '') return 'number';
-  if (DATE_SHAPE.test(trimmed) && !isNaN(new Date(trimmed).getTime())) return 'date';
+  if (parseDate(value, dayFirst) !== null) return 'date';
   return 'text';
 }
 
 function buildColumnTypes(rows: Record<string, string>[], headers: string[]): Record<string, 'date' | 'number' | 'text'> {
   const types: Record<string, 'date' | 'number' | 'text'> = {};
-  const sample = rows.slice(0, 5);
   for (const header of headers) {
     const normalized = normalizeHeader(header);
-    const votes = sample
+    const values = rows
       .map((r) => r[header]?.trim())
-      .filter(Boolean)
-      .map((v) => inferColumnType(v!));
+      .filter((value): value is string => Boolean(value));
+    const dayFirst = detectDayFirst(values);
+    const votes = values.slice(0, 5).map((value) => inferColumnType(value, dayFirst));
 
     if (votes.length === 0) {
       types[normalized] = 'text';
