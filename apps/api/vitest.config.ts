@@ -2,6 +2,10 @@ import { configDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
+    // Vitest discovers the workspace root and otherwise gives every concurrent
+    // Turbo task the same fsModuleCachePath. Startup cleanup then races with
+    // another package's writes and can fail with ENOTEMPTY.
+    fsModuleCachePath: '../../node_modules/.vitest-cache/api',
     globals: true,
     environment: 'node',
     setupFiles: ['../../packages/shared/src/test/blockExternalNetwork.ts'],
