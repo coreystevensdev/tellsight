@@ -2,6 +2,9 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
+    // Keep concurrent Turbo tasks from racing over Vitest's workspace-level
+    // transformed-module cache during startup cleanup.
+    fsModuleCachePath: '../../node_modules/.vitest-cache/shared',
     globals: true,
     environment: 'node',
     setupFiles: ['./src/test/blockExternalNetwork.ts'],

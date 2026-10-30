@@ -1,4 +1,10 @@
-import { Registry, collectDefaultMetrics, Histogram, Counter, Gauge } from 'prom-client';
+import {
+  Registry,
+  collectDefaultMetrics,
+  Histogram,
+  Counter,
+  Gauge,
+} from '@prometheus-io/client';
 import { activeCount } from './activeStreams.js';
 
 export const registry = new Registry();

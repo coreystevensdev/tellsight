@@ -5,6 +5,9 @@ import { fileURLToPath } from 'node:url';
 export default defineConfig({
   plugins: [react()],
   test: {
+    // Keep concurrent Turbo tasks from racing over Vitest's workspace-level
+    // transformed-module cache during startup cleanup.
+    fsModuleCachePath: '../../node_modules/.vitest-cache/web',
     environment: 'jsdom',
     setupFiles: ['../../packages/shared/src/test/blockExternalNetwork.ts', './test/setup.ts'],
     include: ['**/*.test.{ts,tsx}'],

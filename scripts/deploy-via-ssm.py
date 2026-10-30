@@ -33,7 +33,7 @@ env_pairs = [
     ("DATABASE_URL", os.environ['DATABASE_URL']),
     ("DATABASE_ADMIN_URL", os.environ['DATABASE_ADMIN_URL']),
     ("CLAUDE_API_KEY", os.environ['CLAUDE_API_KEY']),
-    ("CLAUDE_MODEL", os.environ.get('CLAUDE_MODEL', 'claude-sonnet-4-6')),
+    ("CLAUDE_MODEL", os.environ.get('CLAUDE_MODEL') or 'claude-sonnet-4-6'),
     # Only written when set: unset means one model for every path.
     *( [("CLAUDE_MODEL_TOOLS", os.environ['CLAUDE_MODEL_TOOLS'])] if os.environ.get('CLAUDE_MODEL_TOOLS') else [] ),
     ("STRIPE_SECRET_KEY", os.environ['STRIPE_SECRET_KEY']),
