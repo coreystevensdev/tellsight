@@ -5,38 +5,15 @@ import { ANALYTICS_EVENTS } from 'shared/constants';
 import { logger } from '../../../lib/logger.js';
 import { trackEventOrg } from '../../../services/analytics/trackEvent.js';
 import { dbAdmin } from '../../../lib/db.js';
-import {
-  agentProposalsQueries,
-  dataRowsQueries,
-  datasetsQueries,
-  digestEligibilityQueries,
-  digestHistoryQueries,
-  milestoneAwardsQueries,
-  orgsQueries,
-} from '../../../db/queries/index.js';
+import { digestEligibilityQueries, orgsQueries } from '../../../db/queries/index.js';
 import { runCurationPipeline } from '../../../services/curation/index.js';
-import type { ComputedStat } from '../../../services/curation/types.js';
 import { classifyValence } from '../valence.js';
-import { buildPriorContext, type PriorContextEntry } from '../buildPriorContext.js';
-import { detectTransitionMilestones, type TransitionMilestone } from '../milestones.js';
-import { detectFirstTimeMilestones } from '../firstTimeMilestones.js';
-import { composePriorContext } from '../composePriorContext.js';
 import { generateSubjectLine } from '../subjectLine.js';
 import { loadDigestAgentFindings } from '../loadDigestAgentFindings.js';
 import { resolveDigestSummary } from '../resolveDigestSummary.js';
-import {
-  getSendQueue,
-  JOB_PREFIX_SEND,
-  orgJobDataSchema,
-  type SendJobData,
-} from '../queue.js';
-
-const SEND_JOB_ATTEMPTS = 3;
-const SEND_JOB_BACKOFF_MS = 30_000;
-
-function sendJobName(userId: number, weekStart: Date): string {
-  return `${JOB_PREFIX_SEND}-${userId}-${weekStart.getTime()}`;
-}
+import { enqueueDigestSends, persistDigestDelivery } from '../delivery.js';
+import { prepareDigestContext } from '../prepareDigestContext.js';
+import { orgJobDataSchema } from '../queue.js';
 
 // First non-blank line of the digest content, stripped of its bullet marker,
 // becomes next week's "Last week: ..." lead-in via composePriorContext.
@@ -53,14 +30,13 @@ function extractStateSentence(content: string): string {
  * skipped and the cached content is reused. Either way, fan out per-send jobs
  * for eligible org members, then persist the week's history record.
  */
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-
 export async function handlePerOrgJob(job: Job): Promise<void> {
   const parsed = orgJobDataSchema.safeParse(job.data);
   if (!parsed.success) {
     logger.warn(
       {
-        correlationId: typeof job.data?.correlationId === 'string' ? job.data.correlationId : undefined,
+        correlationId:
+          typeof job.data?.correlationId === 'string' ? job.data.correlationId : undefined,
         jobId: job.id,
         issues: parsed.error.issues,
       },
@@ -78,7 +54,10 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
       { correlationId, orgId, jobId: job.id, outcome: 'skipped', durationMs: Date.now() - start },
       'Per-org digest skipped: org has no active dataset (lost between orchestrator + processing)',
     );
-    trackEventOrg(orgId, ANALYTICS_EVENTS.DIGEST_SKIPPED, { reason: 'no_active_dataset', weekStart: weekStart.toISOString() });
+    trackEventOrg(orgId, ANALYTICS_EVENTS.DIGEST_SKIPPED, {
+      reason: 'no_active_dataset',
+      weekStart: weekStart.toISOString(),
+    });
     return;
   }
 
@@ -88,7 +67,10 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
       { correlationId, orgId, jobId: job.id, outcome: 'skipped', durationMs: Date.now() - start },
       'Per-org digest skipped: org row missing (deleted between orchestrator + processing)',
     );
-    trackEventOrg(orgId, ANALYTICS_EVENTS.DIGEST_SKIPPED, { reason: 'org_missing', weekStart: weekStart.toISOString() });
+    trackEventOrg(orgId, ANALYTICS_EVENTS.DIGEST_SKIPPED, {
+      reason: 'org_missing',
+      weekStart: weekStart.toISOString(),
+    });
     return;
   }
 
@@ -129,88 +111,45 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
   // digest, which is the one thing it cannot afford.
   if (insights.length === 0) {
     logger.info(
-      { correlationId, orgId, datasetId, weekStart, jobId: job.id, outcome: 'skipped', durationMs: Date.now() - start },
+      {
+        correlationId,
+        orgId,
+        datasetId,
+        weekStart,
+        jobId: job.id,
+        outcome: 'skipped',
+        durationMs: Date.now() - start,
+      },
       'Per-org digest skipped: no computable stats for this week',
     );
-    trackEventOrg(orgId, ANALYTICS_EVENTS.DIGEST_SKIPPED, { reason: 'no_computable_stats', datasetId, weekStart: weekStart.toISOString() });
+    trackEventOrg(orgId, ANALYTICS_EVENTS.DIGEST_SKIPPED, {
+      reason: 'no_computable_stats',
+      datasetId,
+      weekStart: weekStart.toISOString(),
+    });
     return;
   }
 
-  const lastDigest = await digestHistoryQueries.getLastDigest(orgId, weekStart);
+  const preparedContext = await prepareDigestContext({
+    orgId,
+    datasetId,
+    weekStart,
+    currentStats,
+    monthlyFixedCosts: financials?.monthlyFixedCosts,
+    correlationId,
+  });
 
-  // keyStats is cast, not validated, at the query-helper layer, so a
-  // shape-mismatched row throws inside these two calls; caught here so it
-  // degrades to "no prior digest" instead of failing before sends go out.
-  let priorStats: ComputedStat[] = [];
-  let deltaEntries: PriorContextEntry[] = [];
-  let transitionMilestones: TransitionMilestone[] = [];
-  try {
-    priorStats = lastDigest?.keyStats ?? [];
-    deltaEntries = buildPriorContext(currentStats, priorStats);
-    transitionMilestones = detectTransitionMilestones(currentStats, priorStats);
-  } catch (err) {
-    logger.error(
-      { correlationId, orgId, weekStart, err },
-      'Failed to derive prior-digest context, continuing with no prior context',
-    );
-  }
-
-  // Full monthly history (never digest_history, which only covers recent
-  // weeks) and the org's fire-once ledger, explicit dbAdmin since this
-  // worker runs with no per-request RLS session.
-  const monthlyBuckets = await dataRowsQueries.getMonthlyBucketsByDataset(orgId, datasetId, dbAdmin);
-  const awardedKinds = await milestoneAwardsQueries.getAwardedKinds(orgId);
-  const firstTimeMilestones = detectFirstTimeMilestones(
-    monthlyBuckets,
-    financials?.monthlyFixedCosts,
-    new Date(),
-    awardedKinds,
-  );
-
-  // first_break_even is the all-time-first version of crossed_break_even;
-  // when both fire the same week, drop the transition one so the body and
-  // subject never narrate the same crossing twice.
-  const firedFirstBreakEven = firstTimeMilestones.some((m) => m.kind === 'first_break_even');
-  const dedupedTransitionMilestones: TransitionMilestone[] = firedFirstBreakEven
-    ? transitionMilestones.filter((m) => m.kind !== 'crossed_break_even')
-    : transitionMilestones;
-
-  const milestones = [...firstTimeMilestones, ...dedupedTransitionMilestones];
-
-  // A monthly uploader on a weekly digest gets four emails per data change,
-  // three of them restating the same numbers. That is the same failure the
-  // 30-day staleness gate exists to prevent (FR58), one grain finer, and the
-  // gate cannot see it because the data is not stale, it is merely unchanged.
-  //
-  // The test is whether new data arrived, not whether the tracked stats moved.
-  // buildPriorContext compares four stat types out of the pipeline's full set,
-  // so an empty deltaEntries means "none of those four moved", not "nothing to
-  // say": a new expense category or a shifted forecast would produce no delta
-  // and still be worth sending. Datasets are immutable, every ingest path mints
-  // a new row, so created_at older than the last digest means nothing has come
-  // in since, and nothing computed from it can have changed either.
-  //
-  // dbAdmin explicitly. getDatasetById defaults to the RLS-scoped client, which
-  // in a worker has no app.current_org_id and returns undefined, and undefined
-  // here reads as "cannot tell" and sends. Safe, but it would silently disable
-  // this skip forever.
-  const activeDataset = await datasetsQueries.getDatasetById(orgId, datasetId, dbAdmin);
-  const priorWeekStart = lastDigest?.weekStart;
-  const noNewDataSincePrior =
-    priorWeekStart instanceof Date &&
-    activeDataset?.createdAt instanceof Date &&
-    activeDataset.createdAt.getTime() <= priorWeekStart.getTime();
-
-  // Milestones are belt and braces. They are derived from the same data, so an
-  // unchanged dataset should not produce new ones, and detectFirstTimeMilestones
-  // takes the wall clock as an argument. Cheap enough to not have to be sure.
-  if (noNewDataSincePrior && deltaEntries.length === 0 && milestones.length === 0) {
+  if (preparedContext.noNewData) {
     logger.info(
       {
-        correlationId, orgId, datasetId, weekStart, jobId: job.id,
+        correlationId,
+        orgId,
+        datasetId,
+        weekStart,
+        jobId: job.id,
         outcome: 'skipped',
-        datasetCreatedAt: activeDataset!.createdAt.toISOString(),
-        priorDigestWeekStart: priorWeekStart!.toISOString(),
+        datasetCreatedAt: preparedContext.noNewData.datasetCreatedAt.toISOString(),
+        priorDigestWeekStart: preparedContext.noNewData.priorDigestWeekStart.toISOString(),
         durationMs: Date.now() - start,
       },
       'Per-org digest skipped: no new data since the last digest',
@@ -222,39 +161,33 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
     });
     return;
   }
-  // getLastDigest returns the most recent digest, not the adjacent week, and
-  // skipped weeks now make gaps ordinary. Pass the real distance so the lead-in
-  // cannot call a three-week-old snapshot "last week".
-  const weeksSincePrior = lastDigest?.weekStart
-    ? Math.max(1, Math.round((weekStart.getTime() - lastDigest.weekStart.getTime()) / WEEK_MS))
-    : 1;
-  const priorContext = composePriorContext(
-    lastDigest?.stateSentence,
-    deltaEntries,
-    milestones,
-    weeksSincePrior,
-  );
-  const promptVersion = priorContext.length > 0 ? 'v2-digest' : 'v1-digest';
 
   const {
-    summaryId,
-    cacheHit,
-    insightCount,
-    content,
-    generatedPromptVersion,
-  } = await resolveDigestSummary({
-    orgId,
-    datasetId,
-    weekStart,
-    promptVersion,
-    businessProfile,
+    firstTimeMilestones,
+    transitionMilestones: dedupedTransitionMilestones,
     priorContext,
-    insights,
-  });
+    promptVersion,
+  } = preparedContext;
+
+  const { summaryId, cacheHit, insightCount, content, generatedPromptVersion } =
+    await resolveDigestSummary({
+      orgId,
+      datasetId,
+      weekStart,
+      promptVersion,
+      businessProfile,
+      priorContext,
+      insights,
+    });
 
   const stateSentence = extractStateSentence(content);
   const valence = classifyValence(currentStats);
-  const subjectLine = generateSubjectLine(valence, firstTimeMilestones, dedupedTransitionMilestones, org.name);
+  const subjectLine = generateSubjectLine(
+    valence,
+    firstTimeMilestones,
+    dedupedTransitionMilestones,
+    org.name,
+  );
 
   const { bullets: agentBullets, notifiedProposalIds } = await loadDigestAgentFindings(
     orgId,
@@ -263,45 +196,16 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
   );
 
   const recipients = await digestEligibilityQueries.findOrgRecipients(orgId);
-  const queue = getSendQueue();
-
-  let enqueued = 0;
-  let enqueueFailures = 0;
-
-  for (const r of recipients) {
-    const data: SendJobData = {
-      userId: r.userId,
-      orgId,
-      summaryId,
-      weekStart,
-      userEmail: r.email,
-      orgName: org.name,
-      subjectLine,
-      agentBullets,
-      correlationId,
-    };
-
-    try {
-      // BullMQ dedupes on jobId, not the `name` argument, name alone looked
-      // like a dedup key but wasn't; a retried per-org attempt would have
-      // re-enqueued every send job again.
-      const jobId = sendJobName(r.userId, weekStart);
-      await queue.add(jobId, data, {
-        jobId,
-        attempts: SEND_JOB_ATTEMPTS,
-        backoff: { type: 'exponential', delay: SEND_JOB_BACKOFF_MS },
-        removeOnComplete: { count: 100 },
-        removeOnFail: { age: 30 * 86_400 },
-      });
-      enqueued++;
-    } catch (err) {
-      enqueueFailures++;
-      logger.error(
-        { correlationId, orgId, userId: r.userId, outcome: 'enqueue_failure', err },
-        'Failed to enqueue digest-send job, continuing',
-      );
-    }
-  }
+  const { enqueued, enqueueFailures } = await enqueueDigestSends({
+    recipients,
+    orgId,
+    summaryId,
+    weekStart,
+    orgName: org.name,
+    subjectLine,
+    agentBullets,
+    correlationId,
+  });
 
   // Sends are already enqueued by this point, so a write failure here never
   // fails the job. History and awards commit together, an award recorded
@@ -315,58 +219,21 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
   // markNotified has the same accepted risk: the proposals stay `pending`
   // even though their bullets already reached an inbox, so they'd fold into
   // next week's digest too, a duplicate notification rather than a lost one.
-  try {
-    await dbAdmin.transaction(async (tx) => {
-      await digestHistoryQueries.saveDigestHistory(
-        {
-          orgId,
-          datasetId,
-          summaryId,
-          weekStart,
-          subjectLine,
-          stateSentence,
-          valence,
-          keyStats: currentStats,
-          milestones: [
-            ...firstTimeMilestones.map((m) => ({
-              kind: m.kind,
-              label: m.label,
-              catalog: 'first_time' as const,
-            })),
-            ...dedupedTransitionMilestones.map((m) => ({
-              kind: m.kind,
-              label: m.label,
-              catalog: 'transition' as const,
-            })),
-          ],
-          sentAt: new Date(),
-        },
-        tx,
-      );
-
-      for (const m of firstTimeMilestones) {
-        await milestoneAwardsQueries.awardMilestone({ orgId, kind: m.kind, datasetId }, tx);
-      }
-
-      // Only mark proposals notified if a send actually went out -- an empty
-      // recipient list or every enqueue failing means nobody actually saw
-      // these bullets, and marking them notified anyway would lose the
-      // finding for good (it never surfaces again after this). Only the ids
-      // actually folded into agentBullets are passed here. Auto_notify ids
-      // the cap omitted stay 'pending' and get reconsidered next week
-      // (getPendingProposals has no time window); expired ids the cap
-      // omitted stay 'expired' but are gone for good once weekStart moves
-      // past their resolvedAt -- no backfill, by design (2026-08-02).
-      if (enqueued > 0) {
-        await agentProposalsQueries.markNotified(orgId, notifiedProposalIds, tx);
-      }
-    });
-  } catch (err) {
-    logger.error(
-      { correlationId, orgId, weekStart, milestoneKinds: firstTimeMilestones.map((m) => m.kind), err },
-      'Failed to save digest history and award milestones, continuing',
-    );
-  }
+  await persistDigestDelivery({
+    orgId,
+    datasetId,
+    summaryId,
+    weekStart,
+    subjectLine,
+    stateSentence,
+    valence,
+    currentStats,
+    firstTimeMilestones,
+    transitionMilestones: dedupedTransitionMilestones,
+    notifiedProposalIds,
+    enqueued,
+    correlationId,
+  });
 
   logger.info(
     {
