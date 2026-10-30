@@ -2,7 +2,7 @@
 // Caddy access log.
 //
 // Access logging writes the request URI to CloudWatch. The query string is
-// stripped wholesale by the filter in deploy-aws.yml, so a token in a query
+// stripped wholesale by the filter in deploy-via-ssm.py, so a token in a query
 // parameter is safe by construction. A token in the path is not: the only thing
 // keeping it out of the log is the @bearertoken matcher, which is a hand
 // written list of prefixes.
@@ -16,9 +16,14 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+  findUncoveredSecretRoutes,
+  parseBearerTokenPrefixes,
+} from './safety-gates/log-redaction.js';
+
 const here = dirname(fileURLToPath(import.meta.url));
 const APP_DIR = join(here, '../apps/web/app');
-const WORKFLOW = join(here, '../.github/workflows/deploy-aws.yml');
+const DEPLOY_SCRIPT = join(here, 'deploy-via-ssm.py');
 
 // A directory named [token] means the segment is a bearer token in the URL.
 // [id] is excluded: those are row ids, not secrets, and /api/proposals/[id]
@@ -40,21 +45,10 @@ function routesWithSecretSegment(dir: string, prefix = ''): string[] {
   return out;
 }
 
-function matcherPrefixes(): string[] {
-  const yaml = readFileSync(WORKFLOW, 'utf8');
-  const line = yaml.split('\n').find((l) => l.includes('@bearertoken path '));
-  if (!line) throw new Error('no @bearertoken matcher in deploy-aws.yml');
-  return line
-    .slice(line.indexOf('@bearertoken path ') + '@bearertoken path '.length)
-    .trim()
-    .split(/\s+/)
-    .map((p) => p.replace(/\*$/, ''));
-}
-
 const routes = routesWithSecretSegment(APP_DIR).sort();
-const prefixes = matcherPrefixes();
+const prefixes = parseBearerTokenPrefixes(readFileSync(DEPLOY_SCRIPT, 'utf8'));
 
-const uncovered = routes.filter((r) => !prefixes.some((p) => `${r}/`.startsWith(p)));
+const uncovered = findUncoveredSecretRoutes(routes, prefixes);
 
 for (const r of routes) {
   if (!uncovered.includes(r)) console.info(`OK: ${r}/[token] is skipped`);
@@ -66,7 +60,7 @@ if (uncovered.length > 0) {
   console.error(`
 Caddy writes the request path to CloudWatch, so these tokens are readable by
 anyone with logs:FilterLogEvents. Add the prefix to the @bearertoken matcher in
-.github/workflows/deploy-aws.yml, apply the Caddyfile to the instance, and
+scripts/deploy-via-ssm.py, apply the Caddyfile to the instance, and
 reload caddy.
 `);
   process.exit(1);

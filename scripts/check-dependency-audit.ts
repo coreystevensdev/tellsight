@@ -14,27 +14,14 @@
 
 import { execFileSync } from 'node:child_process';
 
-type Advisory = {
-  module_name: string;
-  severity: string;
-  title: string;
-  patched_versions?: string;
-  findings?: Array<{ paths?: string[] }>;
-};
+import {
+  classifyAudit,
+  parseAuditReport,
+  type Acknowledgement,
+  type Advisory,
+} from './safety-gates/dependency-audit.js';
 
-const BLOCKING = new Set(['high', 'critical']);
-
-type Acknowledgement = {
-  module: string;
-  reviewed: string;
-  reason: string;
-  // What would make this stop being acceptable. An acknowledgement with no
-  // revisit condition is just a permanent mute with extra steps.
-  revisit: string;
-};
-
-const ACKNOWLEDGED: Acknowledgement[] = [
-];
+const ACKNOWLEDGED: Acknowledgement[] = [];
 
 function audit(): Advisory[] {
   let raw: string;
@@ -51,25 +38,17 @@ function audit(): Advisory[] {
     raw = out;
   }
 
-  const parsed = JSON.parse(raw) as { advisories?: Record<string, Advisory> };
-  return Object.values(parsed.advisories ?? {});
+  return parseAuditReport(raw);
 }
 
-const blocking = audit().filter((a) => BLOCKING.has(a.severity));
-const acknowledged = new Map(ACKNOWLEDGED.map((a) => [a.module, a]));
+const { unacknowledged, covered, obsolete } = classifyAudit(audit(), ACKNOWLEDGED);
 
-const unacknowledged = blocking.filter((a) => !acknowledged.has(a.module_name));
-const covered = [...new Set(blocking.map((a) => a.module_name))].filter((m) => acknowledged.has(m));
-
-for (const module of covered) {
-  const ack = acknowledged.get(module)!;
-  console.log(`OK (acknowledged ${ack.reviewed}): ${module}`);
+for (const acknowledgement of covered) {
+  console.log(`OK (acknowledged ${acknowledgement.reviewed}): ${acknowledgement.module}`);
 }
 
 // An acknowledgement for something the audit no longer reports is stale, and a
 // stale entry is how a list like this stops describing reality.
-const reported = new Set(blocking.map((a) => a.module_name));
-const obsolete = ACKNOWLEDGED.filter((a) => !reported.has(a.module));
 for (const ack of obsolete) {
   console.log(`STALE: ${ack.module} is acknowledged but no longer reported. Remove the entry.`);
 }

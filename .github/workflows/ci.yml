@@ -47,6 +47,12 @@ jobs:
       - name: Access log redaction covers token routes
         run: pnpm -C apps/api exec tsx ../../scripts/check-log-redaction.ts
 
+      - name: Deployment script syntax
+        run: |
+          python3 -m py_compile scripts/deploy-via-ssm.py
+          bash -n scripts/check-production-health.sh
+          bash -n scripts/verify-production-https.sh
+
   # Deliberately not gated on `quality`: a leaked credential is worth knowing
   # about even when the build is broken for unrelated reasons.
   secret-scan:

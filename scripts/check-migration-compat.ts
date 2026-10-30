@@ -32,32 +32,19 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+  classifyMigration,
+  extractJsonbColumns,
+  findMigrationFindings,
+} from './safety-gates/migration-compat.js';
+
 const here = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = join(here, '../apps/api/drizzle/migrations');
 const SCHEMA = join(here, '../apps/api/src/db/schema.ts');
 
 // Read from the schema rather than restating it, or the list silently stops
 // matching the tables the moment somebody adds a jsonb column.
-function jsonbColumns(): string[] {
-  const src = readFileSync(SCHEMA, 'utf8');
-  const explicit = [...src.matchAll(/jsonb\('([a-z_]+)'\)/g)].map((m) => m[1]!);
-  // drizzle infers the column name from the property when jsonb() is bare
-  const inferred = [...src.matchAll(/(\w+)\s*:\s*jsonb\(\)/g)].map((m) => m[1]!);
-  return [...new Set([...explicit, ...inferred])];
-}
-
-const JSONB_COLUMNS = jsonbColumns();
-
-const PATTERNS: Array<{ label: string; re: RegExp }> = [
-  { label: 'DROP COLUMN', re: /\bDROP\s+COLUMN\b/i },
-  { label: 'DROP TABLE', re: /\bDROP\s+TABLE\b/i },
-  { label: 'RENAME COLUMN', re: /\bRENAME\s+COLUMN\b/i },
-  { label: 'RENAME TO', re: /\bRENAME\s+TO\b/i },
-  { label: 'SET DATA TYPE', re: /\bSET\s+DATA\s+TYPE\b/i },
-  // Adding NOT NULL to a column the old code still inserts without is the same
-  // class of break, just louder: every old-code insert fails outright.
-  { label: 'SET NOT NULL', re: /\bSET\s+NOT\s+NULL\b/i },
-];
+const JSONB_COLUMNS = extractJsonbColumns(readFileSync(SCHEMA, 'utf8'));
 
 // Reviewed and accepted. Each entry needs a reason that says why the previous
 // release did not read the thing being removed.
@@ -80,41 +67,23 @@ const ACKNOWLEDGED = new Map<string, string>([
   ],
 ]);
 
-const findings: string[] = [];
+const migrationFiles = readdirSync(MIGRATIONS_DIR).filter((file) => file.endsWith('.sql')).sort();
+const migrations = Object.fromEntries(
+  migrationFiles.map((file) => [file, readFileSync(join(MIGRATIONS_DIR, file), 'utf8')]),
+);
 
-for (const file of readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).sort()) {
-  const sql = readFileSync(join(MIGRATIONS_DIR, file), 'utf8');
-
-  // Strip line comments first, so a rationale that names DROP COLUMN in prose
-  // does not trip the check that the rationale exists to explain.
-  const statements = sql
-    .split('\n')
-    .filter((line) => !line.trimStart().startsWith('--'))
-    .join('\n');
-
-  const hits = PATTERNS.filter((p) => p.re.test(statements)).map((p) => p.label);
-
-  // `SET "col" =` and not the bare word UPDATE: a foreign key clause carries
-  // ON UPDATE no action, which matched three migrations that touch no jsonb at
-  // all when this was first drafted.
-  const written = JSONB_COLUMNS.filter((c) =>
-    new RegExp(`\\bSET\\s+"?${c}"?\\s*=`, 'i').test(statements),
-  );
-  if (written.length > 0) hits.push(`JSONB WRITE (${written.join(', ')})`);
-
-  if (hits.length === 0) continue;
-
-  if (ACKNOWLEDGED.has(file)) {
+for (const file of migrationFiles) {
+  const hits = classifyMigration(migrations[file]!, JSONB_COLUMNS);
+  if (hits.length > 0 && ACKNOWLEDGED.has(file)) {
     console.info(`OK (acknowledged): ${file} [${hits.join(', ')}]`);
-    continue;
   }
-
-  findings.push(`${file}: ${hits.join(', ')}`);
 }
+
+const findings = findMigrationFindings(migrations, JSONB_COLUMNS, new Set(ACKNOWLEDGED.keys()));
 
 if (findings.length > 0) {
   console.error('\nBackward-incompatible migration(s) found:\n');
-  for (const f of findings) console.error(`  ${f}`);
+  for (const finding of findings) console.error(`  ${finding.file}: ${finding.hits.join(', ')}`);
   console.error(`
 A rollback re-pins the previous image but leaves the database where it is, so
 the previous release will run against this schema.
@@ -126,4 +95,4 @@ to ACKNOWLEDGED in scripts/check-migration-compat.ts with the reason.
   process.exit(1);
 }
 
-console.info(`PASS: ${readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).length} migrations checked, none break a rollback`);
+console.info(`PASS: ${migrationFiles.length} migrations checked, none break a rollback`);
