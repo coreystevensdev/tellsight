@@ -10,7 +10,8 @@
  * are hand-authored instead.
  *
  * Run: pnpm eval:qa  (from the repo root; loads .env, then runs this via tsx)
- * Needs a real CLAUDE_API_KEY. Costs tokens (8 fixtures x 3 samples, judge only).
+ * Needs a real CLAUDE_API_KEY. EVAL_JUDGE_MODEL overrides the pinned judge.
+ * Costs tokens (8 fixtures x 3 samples, judge only).
  *
  * console.log/error is intentional, this is a standalone script, not app code;
  * the Pino rule applies to apps/ only (same posture as eval-summaries.ts).
@@ -22,10 +23,10 @@ import { fileURLToPath } from 'node:url';
 
 import { z } from 'zod';
 
-import type { LlmProvider } from '../apps/api/src/services/aiInterpretation/provider.js';
 import { QA_FIXTURES, type QaEvalFixture } from './eval-fixtures/qa-fixtures.js';
 import { interpretationJudge } from './eval-fixtures/judge-prompts.js';
 import { hasNumericFigure } from './eval-fixtures/interpretation-guard.js';
+import { parseJudge, type GenerateProvider } from './eval-fixtures/parse-judge.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SNAPSHOT_PATH = resolve(__dirname, '__snapshots__', 'qa-interpretation.snap.json');
@@ -33,6 +34,7 @@ const MARKER_PATH = resolve(__dirname, '__snapshots__', 'qa-interpretation.zero-
 
 const SAMPLES = 3;
 const FLOOR = 0.85;
+const JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL ?? 'claude-sonnet-5';
 
 const verdictSchema = z.object({
   verdict: z.enum(['interpretive', 'lookup']),
@@ -48,31 +50,11 @@ interface FixtureScore {
   sampledCount: number;
 }
 
-function parseJudge<T>(raw: string, schema: z.ZodType<T>, ctx: string): T {
-  // Judges are told to emit bare JSON, but strip a stray ```json fence just in case.
-  const cleaned = raw
-    .trim()
-    .replace(/^```(?:json)?/i, '')
-    .replace(/```$/, '')
-    .trim();
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch {
-    throw new Error(`${ctx} judge returned non-JSON: ${raw.slice(0, 200)}`);
-  }
-  const result = schema.safeParse(parsed);
-  if (!result.success) {
-    throw new Error(`${ctx} judge returned unexpected shape (${result.error.message}): ${raw.slice(0, 200)}`);
-  }
-  return result.data;
-}
-
 function mean(xs: number[]): number {
   return xs.reduce((a, b) => a + b, 0) / xs.length;
 }
 
-async function scoreFixture(provider: LlmProvider, fixture: QaEvalFixture): Promise<FixtureScore> {
+async function scoreFixture(provider: GenerateProvider, fixture: QaEvalFixture): Promise<FixtureScore> {
   // Guard runs once, the fixture's answer text is fixed across samples; only
   // the judge call is resampled to average out judge variance.
   const guardAllowsInterpretive = hasNumericFigure(fixture.answer, fixture.knownFigures);
@@ -138,11 +120,15 @@ async function main(): Promise<void> {
   }
 
   // Dynamic + after the guard: importing claudeClient constructs the Anthropic
-  // client from config.ts, which throws at load when the key is unset.
-  await import('../apps/api/src/services/aiInterpretation/claudeClient.js');
-  const { getProvider } = await import('../apps/api/src/services/aiInterpretation/provider.js');
-  const provider = getProvider();
+  // client from config.ts, which throws at load when the key is unset. Use an
+  // explicit model rather than the production provider default so a local
+  // CLAUDE_MODEL change cannot silently move the judge.
+  const { generateWithModel } = await import('../apps/api/src/services/aiInterpretation/claudeClient.js');
+  const provider: GenerateProvider = {
+    generate: (input: { system: string; user: string }) => generateWithModel(input, JUDGE_MODEL),
+  };
 
+  console.log(`  judging with: ${JUDGE_MODEL}`);
   console.log(`Running ${QA_FIXTURES.length} fixtures x ${SAMPLES} samples...`);
   const results: FixtureScore[] = [];
   const failedFixtureIds: string[] = [];
@@ -183,6 +169,11 @@ async function main(): Promise<void> {
   const aggregate = mean(results.map((r) => r.accuracy));
 
   const snapshot = {
+    judgeModel: JUDGE_MODEL,
+    // Committed, so without this a later hand-edit of judgeModel reads as a
+    // re-measurement that never ran. Date only: README.md quotes this back in
+    // prose, and the snapshot is overwritten per run, so an instant buys nothing.
+    measuredAt: new Date().toISOString().slice(0, 10),
     floor: FLOOR,
     samplesPerFixture: SAMPLES,
     fixtures: results,

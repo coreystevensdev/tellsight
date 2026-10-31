@@ -119,6 +119,12 @@ export interface CashFlowDetails {
 
 // Runway in months at current burn. Only emitted when CashFlow.direction === 'burning'
 // AND owner has provided a fresh cashOnHand. Confidence softens framing on stale data.
+export interface RunwayFinancials {
+  cashOnHand?: number;
+  cashAsOfDate?: string;
+  monthlyFixedCosts?: number;
+}
+
 export interface RunwayDetails {
   cashOnHand: number;
   monthlyNet: number; // signed, will be negative (burning)
