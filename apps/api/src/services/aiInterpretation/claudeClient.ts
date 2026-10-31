@@ -1,4 +1,4 @@
-import { cachedHealth } from '../../lib/cachedHealth.js';
+import { cachedHealth, type PeekedHealth } from '../../lib/cachedHealth.js';
 import { logger } from '../../lib/logger.js';
 import {
   anthropicProvider,
@@ -50,7 +50,7 @@ export const checkClaudeHealth = cachedHealth(5 * 60 * 1000, async (): Promise<P
  * and took out fourteen health route tests with a 500, because the mock was a
  * bare vi.fn and the property was undefined.
  */
-export function peekClaudeHealth(): ProviderHealth | null {
+export function peekClaudeHealth(): PeekedHealth<ProviderHealth> | null {
   return checkClaudeHealth.peek();
 }
 

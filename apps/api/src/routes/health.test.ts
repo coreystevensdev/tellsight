@@ -85,7 +85,7 @@ beforeEach(() => {
   mockCheckClaudeHealth.mockReset();
   mockCheckClaudeHealth.mockResolvedValue({ status: 'ok', latencyMs: 1 });
   mockPeekClaudeHealth.mockReset();
-  mockPeekClaudeHealth.mockReturnValue({ status: 'ok', latencyMs: 1 });
+  mockPeekClaudeHealth.mockReturnValue({ value: { status: 'ok', latencyMs: 1 }, cachedAt: Date.now() });
 });
 
 describe('GET /health', () => {
@@ -223,7 +223,7 @@ describe('health endpoints do not buy Claude calls', () => {
   // timer, so probing from either turns monitoring into a standing order for
   // paid requests. Both read the cache instead.
   it.each(['/health/ready', '/health'])('%s reports Claude without probing it', async (path) => {
-    mockPeekClaudeHealth.mockReturnValue({ status: 'ok', latencyMs: 7 });
+    mockPeekClaudeHealth.mockReturnValue({ value: { status: 'ok', latencyMs: 7 }, cachedAt: Date.now() });
 
     const res = await fetch(`${baseUrl}${path}`);
     const body = (await res.json()) as { services: { claude: { status: string } } };
@@ -231,6 +231,29 @@ describe('health endpoints do not buy Claude calls', () => {
     expect(body.services.claude.status).toBe('ok');
     expect(mockPeekClaudeHealth).toHaveBeenCalled();
     expect(mockCheckClaudeHealth).not.toHaveBeenCalled();
+  });
+
+  // A peeked answer has no upper bound on its age: nothing on these routes
+  // refreshes the cache. Publishing when it was taken is what stops the tile
+  // implying a freshness it does not have (DW-226).
+  it('stamps the claude tile with when the answer was actually taken', async () => {
+    const takenAt = Date.now() - 6 * 60 * 60 * 1000;
+    mockPeekClaudeHealth.mockReturnValue({ value: { status: 'ok', latencyMs: 3 }, cachedAt: takenAt });
+
+    const res = await fetch(`${baseUrl}/health/ready`);
+    const body = (await res.json()) as { services: { claude: { status: string; checkedAt: string } } };
+
+    expect(body.services.claude.status).toBe('ok');
+    expect(body.services.claude.checkedAt).toBe(new Date(takenAt).toISOString());
+  });
+
+  it('reports a null checkedAt when nothing has been probed, rather than omitting it', async () => {
+    mockPeekClaudeHealth.mockReturnValue(null);
+
+    const res = await fetch(`${baseUrl}/health`);
+    const body = (await res.json()) as { services: { claude: { checkedAt: string | null } } };
+
+    expect(body.services.claude.checkedAt).toBeNull();
   });
 
   // Between process start and the boot probe landing there is no cached answer,
