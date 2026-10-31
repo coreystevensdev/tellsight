@@ -1,4 +1,5 @@
 {
+  "judgeModel": "claude-sonnet-5",
   "floor": 0.85,
   "samplesPerFixture": 3,
   "fixtures": [
