@@ -19,20 +19,29 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { z } from 'zod';
-
 // These two are config-free, so they're safe at top level (validate-seed.ts
 // imports the same surface and runs keyless in CI). The provider, by contrast,
 // pulls in config.ts and must be imported dynamically after the key guard.
 import { scoreInsights } from '../apps/api/src/services/curation/scoring.js';
 import { assemblePrompt } from '../apps/api/src/services/curation/assembly.js';
 import type { LlmProvider } from '../apps/api/src/services/aiInterpretation/provider.js';
-import type { StatType } from '../apps/api/src/services/curation/types.js';
 import { FIXTURES } from './eval-fixtures/fixtures.js';
-import { faithfulnessJudge, completenessJudge, insightJudge } from './eval-fixtures/judge-prompts.js';
-import { askJudge } from './eval-fixtures/parse-judge.js';
 import { insightGate, INSIGHT_MISS_CEILING } from './eval-fixtures/insight-gate.js';
 import { scoreLegalPosture } from './eval-fixtures/legal-posture.js';
+import {
+  AGENT_SUMMARIES_START,
+  extractGroundTruth,
+  mean,
+  scoreActionability,
+  scoreCompleteness,
+  scoreFaithfulness,
+  summarizeAgentSamples,
+  summarizeFixtureSamples,
+  type AgentFixtureScore,
+  type AgentSample,
+  type FixtureScore,
+  type SampleScore,
+} from './eval-fixtures/summary-scoring.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCORECARD_PATH = resolve(__dirname, 'eval-fixtures', 'scorecard.json');
@@ -65,190 +74,6 @@ const DEFAULT_PROMPT_VERSION = 'v1.6';
 // Floors apply to the mean (the number that lands in the README). Legal posture
 // still has to hold on every sample: a banned imperative is a defect, not a rate.
 const FLOORS = { faithfulness: 0.85, completeness: 0.8 };
-
-
-// The statSummaries block sits between these two anchors in the rendered v1.6
-// user prompt. Slicing it out gives the exact bytes the model received as ground
-// truth, with no need to re-implement or export assembly's formatStat.
-const SUMMARIES_START = "computed from the business's uploaded data:\n\n";
-const SUMMARIES_END = '\n\n**Data lineage:**';
-
-// v1-agent interpolates the same {{statSummaries}} block but introduces it with
-// its own sentence, which also carries the [cite: id] instruction, so it needs
-// its own opening anchor. The closing anchor is identical in both templates.
-const AGENT_SUMMARIES_START = "that id is what belongs in a proposal's evidence array.\n\n";
-
-// The user prompt opens with "Today is <date>." and the model reasons from it:
-// 2.4 months of runway against a dated balance becomes a calendar month in the
-// summary. The ground truth handed to the faithfulness judge started at the stats
-// block, so it never contained that line, and every date the model derived came
-// back unsupported however correct the arithmetic was. That accounted for most of
-// what the judge was flagging.
-const TODAY_LINE = /^Today is .+$/m;
-
-const faithfulnessSchema = z.object({
-  claims: z.array(
-    z.object({
-      claim: z.string(),
-      label: z.enum(['supported', 'derived', 'unsupported']),
-      reason: z.string().optional(),
-    }),
-  ),
-});
-
-const completenessSchema = z.object({
-  items: z.array(
-    z.object({
-      statType: z.string(),
-      addressed: z.boolean(),
-      evidence: z.string().optional(),
-    }),
-  ),
-});
-
-const insightSchema = z.object({
-  insights: z.array(
-    z.object({
-      insight: z.string(),
-      nonObvious: z.boolean(),
-      actionable: z.boolean(),
-      reason: z.string(),
-    }),
-  ),
-});
-
-interface SampleScore {
-  faithfulness: number;
-  completeness: number;
-  legalPass: boolean;
-  legalViolations: string[];
-  insightPass: boolean;
-  qualifyingInsight: string | null;
-  insightShortfall: string[];
-}
-
-interface FixtureScore {
-  id: string;
-  label: string;
-  faithfulness: { mean: number; min: number };
-  completeness: { mean: number; min: number };
-  legalPosture: { pass: boolean; violations: string[] };
-  insight: { misses: number; examples: string[]; missed: string[] };
-  sampledCount: number;
-}
-
-// faithfulness/completeness are nullable because the agent is allowed to return
-// no proposals at all, and an abstention has no prose to grade. Legal posture is
-// not nullable: silence passes it.
-interface AgentSample {
-  proposalCount: number;
-  faithfulness: number | null;
-  completeness: number | null;
-  legalPass: boolean;
-  legalViolations: string[];
-}
-
-interface AgentFixtureScore {
-  id: string;
-  label: string;
-  faithfulness: { mean: number; min: number } | null;
-  completeness: { mean: number; min: number } | null;
-  legalPosture: { pass: boolean; violations: string[] };
-  proposalsPerSample: number;
-  silentSamples: number;
-  sampledCount: number;
-}
-
-// Everything the model was given as fact, which is what "unsupported" has to be
-// measured against.
-function extractGroundTruth(userPrompt: string, startAnchor = SUMMARIES_START): string {
-  const stats = extractStatSummaries(userPrompt, startAnchor);
-  const today = TODAY_LINE.exec(userPrompt)?.[0];
-  return today ? `${today}\n\n${stats}` : stats;
-}
-
-function extractStatSummaries(userPrompt: string, startAnchor = SUMMARIES_START): string {
-  const start = userPrompt.indexOf(startAnchor);
-  const end = userPrompt.indexOf(SUMMARIES_END);
-  if (start === -1 || end === -1 || end <= start) {
-    throw new Error(
-      'Could not find the statSummaries block in the assembled prompt. The template ' +
-        `likely changed; update the anchors in eval-summaries.ts (looked for ${JSON.stringify(startAnchor)}).`,
-    );
-  }
-  return userPrompt.slice(start + startAnchor.length, end).trim();
-}
-
-
-async function scoreFaithfulness(
-  provider: LlmProvider,
-  groundTruth: string,
-  summary: string,
-): Promise<number> {
-  const { claims } = await askJudge(
-    provider,
-    faithfulnessJudge(groundTruth, summary),
-    faithfulnessSchema,
-    'faithfulness',
-  );
-  if (claims.length === 0) return 1; // nothing checkable means nothing unfaithful
-  const honest = claims.filter((c) => c.label !== 'unsupported').length;
-  return honest / claims.length;
-}
-
-async function scoreCompleteness(
-  provider: LlmProvider,
-  answerKey: StatType[],
-  summary: string,
-): Promise<number> {
-  const { items } = await askJudge(provider, completenessJudge(answerKey, summary), completenessSchema, 'completeness');
-
-  // The judge is told to echo the exact statType literal. If it drifts (returns
-  // "Cash Flow" instead of "cash_flow", or drops an item), the set lookup below
-  // scores that item as not-addressed and completeness silently reads worse than
-  // reality. Surface the drift so it doesn't get mistaken for a real regression.
-  const keySet = new Set<string>(answerKey);
-  const returned = new Set(items.map((i) => i.statType));
-  const unknown = [...new Set(items.map((i) => i.statType))].filter((t) => !keySet.has(t));
-  const missing = answerKey.filter((t) => !returned.has(t));
-  if (unknown.length > 0) {
-    console.error(`  completeness judge returned unrecognized statTypes (echo drift?): ${unknown.join(', ')}`);
-  }
-  if (missing.length > 0) {
-    console.error(`  completeness judge omitted answer-key items: ${missing.join(', ')}`);
-  }
-
-  const addressed = new Set(items.filter((i) => i.addressed).map((i) => i.statType));
-  const covered = answerKey.filter((t) => addressed.has(t)).length;
-  return covered / answerKey.length;
-}
-
-// FR22 is satisfied by one insight carrying both properties, so the qualifying
-// one is returned for the scorecard: a bare false is very hard to act on, and the
-// quote shows whether the judge and the requirement agree about what counts.
-async function scoreActionability(
-  provider: LlmProvider,
-  summary: string,
-): Promise<{ pass: boolean; qualifying: string | null; shortfall: string[] }> {
-  const { insights } = await askJudge(provider, insightJudge(summary), insightSchema, 'insight');
-  const qualifying = insights.find((i) => i.nonObvious && i.actionable);
-  if (qualifying) return { pass: true, qualifying: qualifying.insight, shortfall: [] };
-
-  // On a miss the scorecard used to keep the 16 passes and drop the 4 failures,
-  // which is the wrong half: an insight that scored is not evidence about the one
-  // that did not. Record which property each candidate was missing.
-  return {
-    pass: false,
-    qualifying: null,
-    shortfall: insights.map(
-      (i) => `[${i.nonObvious ? 'non-obvious' : 'OBVIOUS'}/${i.actionable ? 'actionable' : 'NOT actionable'}] ${i.insight} -- ${i.reason}`,
-    ),
-  };
-}
-
-function mean(xs: number[]): number {
-  return xs.reduce((a, b) => a + b, 0) / xs.length;
-}
 
 function printScorecardTable(rows: FixtureScore[]): void {
   console.log('\n| Fixture | Faithfulness | Completeness | Legal posture | FR22 misses |');
@@ -328,25 +153,7 @@ async function scoreAgentFixture(
     throw new Error(`${fixture.id}: all ${SAMPLES} agent samples failed`);
   }
 
-  const scoredSamples = samples.filter((s) => s.faithfulness !== null);
-  const faithVals = scoredSamples.map((s) => s.faithfulness as number);
-  const compVals = scoredSamples.map((s) => s.completeness as number);
-  return {
-    id: fixture.id,
-    label: fixture.label,
-    // Mean over the samples that produced a proposal. A run where the model
-    // stayed silent every time has no prose to score, and reporting 0.00 for it
-    // would read as a faithfulness failure rather than an abstention.
-    faithfulness: faithVals.length ? { mean: mean(faithVals), min: Math.min(...faithVals) } : null,
-    completeness: compVals.length ? { mean: mean(compVals), min: Math.min(...compVals) } : null,
-    legalPosture: {
-      pass: samples.every((s) => s.legalPass),
-      violations: [...new Set(samples.flatMap((s) => s.legalViolations))],
-    },
-    proposalsPerSample: mean(samples.map((s) => s.proposalCount)),
-    silentSamples: samples.filter((s) => s.proposalCount === 0).length,
-    sampledCount: samples.length,
-  };
+  return summarizeAgentSamples(fixture, samples);
 }
 
 async function scoreFixture(
@@ -391,25 +198,8 @@ async function scoreFixture(
     throw new Error(`${fixture.id}: all ${SAMPLES} samples failed`);
   }
 
-  const faithVals = samples.map((s) => s.faithfulness);
-  const compVals = samples.map((s) => s.completeness);
   return {
-    score: {
-      id: fixture.id,
-      label: fixture.label,
-      faithfulness: { mean: mean(faithVals), min: Math.min(...faithVals) },
-      completeness: { mean: mean(compVals), min: Math.min(...compVals) },
-      legalPosture: {
-        pass: samples.every((s) => s.legalPass),
-        violations: [...new Set(samples.flatMap((s) => s.legalViolations))],
-      },
-      insight: {
-        misses: samples.filter((s) => !s.insightPass).length,
-        examples: [...new Set(samples.map((s) => s.qualifyingInsight).filter((q): q is string => q !== null))],
-        missed: samples.filter((s) => !s.insightPass).flatMap((s) => s.insightShortfall),
-      },
-      sampledCount: samples.length,
-    },
+    score: summarizeFixtureSamples(fixture, samples),
     promptVersion: metadata.promptVersion,
   };
 }
