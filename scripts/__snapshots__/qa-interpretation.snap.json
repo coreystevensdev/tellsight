@@ -1,5 +1,6 @@
 {
-  "judgeModel": "claude-sonnet-5",
+  "judgeModel": "claude-sonnet-4-5-20250929",
+  "measuredAt": "2026-08-02",
   "floor": 0.85,
   "samplesPerFixture": 3,
   "fixtures": [

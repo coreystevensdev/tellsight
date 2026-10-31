@@ -170,6 +170,10 @@ async function main(): Promise<void> {
 
   const snapshot = {
     judgeModel: JUDGE_MODEL,
+    // Committed, so without this a later hand-edit of judgeModel reads as a
+    // re-measurement that never ran. Date only: README.md quotes this back in
+    // prose, and the snapshot is overwritten per run, so an instant buys nothing.
+    measuredAt: new Date().toISOString().slice(0, 10),
     floor: FLOOR,
     samplesPerFixture: SAMPLES,
     fixtures: results,
