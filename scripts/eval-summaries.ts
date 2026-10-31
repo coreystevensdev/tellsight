@@ -9,7 +9,8 @@
  * deterministic string scan (legal posture).
  *
  * Run: pnpm eval  (from the repo root; loads .env, then runs this via tsx)
- * Needs a real CLAUDE_API_KEY. Costs tokens (N samples x 3 fixtures x ~3 calls each).
+ * Needs a real CLAUDE_API_KEY. EVAL_MODEL and EVAL_JUDGE_MODEL independently
+ * override the subject and judge. Costs tokens (N samples x 3 fixtures x ~3 calls each).
  *
  * console.log/error is intentional, this is a standalone script, not app code;
  * the Pino rule applies to apps/ only (same posture as validate-seed.ts).
@@ -59,8 +60,10 @@ const FROZEN_NOW = new Date('2026-01-15T12:00:00Z');
 // and is actually worse than 45 at catching a 20% rate.
 const SAMPLES = Number(process.env.EVAL_SAMPLES ?? 10);
 
-// Deliberately not CLAUDE_MODEL: the judge must not move when the subject does.
-const JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL ?? 'claude-sonnet-4-5-20250929';
+// Keep eval selection independent from the production model. That prevents a
+// local CLAUDE_MODEL override from silently changing either side of a benchmark.
+const SUBJECT_MODEL = process.env.EVAL_MODEL ?? 'claude-sonnet-5';
+const JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL ?? 'claude-sonnet-5';
 
 // Diagnosing one fixture should not cost three. Misses are the thing worth
 // reading and they concentrate: cash-crunch carried 4 of the 6 in the last run.
@@ -213,6 +216,11 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  // Set the eval subject before importing config.ts. The provider reads
+  // CLAUDE_MODEL during module initialization, while the eval-specific setting
+  // stays independent from the production default and local .env overrides.
+  process.env.CLAUDE_MODEL = SUBJECT_MODEL;
+
   // Dynamic + after the guard: importing claudeClient registers the provider as a
   // module side effect, but it also constructs the Anthropic client from config.ts,
   // which throws at load when the key is unset. Static-importing it would crash
@@ -221,11 +229,9 @@ async function main(): Promise<void> {
   const { getProvider } = await import('../apps/api/src/services/aiInterpretation/provider.js');
   const provider = getProvider();
 
-  // The grader has to be the same in both arms. askJudge takes a provider, and
-  // until now it was handed the same one doing the generating, so changing
-  // CLAUDE_MODEL changed the subject and the judge together: a newer model that
-  // grades more leniently would look like a better writer. Pinned, and printed,
-  // so a scorecard says what graded it.
+  // The grader has to be the same in both arms. Subject and judge are selected
+  // independently so a more lenient model cannot look like a better writer.
+  // Both are printed and recorded so a scorecard says what produced and graded it.
   const { generateWithModel } = await import('../apps/api/src/services/aiInterpretation/claudeClient.js');
   const judgeProvider = {
     generate: (input: { system: string; user: string }) => generateWithModel(input, JUDGE_MODEL),
@@ -235,7 +241,7 @@ async function main(): Promise<void> {
     checkHealth: () => { throw new Error('judge provider generates only'); },
   } as unknown as LlmProvider;
 
-  console.log(`  generating with: ${process.env.CLAUDE_MODEL ?? 'claude-sonnet-4-6'}`);
+  console.log(`  generating with: ${SUBJECT_MODEL}`);
   console.log(`  judging with:    ${JUDGE_MODEL}`);
 
   console.log(`Running ${ONLY_FIXTURE ? 1 : FIXTURES.length} fixture(s) x ${SAMPLES} samples...`);
@@ -308,6 +314,8 @@ async function main(): Promise<void> {
 
   const scorecard = {
     promptVersion, // the version assemblePrompt actually rendered, not a hardcoded guess
+    subjectModel: SUBJECT_MODEL,
+    judgeModel: JUDGE_MODEL,
     // Its own section rather than folded into the aggregate above: these are a
     // different prompt answering with a different mechanism, and averaging them
     // together would hide a regression in either one.
