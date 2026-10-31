@@ -60,9 +60,11 @@ const FROZEN_NOW = new Date('2026-01-15T12:00:00Z');
 // and is actually worse than 45 at catching a 20% rate.
 const SAMPLES = Number(process.env.EVAL_SAMPLES ?? 10);
 
-// Keep eval selection independent from the production model. That prevents a
-// local CLAUDE_MODEL override from silently changing either side of a benchmark.
-const SUBJECT_MODEL = process.env.EVAL_MODEL ?? 'claude-sonnet-5';
+// Pinned literally, never read from CLAUDE_MODEL, so a local override cannot
+// move either side of a benchmark. The subject tracks what production serves,
+// since a score for a model nobody is served by describes nothing. The judge
+// stays on a different model: one grading its own output is a lenient grader.
+const SUBJECT_MODEL = process.env.EVAL_MODEL ?? 'claude-sonnet-4-6';
 const JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL ?? 'claude-sonnet-5';
 
 // Diagnosing one fixture should not cost three. Misses are the thing worth
