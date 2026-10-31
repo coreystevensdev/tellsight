@@ -1,9 +1,8 @@
 import { z } from 'zod';
 
-import type { LlmProvider } from '../../apps/api/src/services/aiInterpretation/provider.js';
 import type { StatType } from '../../apps/api/src/services/curation/types.js';
 import { completenessJudge, faithfulnessJudge, insightJudge } from './judge-prompts.js';
-import { askJudge } from './parse-judge.js';
+import { askJudge, type GenerateProvider } from './parse-judge.js';
 
 // These anchors isolate the exact facts rendered into each prompt without
 // duplicating assembly's stat formatting in the evaluation harness.
@@ -98,7 +97,7 @@ export function extractGroundTruth(userPrompt: string, startAnchor = SUMMARIES_S
 }
 
 export async function scoreFaithfulness(
-  provider: LlmProvider,
+  provider: GenerateProvider,
   groundTruth: string,
   summary: string,
 ): Promise<number> {
@@ -113,7 +112,7 @@ export async function scoreFaithfulness(
 }
 
 export async function scoreCompleteness(
-  provider: LlmProvider,
+  provider: GenerateProvider,
   answerKey: StatType[],
   summary: string,
 ): Promise<number> {
@@ -144,7 +143,7 @@ export async function scoreCompleteness(
 }
 
 export async function scoreActionability(
-  provider: LlmProvider,
+  provider: GenerateProvider,
   summary: string,
 ): Promise<{ pass: boolean; qualifying: string | null; shortfall: string[] }> {
   const { insights } = await askJudge(provider, insightJudge(summary), insightSchema, 'insight');

@@ -7,6 +7,8 @@ import { z } from 'zod';
 
 import type { LlmProvider, PromptInput } from '../../apps/api/src/services/aiInterpretation/provider.js';
 
+export type GenerateProvider = Pick<LlmProvider, 'generate'>;
+
 // Judges run through claudeClient's 1024 max_tokens, so this is the whole
 // response in practice. It used to be 200, which cut off inside the opening
 // ```json fence and made every failure look like a fence-stripping bug. One real
@@ -54,7 +56,7 @@ export function parseJudge<T>(raw: string, schema: z.ZodType<T>, ctx: string): T
 // which is the kind of imbalance that still looks like data afterwards. Re-asking
 // the judge costs one call.
 export async function askJudge<T>(
-  provider: LlmProvider,
+  provider: GenerateProvider,
   prompt: PromptInput,
   schema: z.ZodType<T>,
   ctx: string,

@@ -25,10 +25,10 @@ import { fileURLToPath } from 'node:url';
 // pulls in config.ts and must be imported dynamically after the key guard.
 import { scoreInsights } from '../apps/api/src/services/curation/scoring.js';
 import { assemblePrompt } from '../apps/api/src/services/curation/assembly.js';
-import type { LlmProvider } from '../apps/api/src/services/aiInterpretation/provider.js';
 import { FIXTURES } from './eval-fixtures/fixtures.js';
 import { insightGate, INSIGHT_MISS_CEILING } from './eval-fixtures/insight-gate.js';
 import { scoreLegalPosture } from './eval-fixtures/legal-posture.js';
+import type { GenerateProvider } from './eval-fixtures/parse-judge.js';
 import {
   AGENT_SUMMARIES_START,
   extractGroundTruth,
@@ -102,7 +102,7 @@ function printScorecardTable(rows: FixtureScore[]): void {
 // against the dashboard summary, and whether it should also bind the agent is a
 // product decision, not something to assume by wiring it up.
 async function scoreAgentFixture(
-  judgeProvider: LlmProvider,
+  judgeProvider: GenerateProvider,
   fixture: (typeof FIXTURES)[number],
 ): Promise<AgentFixtureScore> {
   // Dynamic for the same reason the provider is: proposals.ts reaches claudeClient,
@@ -160,8 +160,8 @@ async function scoreAgentFixture(
 }
 
 async function scoreFixture(
-  provider: LlmProvider,
-  judgeProvider: LlmProvider,
+  provider: GenerateProvider,
+  judgeProvider: GenerateProvider,
   fixture: (typeof FIXTURES)[number],
 ): Promise<{ score: FixtureScore; promptVersion: string }> {
   const scored = scoreInsights(fixture.build());
@@ -233,13 +233,9 @@ async function main(): Promise<void> {
   // independently so a more lenient model cannot look like a better writer.
   // Both are printed and recorded so a scorecard says what produced and graded it.
   const { generateWithModel } = await import('../apps/api/src/services/aiInterpretation/claudeClient.js');
-  const judgeProvider = {
+  const judgeProvider: GenerateProvider = {
     generate: (input: { system: string; user: string }) => generateWithModel(input, JUDGE_MODEL),
-    stream: () => { throw new Error('judge provider generates only'); },
-    generateTool: () => { throw new Error('judge provider generates only'); },
-    conversation: () => { throw new Error('judge provider generates only'); },
-    checkHealth: () => { throw new Error('judge provider generates only'); },
-  } as unknown as LlmProvider;
+  };
 
   console.log(`  generating with: ${SUBJECT_MODEL}`);
   console.log(`  judging with:    ${JUDGE_MODEL}`);

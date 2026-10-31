@@ -23,10 +23,10 @@ import { fileURLToPath } from 'node:url';
 
 import { z } from 'zod';
 
-import type { LlmProvider } from '../apps/api/src/services/aiInterpretation/provider.js';
 import { QA_FIXTURES, type QaEvalFixture } from './eval-fixtures/qa-fixtures.js';
 import { interpretationJudge } from './eval-fixtures/judge-prompts.js';
 import { hasNumericFigure } from './eval-fixtures/interpretation-guard.js';
+import { parseJudge, type GenerateProvider } from './eval-fixtures/parse-judge.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SNAPSHOT_PATH = resolve(__dirname, '__snapshots__', 'qa-interpretation.snap.json');
@@ -50,33 +50,11 @@ interface FixtureScore {
   sampledCount: number;
 }
 
-type JudgeProvider = Pick<LlmProvider, 'generate'>;
-
-function parseJudge<T>(raw: string, schema: z.ZodType<T>, ctx: string): T {
-  // Judges are told to emit bare JSON, but strip a stray ```json fence just in case.
-  const cleaned = raw
-    .trim()
-    .replace(/^```(?:json)?/i, '')
-    .replace(/```$/, '')
-    .trim();
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch {
-    throw new Error(`${ctx} judge returned non-JSON: ${raw.slice(0, 200)}`);
-  }
-  const result = schema.safeParse(parsed);
-  if (!result.success) {
-    throw new Error(`${ctx} judge returned unexpected shape (${result.error.message}): ${raw.slice(0, 200)}`);
-  }
-  return result.data;
-}
-
 function mean(xs: number[]): number {
   return xs.reduce((a, b) => a + b, 0) / xs.length;
 }
 
-async function scoreFixture(provider: JudgeProvider, fixture: QaEvalFixture): Promise<FixtureScore> {
+async function scoreFixture(provider: GenerateProvider, fixture: QaEvalFixture): Promise<FixtureScore> {
   // Guard runs once, the fixture's answer text is fixed across samples; only
   // the judge call is resampled to average out judge variance.
   const guardAllowsInterpretive = hasNumericFigure(fixture.answer, fixture.knownFigures);
@@ -146,7 +124,7 @@ async function main(): Promise<void> {
   // explicit model rather than the production provider default so a local
   // CLAUDE_MODEL change cannot silently move the judge.
   const { generateWithModel } = await import('../apps/api/src/services/aiInterpretation/claudeClient.js');
-  const provider: JudgeProvider = {
+  const provider: GenerateProvider = {
     generate: (input: { system: string; user: string }) => generateWithModel(input, JUDGE_MODEL),
   };
 
