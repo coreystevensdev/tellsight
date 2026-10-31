@@ -1648,7 +1648,7 @@ describe('logClaudeKeyStatus warms the cache', () => {
 
     await logClaudeKeyStatus();
 
-    expect(peekClaudeHealth()).toMatchObject({ status: 'ok' });
+    expect(peekClaudeHealth()?.value).toMatchObject({ status: 'ok' });
   });
 
   // The failure case is the one that matters: an exhausted account is exactly
@@ -1664,8 +1664,8 @@ describe('logClaudeKeyStatus warms the cache', () => {
 
     await logClaudeKeyStatus();
 
-    expect(peekClaudeHealth()).toMatchObject({ status: 'error' });
-    expect(peekClaudeHealth()?.detail).toMatch(/credit/i);
+    expect(peekClaudeHealth()?.value).toMatchObject({ status: 'error' });
+    expect(peekClaudeHealth()?.value.detail).toMatch(/credit/i);
     // The two assertions above stayed green when the logger.error call was deleted.
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({ detail: expect.stringMatching(/credit/i) }),
