@@ -41,17 +41,30 @@ function reportDatabase({ missing, ...rest }: DbHealth) {
 // have returned the cached number anyway for most of that window. Boot and the
 // admin panel still probe for real, so nothing loses its freshness where a
 // person is actually looking.
-function lastKnownClaudeHealth(): ProviderHealth {
-  return (
-    peekClaudeHealth() ?? {
-      status: 'degraded',
-      latencyMs: 0,
-      // 'degraded' means "could not determine" everywhere else in this payload,
-      // which is exactly the state between process start and the boot probe
-      // landing a second or two later.
-      detail: 'not probed since boot',
-    }
-  );
+// Carries checkedAt because a peeked answer has no upper bound on its age.
+// Nothing here refreshes the cache, and the only writer that does is the admin
+// panel while somebody has it open, so a boot-time result can stand for the
+// life of the container: credit exhausted at 14:00 on a 09:00 boot still reads
+// 'ok', and a transient 'Anthropic unreachable' at boot sticks after Anthropic
+// recovers. The value cannot be made fresh without buying a completion on
+// every poll, which is the cost #295 removed on purpose, so the honest move is
+// to publish the age and let the reader judge rather than imply a freshness
+// this does not have.
+function lastKnownClaudeHealth(): ProviderHealth & { checkedAt: string | null } {
+  const peeked = peekClaudeHealth();
+  if (peeked) {
+    return { ...peeked.value, checkedAt: new Date(peeked.cachedAt).toISOString() };
+  }
+
+  return {
+    status: 'degraded',
+    latencyMs: 0,
+    // 'degraded' means "could not determine" everywhere else in this payload,
+    // which is exactly the state between process start and the boot probe
+    // landing a second or two later.
+    detail: 'not probed since boot',
+    checkedAt: null,
+  };
 }
 
 // liveness, is the process alive? Never check external deps here.
