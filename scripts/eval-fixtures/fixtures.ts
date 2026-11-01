@@ -24,6 +24,11 @@
 
 import type { ComputedStat, StatType } from '../../apps/api/src/services/curation/types.js';
 
+// The clock the eval hands the model. It lives here rather than in
+// eval-summaries.ts because the fixture dates below only mean anything relative
+// to it, and the guard that checks them has to read the same value.
+export const FROZEN_NOW = new Date('2026-01-15T12:00:00Z');
+
 export interface EvalFixture {
   id: string;
   label: string;
@@ -166,14 +171,18 @@ export function seasonalAnomaly(): ComputedStat[] {
     {
       statType: 'year_over_year',
       category: 'Revenue',
-      value: 50000,
+      value: 16000,
       details: {
-        currentRevenue: 50000,
-        priorRevenue: 45000,
-        currentYearLabel: '2026',
-        priorYearLabel: '2025',
+        // 50000 against 45000 was three times the 12000-18000 range the anomaly
+        // stat declares normal for this business, on a month five months after
+        // the date the prompt gives as today. Both wrong, and the second one
+        // corrupted the only temporal frame the model gets.
+        currentRevenue: 16000,
+        priorRevenue: 14400,
+        currentYearLabel: '2025',
+        priorYearLabel: '2024',
         changePercent: 11.1,
-        month: '2026-06',
+        month: '2025-11',
       },
     },
     {

@@ -25,7 +25,7 @@ import { fileURLToPath } from 'node:url';
 // pulls in config.ts and must be imported dynamically after the key guard.
 import { scoreInsights } from '../apps/api/src/services/curation/scoring.js';
 import { assemblePrompt } from '../apps/api/src/services/curation/assembly.js';
-import { FIXTURES } from './eval-fixtures/fixtures.js';
+import { FIXTURES, FROZEN_NOW } from './eval-fixtures/fixtures.js';
 import { insightGate, INSIGHT_MISS_CEILING } from './eval-fixtures/insight-gate.js';
 import { scoreLegalPosture } from './eval-fixtures/legal-posture.js';
 import type { GenerateProvider } from './eval-fixtures/parse-judge.js';
@@ -48,9 +48,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCORECARD_PATH = resolve(__dirname, 'eval-fixtures', 'scorecard.json');
 const MARKER_PATH = resolve(__dirname, 'eval-fixtures', 'scorecard.zero-results.json');
 
-// Freeze the date so the {{today}} placeholder doesn't drift the prompt between
-// runs, same posture as validate-seed.ts:161.
-const FROZEN_NOW = new Date('2026-01-15T12:00:00Z');
+
 // 10 per fixture, 30 total. At 3 the gate was bad at both ends: a single miss is
 // 22% so it failed a healthy run 10.6% of the time, while catching a regression
 // the size of v1.7's only 77% of the time. 10 puts those at 3.8% and 95% for
