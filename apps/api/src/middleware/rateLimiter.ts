@@ -48,6 +48,21 @@ const publicLimiter = new RateLimiterRedis({
   insuranceLimiter: publicFallback,
 });
 
+const qaFallback = new RateLimiterMemory({
+  points: RATE_LIMITS.qa.max,
+  duration: RATE_LIMITS.qa.windowMs / 1000,
+});
+
+// A distinct keyPrefix is the whole point: sharing rl_ai meant Q&A and summary
+// generation drew down one bucket.
+const qaLimiter = new RateLimiterRedis({
+  storeClient: redis,
+  keyPrefix: 'rl_qa',
+  points: RATE_LIMITS.qa.max,
+  duration: RATE_LIMITS.qa.windowMs / 1000,
+  insuranceLimiter: qaFallback,
+});
+
 const dashboardComputeFallback = new RateLimiterMemory({
   points: RATE_LIMITS.dashboardCompute.max,
   duration: RATE_LIMITS.dashboardCompute.windowMs / 1000,
@@ -127,6 +142,28 @@ export function rateLimitAi(req: Request, res: Response, next: NextFunction) {
 // request and the old code called consume() on each pass. One request cost five
 // points, which made the 60/min tier a 12/min tier. Measured on the live box:
 // one GET /api/subscriptions/tier moved the bucket from 0 to 5.
+export function rateLimitQa(req: Request, res: Response, next: NextFunction) {
+  if (bypass) return next();
+  const key = req.user?.sub ?? req.ip ?? 'unknown';
+
+  if (!req.user?.sub) {
+    logger.warn({ path: req.path }, 'QA rate limiter missing user, falling back to IP');
+  }
+
+  qaLimiter
+    .consume(key)
+    .then(() => next())
+    .catch((rlRes) => {
+      if (rlRes instanceof RateLimiterRes) {
+        rateLimitHits.inc({ limiter: 'qa' });
+        logger.warn({ userId: key, path: req.path }, 'QA rate limit exceeded');
+        return sendRateLimited(res, rlRes);
+      }
+      logger.warn({ err: rlRes }, 'Rate limiter error, failing open');
+      next();
+    });
+}
+
 export function rateLimitPublic(req: Request, res: Response, next: NextFunction) {
   if (bypass) return next();
   if (req.publicRateLimitCharged) return next();

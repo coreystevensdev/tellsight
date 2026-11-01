@@ -59,6 +59,13 @@ export const RATE_LIMITS = {
   // generous enough for page load + occasional refresh (~3-5/min typical),
   // tight enough to catch loop-bug or abuse patterns (60+/min).
   dashboardCompute: { max: 30, windowMs: 60_000 },
+  // Q&A ran on the `ai` bucket, which is 5/min and shared with AI-summary
+  // generation, so a short run of follow-up questions started returning 429s on
+  // unrelated summary regeneration and the other way round. Its own bucket at
+  // 10/min: interactive enough for a conversation, and it also bounds how often
+  // a caller can reach the Agent-tier entitlement check, which is a transaction
+  // with SET LOCAL and used to run unthrottled.
+  qa: { max: 10, windowMs: 60_000 },
   // Tier 1 stat-correction annotations have no DB-level dedup (unlike Tier 2,
   // which the partial unique index on active corrections already covers), so
   // this caps duplicate submissions against one statInstanceId directly.
