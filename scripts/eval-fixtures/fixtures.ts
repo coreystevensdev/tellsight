@@ -46,8 +46,8 @@ export function healthyGrowth(): ComputedStat[] {
         dataPoints: 6,
         firstValue: 40000,
         lastValue: 50000,
-        firstPeriod: '2026-01',
-        lastPeriod: '2026-06',
+        firstPeriod: '2025-07',
+        lastPeriod: '2025-12',
       },
     },
     {
@@ -199,8 +199,8 @@ export function seasonalAnomaly(): ComputedStat[] {
         dataPoints: 6,
         firstValue: 1200,
         lastValue: 800,
-        firstPeriod: '2026-01',
-        lastPeriod: '2026-06',
+        firstPeriod: '2025-06',
+        lastPeriod: '2025-11',
       },
     },
   ];
