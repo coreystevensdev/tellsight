@@ -71,6 +71,12 @@ const JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL ?? 'claude-sonnet-5';
 // reading and they concentrate: cash-crunch carried 4 of the 6 in the last run.
 const ONLY_FIXTURE = process.env.EVAL_FIXTURE ?? '';
 
+// Undefined means assemblePrompt's own default. Set it to score a prompt the
+// default has already moved past: comparing v2.0 against v2.1 at equal n is the
+// only way to tell a prompt change from run-to-run noise, and once the default
+// bumps there is otherwise no way back to the old one.
+const PINNED_PROMPT_VERSION = process.env.EVAL_PROMPT_VERSION || undefined;
+
 // Only the initial value of the reported version; the real one is read back from
 // assemblePrompt's metadata per fixture, so a default-version bump can't leave the
 // scorecard lying about which prompt was scored.
@@ -134,10 +140,11 @@ async function scoreAgentFixture(
       const prose = proposals
         .map((p) => [p.title, p.explanation, p.recommendation].filter(Boolean).join('\n'))
         .join('\n\n');
-      const [faithfulness, completeness] = await Promise.all([
+      const [faith, completeness] = await Promise.all([
         scoreFaithfulness(judgeProvider, groundTruth, prose),
         scoreCompleteness(judgeProvider, fixture.answerKey, prose),
       ]);
+      const faithfulness = faith.score;
       const legal = scoreLegalPosture(prose);
       samples.push({
         proposalCount: proposals.length,
@@ -167,18 +174,22 @@ async function scoreFixture(
   fixture: (typeof FIXTURES)[number],
 ): Promise<{ score: FixtureScore; promptVersion: string }> {
   const scored = scoreInsights(fixture.build());
-  const { system, user, metadata } = assemblePrompt(scored, 1, undefined, undefined, FROZEN_NOW);
+  const { system, user, metadata } = assemblePrompt(scored, 1, PINNED_PROMPT_VERSION, undefined, FROZEN_NOW);
   const groundTruth = extractGroundTruth(user);
 
   const samples: SampleScore[] = [];
   for (let i = 0; i < SAMPLES; i++) {
     try {
       const summary = await provider.generate({ system, user });
-      const [faithfulness, completeness, insight] = await Promise.all([
+      const [faith, completeness, insight] = await Promise.all([
         scoreFaithfulness(judgeProvider, groundTruth, summary),
         scoreCompleteness(judgeProvider, fixture.answerKey, summary),
         scoreActionability(judgeProvider, summary),
       ]);
+      const faithfulness = faith.score;
+      for (const { claim, reason } of faith.unsupported) {
+        console.log(`    unsupported: ${claim}${reason ? ` (${reason})` : ''}`);
+      }
       const legal = scoreLegalPosture(summary);
       samples.push({
         faithfulness,

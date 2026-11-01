@@ -55,7 +55,9 @@ describe('judge scoring', () => {
         { claim: 'c', label: 'unsupported' },
       ],
     });
-    await expect(scoreFaithfulness(provider, 'facts', 'summary')).resolves.toBeCloseTo(2 / 3);
+    const result = await scoreFaithfulness(provider, 'facts', 'summary');
+    expect(result.score).toBeCloseTo(2 / 3);
+    expect(result.unsupported).toEqual([{ claim: 'c', reason: undefined }]);
   });
 
   it('scores completeness against the answer key rather than extra judge items', async () => {
