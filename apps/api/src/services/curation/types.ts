@@ -37,6 +37,14 @@ export interface TrendDetails {
   dataPoints: number;
   firstValue: number;
   lastValue: number;
+  // Required, not optional. Every other dated stat renders its period and this
+  // one did not, so the model could not tell whether a trend overlapped a dated
+  // anomaly, and the faithfulness judge correctly rejected every sentence that
+  // assumed it did. An optional field with a formatter fallback would let any
+  // new construction site silently reproduce that. YYYY-MM, matching
+  // AnomalyDetails.period.
+  firstPeriod: string;
+  lastPeriod: string;
 }
 
 export interface AnomalyDetails {
