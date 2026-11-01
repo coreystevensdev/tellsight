@@ -38,6 +38,10 @@ export function computeTrends(
     const regression = linearRegression(sorted);
     const firstValue = sorted[0]![1];
     const lastValue = sorted[sorted.length - 1]![1];
+    // bucketSeriesByMonth returns [monthStartTimestamp, total], and both ends
+    // were already being read for their values while the timestamps went
+    // unused.
+    const monthOf = (ms: number) => new Date(ms).toISOString().slice(0, 7);
     const growthPercent =
       firstValue !== 0 ? ((lastValue - firstValue) / Math.abs(firstValue)) * 100 : 0;
 
@@ -52,6 +56,8 @@ export function computeTrends(
         dataPoints: sorted.length,
         firstValue,
         lastValue,
+        firstPeriod: monthOf(sorted[0]![0]),
+        lastPeriod: monthOf(sorted[sorted.length - 1]![0]),
       },
     });
   }

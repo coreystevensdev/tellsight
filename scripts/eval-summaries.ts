@@ -25,7 +25,7 @@ import { fileURLToPath } from 'node:url';
 // pulls in config.ts and must be imported dynamically after the key guard.
 import { scoreInsights } from '../apps/api/src/services/curation/scoring.js';
 import { assemblePrompt } from '../apps/api/src/services/curation/assembly.js';
-import { FIXTURES } from './eval-fixtures/fixtures.js';
+import { FIXTURES, FROZEN_NOW } from './eval-fixtures/fixtures.js';
 import { insightGate, INSIGHT_MISS_CEILING } from './eval-fixtures/insight-gate.js';
 import { scoreLegalPosture } from './eval-fixtures/legal-posture.js';
 import type { GenerateProvider } from './eval-fixtures/parse-judge.js';
@@ -48,9 +48,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCORECARD_PATH = resolve(__dirname, 'eval-fixtures', 'scorecard.json');
 const MARKER_PATH = resolve(__dirname, 'eval-fixtures', 'scorecard.zero-results.json');
 
-// Freeze the date so the {{today}} placeholder doesn't drift the prompt between
-// runs, same posture as validate-seed.ts:161.
-const FROZEN_NOW = new Date('2026-01-15T12:00:00Z');
+
 // 10 per fixture, 30 total. At 3 the gate was bad at both ends: a single miss is
 // 22% so it failed a healthy run 10.6% of the time, while catching a regression
 // the size of v1.7's only 77% of the time. 10 puts those at 3.8% and 95% for
@@ -70,6 +68,12 @@ const JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL ?? 'claude-sonnet-5';
 // Diagnosing one fixture should not cost three. Misses are the thing worth
 // reading and they concentrate: cash-crunch carried 4 of the 6 in the last run.
 const ONLY_FIXTURE = process.env.EVAL_FIXTURE ?? '';
+
+// Undefined means assemblePrompt's own default. Set it to score a prompt the
+// default has already moved past: comparing v2.0 against v2.1 at equal n is the
+// only way to tell a prompt change from run-to-run noise, and once the default
+// bumps there is otherwise no way back to the old one.
+const PINNED_PROMPT_VERSION = process.env.EVAL_PROMPT_VERSION || undefined;
 
 // Only the initial value of the reported version; the real one is read back from
 // assemblePrompt's metadata per fixture, so a default-version bump can't leave the
@@ -134,10 +138,11 @@ async function scoreAgentFixture(
       const prose = proposals
         .map((p) => [p.title, p.explanation, p.recommendation].filter(Boolean).join('\n'))
         .join('\n\n');
-      const [faithfulness, completeness] = await Promise.all([
+      const [faith, completeness] = await Promise.all([
         scoreFaithfulness(judgeProvider, groundTruth, prose),
         scoreCompleteness(judgeProvider, fixture.answerKey, prose),
       ]);
+      const faithfulness = faith.score;
       const legal = scoreLegalPosture(prose);
       samples.push({
         proposalCount: proposals.length,
@@ -167,18 +172,22 @@ async function scoreFixture(
   fixture: (typeof FIXTURES)[number],
 ): Promise<{ score: FixtureScore; promptVersion: string }> {
   const scored = scoreInsights(fixture.build());
-  const { system, user, metadata } = assemblePrompt(scored, 1, undefined, undefined, FROZEN_NOW);
+  const { system, user, metadata } = assemblePrompt(scored, 1, PINNED_PROMPT_VERSION, undefined, FROZEN_NOW);
   const groundTruth = extractGroundTruth(user);
 
   const samples: SampleScore[] = [];
   for (let i = 0; i < SAMPLES; i++) {
     try {
       const summary = await provider.generate({ system, user });
-      const [faithfulness, completeness, insight] = await Promise.all([
+      const [faith, completeness, insight] = await Promise.all([
         scoreFaithfulness(judgeProvider, groundTruth, summary),
         scoreCompleteness(judgeProvider, fixture.answerKey, summary),
         scoreActionability(judgeProvider, summary),
       ]);
+      const faithfulness = faith.score;
+      for (const { claim, reason } of faith.unsupported) {
+        console.log(`    unsupported: ${claim}${reason ? ` (${reason})` : ''}`);
+      }
       const legal = scoreLegalPosture(summary);
       samples.push({
         faithfulness,

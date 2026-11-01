@@ -150,7 +150,7 @@ describe('computeStats', () => {
       (s) => s.statType === StatType.Trend && s.category === 'Revenue',
     );
     expect(trend).toBeDefined();
-    const d = (trend as { details: { dataPoints: number; firstValue: number; lastValue: number; growthPercent: number } }).details;
+    const d = (trend as { details: { dataPoints: number; firstValue: number; lastValue: number; growthPercent: number; firstPeriod: string; lastPeriod: string } }).details;
 
     // Four months, not eight transactions.
     expect(d.dataPoints).toBe(4);
@@ -158,6 +158,11 @@ describe('computeStats', () => {
     expect(d.firstValue).toBe(28000);
     expect(d.lastValue).toBe(28000);
     expect(d.growthPercent).toBe(0);
+    // The window the rows actually span, derived from their timestamps. Every
+    // other dated stat renders its period; this one reported "4 months" with no
+    // way to tell which four, so relating it to a dated anomaly was guesswork.
+    expect(d.firstPeriod).toBe('2026-06');
+    expect(d.lastPeriod).toBe('2026-09');
     // And the headline no longer contradicts the slope beside it.
     expect(Math.abs(trend!.value)).toBeLessThan(1e-6);
   });

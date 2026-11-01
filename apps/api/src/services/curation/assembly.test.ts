@@ -42,7 +42,7 @@ const fixtureInsights: ScoredInsight[] = [
       statType: StatType.Trend,
       category: 'Marketing',
       value: 0.05,
-      details: { slope: 0.05, intercept: 100, growthPercent: 25, dataPoints: 6, firstValue: 400, lastValue: 500 },
+      details: { slope: 0.05, intercept: 100, growthPercent: 25, dataPoints: 6, firstValue: 400, lastValue: 500, firstPeriod: '2026-01', lastPeriod: '2026-06' },
     },
     score: 0.72,
     breakdown: { novelty: 0.8, actionability: 0.85, specificity: 0.7 },
@@ -233,7 +233,11 @@ describe('assemblePrompt', () => {
     expect(result.user).toContain('above normal');
     // trend
     expect(result.user).toContain('up 25.0%');
-    expect(result.user).toContain('6 periods');
+    expect(result.user).toContain('6 months');
+    // The window itself, not just its length. Without it the model cannot tell
+    // whether a trend overlaps a dated stat, which is what made every
+    // "revenue held up while marketing fell" sentence unverifiable.
+    expect(result.user).toContain('Trend (2026-01 to 2026-06)');
     // total
     expect(result.user).toContain('[Overall] Total');
     expect(result.user).toContain('20 transactions');

@@ -80,7 +80,7 @@ function formatStatBody(insight: ScoredInsight): string {
       return `- [${category}] Average: $${stat.value.toFixed(2)}, median: $${stat.details.median.toFixed(2)} (relevance: ${score.toFixed(2)})`;
     case StatType.Trend: {
       const dir = stat.details.growthPercent >= 0 ? 'up' : 'down';
-      return `- [${category}] Trend: ${dir} ${Math.abs(stat.details.growthPercent).toFixed(1)}% over ${stat.details.dataPoints} periods ($${stat.details.firstValue.toFixed(0)} -> $${stat.details.lastValue.toFixed(0)}, relevance: ${score.toFixed(2)})`;
+      return `- [${category}] Trend (${stat.details.firstPeriod} to ${stat.details.lastPeriod}): ${dir} ${Math.abs(stat.details.growthPercent).toFixed(1)}% over ${stat.details.dataPoints} months ($${stat.details.firstValue.toFixed(0)} -> $${stat.details.lastValue.toFixed(0)}, relevance: ${score.toFixed(2)})`;
     }
     case StatType.Anomaly: {
       const dir = stat.details.direction;

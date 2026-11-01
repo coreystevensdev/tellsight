@@ -47,6 +47,8 @@ function trend(growth: number, first: number, last: number): ComputedStat {
       dataPoints: 12,
       firstValue: first,
       lastValue: last,
+      firstPeriod: '2025-01',
+      lastPeriod: '2025-12',
     },
   };
 }
