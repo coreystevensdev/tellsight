@@ -3,7 +3,7 @@ import { askQuestionSchema } from 'shared/schemas';
 import { ANALYTICS_EVENTS } from 'shared/constants';
 
 import { requireUser } from '../lib/requireUser.js';
-import { rateLimitAi } from '../middleware/rateLimiter.js';
+import { rateLimitQa } from '../middleware/rateLimiter.js';
 import { register, deregister } from '../lib/activeStreams.js';
 import { subscriptionsQueries } from '../db/queries/index.js';
 import { withRlsContext } from '../lib/rls.js';
@@ -56,6 +56,30 @@ qaRouter.post('/:datasetId', async (req, res: Response) => {
     abortController.abort();
   });
 
+  // Ahead of the entitlement check, which spec-13-4 had the other way round.
+  // getAgentEnabled runs inside withRlsContext, so it is a transaction plus a
+  // SET LOCAL per call, and every authenticated caller without the Agent tier
+  // could reach it unthrottled just to be told 403. Its own bucket, so those
+  // 403s no longer draw down the AI-summary budget on the way.
+  try {
+    await new Promise<void>((resolve, reject) => {
+      // rateLimitQa fails open on unexpected errors (calls next()) and on an
+      // actual 429 responds via res directly instead of calling next -- this
+      // callback never fires on that path. res.once('finish'/'close') below
+      // is the fallback that unblocks this promise for the 429 and
+      // client-disconnect branches.
+      rateLimitQa(req, res, (err?: unknown) => (err ? reject(err) : resolve()));
+      res.once('finish', resolve);
+      res.once('close', resolve);
+    });
+  } catch (err) {
+    deregister(abortController);
+    throw err;
+  }
+  if (res.headersSent || clientDisconnected) {
+    deregister(abortController);
+    return;
+  }
   // Hard gate, not subscriptionGate's annotate-not-block posture: a question
   // the org isn't entitled to ask has no partial/preview shape to fall back to.
   // withRlsContext can throw before getAgentEnabled's own fail-closed catch
@@ -80,25 +104,6 @@ qaRouter.post('/:datasetId', async (req, res: Response) => {
     return;
   }
 
-  try {
-    await new Promise<void>((resolve, reject) => {
-      // rateLimitAi fails open on unexpected errors (calls next()) and on an
-      // actual 429 responds via res directly instead of calling next -- this
-      // callback never fires on that path. res.once('finish'/'close') below
-      // is the fallback that unblocks this promise for the 429 and
-      // client-disconnect branches.
-      rateLimitAi(req, res, (err?: unknown) => (err ? reject(err) : resolve()));
-      res.once('finish', resolve);
-      res.once('close', resolve);
-    });
-  } catch (err) {
-    deregister(abortController);
-    throw err;
-  }
-  if (res.headersSent || clientDisconnected) {
-    deregister(abortController);
-    return;
-  }
 
   // Explicit construction per interpretationTools.ts's doc comment, never
   // passed through from the request object directly. `now` is captured once

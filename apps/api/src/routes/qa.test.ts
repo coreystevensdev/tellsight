@@ -34,8 +34,16 @@ vi.mock('../lib/rls.js', () => ({
   withRlsContext: (...args: unknown[]) => mockWithRlsContext(...args),
 }));
 
+// Shared log, because the defect this route had was an ordering one and two
+// independent pass-through mocks cannot see an order.
+const callOrder: string[] = [];
+const mockRateLimitQa = vi.fn((_req: unknown, _res: unknown, next: () => void) => {
+  callOrder.push('rateLimit');
+  next();
+});
 const mockRateLimitAi = vi.fn((_req: unknown, _res: unknown, next: () => void) => next());
 vi.mock('../middleware/rateLimiter.js', () => ({
+  rateLimitQa: (req: unknown, res: unknown, next: () => void) => mockRateLimitQa(req, res, next),
   rateLimitAi: (req: unknown, res: unknown, next: () => void) => mockRateLimitAi(req, res, next),
 }));
 
@@ -72,7 +80,11 @@ afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockWithRlsContext.mockImplementation((_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({}));
+  callOrder.length = 0;
+  mockWithRlsContext.mockImplementation((_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => {
+    callOrder.push('entitlement');
+    return fn({});
+  });
 });
 
 function ownerPayload() {
@@ -255,12 +267,68 @@ describe('POST /qa/:datasetId', () => {
     );
   });
 
-  it('does not hang when rateLimitAi responds 429 without calling next (regression)', async () => {
+  // DW-96. getAgentEnabled runs inside withRlsContext, so it is a transaction
+  // plus a SET LOCAL per call. With the entitlement check first, every
+  // authenticated caller without the Agent tier could reach it unthrottled just
+  // to be told 403. Every other test here mocks the limiter as a pass-through,
+  // which cannot tell the two orders apart, so this asserts the order directly.
+  it('rate limits before spending a transaction on the entitlement check', async () => {
     mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload());
     mockGetAgentEnabled.mockResolvedValueOnce(true);
-    // Mirrors the real rateLimitAi's actual-limit branch: it responds via
+
+    await fetch(`${baseUrl}/qa/7`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ question: 'How is my runway?' }),
+    });
+
+    expect(callOrder).toEqual(['rateLimit', 'entitlement']);
+  });
+
+  it('never reaches the entitlement check when the limiter rejects', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload());
+    mockRateLimitQa.mockImplementationOnce((_req: unknown, res: unknown) => {
+      callOrder.push('rateLimit');
+      (res as { status: (n: number) => { json: (b: unknown) => void } }).status(429).json({
+        error: { code: 'RATE_LIMITED', message: 'Too many requests' },
+      });
+    });
+
+    const res = await fetch(`${baseUrl}/qa/7`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ question: 'How is my runway?' }),
+    });
+
+    expect(res.status).toBe(429);
+    // The point of the reorder: a throttled caller costs no database work.
+    expect(mockWithRlsContext).not.toHaveBeenCalled();
+    expect(mockGetAgentEnabled).not.toHaveBeenCalled();
+    expect(callOrder).toEqual(['rateLimit']);
+  });
+
+  // DW-103. Q&A drew down the same rl_ai bucket as AI-summary generation, so a
+  // run of follow-up questions started 429ing unrelated summary regeneration.
+  it('draws on the qa limiter and never the shared ai one', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload());
+    mockGetAgentEnabled.mockResolvedValueOnce(true);
+
+    await fetch(`${baseUrl}/qa/7`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ question: 'How is my runway?' }),
+    });
+
+    expect(mockRateLimitQa).toHaveBeenCalledTimes(1);
+    expect(mockRateLimitAi).not.toHaveBeenCalled();
+  });
+
+  it('does not hang when rateLimitQa responds 429 without calling next (regression)', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload());
+    mockGetAgentEnabled.mockResolvedValueOnce(true);
+    // Mirrors the real rateLimitQa's actual-limit branch: it responds via
     // res directly and never invokes the third (next) argument.
-    mockRateLimitAi.mockImplementationOnce((_req: unknown, res: unknown) => {
+    mockRateLimitQa.mockImplementationOnce((_req: unknown, res: unknown) => {
       (res as { status: (n: number) => { json: (b: unknown) => void } }).status(429).json({
         error: { code: 'RATE_LIMITED', message: 'Too many requests' },
       });
@@ -278,10 +346,10 @@ describe('POST /qa/:datasetId', () => {
     expect(mockRunQaLoop).not.toHaveBeenCalled();
   });
 
-  it('deregisters the abort controller even when rateLimitAi rejects with a real error (regression)', async () => {
+  it('deregisters the abort controller even when rateLimitQa rejects with a real error (regression)', async () => {
     mockVerifyAccessToken.mockResolvedValueOnce(ownerPayload());
     mockGetAgentEnabled.mockResolvedValueOnce(true);
-    mockRateLimitAi.mockImplementationOnce((_req: unknown, _res: unknown, next: (err?: unknown) => void) => {
+    mockRateLimitQa.mockImplementationOnce((_req: unknown, _res: unknown, next: (err?: unknown) => void) => {
       next(new Error('redis unavailable'));
     });
 
