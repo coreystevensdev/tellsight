@@ -96,19 +96,31 @@ export function extractGroundTruth(userPrompt: string, startAnchor = SUMMARIES_S
   return today ? `${today}\n\n${stats}` : stats;
 }
 
+export interface FaithfulnessResult {
+  score: number;
+  // The judge's own words for what it rejected. A bare ratio says a quarter of
+  // the claims failed and nothing about which quarter, so diagnosing a fixture
+  // meant paying for the whole run again.
+  unsupported: { claim: string; reason?: string }[];
+}
+
 export async function scoreFaithfulness(
   provider: GenerateProvider,
   groundTruth: string,
   summary: string,
-): Promise<number> {
+): Promise<FaithfulnessResult> {
   const { claims } = await askJudge(
     provider,
     faithfulnessJudge(groundTruth, summary),
     faithfulnessSchema,
     'faithfulness',
   );
-  if (claims.length === 0) return 1;
-  return claims.filter((claim) => claim.label !== 'unsupported').length / claims.length;
+  if (claims.length === 0) return { score: 1, unsupported: [] };
+  const bad = claims.filter((claim) => claim.label === 'unsupported');
+  return {
+    score: (claims.length - bad.length) / claims.length,
+    unsupported: bad.map(({ claim, reason }) => ({ claim, reason })),
+  };
 }
 
 export async function scoreCompleteness(

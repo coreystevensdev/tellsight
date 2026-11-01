@@ -112,7 +112,7 @@ function nonFinancial(kind: NonFinancialType): ComputedStat {
         statType: 'trend',
         category: 'revenue',
         value: 12,
-        details: { slope: 1666, intercept: 40000, growthPercent: 25, dataPoints: 6, firstValue: 40000, lastValue: 50000 },
+        details: { slope: 1666, intercept: 40000, growthPercent: 25, dataPoints: 6, firstValue: 40000, lastValue: 50000, firstPeriod: '2026-01', lastPeriod: '2026-06' },
       };
     case 'anomaly':
       return {
