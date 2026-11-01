@@ -1691,19 +1691,27 @@ describe('hasValidDiscriminatorFields', () => {
     expect(hasValidDiscriminatorFields({ statType: StatType.Total, details: {} })).toBe(false);
   });
 
-  it('requires a finite currentRevenue and a MONTH_NAMES month for year_over_year', () => {
+  // Follows statDiscriminator: it guards the fields that switch dereferences, so
+  // DW-219 moving year_over_year onto currentYearLabel moves this too. The two
+  // switches drifting apart is what DW-119 found.
+  it('requires a non-empty currentYearLabel and a MONTH_NAMES month for year_over_year', () => {
     expect(
-      hasValidDiscriminatorFields({ statType: StatType.YearOverYear, details: { currentRevenue: 13440, month: 'Mar' } }),
+      hasValidDiscriminatorFields({ statType: StatType.YearOverYear, details: { currentYearLabel: '2026', month: 'Mar' } }),
     ).toBe(true);
     expect(
-      hasValidDiscriminatorFields({ statType: StatType.YearOverYear, details: { currentRevenue: 13440, month: 'March' } }),
+      hasValidDiscriminatorFields({ statType: StatType.YearOverYear, details: { currentYearLabel: '2026', month: 'March' } }),
     ).toBe(false); // full name, not the 'Mar' MONTH_NAMES stores
     expect(
-      hasValidDiscriminatorFields({ statType: StatType.YearOverYear, details: { currentRevenue: NaN, month: 'Mar' } }),
+      hasValidDiscriminatorFields({ statType: StatType.YearOverYear, details: { currentYearLabel: '', month: 'Mar' } }),
     ).toBe(false);
     expect(
       hasValidDiscriminatorFields({ statType: StatType.YearOverYear, details: { month: 'Mar' } }),
     ).toBe(false);
+    // Revenue is no longer read by the discriminator, so its absence is not this
+    // guard's business any more.
+    expect(
+      hasValidDiscriminatorFields({ statType: StatType.YearOverYear, details: { currentYearLabel: '2026', month: 'Mar' } }),
+    ).toBe(true);
   });
 
   it('requires a string details.projectedMonth for seasonal_projection', () => {
@@ -2036,18 +2044,28 @@ describe('year-over-year revenue field naming (DW-31)', () => {
       expect(details.currentYearLabel).toBe('2026');
     });
 
-    it('keeps the year-over-year stat id on the revenue figure, since stored summaries embed it', () => {
+    it('discriminates the year-over-year stat id by year and month, not by revenue (DW-219)', () => {
       const rows = [revenueRow(2025, 2, 1000), revenueRow(2026, 2, 1500)];
 
       const yoy = computeStats(rows).find(
         (s): s is YearOverYearStat => s.statType === StatType.YearOverYear,
       )!;
 
-      // Was `${details.currentYear}-${month}` before the rename. The field was
-      // renamed; the string it produces must not change, or resolveStatById
-      // stops matching the <stat id="..."/> markers already written into
-      // ai_summaries.
-      expect(statInstanceId(yoy, 7)).toBe('7:year_over_year:Revenue:1500-Feb');
+      // The id read `1500-Feb` until DW-219. That looked like a year and never
+      // was one: the field was originally named currentYear while holding
+      // revenue, DW-31 renamed it to currentRevenue and deliberately kept the
+      // value so the string stayed byte-identical for markers already stored.
+      // What identifies a comparison window is the year and the month, and
+      // revenue made the id unique only by accident.
+      expect(statInstanceId(yoy, 7)).toBe('7:year_over_year:Revenue:2026-Feb');
+
+      // The accident, stated: two windows for one month with equal revenue used
+      // to produce one id. They differ now because the current year does.
+      const sameRevenueLaterYear: YearOverYearStat = {
+        ...yoy,
+        details: { ...yoy.details, currentYearLabel: '2027', priorYearLabel: '2026' },
+      };
+      expect(statInstanceId(sameRevenueLaterYear, 7)).not.toBe(statInstanceId(yoy, 7));
     });
 });
 
