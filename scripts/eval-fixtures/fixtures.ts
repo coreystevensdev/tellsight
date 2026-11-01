@@ -198,6 +198,26 @@ export function seasonalAnomaly(): ComputedStat[] {
       },
     },
     {
+      // The comparison the model kept reaching for and could not make. Marketing
+      // falls over exactly this window, so "revenue held up while marketing fell"
+      // is now checkable instead of unsupportable. lastValue is the same 16000
+      // the year-over-year stat reports for 2025-11, so the two agree rather
+      // than describing different businesses.
+      statType: 'trend',
+      category: 'Revenue',
+      value: 600,
+      details: {
+        slope: 600,
+        intercept: 13000,
+        growthPercent: 23.1,
+        dataPoints: 6,
+        firstValue: 13000,
+        lastValue: 16000,
+        firstPeriod: '2025-06',
+        lastPeriod: '2025-11',
+      },
+    },
+    {
       statType: 'trend',
       category: 'Marketing',
       value: -80,
