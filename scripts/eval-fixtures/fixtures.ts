@@ -182,7 +182,11 @@ export function seasonalAnomaly(): ComputedStat[] {
         currentYearLabel: '2025',
         priorYearLabel: '2024',
         changePercent: 11.1,
-        month: '2025-11',
+        // 'Nov', not '2025-11'. computeYearOverYear writes MONTH_NAMES[month],
+        // so production emits an abbreviation and hasValidDiscriminatorFields
+        // rejects anything else. The year is carried by currentYearLabel, which
+        // the stat line renders alongside it.
+        month: 'Nov',
       },
     },
     {

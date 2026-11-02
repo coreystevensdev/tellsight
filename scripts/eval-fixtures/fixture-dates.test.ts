@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { FIXTURES, FROZEN_NOW } from './fixtures.js';
+import { MONTH_NAMES } from '../../apps/api/src/services/curation/computationPrimitives.js';
 import { StatType } from '../../apps/api/src/services/curation/types.js';
 import type { ComputedStat } from '../../apps/api/src/services/curation/types.js';
 
@@ -28,8 +29,20 @@ function closedPeriods(stat: ComputedStat): { field: string; value: string }[] {
   switch (stat.statType) {
     case StatType.Anomaly:
       return month('period', stat.details.period);
-    case StatType.YearOverYear:
-      return month('month', stat.details.month);
+    case StatType.YearOverYear: {
+      // details.month is a MONTH_NAMES abbreviation with no year in it, so it
+      // cannot be compared to the clock on its own: 'Nov' sorts after '2026-01'
+      // because N beats 2 in ASCII. The year lives in currentYearLabel, and the
+      // two together are the period this stat reports.
+      const i = (MONTH_NAMES as readonly string[]).indexOf(stat.details.month);
+      if (i === -1) return [];
+      return [
+        {
+          field: 'currentYearLabel+month',
+          value: `${stat.details.currentYearLabel}-${String(i + 1).padStart(2, '0')}`,
+        },
+      ];
+    }
     case StatType.Trend:
       return [
         ...month('firstPeriod', stat.details.firstPeriod),
