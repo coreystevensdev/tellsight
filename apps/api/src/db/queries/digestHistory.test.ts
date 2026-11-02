@@ -193,10 +193,14 @@ describe('getTrailingDigests', () => {
   });
 
   it('drops year_over_year/seasonal_projection/cash_flow entries with a missing discriminator field, since statInstanceId dereferences it on every compare_to_prior_periods match', async () => {
-    const validYoy = { statType: 'year_over_year', category: 'Revenue', value: 1000, details: { currentRevenue: 1000, month: 'Mar', priorRevenue: 909, changePercent: 10 } };
+    // currentYearLabel, not currentRevenue: DW-219 moved the year_over_year
+    // discriminator onto the year, so that is the field statInstanceId now
+    // dereferences and the one this guard has to see.
+    const validYoy = { statType: 'year_over_year', category: 'Revenue', value: 1000, details: { currentYearLabel: '2026', month: 'Mar', currentRevenue: 1000, priorRevenue: 909, changePercent: 10 } };
     const keyStats = [
       validYoy,
-      { statType: 'year_over_year', category: 'Revenue', value: 900, details: { currentRevenue: 900 } }, // missing details.month
+      { statType: 'year_over_year', category: 'Revenue', value: 900, details: { currentYearLabel: '2026' } }, // missing details.month
+      { statType: 'year_over_year', category: 'Revenue', value: 950, details: { month: 'Mar' } }, // missing details.currentYearLabel
       { statType: 'seasonal_projection', category: 'Revenue', value: 800, details: {} }, // missing details.projectedMonth
       { statType: 'cash_flow', category: null, value: 700, details: { monthlyNet: 100 } }, // missing details.trailingMonths
     ];
