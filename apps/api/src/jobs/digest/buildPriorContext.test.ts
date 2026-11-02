@@ -149,7 +149,23 @@ describe('buildPriorContext', () => {
     // a 200% move. These four isolate the two gates: the first two clear the
     // percent and fail the dollar floor, the last two clear both.
     ['cash flow huge percent on a tiny base stays quiet', [cashFlow(3)], [cashFlow(1)], []],
-    ['cash flow off zero but under the dollar floor stays quiet', [cashFlow(50)], [cashFlow(0)], []],
+    // Derived from the constant, like the case below it. Hardcoding 50 pinned this
+    // to a floor of 100 and it started emitting the moment the floor moved.
+    [
+      'cash flow off zero but under the dollar floor stays quiet',
+      [cashFlow(SIGNIFICANT_BURN_DELTA_USD - 1)],
+      [cashFlow(0)],
+      [],
+    ],
+    // Why the floor came down from 100. Under $2,000 of net the floor decided
+    // alone, so this move was suppressed at 100 despite being 7.5% of the month,
+    // which is the failure the floor comment rejects a 500 floor for.
+    [
+      'cash flow move that is a large share of a small net is narrated',
+      [cashFlow(-430)],
+      [cashFlow(-400)],
+      [{ statType: 'cash_flow', kind: 'delta' }],
+    ],
     [
       'cash flow at the exact dollar floor clears it',
       [cashFlow(10 + SIGNIFICANT_BURN_DELTA_USD)],
