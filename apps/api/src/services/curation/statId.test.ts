@@ -112,10 +112,10 @@ describe('statInstanceId', () => {
         currentYearLabel: '2026',
         priorYearLabel: '2025',
         changePercent: 15,
-        month: 'January',
+        month: 'Jan',
       },
     };
-    expect(statInstanceId(yoyStat, 1)).toBe('1:year_over_year:Sales:2026-January');
+    expect(statInstanceId(yoyStat, 1)).toBe('1:year_over_year:Sales:2026-Jan');
   });
 
   it('discriminates seasonal projection stats by projectedMonth', () => {
