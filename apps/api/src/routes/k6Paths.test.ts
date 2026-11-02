@@ -16,12 +16,25 @@ vi.mock('../services/subscription/stripeHealth.js', () => ({
   checkStripeHealth: vi.fn().mockResolvedValue({ status: 'ok', latencyMs: 1, livemode: false }),
 }));
 
+// Covers the module's whole export surface, not just the parts this suite
+// happened to need. It was missing peekClaudeHealth, which /health calls through
+// lastKnownClaudeHealth, so every run logged two unhandled errors and the route
+// 500d. This test only asserts a path is routed and says a 500 is irrelevant, so
+// nothing failed and the noise stayed. Four more were missing for no reason
+// other than nothing having reached them yet.
 vi.mock('../services/aiInterpretation/claudeClient.js', () => ({
   checkClaudeHealth: vi.fn().mockResolvedValue({ status: 'ok', latencyMs: 1 }),
+  // null is the "nothing probed since boot" branch, which is a real state and
+  // keeps /health on its 200 path here.
+  peekClaudeHealth: vi.fn(() => null),
+  probeClaudeHealth: vi.fn().mockResolvedValue({ status: 'ok', latencyMs: 1 }),
+  logClaudeKeyStatus: vi.fn(),
   streamInterpretation: vi.fn(),
   generateInterpretation: vi.fn(),
   generateWithTools: vi.fn(),
   converseWithTools: vi.fn(),
+  generateWithModel: vi.fn(),
+  anthropicProvider: { generate: vi.fn(), stream: vi.fn() },
   modelFor: vi.fn(() => 'test-model'),
 }));
 
