@@ -7,15 +7,29 @@ export const SIGNIFICANT_BURN_DELTA_PERCENT = 5; // relative change vs prior mon
 // Absolute floor, checked alongside the percent above. Percent on its own is
 // unbounded at a small base: $1 to $3 is a 200% move and two dollars. The number
 // that governs behaviour is the crossover, F / 0.05, below which the percent is
-// inert and this decides alone. At 100 that is a $2,000 monthly net, which keeps
-// the percent live across the range real customers sit in. Higher floors read as
-// tidier and cost more than they look: at 500 the crossover is $10,000 and a
-// business improving from $2,000 to $2,400 a month gets no line at all, which is
-// the digest failing at the only thing it is for. A missed real move is a worse
-// failure here than a marginal one that gets skimmed. A burn to surplus sign
-// flip no longer qualifies on its own either, since a flip of a few dollars is
-// the same noise.
-export const SIGNIFICANT_BURN_DELTA_USD = 100;
+// inert and this decides alone. Higher floors read as tidier and cost more than
+// they look: at 500 the crossover is $10,000 and a business improving from
+// $2,000 to $2,400 a month gets no line at all, which is the digest failing at
+// the only thing it is for. A missed real move is a worse failure here than a
+// marginal one that gets skimmed. A burn to surplus sign flip no longer
+// qualifies on its own either, since a flip of a few dollars is the same noise.
+//
+// Was 100, for a $2,000 crossover. That reasoning holds and the value was still
+// too high at the bottom of the range: under $2,000 of net the floor decides
+// alone, so a business netting $400 lost a $30 move that was 7.5% of its month,
+// which is the same failure the paragraph above rejects a 500 floor for. 25 puts
+// the crossover at $500, so the percent gate governs every business netting more
+// than that, which is effectively all of them, and the floor is left doing only
+// the job it exists for. It still suppresses a doubling of a trivial amount:
+// $10 to $20 is 100% and ten dollars, and gets no line.
+//
+// Lowering can only add lines, never remove one, so the risk it carries is noise
+// rather than silence, and the comment above states which of those is worse.
+// Anything from 20 to 30 behaves almost identically on the cases that matter, so
+// this is a judgement inside a range rather than a derived optimum. DW-210 asked
+// for engagement data to settle it and four digests have been delivered in
+// total, so that data still does not exist.
+export const SIGNIFICANT_BURN_DELTA_USD = 25;
 
 export interface PriorContextEntry {
   statType: ComputedStat['statType'];
