@@ -35,8 +35,8 @@ export function hasValidDiscriminatorFields(stat: { statType: string; details: u
       return typeof details?.scope === 'string';
     case StatType.YearOverYear:
       return (
-        typeof details?.currentRevenue === 'number' &&
-        Number.isFinite(details.currentRevenue) &&
+        typeof details?.currentYearLabel === 'string' &&
+        details.currentYearLabel.length > 0 &&
         typeof details?.month === 'string' &&
         (MONTH_NAMES as readonly string[]).includes(details.month)
       );
@@ -55,13 +55,19 @@ function statDiscriminator(stat: ComputedStat): string {
     case StatType.Average:
       return stat.details.scope;
     case StatType.YearOverYear:
-      // Deliberately the revenue figure and not currentYearLabel, even though
-      // a year would read better in a citation id. These ids are embedded in
-      // stored summaries as <stat id="..."/> and resolveStatById recomputes to
-      // match them, so the string has to stay byte-identical to what the old
-      // details.currentYear produced. Unique only because computeStats emits
-      // one year-over-year window per call; see DW-219.
-      return `${stat.details.currentRevenue}-${stat.details.month}`;
+      // The year and the month, which is what actually identifies a comparison
+      // window. It used to be the revenue figure and the month, which was unique
+      // only by accident: computeYearOverYear emits one stat per overlapping
+      // month, so a second window for the same month (2026-vs-2025 alongside
+      // 2025-vs-2024) would have collided unless the two revenues happened to
+      // differ. currentYearLabel was sitting right there unused.
+      //
+      // Changing this orphans any `<stat id="..."/>` already stored under the old
+      // string, which is why DW-219 deferred it. Checked before changing rather
+      // than assumed: of 8 rows in ai_summaries, 4 carry markers and none cites a
+      // year_over_year stat, so nothing resolves under the old rule today. That
+      // window closes the moment one does.
+      return `${stat.details.currentYearLabel}-${stat.details.month}`;
     case StatType.SeasonalProjection:
       return stat.details.projectedMonth;
     case StatType.CashFlow:

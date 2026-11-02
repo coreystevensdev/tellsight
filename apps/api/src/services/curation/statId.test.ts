@@ -101,7 +101,7 @@ describe('statInstanceId', () => {
     expect(statInstanceId(avgStat, 1)).toBe('1:average:Expenses:category');
   });
 
-  it('discriminates year-over-year stats by currentRevenue-month', () => {
+  it('discriminates year-over-year stats by currentYearLabel-month (DW-219)', () => {
     const yoyStat: ComputedStat = {
       statType: StatType.YearOverYear,
       category: 'Sales',
@@ -115,7 +115,7 @@ describe('statInstanceId', () => {
         month: 'January',
       },
     };
-    expect(statInstanceId(yoyStat, 1)).toBe('1:year_over_year:Sales:1300-January');
+    expect(statInstanceId(yoyStat, 1)).toBe('1:year_over_year:Sales:2026-January');
   });
 
   it('discriminates seasonal projection stats by projectedMonth', () => {
