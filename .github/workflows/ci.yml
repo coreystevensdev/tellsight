@@ -473,7 +473,7 @@ jobs:
           grep -q "badge/tests-${t/,/%2C}-brightgreen" README.md || { echo "badge does not say $t"; fail=1; }
           grep -q "alt=\"$t tests\"" README.md || { echo "badge alt text does not say $t"; fail=1; }
           grep -q "$t automated tests ($v Vitest plus $e2e Playwright E2E)" README.md || { echo "overview line does not say $t ($v Vitest plus $e2e Playwright)"; fail=1; }
-          [ "$fail" = 0 ] || { echo "Run scripts/count-tests.sh and update README.md."; exit 1; }
+          [ "$fail" = 0 ] || { echo "Run: bash scripts/count-tests.sh --write   (needs a database for the integration suite, see the script header)"; exit 1; }
           echo "README agrees with every suite: $t"
 
   # Deployment itself lives in deploy-aws.yml, triggered via workflow_run once
