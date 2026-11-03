@@ -4,8 +4,16 @@ import postgres from 'postgres';
 import { env } from '../config.js';
 import * as schema from '../db/schema.js';
 
+// prepare: false is not a preference, it is the mitigation postgres 4.0.0 needs.
+// Its prepared-statement cache keeps the query that prepared each entry, values
+// and rows included, up to 1,000 statements per connection. Upstream measures
+// about 1.1 GB at 10 connections with 50-row results, and this runs on a
+// t3.micro with roughly 916 MB shared with web, redis and caddy, across 35
+// connections between the two pools below. The fix is in the unreleased 4.1.0;
+// remove this and restore prepared statements when that ships.
 export const queryClient = postgres(env.DATABASE_URL, {
   max: 25,
+  prepare: false,
   idle_timeout: 20,
   connect_timeout: 10,
   onnotice: () => {},
@@ -14,6 +22,7 @@ export const queryClient = postgres(env.DATABASE_URL, {
 
 export const adminClient = postgres(env.DATABASE_ADMIN_URL, {
   max: 10,
+  prepare: false,
   idle_timeout: 20,
   connect_timeout: 10,
   onnotice: () => {},
