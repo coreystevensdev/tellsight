@@ -211,10 +211,15 @@ describe('rateLimiter', { retry: 2 }, () => {
 
     beforeAll(async () => {
       const result = await createTestApp((app) => {
-        // simulate authMiddleware having already attached req.user
+        // simulate authMiddleware having already attached req.user. The sub comes
+        // from a header, as in the stat-correction block below, so each test gets
+        // its own bucket. Pinned to one value, these two tests shared a 30-point
+        // RateLimiterMemory singleton and only passed in the order they are
+        // written: the draining test first makes the other one 429. Swapping them
+        // reproduces the retry-x2 failure seen under full-suite load.
         app.use((req: Request, _res: Response, next) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (req as any).user = { sub: 'dashboard-user-77' };
+          (req as any).user = { sub: (req.headers['x-test-user'] as string) ?? 'dashboard-default' };
           next();
         });
         app.use(rateLimitDashboardCompute);
@@ -229,14 +234,20 @@ describe('rateLimiter', { retry: 2 }, () => {
     afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
 
     it('allows requests under the limit', async () => {
-      const res = await fetch(`${baseUrl}/dashboard/compute`);
+      const res = await fetch(`${baseUrl}/dashboard/compute`, {
+        headers: { 'x-test-user': 'dash-under-limit' },
+      });
       expect(res.status).toBe(200);
     });
 
     it('returns 429 when dashboard limit (30/min) is exceeded', async () => {
       const requests = [];
       for (let i = 0; i < 40; i++) {
-        requests.push(fetch(`${baseUrl}/dashboard/compute`));
+        requests.push(
+          fetch(`${baseUrl}/dashboard/compute`, {
+            headers: { 'x-test-user': 'dash-over-limit' },
+          }),
+        );
       }
       const responses = await Promise.all(requests);
 
