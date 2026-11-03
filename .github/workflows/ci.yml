@@ -473,10 +473,9 @@ jobs:
           grep -q "badge/tests-${t/,/%2C}-brightgreen" README.md || { echo "badge does not say $t"; fail=1; }
           grep -q "alt=\"$t tests\"" README.md || { echo "badge alt text does not say $t"; fail=1; }
           # The overview sentence used to repeat this total and now defers to the
-          # badge. One number in two places is the whole collision surface: two
-          # branches adding tests write the same wrong value from the same base
-          # and git reports no conflict, so fewer places is the only real fix
-          # short of hosting the number outside the repo.
+          # badge. Two branches adding tests write the same wrong value from the
+          # same base and git reports no conflict, so nothing at the git level
+          # can catch it. This job is the thing that does.
           echo "vitest $v / e2e $e2e, asserted against the badge only"
 
           [ "$fail" = 0 ] || { echo "Run: bash scripts/count-tests.sh --write   (needs a database for the integration suite, see the script header)"; exit 1; }
