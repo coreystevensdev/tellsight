@@ -2,6 +2,11 @@
 # Prints the test count for every suite, and the totals the README badge claims.
 # CI asserts the README against the same numbers; run this by hand after adding tests.
 #
+# Pass --write to update the three strings in README.md as well, which is the
+# point: the badge, its alt text and the overview sentence have to agree, and
+# typing them by hand is where every error came from. It refuses rather than
+# half-writing if any of the three has been reworded.
+#
 # This runs the suites rather than collecting them. `vitest list` was cheaper and
 # needed no database, but it stopped being a usable count under vitest 5: an
 # it.each lists once as its unexpanded "%s" template rather than once per case,
@@ -95,3 +100,43 @@ total          $total
 vitest_fmt     $(fmt $vitest)
 total_fmt      $(fmt $total)
 EOF
+
+# --write updates the three strings CI asserts, because hand-typing them is where
+# every error came from. Four pairs of branches collided on this value in one day:
+# both compute it from the same base, both write the same wrong number, and git
+# reports no conflict because the text is identical, so the merge that exists to
+# catch this cannot. The number still has to be committed (a shields.io badge can
+# be made dynamic, the overview sentence cannot), so the fix is to make updating
+# it one command rather than three edits and some arithmetic.
+if [ "${1:-}" != "--write" ]; then
+  exit 0
+fi
+
+tf=$(fmt "$total"); vf=$(fmt "$vitest")
+python3 - "$tf" "$vf" "$e2e" <<'PYEOF'
+import re, sys
+from pathlib import Path
+
+total = sys.argv[1]  # vitest and e2e are printed above, not written
+p = Path('README.md')
+src = p.read_text()
+out = src
+
+out, n_badge = re.subn(r'badge/tests-[\d]+(?:%2C[\d]+)*-brightgreen',
+                       f"badge/tests-{total.replace(',', '%2C')}-brightgreen", out)
+out, n_alt = re.subn(r'alt="[\d,]+ tests"', f'alt="{total} tests"', out)
+# The overview sentence deliberately carries no total any more, so there is
+# nothing to rewrite there. One number in two places instead of three is the
+# collision surface shrinking; it is not zero, and getting to zero means hosting
+# the number outside the repo.
+for name, n in (('badge', n_badge), ('alt text', n_alt)):
+    if n != 1:
+        sys.exit(f"count-tests --write: matched the {name} {n} times, expected 1. "
+                 "The README wording moved; fix the pattern rather than the number.")
+
+if out == src:
+    print(f"README already says {total}")
+else:
+    p.write_text(out)
+    print(f"README badge updated to {total}")
+PYEOF
