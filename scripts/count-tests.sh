@@ -117,7 +117,7 @@ python3 - "$tf" "$vf" "$e2e" <<'PYEOF'
 import re, sys
 from pathlib import Path
 
-total, vitest, e2e = sys.argv[1], sys.argv[2], sys.argv[3]
+total = sys.argv[1]  # vitest and e2e are printed above, not written
 p = Path('README.md')
 src = p.read_text()
 out = src
@@ -125,10 +125,11 @@ out = src
 out, n_badge = re.subn(r'badge/tests-[\d]+(?:%2C[\d]+)*-brightgreen',
                        f"badge/tests-{total.replace(',', '%2C')}-brightgreen", out)
 out, n_alt = re.subn(r'alt="[\d,]+ tests"', f'alt="{total} tests"', out)
-out, n_line = re.subn(r'[\d,]+ automated tests \([\d,]+ Vitest plus \d+ Playwright E2E\)',
-                      f'{total} automated tests ({vitest} Vitest plus {e2e} Playwright E2E)', out)
-
-for name, n in (('badge', n_badge), ('alt text', n_alt), ('overview line', n_line)):
+# The overview sentence deliberately carries no total any more, so there is
+# nothing to rewrite there. One number in two places instead of three is the
+# collision surface shrinking; it is not zero, and getting to zero means hosting
+# the number outside the repo.
+for name, n in (('badge', n_badge), ('alt text', n_alt)):
     if n != 1:
         sys.exit(f"count-tests --write: matched the {name} {n} times, expected 1. "
                  "The README wording moved; fix the pattern rather than the number.")
@@ -137,5 +138,5 @@ if out == src:
     print(f"README already says {total}")
 else:
     p.write_text(out)
-    print(f"README updated to {total} ({vitest} Vitest plus {e2e} Playwright E2E)")
+    print(f"README badge updated to {total}")
 PYEOF
