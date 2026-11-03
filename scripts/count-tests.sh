@@ -2,10 +2,10 @@
 # Prints the test count for every suite, and the totals the README badge claims.
 # CI asserts the README against the same numbers; run this by hand after adding tests.
 #
-# Pass --write to update the three strings in README.md as well, which is the
-# point: the badge, its alt text and the overview sentence have to agree, and
-# typing them by hand is where every error came from. It refuses rather than
-# half-writing if any of the three has been reworded.
+# Pass --write to update both strings in README.md as well, which is the point:
+# the badge and its alt text have to agree, and typing them by hand is where
+# every error came from. It refuses rather than half-writing if either one has
+# been reworded.
 #
 # This runs the suites rather than collecting them. `vitest list` was cheaper and
 # needed no database, but it stopped being a usable count under vitest 5: an
@@ -101,13 +101,14 @@ vitest_fmt     $(fmt $vitest)
 total_fmt      $(fmt $total)
 EOF
 
-# --write updates the three strings CI asserts, because hand-typing them is where
+# --write updates both strings CI asserts, because hand-typing them is where
 # every error came from. Four pairs of branches collided on this value in one day:
 # both compute it from the same base, both write the same wrong number, and git
 # reports no conflict because the text is identical, so the merge that exists to
-# catch this cannot. The number still has to be committed (a shields.io badge can
-# be made dynamic, the overview sentence cannot), so the fix is to make updating
-# it one command rather than three edits and some arithmetic.
+# catch this cannot. The test-count job in ci.yml is what closes that, by reading
+# each suite's own reported count and failing on main when the README disagrees.
+# Keeping the number committed is the deliberate half: it can be checked against
+# the tree it ships in, which a badge fed from a gist could not be.
 if [ "${1:-}" != "--write" ]; then
   exit 0
 fi
@@ -126,9 +127,10 @@ out, n_badge = re.subn(r'badge/tests-[\d]+(?:%2C[\d]+)*-brightgreen',
                        f"badge/tests-{total.replace(',', '%2C')}-brightgreen", out)
 out, n_alt = re.subn(r'alt="[\d,]+ tests"', f'alt="{total} tests"', out)
 # The overview sentence deliberately carries no total any more, so there is
-# nothing to rewrite there. One number in two places instead of three is the
-# collision surface shrinking; it is not zero, and getting to zero means hosting
-# the number outside the repo.
+# nothing to rewrite there. Two places is where this stops rather than a step
+# toward zero: a drifted number cannot reach main without failing CI, and moving
+# it out of the repo would cost the badge the one property that makes it worth
+# printing, that a reader can check it against this commit.
 for name, n in (('badge', n_badge), ('alt text', n_alt)):
     if n != 1:
         sys.exit(f"count-tests --write: matched the {name} {n} times, expected 1. "
