@@ -77,6 +77,53 @@ Save all outputs, you need them in Steps 4 and 6:
 terraform output
 ```
 
+### Applying a later change to infrastructure that already exists
+
+The commands above are for the first apply, where you choose the password. Do
+not reuse them afterwards. `db_password` and `alert_email` both have no default,
+so a later plan needs values, and passing a *different* password is not a no-op:
+`password` is a tracked attribute on `aws_db_instance`, so terraform plans an
+in-place master-password change on the production database. The safe values are
+the ones already in state.
+
+```bash
+cd infra/terraform
+terraform state pull > /tmp/st.json
+
+python3 - <<'EOF' > /tmp/tv.env
+import json
+d = json.load(open('/tmp/st.json')); pw = em = None
+for r in d.get('resources', []):
+    for i in r.get('instances', []):
+        a = i.get('attributes') or {}
+        if r.get('type') == 'aws_db_instance' and a.get('password'):
+            pw = a['password']
+        if r.get('type') == 'aws_sns_topic_subscription' and a.get('protocol') == 'email':
+            em = a.get('endpoint')
+print(f"TF_VAR_db_password={pw or ''}")
+print(f"TF_VAR_alert_email={em or ''}")
+EOF
+
+set -a; . /tmp/tv.env; set +a
+terraform plan -out=/tmp/tfplan          # read it, and check "0 to destroy"
+terraform apply /tmp/tfplan              # applies exactly what you just read
+rm -f /tmp/tv.env /tmp/st.json /tmp/tfplan
+```
+
+`-out` then applying the saved plan matters: it removes the window where state
+changes between the plan you reviewed and the apply you authorised.
+
+Two things to check afterwards, because terraform reporting success only means
+AWS stored what you asked for:
+
+- If the apply touched `aws_iam_role.github_actions`, confirm GitHub can still
+  assume it, by dispatching `deployed-sha-drift` from main. That assumes the
+  role over OIDC and makes two read calls. A trust policy you have only ever
+  seen allow is indistinguishable from no trust policy at all, so it is also
+  worth dispatching from a branch once and watching assume-role get refused.
+- If it touched a metric filter or alarm, dispatch `alarm-pattern-drift` from
+  main. It compares every deployed filter against the messages the code logs.
+
 ## Step 4: One-time RDS role setup
 
 RDS only creates the master user (`app_admin`, RLS-bypassing). The app also needs a restricted `app_user` role for RLS to actually be enforced, mirroring `docker/init.sql` for local dev. This must run **before the first deploy**, migrations create tables that need `app_user`'s default privileges applied at creation time.
