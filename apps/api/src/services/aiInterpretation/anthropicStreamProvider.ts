@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 
-import { computeCost, exceedsBudget, recordCost } from '../../lib/cost.js';
+import { computeCost, exceedsBudget, recordCost, recordRefusedCost } from '../../lib/cost.js';
 import { logger } from '../../lib/logger.js';
 import { aiCostBudgetExceeded } from '../../lib/metrics.js';
 import type { BreakerRunner } from './anthropicBreakers.js';
@@ -43,15 +43,20 @@ export function createAnthropicStream({
         const finalMessage = await sdkStream.finalMessage();
 
         // An overrun is log-only because content has already reached the user.
-        // Keep anomalous spend out of median history so the floor remains useful.
+        // Anomalous spend stays out of median history so the floor remains
+        // useful, but a sustained run of overruns clears it rather than pinning
+        // the floor below the workload forever.
         const cost = computeCost(finalMessage.usage, model);
         if (cost !== null) {
           const budget = exceedsBudget(cost);
           if (budget.exceeded) {
             aiCostBudgetExceeded.inc({ caller: 'stream' });
+            const recalibrated = recordRefusedCost(cost);
             logger.warn(
-              { cost, cap: budget.cap, median: budget.median, model },
-              'Claude API stream cost budget exceeded, content delivered, anomaly logged',
+              { cost, cap: budget.cap, median: budget.median, model, recalibrated },
+              recalibrated
+                ? 'Claude API stream cost budget exceeded, content delivered, cost floor cleared to follow the new level'
+                : 'Claude API stream cost budget exceeded, content delivered, anomaly logged',
             );
           } else {
             recordCost(cost);

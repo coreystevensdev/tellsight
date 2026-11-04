@@ -17,11 +17,13 @@ vi.mock('../../lib/logger.js', () => ({
 const mockComputeCost = vi.fn();
 const mockExceedsBudget = vi.fn();
 const mockRecordCost = vi.fn();
+const mockRecordRefusedCost = vi.fn();
 
 vi.mock('../../lib/cost.js', () => ({
   computeCost: (...args: unknown[]) => mockComputeCost(...args),
   exceedsBudget: (...args: unknown[]) => mockExceedsBudget(...args),
   recordCost: (...args: unknown[]) => mockRecordCost(...args),
+  recordRefusedCost: (...args: unknown[]) => mockRecordRefusedCost(...args),
 }));
 
 // circuitBreakerState is imported by the real CircuitBreaker, so a partial mock

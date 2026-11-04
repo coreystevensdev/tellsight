@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   computeCost: vi.fn(),
   exceedsBudget: vi.fn(),
   recordCost: vi.fn(),
+  recordRefusedCost: vi.fn(),
   budgetInc: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
@@ -15,6 +16,7 @@ vi.mock('../../lib/cost.js', () => ({
   computeCost: mocks.computeCost,
   exceedsBudget: mocks.exceedsBudget,
   recordCost: mocks.recordCost,
+  recordRefusedCost: mocks.recordRefusedCost,
 }));
 vi.mock('../../lib/metrics.js', () => ({
   aiCostBudgetExceeded: { inc: mocks.budgetInc },
@@ -73,6 +75,9 @@ describe('Anthropic runtime policy', () => {
     );
     expect(mocks.budgetInc).toHaveBeenCalledWith({ caller: 'generateTool' });
     expect(mocks.recordCost).not.toHaveBeenCalled();
+    // The refusal still has to be counted, or a sustained shift never
+    // recalibrates and the floor stays pinned below the workload forever.
+    expect(mocks.recordRefusedCost).toHaveBeenCalledTimes(1);
   });
 
   it('preserves cost-budget errors unchanged', () => {
