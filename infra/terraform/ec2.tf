@@ -123,12 +123,24 @@ resource "aws_iam_role" "github_actions" {
         Federated = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/token.actions.githubusercontent.com"
       }
       Action = "sts:AssumeRoleWithWebIdentity"
+      # Narrowed from StringLike on repo:coreystevensdev/tellsight:*, which
+      # matched every subject GitHub can mint for this repo. A pull_request
+      # event presents repo:owner/repo:pull_request rather than a ref, so the
+      # wildcard let PR-triggered code assume a role carrying ssm:SendCommand
+      # on every instance. Nothing did, but alarm-pattern-drift.yml nearly
+      # became the first, and a guard inside one workflow is weaker than a
+      # condition on the role.
+      #
+      # main only, not refs/heads/*: no AWS workflow triggers on a branch push
+      # today, and a branch that added one should not reach this role. The
+      # three consumers all present ref:refs/heads/main, deploy-aws via
+      # workflow_run on main, deployed-sha-drift via schedule, migrate via
+      # dispatch from the default branch. Dispatching migrate.yml from a
+      # feature branch stops working, which for a migration tool is the point.
       Condition = {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-        }
-        StringLike = {
-          "token.actions.githubusercontent.com:sub" = "repo:coreystevensdev/tellsight:*"
+          "token.actions.githubusercontent.com:sub" = "repo:coreystevensdev/tellsight:ref:refs/heads/main"
         }
       }
     }]
@@ -176,6 +188,62 @@ resource "aws_iam_role_policy" "github_actions" {
         Resource = "*"
       },
     ]
+  })
+}
+
+# ------------------------------------------------------------------
+# IAM: alarm-drift role (one read action, main only)
+# ------------------------------------------------------------------
+
+# Separate from github_actions deliberately. alarm-pattern-drift.yml needs
+# exactly one read action, and putting it on the deploy role would have meant
+# that workflow also held ssm:SendCommand on every instance, which is remote
+# execution on production. The role is the grant, not the statement appended
+# to it.
+#
+# Trust is scoped to main, unlike the deploy role's repo-wide wildcard: a
+# scheduled or dispatched run from the default branch presents
+# repo:coreystevensdev/tellsight:ref:refs/heads/main, and nothing else has any
+# reason to assume this. The deploy role's wildcard is pre-existing and worth
+# narrowing on its own; this role does not inherit the problem.
+resource "aws_iam_role" "alarm_drift" {
+  name = "${local.name}-alarm-drift"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Federated = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/token.actions.githubusercontent.com"
+      }
+      Action = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+          "token.actions.githubusercontent.com:sub" = "repo:coreystevensdev/tellsight:ref:refs/heads/main"
+        }
+      }
+    }]
+  })
+
+  tags = { Name = "${local.name}-alarm-drift" }
+}
+
+# Scoped to the one log group rather than "*", since DescribeMetricFilters takes
+# a log-group resource. If the check ever fails with AccessDenied after an apply,
+# this scoping is the first thing to suspect.
+resource "aws_iam_role_policy" "alarm_drift" {
+  name = "${local.name}-alarm-drift-policy"
+  role = aws_iam_role.alarm_drift.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "ReadMetricFilters"
+      Effect   = "Allow"
+      Action   = "logs:DescribeMetricFilters"
+      Resource = "${aws_cloudwatch_log_group.containers.arn}:*"
+    }]
   })
 }
 

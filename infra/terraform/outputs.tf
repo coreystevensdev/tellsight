@@ -32,3 +32,10 @@ output "github_actions_role_arn" {
   description = "IAM role ARN for GitHub Actions OIDC -- set as AWS_ROLE_ARN GitHub Actions secret"
   value       = aws_iam_role.github_actions.arn
 }
+
+# The drift workflow assumes this rather than the deploy role. Set it as the
+# AWS_ALARM_DRIFT_ROLE_ARN repository secret after applying.
+output "alarm_drift_role_arn" {
+  description = "Role alarm-pattern-drift.yml assumes. Read-only, main only."
+  value       = aws_iam_role.alarm_drift.arn
+}
