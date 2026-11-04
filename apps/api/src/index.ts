@@ -189,16 +189,17 @@ async function start() {
   }
 
   // Email digest pipeline: cron registration is unconditional once the email
-  // provider is wired (validated at boot by config.ts refines). Three workers
-  // bind to three queues (orchestrator, org, send) with their own concurrency.
+  // provider is wired (validated at boot by config.ts refines). Four workers
+  // bind to four queues (orchestrator, org, send, nudge) with their own
+  // concurrency.
   initDigestOrchestratorWorker();
   initDigestOrgWorker();
   initDigestSendWorker();
   initDigestNudgeWorker();
   await initDigestCronJob();
 
-  // Alerts pipeline: same three-queue shape as digest (orchestrator, evaluate-org,
-  // send), fed by this daily cron plus the on-CSV-upload trigger in datasets.ts.
+  // Alerts pipeline: three queues (orchestrator, evaluate-org, send), fed by
+  // this daily cron plus the on-CSV-upload trigger in datasets.ts.
   initAlertsOrchestratorWorker();
   initAlertsEvaluateOrgWorker();
   initAlertsSendWorker();

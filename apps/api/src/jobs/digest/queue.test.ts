@@ -63,14 +63,19 @@ describe('queue singletons', () => {
     expect((q as unknown as FakeQueue).name).toBe('digest-send');
   });
 
-  it('the three queues are distinct instances', async () => {
-    const { getOrchestratorQueue, getOrgQueue, getSendQueue } = await import('./queue.js');
-    const a = getOrchestratorQueue();
-    const b = getOrgQueue();
-    const c = getSendQueue();
-    expect(a).not.toBe(b);
-    expect(b).not.toBe(c);
-    expect(a).not.toBe(c);
+  it('nudge queue is a singleton with the right name', async () => {
+    const { getNudgeQueue } = await import('./queue.js');
+    const q = getNudgeQueue();
+    expect((q as unknown as FakeQueue).name).toBe('digest-nudge');
+  });
+
+  it('the four queues are distinct instances', async () => {
+    const { getOrchestratorQueue, getOrgQueue, getSendQueue, getNudgeQueue } =
+      await import('./queue.js');
+    // A Set rather than pairwise asserts: four queues need six comparisons and
+    // the next one would need ten.
+    const queues = [getOrchestratorQueue(), getOrgQueue(), getSendQueue(), getNudgeQueue()];
+    expect(new Set(queues).size).toBe(queues.length);
   });
 });
 
