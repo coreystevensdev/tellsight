@@ -123,12 +123,24 @@ resource "aws_iam_role" "github_actions" {
         Federated = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/token.actions.githubusercontent.com"
       }
       Action = "sts:AssumeRoleWithWebIdentity"
+      # Narrowed from StringLike on repo:coreystevensdev/tellsight:*, which
+      # matched every subject GitHub can mint for this repo. A pull_request
+      # event presents repo:owner/repo:pull_request rather than a ref, so the
+      # wildcard let PR-triggered code assume a role carrying ssm:SendCommand
+      # on every instance. Nothing did, but alarm-pattern-drift.yml nearly
+      # became the first, and a guard inside one workflow is weaker than a
+      # condition on the role.
+      #
+      # main only, not refs/heads/*: no AWS workflow triggers on a branch push
+      # today, and a branch that added one should not reach this role. The
+      # three consumers all present ref:refs/heads/main, deploy-aws via
+      # workflow_run on main, deployed-sha-drift via schedule, migrate via
+      # dispatch from the default branch. Dispatching migrate.yml from a
+      # feature branch stops working, which for a migration tool is the point.
       Condition = {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-        }
-        StringLike = {
-          "token.actions.githubusercontent.com:sub" = "repo:coreystevensdev/tellsight:*"
+          "token.actions.githubusercontent.com:sub" = "repo:coreystevensdev/tellsight:ref:refs/heads/main"
         }
       }
     }]
