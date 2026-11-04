@@ -9,6 +9,11 @@ const mockExceedsBudget = vi.fn();
 vi.mock('../../lib/cost.js', () => ({
   computeCost: (...args: unknown[]) => mockComputeCost(...args),
   exceedsBudget: (...args: unknown[]) => mockExceedsBudget(...args),
+  // This file never reaches the cost gate (it mocks claudeClient), but a
+  // vi.mock registration covers the worker's whole module graph, so an export
+  // left out here breaks any file sharing the worker that does import it.
+  recordCost: vi.fn(),
+  recordRefusedCost: vi.fn(),
   ABSOLUTE_CEILING_USD: 1.0,
 }));
 

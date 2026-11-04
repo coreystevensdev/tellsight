@@ -6,11 +6,13 @@ vi.mock('../config.js', () => ({
 
 import {
   ABSOLUTE_CEILING_USD,
+  ADAPT_AFTER_CONSECUTIVE_REFUSALS,
   CAP_MULTIPLIER,
   computeCost,
   exceedsBudget,
   medianCost,
   recordCost,
+  recordRefusedCost,
   resetHistoryForTests,
 } from './cost.js';
 
@@ -129,5 +131,70 @@ describe('exceedsBudget', () => {
     [0.01, 0.02, 0.03].forEach(recordCost);
     const result = exceedsBudget(0.04);
     expect(result.observed).toBe(0.04);
+  });
+});
+
+describe('recordRefusedCost', () => {
+  beforeEach(resetHistoryForTests);
+
+  const seed = (value: number, times = 5) => {
+    for (let i = 0; i < times; i++) recordCost(value);
+  };
+
+  it('keeps a single refusal out of history so one anomaly cannot move the floor', () => {
+    seed(0.01);
+    expect(recordRefusedCost(0.5)).toBe(false);
+    expect(medianCost()).toBe(0.01);
+  });
+
+  it('does not recalibrate before the threshold', () => {
+    seed(0.01);
+    for (let i = 0; i < ADAPT_AFTER_CONSECUTIVE_REFUSALS - 1; i++) {
+      expect(recordRefusedCost(0.05)).toBe(false);
+    }
+    expect(medianCost()).toBe(0.01);
+  });
+
+  it('clears the window on the threshold-th consecutive refusal', () => {
+    seed(0.01);
+    let recalibrated = false;
+    for (let i = 0; i < ADAPT_AFTER_CONSECUTIVE_REFUSALS; i++) {
+      recalibrated = recordRefusedCost(0.05);
+    }
+    expect(recalibrated).toBe(true);
+    expect(medianCost()).toBeNull();
+  });
+
+  it('a passing call resets the run, so scattered refusals never recalibrate', () => {
+    seed(0.01);
+    for (let round = 0; round < 3; round++) {
+      for (let i = 0; i < ADAPT_AFTER_CONSECUTIVE_REFUSALS - 1; i++) {
+        expect(recordRefusedCost(0.05)).toBe(false);
+      }
+      recordCost(0.01);
+    }
+    expect(medianCost()).toBe(0.01);
+  });
+
+  it('once recalibrated, the next call is bounded only by the absolute ceiling', () => {
+    seed(0.01);
+    for (let i = 0; i < ADAPT_AFTER_CONSECUTIVE_REFUSALS; i++) recordRefusedCost(0.05);
+    // What the old floor refused outright now passes and reseeds the window.
+    expect(exceedsBudget(0.05).exceeded).toBe(false);
+  });
+
+  it('still refuses above the absolute ceiling after recalibrating', () => {
+    seed(0.01);
+    for (let i = 0; i < ADAPT_AFTER_CONSECUTIVE_REFUSALS; i++) recordRefusedCost(0.05);
+    expect(exceedsBudget(ABSOLUTE_CEILING_USD + 1).exceeded).toBe(true);
+  });
+
+  it('ignores NaN and negative costs without advancing the run', () => {
+    seed(0.01);
+    for (let i = 0; i < ADAPT_AFTER_CONSECUTIVE_REFUSALS * 2; i++) {
+      expect(recordRefusedCost(Number.NaN)).toBe(false);
+      expect(recordRefusedCost(-1)).toBe(false);
+    }
+    expect(medianCost()).toBe(0.01);
   });
 });

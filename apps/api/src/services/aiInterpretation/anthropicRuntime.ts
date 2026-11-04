@@ -1,7 +1,13 @@
 import Anthropic from '@anthropic-ai/sdk';
 
 import { CostBudgetExceededError, ExternalServiceError } from '../../lib/appError.js';
-import { computeCost, exceedsBudget, recordCost, type Usage } from '../../lib/cost.js';
+import {
+  computeCost,
+  exceedsBudget,
+  recordCost,
+  recordRefusedCost,
+  type Usage,
+} from '../../lib/cost.js';
 import { logger } from '../../lib/logger.js';
 import { aiCostBudgetExceeded } from '../../lib/metrics.js';
 
@@ -12,8 +18,9 @@ export class AbortedByClient extends Error {
 }
 
 // Non-streaming calls can refuse an anomalously expensive response after the
-// tokens are spent. Anomalies stay out of median history so they cannot raise
-// the budget floor for subsequent calls.
+// tokens are spent. A refused cost stays out of median history so one runaway
+// cannot raise the floor, but a sustained run of them clears it instead, see
+// recordRefusedCost in lib/cost.ts.
 export function applyCostGate(usage: Usage, caller: string, model: string): number | null {
   const cost = computeCost(usage, model);
   if (cost === null) {
@@ -24,9 +31,12 @@ export function applyCostGate(usage: Usage, caller: string, model: string): numb
   const budget = exceedsBudget(cost);
   if (budget.exceeded) {
     aiCostBudgetExceeded.inc({ caller });
+    const recalibrated = recordRefusedCost(cost);
     logger.warn(
-      { cost, cap: budget.cap, median: budget.median, model },
-      'Claude API cost budget exceeded, request refused',
+      { cost, cap: budget.cap, median: budget.median, model, recalibrated },
+      recalibrated
+        ? 'Claude API cost budget exceeded, request refused, cost floor cleared to follow the new level'
+        : 'Claude API cost budget exceeded, request refused',
     );
     throw new CostBudgetExceededError(cost, budget.cap);
   }

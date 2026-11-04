@@ -44,11 +44,13 @@ vi.mock('../../lib/circuitBreaker.js', () => ({
 const mockComputeCost = vi.fn();
 const mockExceedsBudget = vi.fn();
 const mockRecordCost = vi.fn();
+const mockRecordRefusedCost = vi.fn();
 
 vi.mock('../../lib/cost.js', () => ({
   computeCost: (...args: unknown[]) => mockComputeCost(...args),
   exceedsBudget: (...args: unknown[]) => mockExceedsBudget(...args),
   recordCost: (...args: unknown[]) => mockRecordCost(...args),
+  recordRefusedCost: (...args: unknown[]) => mockRecordRefusedCost(...args),
 }));
 
 const mockBudgetMetric = { inc: vi.fn() };
