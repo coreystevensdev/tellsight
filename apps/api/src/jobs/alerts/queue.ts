@@ -7,9 +7,10 @@ import { env } from '../../config.js';
 import { StatType } from '../../services/curation/types.js';
 import type { ScoredInsight } from '../../services/curation/index.js';
 
-// Same three-queue shape as jobs/digest/queue.ts, for the same reason:
-// BullMQ OSS has no job-name routing on a shared queue, so one queue per
-// pipeline stage is the only way to give each stage its own concurrency.
+// One queue per pipeline stage, same reason as jobs/digest/queue.ts: BullMQ OSS
+// has no job-name routing on a shared queue, so this is the only way to give
+// each stage its own concurrency. Counting the stages here would just go stale
+// whenever either pipeline grows one, as the digest comment did.
 
 export const QUEUE_ORCHESTRATOR = 'alerts-orchestrator';
 export const QUEUE_EVALUATE_ORG = 'alerts-evaluate-org';
