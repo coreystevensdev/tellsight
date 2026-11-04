@@ -33,10 +33,27 @@ for (const file of sources(SRC)) {
   }
 }
 
-const input = JSON.parse(readFileSync(0, 'utf8'));
-const filters = input.metricFilters ?? [];
+// Two sources, because the two questions are different. With --from-terraform
+// this compares the repo against itself, which a PR can run with no AWS access
+// at all. With AWS JSON on stdin it compares what is deployed against the repo,
+// which needs credentials and so only runs from main on a schedule.
+//
+// Only the second catches be4e7eb's failure: that commit changed monitoring.tf
+// and the log message together, so the repo was self-consistent the whole nine
+// days the deployed filter was blind.
+const tfArg = process.argv.indexOf('--from-terraform');
+let filters;
+if (tfArg !== -1) {
+  const tf = readFileSync(process.argv[tfArg + 1], 'utf8');
+  filters = [...tf.matchAll(/resource\s+"aws_cloudwatch_log_metric_filter"\s+"([^"]+)"[\s\S]*?pattern\s*=\s*"((?:[^"\\]|\\.)*)"/g)].map(
+    (m) => ({ filterName: m[1], filterPattern: m[2].replace(/\\"/g, '"') }),
+  );
+} else {
+  filters = JSON.parse(readFileSync(0, 'utf8')).metricFilters ?? [];
+}
 if (filters.length === 0) {
-  console.error('No metric filters returned. Either none exist or the describe call failed.');
+  console.error('No metric filters found. Either none exist, or the describe call');
+  console.error('failed, or the terraform regex stopped matching. Not a pass.');
   process.exit(1);
 }
 

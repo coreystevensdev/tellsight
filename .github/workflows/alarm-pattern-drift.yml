@@ -1,26 +1,19 @@
 name: Alarm Pattern Drift
 
 # A CloudWatch metric filter waits for one exact log message, so renaming that
-# message blinds the alarm without turning anything red. Application code ships
-# through deploy-aws on every merge; the filter waits on a manual terraform
-# apply. On 2026-10-27 be4e7eb changed both halves together, the code half
-# shipped, and the digest alarm spent nine days matching a string nothing logged
-# any more. It read OK the whole time, and would have read OK through an outage.
+# message blinds the alarm without turning anything red. The two halves ship by
+# different routes: application code goes out through deploy-aws on every merge,
+# the filter waits on a manual terraform apply. On 2026-10-27 be4e7eb changed
+# both halves together, the code half shipped, and the digest alarm spent nine
+# days matching a string nothing logged any more. It read OK throughout.
 #
-# deployed-sha-drift.yml asks the box what it is running. This asks CloudWatch
-# what it is watching for. Same question, different half of the deploy.
-#
-# Deliberately not `terraform plan`, which would catch every kind of drift: plan
-# needs the state file, state holds the RDS password, so CI would gain standing
-# read access to the production database credential to check alarm config.
+# Two jobs because there are two questions, and only one of them needs AWS.
 on:
   schedule:
-    # Daily rather than six-hourly. Alarm config changes on a human timescale,
-    # and the failure it catches persists until someone applies terraform.
+    # Daily. Alarm config changes on a human timescale, and the failure this
+    # catches persists until someone applies terraform.
     - cron: '41 7 * * *'
   workflow_dispatch:
-  # Also on any change to the two halves that have to agree, so a PR that
-  # renames a log message fails before it can merge and start the clock.
   pull_request:
     paths:
       - 'infra/terraform/monitoring.tf'
@@ -29,17 +22,48 @@ on:
       - '.github/workflows/alarm-pattern-drift.yml'
 
 permissions:
-  id-token: write
   contents: read
 
-env:
-  AWS_REGION: us-east-1
-
 jobs:
-  patterns:
-    name: Deployed filters match messages the code logs
+  # Repo against itself: do the patterns in monitoring.tf match messages the
+  # code logs? Runs on pull_request deliberately, and therefore holds no
+  # credentials: no id-token, no role, no AWS. PR-authored code must never run
+  # with the deploy role, which carries ssm:SendCommand on every instance and
+  # so amounts to remote execution on production.
+  #
+  # This job would not have caught be4e7eb. That commit changed monitoring.tf
+  # and the log message together, so the repo stayed self-consistent while the
+  # deployed filter went stale. It catches the next rename before merge instead.
+  repo-consistency:
+    name: monitoring.tf patterns match the source
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+
+      - run: node scripts/check-alarm-patterns.mjs --from-terraform infra/terraform/monitoring.tf
+
+  # Deployed against the repo: is CloudWatch watching for what the code logs?
+  # This is the one that catches an un-applied terraform change, and the only
+  # one that needs credentials, so it never runs from a pull request. Schedule
+  # and manual dispatch both run main's own workflow file and main's own script.
+  deployed:
+    name: Deployed filters match messages the code logs
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: us-east-1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -57,7 +81,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       # No --query: the script wants the whole shape so it can report a filter
-      # that has no $.msg literal rather than silently skipping it.
+      # with no $.msg literal rather than skipping it silently.
       - name: Compare deployed filter patterns against the source
         run: |
           set -euo pipefail
