@@ -175,6 +175,23 @@ resource "aws_iam_role_policy" "github_actions" {
         ]
         Resource = "*"
       },
+      # Read-only, for alarm-pattern-drift.yml. A metric filter watches for an
+      # exact log message, so renaming that message in the application silently
+      # blinds the alarm: the code ships through deploy-aws on merge and the
+      # filter waits on a manual terraform apply. That is how the digest alarm
+      # spent nine days matching "Digest worker job failed" after be4e7eb
+      # renamed it to "Digest worker job terminal failure".
+      #
+      # Describe only. Running `terraform plan` here would catch every kind of
+      # drift and would also need the state file, which holds the RDS password,
+      # so CI would gain standing read access to the production database
+      # credential in order to check alarm config. Not worth it.
+      {
+        Sid      = "ReadMetricFilters"
+        Effect   = "Allow"
+        Action   = "logs:DescribeMetricFilters"
+        Resource = "*"
+      },
     ]
   })
 }
