@@ -48,10 +48,10 @@ export function createAnthropicStream({
         // the floor below the workload forever.
         const cost = computeCost(finalMessage.usage, model);
         if (cost !== null) {
-          const budget = exceedsBudget(cost);
+          const budget = exceedsBudget(cost, model);
           if (budget.exceeded) {
             aiCostBudgetExceeded.inc({ caller: 'stream' });
-            const recalibrated = recordRefusedCost(cost);
+            const recalibrated = recordRefusedCost(cost, model);
             logger.warn(
               { cost, cap: budget.cap, median: budget.median, model, recalibrated },
               recalibrated
@@ -59,7 +59,7 @@ export function createAnthropicStream({
                 : 'Claude API stream cost budget exceeded, content delivered, anomaly logged',
             );
           } else {
-            recordCost(cost);
+            recordCost(cost, model);
           }
         }
 

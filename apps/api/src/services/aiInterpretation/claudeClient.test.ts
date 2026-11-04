@@ -334,7 +334,7 @@ describe('generateInterpretation', () => {
     const { generateInterpretation } = await import('./claudeClient.js');
     await generateInterpretation({ system: '', user: 'prompt' });
 
-    expect(mockRecordCost).toHaveBeenCalledWith(0.018);
+    expect(mockRecordCost).toHaveBeenCalledWith(0.018, 'claude-sonnet-4-6');
     expect(mockBudgetMetric.inc).not.toHaveBeenCalled();
   });
 
@@ -552,7 +552,7 @@ describe('streamInterpretation', () => {
     const { streamInterpretation } = await import('./claudeClient.js');
     await streamInterpretation({ system: '', user: 'test' }, () => {});
 
-    expect(mockRecordCost).toHaveBeenCalledWith(0.018);
+    expect(mockRecordCost).toHaveBeenCalledWith(0.018, 'claude-sonnet-4-6');
     expect(mockBudgetMetric.inc).not.toHaveBeenCalled();
   });
 
@@ -787,7 +787,7 @@ describe('generateWithTools', () => {
     const { generateWithTools } = await import('./claudeClient.js');
     await generateWithTools({ system: '', user: 'analyze' }, [tool]);
 
-    expect(mockRecordCost).toHaveBeenCalledWith(0.018);
+    expect(mockRecordCost).toHaveBeenCalledWith(0.018, 'claude-sonnet-4-6');
     expect(mockBudgetMetric.inc).not.toHaveBeenCalled();
   });
 
