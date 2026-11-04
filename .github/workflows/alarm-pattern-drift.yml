@@ -24,6 +24,11 @@ on:
 permissions:
   contents: read
 
+# No setup-node and no setup-workspace. check-alarm-patterns.mjs imports only
+# node:fs and node:path, so the runner's own node is enough and there is nothing
+# to install. setup-node actively breaks here: package-manager-cache defaults on,
+# it finds pnpm-lock.yaml, and then fails on "Unable to locate executable file:
+# pnpm" because this job has no reason to install pnpm.
 jobs:
   # Repo against itself: do the patterns in monitoring.tf match messages the
   # code logs? Runs on pull_request deliberately, and therefore holds no
@@ -44,9 +49,6 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
-        with:
-          node-version: 24
 
       - run: node scripts/check-alarm-patterns.mjs --from-terraform infra/terraform/monitoring.tf
 
@@ -70,9 +72,6 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
-        with:
-          node-version: 24
 
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6
