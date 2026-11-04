@@ -175,24 +175,63 @@ resource "aws_iam_role_policy" "github_actions" {
         ]
         Resource = "*"
       },
-      # Read-only, for alarm-pattern-drift.yml. A metric filter watches for an
-      # exact log message, so renaming that message in the application silently
-      # blinds the alarm: the code ships through deploy-aws on merge and the
-      # filter waits on a manual terraform apply. That is how the digest alarm
-      # spent nine days matching "Digest worker job failed" after be4e7eb
-      # renamed it to "Digest worker job terminal failure".
-      #
-      # Describe only. Running `terraform plan` here would catch every kind of
-      # drift and would also need the state file, which holds the RDS password,
-      # so CI would gain standing read access to the production database
-      # credential in order to check alarm config. Not worth it.
-      {
-        Sid      = "ReadMetricFilters"
-        Effect   = "Allow"
-        Action   = "logs:DescribeMetricFilters"
-        Resource = "*"
-      },
     ]
+  })
+}
+
+# ------------------------------------------------------------------
+# IAM: alarm-drift role (one read action, main only)
+# ------------------------------------------------------------------
+
+# Separate from github_actions deliberately. alarm-pattern-drift.yml needs
+# exactly one read action, and putting it on the deploy role would have meant
+# that workflow also held ssm:SendCommand on every instance, which is remote
+# execution on production. The role is the grant, not the statement appended
+# to it.
+#
+# Trust is scoped to main, unlike the deploy role's repo-wide wildcard: a
+# scheduled or dispatched run from the default branch presents
+# repo:coreystevensdev/tellsight:ref:refs/heads/main, and nothing else has any
+# reason to assume this. The deploy role's wildcard is pre-existing and worth
+# narrowing on its own; this role does not inherit the problem.
+resource "aws_iam_role" "alarm_drift" {
+  name = "${local.name}-alarm-drift"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Federated = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/token.actions.githubusercontent.com"
+      }
+      Action = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+          "token.actions.githubusercontent.com:sub" = "repo:coreystevensdev/tellsight:ref:refs/heads/main"
+        }
+      }
+    }]
+  })
+
+  tags = { Name = "${local.name}-alarm-drift" }
+}
+
+# Scoped to the one log group rather than "*", since DescribeMetricFilters takes
+# a log-group resource. If the check ever fails with AccessDenied after an apply,
+# this scoping is the first thing to suspect.
+resource "aws_iam_role_policy" "alarm_drift" {
+  name = "${local.name}-alarm-drift-policy"
+  role = aws_iam_role.alarm_drift.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "ReadMetricFilters"
+      Effect   = "Allow"
+      Action   = "logs:DescribeMetricFilters"
+      Resource = "${aws_cloudwatch_log_group.containers.arn}:*"
+    }]
   })
 }
 

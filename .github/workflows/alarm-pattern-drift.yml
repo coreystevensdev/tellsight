@@ -77,7 +77,9 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          # The read-only alarm-drift role, not the deploy role. Deliberate:
+          # the deploy role carries ssm:SendCommand on every instance.
+          role-to-assume: ${{ secrets.AWS_ALARM_DRIFT_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       # No --query: the script wants the whole shape so it can report a filter
