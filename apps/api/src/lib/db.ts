@@ -9,8 +9,9 @@ import * as schema from '../db/schema.js';
 // and rows included, up to 1,000 statements per connection. Upstream measures
 // about 1.1 GB at 10 connections with 50-row results, and this runs on a
 // t3.micro with roughly 916 MB shared with web, redis and caddy, across 35
-// connections between the two pools below. The fix is in the unreleased 4.1.0;
-// remove this and restore prepared statements when that ships.
+// connections between the two pools below. With prepares off there is no cache
+// to grow, so this is the finished state rather than a placeholder for 4.1.0.
+// It also stops a cached plan outliving the SET LOCAL that RLS sets per request.
 export const queryClient = postgres(env.DATABASE_URL, {
   max: 25,
   prepare: false,
