@@ -270,7 +270,7 @@ describe('runSync', () => {
     expect(client.query).toHaveBeenCalledWith('Purchase', undefined);
   });
 
-  it('fetches all 13 transaction types', async () => {
+  it('fetches all 12 transaction types', async () => {
     mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
     const client = mockQbClient();
     mockCreateQbClient.mockResolvedValueOnce(client);
@@ -281,7 +281,21 @@ describe('runSync', () => {
     const { runSync } = await import('./sync.js');
     await runSync(1, 'initial');
 
-    expect(client.query).toHaveBeenCalledTimes(13);
+    expect(client.query).toHaveBeenCalledTimes(12);
+  });
+
+  it('does not sync Estimate, a quote is not a transaction', async () => {
+    mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
+    const client = mockQbClient();
+    mockCreateQbClient.mockResolvedValueOnce(client);
+    mockGetDatasetsByOrg.mockResolvedValueOnce([]);
+    mockCreateDataset.mockResolvedValueOnce({ id: 500 });
+    mockNormalizeTransactions.mockReturnValue([]);
+
+    const { runSync } = await import('./sync.js');
+    await runSync(1, 'initial');
+
+    expect(client.query).not.toHaveBeenCalledWith('Estimate', expect.anything());
   });
 
   it('marks AI summaries stale after successful sync', async () => {

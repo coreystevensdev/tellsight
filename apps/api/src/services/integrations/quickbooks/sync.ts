@@ -18,6 +18,10 @@ import { ConnectionNotFoundError } from './errors.js';
 import { normalizeTransactions } from './normalize.js';
 import type { NormalizedQbRow, QbTransaction, QbTransactionType } from './types.js';
 
+// Estimate is deliberately absent: it is a quote, not a transaction, and
+// groupByCategory has no parentCategory filter, so its amount would land in
+// the same category bucket (and the overall total) as real sales under the
+// same item name.
 const ENTITY_TYPES: QbTransactionType[] = [
   'Purchase',
   'Bill',
@@ -31,7 +35,6 @@ const ENTITY_TYPES: QbTransactionType[] = [
   'RefundReceipt',
   'JournalEntry',
   'Transfer',
-  'Estimate',
 ];
 
 const UPSERT_BATCH_SIZE = 500;
