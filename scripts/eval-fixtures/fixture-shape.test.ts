@@ -45,6 +45,17 @@ describe('eval fixture shape', () => {
   // fixture stat thin enough to be gated would score against a summary built
   // from fewer stats than the fixture claims to grade, silently.
   it('every fixture stat clears its own sample-size floor', () => {
+    // isBelowFloor now fails closed on a non-number sampleSize, but that's
+    // the mechanism, not the backstop. A fixture stat that lost the field
+    // entirely is a shape bug the floor check alone shouldn't have to catch.
+    for (const fixture of FIXTURES) {
+      for (const stat of fixture.build()) {
+        expect(stat, `${fixture.id}/${stat.statType}/${stat.category ?? '_'}`).toHaveProperty(
+          'sampleSize',
+        );
+      }
+    }
+
     const thin = FIXTURES.flatMap((fixture) =>
       fixture
         .build()

@@ -155,8 +155,32 @@ export function cashCrunch(): ComputedStat[] {
         method: 'linear_regression',
         slope: -9000,
         intercept: 24000,
-        basisMonths: [],
-        basisValues: [],
+        // 12 months, matching sampleSize above instead of contradicting it.
+        // formatStatBody's CashForecast case (assembly.ts:117) never reads
+        // basisMonths or basisValues, only startingBalance, projectedMonths,
+        // crossesZeroAtMonth, method and confidence, so populating these
+        // can't move anything the eval scores. The decline is the same
+        // business cash_flow and runway already describe: comfortable
+        // through early 2025, crossing into burning by month four, landing
+        // on -10000 net for the trailing six (median of the last six below,
+        // same figure cash_flow.monthlyNet reports).
+        basisMonths: [
+          '2025-01',
+          '2025-02',
+          '2025-03',
+          '2025-04',
+          '2025-05',
+          '2025-06',
+          '2025-07',
+          '2025-08',
+          '2025-09',
+          '2025-10',
+          '2025-11',
+          '2025-12',
+        ],
+        basisValues: [
+          3000, 1500, 0, -2000, -4000, -5500, -7000, -8500, -9500, -10500, -11500, -13000,
+        ],
         projectedMonths: [
           { month: '2026-07', projectedNet: -9000, projectedBalance: 15000 },
           { month: '2026-08', projectedNet: -9000, projectedBalance: 6000 },

@@ -51,6 +51,18 @@ describe('isBelowFloor', () => {
     expect(isBelowFloor({ statType: 'trend', sampleSize: 0 } as ComputedStat)).toBe(true);
   });
 
+  // null is a deliberate "no single n" (year_over_year); a missing field is
+  // an unknown, and undefined < floor is always false in JS, so this used to
+  // read as ungated no matter the stat type. null, a number, and zero all
+  // keep their prior answers; only the missing case flips.
+  it('gates a missing sample size differently from null, even with no floor', () => {
+    expect(isBelowFloor({ statType: 'trend', sampleSize: null } as ComputedStat)).toBe(false);
+    expect(isBelowFloor({ statType: 'trend', sampleSize: 12 } as ComputedStat)).toBe(false);
+    expect(isBelowFloor({ statType: 'trend', sampleSize: 0 } as ComputedStat)).toBe(true);
+    expect(isBelowFloor({ statType: 'trend' } as ComputedStat)).toBe(true);
+    expect(isBelowFloor({ statType: 'total' } as ComputedStat)).toBe(true);
+  });
+
   it('leaves a stat type with no floor ungated', () => {
     expect(minimumSampleSize('total')).toBeNull();
     expect(isBelowFloor({ statType: 'total', sampleSize: 1 } as ComputedStat)).toBe(false);
