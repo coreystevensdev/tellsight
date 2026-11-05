@@ -43,6 +43,16 @@ function makeInvoice(overrides: Partial<QbTransaction> = {}): QbTransaction {
   };
 }
 
+function makePayment(overrides: Partial<QbTransaction> = {}): QbTransaction {
+  return {
+    Id: 'pay-1',
+    TxnDate: '2026-04-13',
+    TotalAmt: 2500,
+    CustomerRef: { value: '99', name: 'Big Client Co' },
+    ...overrides,
+  };
+}
+
 describe('normalizeTransaction', () => {
   it('maps Purchase to Expenses parentCategory', () => {
     const [row] = normalizeTransaction(makePurchase(), 'Purchase');
@@ -451,5 +461,147 @@ describe('aggregate lines', () => {
     expect(rows[0]!.amount).toBe('75');
     expect(rows[0]!.sourceId).toBe('42-0');
     expect(rows[0]!.category).toBe('Uncategorized');
+  });
+});
+
+// DW-231: a Payment settling an Invoice (or a Deposit batching a Payment) was
+// recorded as Income twice, once from the invoice and once from the thing
+// that paid it. The $2,500 shape below is the confirmed reproduction.
+describe('LinkedTxn settlement, DW-231', () => {
+  function income(rows: ReturnType<typeof normalizeTransaction>): number {
+    return rows.reduce((sum, r) => sum + Number(r.amount), 0);
+  }
+
+  it('a fully-applied payment with lines adds nothing, the invoice is the sale', () => {
+    const invoice = makeInvoice();
+    const payment = makePayment({
+      Line: [
+        {
+          Id: '1',
+          Amount: 2500,
+          DetailType: 'PaymentLineDetail',
+          LinkedTxn: [{ TxnId: invoice.Id, TxnType: 'Invoice' }],
+        },
+      ],
+    });
+
+    const rows = [
+      ...normalizeTransaction(invoice, 'Invoice'),
+      ...normalizeTransaction(payment, 'Payment'),
+    ];
+
+    expect(income(rows)).toBe(2500);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.metadata.txnType).toBe('Invoice');
+  });
+
+  it('a fully-applied payment with no lines still adds nothing', () => {
+    const invoice = makeInvoice();
+    // No Line array at all, the shape that hits the TotalAmt branch. LinkedTxn
+    // has to live on the transaction itself for this one, there is no line to
+    // put it on.
+    const payment = makePayment({
+      LinkedTxn: [{ TxnId: invoice.Id, TxnType: 'Invoice' }],
+    });
+
+    const rows = [
+      ...normalizeTransaction(invoice, 'Invoice'),
+      ...normalizeTransaction(payment, 'Payment'),
+    ];
+
+    expect(income(rows)).toBe(2500);
+    expect(rows).toHaveLength(1);
+  });
+
+  it('a partial payment leaves the invoice amount unchanged and adds nothing', () => {
+    const invoice = makeInvoice({ Id: 'inv-partial', TotalAmt: 1000, Line: [
+      {
+        Id: '1',
+        Amount: 1000,
+        DetailType: 'SalesItemLineDetail',
+        SalesItemLineDetail: { ItemRef: { value: '1', name: 'Consulting' } },
+      },
+    ] });
+    const partialPayment = makePayment({
+      Id: 'pay-partial',
+      TotalAmt: 400,
+      Line: [
+        {
+          Id: '1',
+          Amount: 400,
+          DetailType: 'PaymentLineDetail',
+          LinkedTxn: [{ TxnId: invoice.Id, TxnType: 'Invoice' }],
+        },
+      ],
+    });
+
+    const rows = [
+      ...normalizeTransaction(invoice, 'Invoice'),
+      ...normalizeTransaction(partialPayment, 'Payment'),
+    ];
+
+    expect(income(rows)).toBe(1000);
+  });
+
+  it('a payment with no LinkedTxn stays Income, real money with no invoice behind it', () => {
+    const unapplied = makePayment({ Id: 'pay-unapplied', TotalAmt: 500 });
+
+    const rows = normalizeTransaction(unapplied, 'Payment');
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.amount).toBe('500');
+    expect(rows[0]!.parentCategory).toBe('Income');
+  });
+
+  it('a SalesReceipt alone is still counted exactly once', () => {
+    const receipt = makeInvoice({ Id: 'sr-1' });
+
+    const rows = normalizeTransaction(receipt, 'SalesReceipt');
+
+    expect(income(rows)).toBe(2500);
+  });
+
+  it('a deposit linked to a payment adds nothing, the payment already recorded it', () => {
+    const unappliedPayment = makePayment({ Id: 'pay-to-deposit', TotalAmt: 500 });
+    const deposit: QbTransaction = {
+      Id: 'dep-1',
+      TxnDate: '2026-04-14',
+      TotalAmt: 500,
+      Line: [
+        {
+          Id: '1',
+          Amount: 500,
+          LinkedTxn: [{ TxnId: unappliedPayment.Id, TxnType: 'Payment' }],
+        },
+      ],
+    };
+
+    const rows = [
+      ...normalizeTransaction(unappliedPayment, 'Payment'),
+      ...normalizeTransaction(deposit, 'Deposit'),
+    ];
+
+    expect(income(rows)).toBe(500);
+  });
+
+  it('a deposit with no LinkedTxn stays Income, e.g. a loan deposit', () => {
+    const loanDeposit: QbTransaction = {
+      Id: 'dep-2',
+      TxnDate: '2026-04-14',
+      TotalAmt: 5000,
+      Line: [
+        {
+          Id: '1',
+          Amount: 5000,
+          DetailType: 'DepositLineDetail',
+          DepositLineDetail: { AccountRef: { value: '1', name: 'Owner Loan' } },
+        },
+      ],
+    };
+
+    const rows = normalizeTransaction(loanDeposit, 'Deposit');
+
+    expect(income(rows)).toBe(5000);
+    expect(rows[0]!.category).toBe('Owner Loan');
   });
 });

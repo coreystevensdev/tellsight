@@ -65,6 +65,34 @@ function carriesItsOwnAmount(line: QbLine): boolean {
   return line.DetailType === undefined || !AGGREGATE_DETAIL_TYPES.has(line.DetailType);
 }
 
+// A Payment linked to an Invoice, or a Deposit linked to a Payment, restates
+// money a different synced transaction already recorded. Keyed by the type
+// being normalized, valued by the TxnType its LinkedTxn has to name.
+const SETTLES: Partial<Record<QbTransactionType, string>> = {
+  Payment: 'Invoice',
+  Deposit: 'Payment',
+};
+
+// Checks the transaction root as well as every line (see QbTransaction.LinkedTxn
+// in types.ts for why the root is read even though Intuit only documents Line
+// for Payment and Deposit): a Payment with no Line array still needs an answer.
+function linkedTxnTypes(tx: QbTransaction): Set<string> {
+  const types = new Set<string>();
+  for (const link of tx.LinkedTxn ?? []) types.add(link.TxnType);
+  for (const line of tx.Line ?? []) {
+    for (const link of line.LinkedTxn ?? []) types.add(link.TxnType);
+  }
+  return types;
+}
+
+// Decided once, transaction-wide, before the line-count branch below picks
+// a shape. That ordering is the fix: checking per-line would let a payment
+// with no lines fall through to the TotalAmt fallback and get re-added.
+function isAlreadyRecorded(tx: QbTransaction, txnType: QbTransactionType): boolean {
+  const sourceType = SETTLES[txnType];
+  return sourceType !== undefined && linkedTxnTypes(tx).has(sourceType);
+}
+
 function getAccountRef(line: QbLine) {
   return (
     line.AccountBasedExpenseLineDetail?.AccountRef ??
@@ -87,6 +115,8 @@ export function normalizeTransaction(
   tx: QbTransaction,
   txnType: QbTransactionType,
 ): NormalizedQbRow[] {
+  if (isAlreadyRecorded(tx, txnType)) return [];
+
   const lines = (tx.Line ?? []).filter(carriesItsOwnAmount);
   const label = getLabel(tx);
   const date = new Date(tx.TxnDate);
