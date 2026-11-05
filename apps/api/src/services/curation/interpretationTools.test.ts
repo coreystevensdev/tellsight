@@ -286,7 +286,10 @@ describe('compareToPriorPeriods', () => {
   });
 
   it('builds a prior-period series from trailing digests that contain a matching stat', async () => {
-    const trendStat = { statType: StatType.Trend, category: 'Sales', value: 150, details: { slope: 150, intercept: 0, growthPercent: 50, dataPoints: 4, firstValue: 1000, lastValue: 1600 } };
+    // sampleSize: 6 clears the Trend floor -- omitting it reads as a
+    // non-finite sampleSize to isBelowFloor, which fails closed and would
+    // drop this fixture out of priorPeriods for the wrong reason.
+    const trendStat = { statType: StatType.Trend, category: 'Sales', value: 150, sampleSize: 6, details: { slope: 150, intercept: 0, growthPercent: 50, dataPoints: 4, firstValue: 1000, lastValue: 1600 } };
     mockGetTrailingDigests.mockResolvedValue([
       { weekStart: new Date('2026-04-06'), keyStats: [trendStat] },
       { weekStart: new Date('2026-03-30'), keyStats: [{ ...trendStat, value: 100 }] },
@@ -443,6 +446,54 @@ describe('sample-size floor', () => {
     const result = await getMetricWithTrend({ statType: StatType.Trend, category: 'Marketing' }, ctx, cache);
 
     expect(result).toEqual({ found: false, reason: 'suppressed' });
+  });
+
+  // key_stats (digest_history) is written pre-floor, from the topN-capped
+  // insight pool, not from assemblePrompt's floor-filtered output -- these
+  // two tests are compareToPriorPeriods reading that unfiltered column back
+  // and gating at the read instead.
+  it('drops every historical point below its floor instead of surfacing their values, even though the current stat clears it', async () => {
+    const thinTrendStat = {
+      statType: StatType.Trend,
+      category: 'Sales',
+      value: 50,
+      sampleSize: 3,
+      details: { slope: 50, intercept: 0, growthPercent: 10, dataPoints: 3, firstValue: 1000, lastValue: 1100, firstPeriod: '2026-02', lastPeriod: '2026-04' },
+    };
+    mockGetTrailingDigests.mockResolvedValue([
+      { weekStart: new Date('2026-04-06'), keyStats: [thinTrendStat] },
+      { weekStart: new Date('2026-03-30'), keyStats: [{ ...thinTrendStat, value: 40 }] },
+    ]);
+
+    const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
+
+    // current resolves from salesRows (6 months, clears Trend's floor of 6),
+    // so this is found: true -- only the thin historical points drop.
+    expect(result).toEqual({ found: true, current: expect.objectContaining({ id: findSalesTrendId() }), hasHistory: false });
+  });
+
+  it('keeps a healthy historical point while dropping a thin one from the same priorPeriods series', async () => {
+    const healthyTrendStat = {
+      statType: StatType.Trend,
+      category: 'Sales',
+      value: 150,
+      sampleSize: 6,
+      details: { slope: 150, intercept: 0, growthPercent: 50, dataPoints: 6, firstValue: 1000, lastValue: 1600, firstPeriod: '2025-11', lastPeriod: '2026-04' },
+    };
+    const thinTrendStat = { ...healthyTrendStat, value: 40, sampleSize: 3 };
+    mockGetTrailingDigests.mockResolvedValue([
+      { weekStart: new Date('2026-04-06'), keyStats: [healthyTrendStat] },
+      { weekStart: new Date('2026-03-30'), keyStats: [thinTrendStat] },
+    ]);
+
+    const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
+
+    expect(result).toEqual({
+      found: true,
+      current: expect.objectContaining({ id: findSalesTrendId() }),
+      hasHistory: true,
+      priorPeriods: [{ weekStart: new Date('2026-04-06').toISOString(), value: 150 }],
+    });
   });
 });
 

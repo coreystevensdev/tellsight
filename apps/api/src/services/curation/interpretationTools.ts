@@ -3,7 +3,7 @@ import { withRlsContext } from '../../lib/rls.js';
 import type { ToolDefinition } from '../aiInterpretation/claudeClient.js';
 import { findMatchingStat, resolveStatByType, statInstanceId } from './computation.js';
 import { scoringConfig } from './scoring.js';
-import { sampleFloorBreach } from './sampleSizeFloors.js';
+import { isBelowFloor, sampleFloorBreach } from './sampleSizeFloors.js';
 import { StatType } from './types.js';
 import type { ComputedStat, IdentifiedStat } from './types.js';
 
@@ -169,13 +169,17 @@ function getCachedStat(
 // input and a genuine no-match, `suppressed` means a stat matched but an
 // approved correction excludes it, information a future Q&A answer surface
 // can use ("you flagged this metric") instead of a bare miss. `below_sample_floor`
-// carries its breach numbers because, unlike the other two, the model needs to
-// say the metric exists rather than treat it as absent -- dispatchToolCall in
-// qaLoop.ts is the one place that stops collapsing this reason to null.
+// carries its breach numbers when there are real ones to report, because,
+// unlike the other two, the model needs to say the metric exists rather than
+// treat it as absent -- dispatchToolCall in qaLoop.ts is the one place that
+// stops collapsing this reason to null. belowSampleFloor is nullable because
+// the gate is isBelowFloor (fails closed on a non-finite sampleSize), not
+// sampleFloorBreach (fails open on the same input, since it has no honest
+// pair to report) -- see sampleSizeFloors.ts's own comment on the two.
 export type GetMetricWithTrendResult =
   | { found: true; stat: IdentifiedStat }
   | { found: false; reason: 'not_found' | 'suppressed' }
-  | { found: false; reason: 'below_sample_floor'; belowSampleFloor: { sampleSize: number; minimum: number } };
+  | { found: false; reason: 'below_sample_floor'; belowSampleFloor: { sampleSize: number; minimum: number } | null };
 
 // signal?.throwIfAborted() below is best-effort: postgres/drizzle-orm's
 // postgres-js driver has no query-level AbortSignal support, so this stops
@@ -199,8 +203,11 @@ export async function getMetricWithTrend(
 
   if (!stat) return { found: false, reason: 'not_found' };
   if (loaded.excludedStatIds.has(stat.id)) return { found: false, reason: 'suppressed' };
-  const breach = sampleFloorBreach(stat);
-  if (breach) return { found: false, reason: 'below_sample_floor', belowSampleFloor: breach };
+  // isBelowFloor gates, sampleFloorBreach only describes -- the latter
+  // returns null on a non-finite sampleSize even for a floored type, since
+  // it has no honest pair to report, and that's a different question from
+  // whether the value is trustworthy enough to hand over at all.
+  if (isBelowFloor(stat)) return { found: false, reason: 'below_sample_floor', belowSampleFloor: sampleFloorBreach(stat) };
   return { found: true, stat };
 }
 
@@ -239,7 +246,7 @@ export type CompareToPriorPeriodsResult =
 export type CompareToPriorPeriodsOutcome =
   | ({ found: true } & CompareToPriorPeriodsResult)
   | { found: false; reason: 'not_found' | 'suppressed' }
-  | { found: false; reason: 'below_sample_floor'; belowSampleFloor: { sampleSize: number; minimum: number } };
+  | { found: false; reason: 'below_sample_floor'; belowSampleFloor: { sampleSize: number; minimum: number } | null };
 
 const DEFAULT_PERIODS_BACK = 4;
 
@@ -278,15 +285,25 @@ export async function compareToPriorPeriods(
 
   if (!current) return { found: false, reason: 'not_found' };
   if (loaded.excludedStatIds.has(current.id)) return { found: false, reason: 'suppressed' };
-  const breach = sampleFloorBreach(current);
-  // Bails before touching priorPeriods -- comparing a thin current value
-  // against its own history still hands the model a number it shouldn't trust.
-  if (breach) return { found: false, reason: 'below_sample_floor', belowSampleFloor: breach };
+  // isBelowFloor gates, sampleFloorBreach only describes -- see the matching
+  // comment on getMetricWithTrend. Bails before touching priorPeriods too:
+  // comparing a thin current value against its own history still hands the
+  // model a number it shouldn't trust.
+  if (isBelowFloor(current)) {
+    return { found: false, reason: 'below_sample_floor', belowSampleFloor: sampleFloorBreach(current) };
+  }
 
   const priorPeriods: PriorPeriodPoint[] = [];
+  // Filtered here, not at the write in perOrg.ts. key_stats also backs
+  // classifyValence and the milestone/longitudinal diffs in
+  // buildPriorContext.ts and milestones.ts, which need the actual weekly
+  // computation, thin or not, to tell "crossed a threshold for the first
+  // time" from "stopped being recorded." Filtering at the write would
+  // permanently blank a since-matured stat's thin weeks, with no way to
+  // recover them.
   for (const digest of loaded.digests) {
     const match = findMatchInKeyStats(digest.keyStats, input.statType, scope.category);
-    if (!match || loaded.excludedStatIds.has(statInstanceId(match, ctx.datasetId))) continue;
+    if (!match || loaded.excludedStatIds.has(statInstanceId(match, ctx.datasetId)) || isBelowFloor(match)) continue;
     priorPeriods.push({ weekStart: digest.weekStart.toISOString(), value: match.value });
   }
 
