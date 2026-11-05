@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Mock } from 'vitest';
 
-import type { ScoredInsight } from './types.js';
+import type { ScoredInsight, TrendStat, CategoryBreakdownStat } from './types.js';
 import { StatType } from './types.js';
 
 vi.mock('node:fs', () => ({
@@ -32,7 +32,7 @@ const fixtureInsights: ScoredInsight[] = [
       category: 'Sales',
       value: 900,
       comparison: 500,
-      sampleSize: 5,
+      sampleSize: 15,
       details: { direction: 'above', zScore: 2.5, iqrBounds: { lower: 200, upper: 800 }, deviation: 400, period: '2026-03' },
     },
     score: 0.85,
@@ -43,7 +43,7 @@ const fixtureInsights: ScoredInsight[] = [
       statType: StatType.Trend,
       category: 'Marketing',
       value: 0.05,
-      sampleSize: 6,
+      sampleSize: 15,
       details: { slope: 0.05, intercept: 100, growthPercent: 25, dataPoints: 6, firstValue: 400, lastValue: 500, firstPeriod: '2026-01', lastPeriod: '2026-06' },
     },
     score: 0.72,
@@ -61,6 +61,48 @@ const fixtureInsights: ScoredInsight[] = [
     breakdown: { novelty: 0.1, actionability: 0.2, specificity: 0.2 },
   },
 ];
+
+// One stat each, sampleSize overridable, everything else a plausible default.
+// For the floor-gating tests below, where the stat type and sampleSize are
+// what's under test and the rest of the shape is just along for the ride.
+function scoredTrend(overrides: Partial<TrendStat> = {}): ScoredInsight {
+  return {
+    stat: {
+      statType: StatType.Trend,
+      category: 'Revenue',
+      value: 10,
+      sampleSize: 12,
+      details: {
+        slope: 10,
+        intercept: 100,
+        growthPercent: 10,
+        dataPoints: 12,
+        firstValue: 100,
+        lastValue: 110,
+        firstPeriod: '2026-01',
+        lastPeriod: '2026-12',
+      },
+      ...overrides,
+    },
+    score: 0.5,
+    breakdown: { novelty: 0.5, actionability: 0.5, specificity: 0.5 },
+  };
+}
+
+function scoredBreakdown(overrides: Partial<CategoryBreakdownStat> = {}): ScoredInsight {
+  return {
+    stat: {
+      statType: StatType.CategoryBreakdown,
+      category: 'Revenue',
+      value: 2_000,
+      sampleSize: 12,
+      details: { percentage: 40, absoluteTotal: 2_000, transactionCount: 12, min: 100, max: 300 },
+      ...overrides,
+    },
+    score: 0.5,
+    breakdown: { novelty: 0.5, actionability: 0.5, specificity: 0.5 },
+  };
+}
 
 // The default mock for readFileSync, re-applied in beforeEach so per-test
 // mockImplementation overrides don't bleed into subsequent tests.
@@ -200,7 +242,7 @@ describe('assemblePrompt', () => {
           category: 'Sales',
           value: 900,
           comparison: 500,
-          sampleSize: 5,
+          sampleSize: 15,
           details: { direction: 'above', zScore: 2.5, iqrBounds: { lower: 200, upper: 800 }, deviation: 400, period: '2026-03' },
         },
         score: 0.123456789,
@@ -256,7 +298,7 @@ describe('assemblePrompt', () => {
           category: 'Marketing',
           value: 100,
           comparison: 500,
-          sampleSize: 5,
+          sampleSize: 15,
           details: { direction: 'below', zScore: -3, iqrBounds: { lower: 200, upper: 800 }, deviation: -400, period: '2026-03' },
         },
         score: 0.8,
@@ -276,7 +318,7 @@ describe('assemblePrompt', () => {
         statType: StatType.CashForecast,
         category: null,
         value: -5_000,
-        sampleSize: 6,
+        sampleSize: 15,
         details: {
           startingBalance: 58_000,
           asOfDate: '2026-06-01T00:00:00.000Z',
@@ -312,7 +354,7 @@ describe('assemblePrompt', () => {
         statType: StatType.CashForecast,
         category: null,
         value: -12_000,
-        sampleSize: 6,
+        sampleSize: 15,
         details: {
           startingBalance: 25_000,
           asOfDate: '2026-06-01T00:00:00.000Z',
@@ -581,5 +623,68 @@ describe('assemblePrompt', () => {
 
     expect(result.user).toBe('Thursday, March 5, 2026');
     expect(result.metadata.generatedAt.slice(0, 10)).toBe('2026-03-05');
+  });
+
+  describe('sample-size floor', () => {
+    it('omits a below-floor stat from the rendered prompt', async () => {
+      const { assemblePrompt } = await import('./assembly.js');
+      const thin = scoredTrend({ sampleSize: 3, category: 'Marketing' });
+      const thick = scoredTrend({ sampleSize: 12, category: 'Revenue' });
+
+      const { user, metadata } = assemblePrompt([thin, thick], 1);
+
+      expect(user).toContain('Revenue');
+      expect(user).not.toContain('Marketing');
+      expect(metadata.suppressedForSampleSize).toBe(1);
+    });
+
+    it('still assembles when every stat is below its floor', async () => {
+      const { assemblePrompt } = await import('./assembly.js');
+
+      const { user, metadata } = assemblePrompt([scoredTrend({ sampleSize: 2 })], 1);
+
+      expect(metadata.suppressedForSampleSize).toBe(1);
+      expect(user.length).toBeGreaterThan(0);
+      expect(metadata.statTypes).toEqual([]);
+    });
+
+    it('drops a suppressed stat type from metadata, so no question is suggested about it', async () => {
+      const { assemblePrompt } = await import('./assembly.js');
+
+      const { metadata } = assemblePrompt(
+        [scoredTrend({ sampleSize: 2 }), scoredBreakdown({ sampleSize: 12 })],
+        1,
+      );
+
+      expect(metadata.statTypes).toEqual(['category_breakdown']);
+    });
+
+    it('counts zero suppressed when every stat clears its floor', async () => {
+      const { assemblePrompt } = await import('./assembly.js');
+
+      const { metadata } = assemblePrompt([scoredTrend({ sampleSize: 12 })], 1);
+
+      expect(metadata.suppressedForSampleSize).toBe(0);
+    });
+
+    // transparencyMetadataSchema.parse runs against this exact shape at the
+    // digest and alert cache-miss call sites. A required field here would
+    // reject every ai_summaries row written before this field existed.
+    it('parses a stored metadata object that predates this field, defaulting it to 0', async () => {
+      const { transparencyMetadataSchema } = await import('./types.js');
+
+      const storedBeforeThisField = {
+        statTypes: ['trend', 'total'],
+        categoryCount: 2,
+        insightCount: 3,
+        scoringWeights: { novelty: 0.4, actionability: 0.4, specificity: 0.2 },
+        promptVersion: 'v2.1',
+        generatedAt: '2026-10-01T00:00:00.000Z',
+      };
+
+      const parsed = transparencyMetadataSchema.parse(storedBeforeThisField);
+
+      expect(parsed.suppressedForSampleSize).toBe(0);
+    });
   });
 });

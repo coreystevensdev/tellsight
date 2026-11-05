@@ -316,6 +316,10 @@ export const transparencyMetadataSchema = z.object({
   }),
   promptVersion: z.string(),
   generatedAt: z.string(),
+  // default(0), not a bare required number: this parses every ai_summaries row
+  // written before the thin-stat gate existed, where 0 is also the true
+  // answer, nothing could have been suppressed by a gate that did not exist yet.
+  suppressedForSampleSize: z.number().default(0),
 });
 
 export type TransparencyMetadata = z.infer<typeof transparencyMetadataSchema>;

@@ -15,7 +15,7 @@ const insights: ScoredInsight[] = [
       statType: StatType.Trend,
       category: 'Sales',
       value: 0.15,
-      sampleSize: 6,
+      sampleSize: 15,
       details: { slope: 0.15, intercept: 100, growthPercent: 15, dataPoints: 6, firstValue: 400, lastValue: 460, firstPeriod: '2026-01', lastPeriod: '2026-06' },
     },
     score: 0.8,

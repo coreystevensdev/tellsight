@@ -68,6 +68,28 @@ const fixtureRows = [
   { id: 6, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-03-01'), amount: '550.00', label: 'F', metadata: null, createdAt: new Date() },
 ];
 
+// Same Sales/Marketing shape as fixtureRows, but 7 months each instead of 3.
+// The two correction tests below need their targeted trend stat to survive
+// the sample-size floor (6) on its own, so the correction is the only reason
+// it ever leaves the prompt. Sales still opens at 1000 and closes at 2000,
+// the exact figures the "$1000 -> $2000" assertions below were written against.
+const trendFixtureRows = [
+  { id: 1, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-01-01'), amount: '1000.00', label: 'A', metadata: null, createdAt: new Date() },
+  { id: 2, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-02-01'), amount: '1300.00', label: 'B', metadata: null, createdAt: new Date() },
+  { id: 3, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-03-01'), amount: '1450.00', label: 'C', metadata: null, createdAt: new Date() },
+  { id: 4, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-04-01'), amount: '1600.00', label: 'D', metadata: null, createdAt: new Date() },
+  { id: 5, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-05-01'), amount: '1750.00', label: 'E', metadata: null, createdAt: new Date() },
+  { id: 6, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-06-01'), amount: '1900.00', label: 'F', metadata: null, createdAt: new Date() },
+  { id: 7, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-07-01'), amount: '2000.00', label: 'G', metadata: null, createdAt: new Date() },
+  { id: 8, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-01-01'), amount: '500.00', label: 'H', metadata: null, createdAt: new Date() },
+  { id: 9, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-02-01'), amount: '520.00', label: 'I', metadata: null, createdAt: new Date() },
+  { id: 10, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-03-01'), amount: '550.00', label: 'J', metadata: null, createdAt: new Date() },
+  { id: 11, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-04-01'), amount: '530.00', label: 'K', metadata: null, createdAt: new Date() },
+  { id: 12, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-05-01'), amount: '560.00', label: 'L', metadata: null, createdAt: new Date() },
+  { id: 13, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-06-01'), amount: '580.00', label: 'M', metadata: null, createdAt: new Date() },
+  { id: 14, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-07-01'), amount: '600.00', label: 'N', metadata: null, createdAt: new Date() },
+];
+
 describe('runCurationPipeline', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -324,7 +346,7 @@ describe('runFullPipeline', () => {
   // not a direct unit-level scoreInsights call, the actual dashboard/digest path.
   it('excludes an approved Tier 2 correction from the real runFullPipeline generation output', async () => {
     vi.mocked(aiSummariesQueries.getCachedSummary).mockResolvedValue(undefined as never);
-    vi.mocked(dataRowsQueries.getRowsByDataset).mockResolvedValue(fixtureRows as never);
+    vi.mocked(dataRowsQueries.getRowsByDataset).mockResolvedValue(trendFixtureRows as never);
     vi.mocked(generateInterpretation).mockResolvedValue('Fresh AI analysis.');
     vi.mocked(aiSummariesQueries.storeSummary).mockResolvedValue({} as never);
 
@@ -354,7 +376,7 @@ describe('runFullPipeline', () => {
   // directly, since that's the path a real user's next dashboard load hits.
   it('a stat suppressed by a Tier 2 correction reappears once the correction has expired', async () => {
     vi.mocked(aiSummariesQueries.getCachedSummary).mockResolvedValue(undefined as never);
-    vi.mocked(dataRowsQueries.getRowsByDataset).mockResolvedValue(fixtureRows as never);
+    vi.mocked(dataRowsQueries.getRowsByDataset).mockResolvedValue(trendFixtureRows as never);
     vi.mocked(generateInterpretation).mockResolvedValue('Fresh AI analysis.');
     vi.mocked(aiSummariesQueries.storeSummary).mockResolvedValue({} as never);
 
@@ -513,7 +535,11 @@ describe('break-even end-to-end pipeline', () => {
   });
 
   it('surfaces break-even in prompt and metadata when fixed costs are set', async () => {
-    // 6 months of data: revenue 50k, expenses 40k → margin 20%.
+    // margin_trend (and break_even, which inherits its sampleSize outright)
+    // scores the thinner of its recent/prior halves. 6 months split 3-and-3
+    // sits below the floor of 6, so this needs enough months on each side of
+    // the split to clear it: 16 months here, 8 recent and 8 prior.
+    // Revenue 50k, expenses 40k every month → margin 20% throughout.
     // monthlyFixedCosts 15k → break-even 75k. Current revenue 50k → gap 25k.
     const burningRows = [
       { id: 400, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-01-15'), amount: '50000.00', label: 'Acme Corp invoice #4218', metadata: null, createdAt: new Date() },
@@ -529,6 +555,14 @@ describe('break-even end-to-end pipeline', () => {
       { id: 410, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-06-15'), amount: '50000.00', label: 'Widget sales Jun',        metadata: null, createdAt: new Date() },
       { id: 411, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent',    parentCategory: 'Expenses', date: new Date('2026-06-15'), amount: '40000.00', label: 'Main St landlord wire',   metadata: null, createdAt: new Date() },
     ];
+    let nextId = 412;
+    for (let m = 7; m <= 16; m++) {
+      const date = new Date(2026, m - 1, 15);
+      burningRows.push(
+        { id: nextId++, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income', date, amount: '50000.00', label: 'Monthly revenue', metadata: null, createdAt: new Date() },
+        { id: nextId++, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent', parentCategory: 'Expenses', date, amount: '40000.00', label: 'Monthly rent', metadata: null, createdAt: new Date() },
+      );
+    }
 
     const { computeStats } = await import('./computation.js');
     const { scoreInsights } = await import('./scoring.js');
@@ -554,7 +588,8 @@ describe('break-even end-to-end pipeline', () => {
 
   it('above-break-even fixture: reassuring negative gap without prescriptive framing', async () => {
     // Same margin (20%), same fixed costs (15k), but revenue 100k, well above break-even.
-    // Expected: break-even 75k, gap -25k.
+    // Expected: break-even 75k, gap -25k. 16 months total (8 recent, 8 prior),
+    // same floor-clearing reason as the fixture above.
     const healthyRows = [
       { id: 500, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-01-15'), amount: '100000.00', label: null, metadata: null, createdAt: new Date() },
       { id: 501, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent',    parentCategory: 'Expenses', date: new Date('2026-01-15'), amount: '80000.00',  label: null, metadata: null, createdAt: new Date() },
@@ -565,6 +600,14 @@ describe('break-even end-to-end pipeline', () => {
       { id: 506, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income',   date: new Date('2026-04-15'), amount: '100000.00', label: null, metadata: null, createdAt: new Date() },
       { id: 507, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent',    parentCategory: 'Expenses', date: new Date('2026-04-15'), amount: '80000.00',  label: null, metadata: null, createdAt: new Date() },
     ];
+    let nextId = 508;
+    for (let m = 5; m <= 16; m++) {
+      const date = new Date(2026, m - 1, 15);
+      healthyRows.push(
+        { id: nextId++, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Revenue', parentCategory: 'Income', date, amount: '100000.00', label: null, metadata: null, createdAt: new Date() },
+        { id: nextId++, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Rent', parentCategory: 'Expenses', date, amount: '80000.00', label: null, metadata: null, createdAt: new Date() },
+      );
+    }
 
     const { computeStats } = await import('./computation.js');
     const { scoreInsights } = await import('./scoring.js');

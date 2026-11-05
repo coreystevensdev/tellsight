@@ -8,6 +8,7 @@ import { StatType } from './types.js';
 import type { BusinessProfile } from 'shared/types';
 import { getIndustryBenchmarks } from './config/industry-benchmarks.js';
 import { statInstanceId } from './computation.js';
+import { isBelowFloor } from './sampleSizeFloors.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_VERSION = 'v2.1';
@@ -236,7 +237,15 @@ export function assemblePrompt(
   });
   const benchmarks = getIndustryBenchmarks(businessProfile?.businessType) ?? 'No industry benchmarks available.';
 
-  if (insights.length === 0) {
+  // Gated here, not in scoreInsights: scoring ranks every candidate for every
+  // consumer of ScoredInsight (digest, alerts, NL Q&A), and a thin stat can
+  // legitimately outrank a thick one on novelty. This is the one place that
+  // decides what the model actually gets told, so it is the one place a
+  // below-floor stat gets cut rather than just outranked.
+  const survivors = insights.filter((i) => !isBelowFloor(i.stat));
+  const suppressedForSampleSize = insights.length - survivors.length;
+
+  if (survivors.length === 0) {
     const user = renderUser(template.user, {
       statSummaries:
         'No statistical insights available. The dataset may be empty or too small for meaningful analysis.',
@@ -260,15 +269,16 @@ export function assemblePrompt(
         scoringWeights: { novelty: 0, actionability: 0, specificity: 0 },
         promptVersion,
         generatedAt: now.toISOString(),
+        suppressedForSampleSize,
       },
     };
   }
 
-  const statSummaries = insights.map((i) => formatStat(i, datasetId)).join('\n');
-  const statTypes = [...new Set(insights.map((i) => i.stat.statType))];
+  const statSummaries = survivors.map((i) => formatStat(i, datasetId)).join('\n');
+  const statTypes = [...new Set(survivors.map((i) => i.stat.statType))];
   const allowedStatTypes = [...statTypes].sort().join(', ');
-  const categories = new Set(insights.map((i) => i.stat.category).filter(Boolean));
-  const { breakdown } = insights[0]!;
+  const categories = new Set(survivors.map((i) => i.stat.category).filter(Boolean));
+  const { breakdown } = survivors[0]!;
 
   const user = renderUser(template.user, {
     statSummaries,
@@ -278,17 +288,18 @@ export function assemblePrompt(
     statTypeList: statTypes.join(', '),
     allowedStatTypes,
     categoryCount: String(categories.size),
-    insightCount: String(insights.length),
+    insightCount: String(survivors.length),
     priorContext,
   });
 
   const metadata: TransparencyMetadata = {
     statTypes,
     categoryCount: categories.size,
-    insightCount: insights.length,
+    insightCount: survivors.length,
     scoringWeights: breakdown,
     promptVersion,
     generatedAt: now.toISOString(),
+    suppressedForSampleSize,
   };
 
   return { system: template.system, user, metadata };
