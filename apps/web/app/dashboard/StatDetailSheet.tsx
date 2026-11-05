@@ -28,6 +28,19 @@ function sampleSizeLabel(statType: string, n: number): string {
   if (statType === 'average' || statType === 'anomaly') {
     return `${n} transaction${n === 1 ? '' : 's'}`;
   }
+  // basisValues.length (revenueMetrics.ts) counts prior years with a value
+  // for the projected calendar month, not months -- "month" would understate
+  // a multi-year history down to a single month.
+  if (statType === 'seasonal_projection') {
+    return `${n} year${n === 1 ? '' : 's'} of data`;
+  }
+  // The thinner of two comparison windows (marginMetrics.ts), not the total
+  // examined -- saying "N months" alone reads as all the data looked at,
+  // when the actual span is roughly double, split for the before-and-after
+  // comparison.
+  if (statType === 'margin_trend' || statType === 'break_even') {
+    return `${n} months on each side of a before-and-after comparison`;
+  }
   return `${n} month${n === 1 ? '' : 's'} of data`;
 }
 

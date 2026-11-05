@@ -182,6 +182,44 @@ describe('StatDetailSheet', () => {
     expect(screen.getByText(/based on 2 transactions/i)).toBeInTheDocument();
   });
 
+  it('names the count in years for a seasonal projection, not months', () => {
+    mockUseStatDetail.mockReturnValue({
+      status: 'done',
+      data: {
+        statType: 'seasonal_projection',
+        value: 12000,
+        detail: { kind: 'formula', expression: 'projected $12,000.00', terms: [] },
+        belowSampleFloor: { sampleSize: 1, minimum: 2 },
+      },
+      error: null,
+    });
+
+    render(
+      <StatDetailSheet open={true} onOpenChange={() => {}} datasetId={1} statId="1:seasonal_projection:_:_" />,
+    );
+
+    expect(screen.getByText(/based on 1 year of data/i)).toBeInTheDocument();
+  });
+
+  it('frames margin_trend and break_even as a split comparison, not a flat month count', () => {
+    mockUseStatDetail.mockReturnValue({
+      status: 'done',
+      data: {
+        statType: 'margin_trend',
+        value: 31,
+        detail: { kind: 'formula', expression: 'margin 31.0%', terms: [] },
+        belowSampleFloor: { sampleSize: 4, minimum: 6 },
+      },
+      error: null,
+    });
+
+    render(
+      <StatDetailSheet open={true} onOpenChange={() => {}} datasetId={1} statId="1:margin_trend:_:_" />,
+    );
+
+    expect(screen.getByText(/based on 4 months on each side of a before-and-after comparison/i)).toBeInTheDocument();
+  });
+
   it('closes on escape', () => {
     mockUseStatDetail.mockReturnValue({ status: 'loading', data: null, error: null });
     const onOpenChange = vi.fn();
