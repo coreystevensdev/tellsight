@@ -106,14 +106,14 @@ describe('TransparencyPanel', () => {
   it('renders no suppression sentence when suppressedForSampleSize is absent', () => {
     render(<TransparencyPanel metadata={metadata} isOpen={true} onClose={vi.fn()} />);
 
-    expect(screen.queryByText(/don't have enough data/)).toBeNull();
+    expect(screen.queryByText(/don't have enough behind/)).toBeNull();
   });
 
   it('renders no suppression sentence when suppressedForSampleSize is zero', () => {
     const customMeta = { ...metadata, suppressedForSampleSize: 0 };
     render(<TransparencyPanel metadata={customMeta} isOpen={true} onClose={vi.fn()} />);
 
-    expect(screen.queryByText(/don't have enough data/)).toBeNull();
+    expect(screen.queryByText(/don't have enough behind/)).toBeNull();
   });
 
   it('renders the plural suppression sentence with the count when suppressedForSampleSize is above zero', () => {
@@ -122,7 +122,7 @@ describe('TransparencyPanel', () => {
 
     const panel = screen.getByRole('complementary');
     expect(
-      within(panel).getByText("7 numbers in your data don't have enough data behind them yet, so I don't cite them."),
+      within(panel).getByText("7 numbers in your data don't have enough behind them yet, so I don't cite them."),
     ).toBeTruthy();
   });
 
@@ -132,7 +132,7 @@ describe('TransparencyPanel', () => {
 
     const panel = screen.getByRole('complementary');
     expect(
-      within(panel).getByText("1 number in your data doesn't have enough data behind it yet, so I don't cite it."),
+      within(panel).getByText("1 number in your data doesn't have enough behind it yet, so I don't cite it."),
     ).toBeTruthy();
   });
 });

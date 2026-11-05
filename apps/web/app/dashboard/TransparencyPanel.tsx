@@ -58,9 +58,9 @@ function Badge({ children }: { children: React.ReactNode }) {
 // draws the same distinction for its own per-stat sentence).
 function suppressedForSampleSizeSentence(count: number): string {
   if (count === 1) {
-    return "1 number in your data doesn't have enough data behind it yet, so I don't cite it.";
+    return "1 number in your data doesn't have enough behind it yet, so I don't cite it.";
   }
-  return `${count} numbers in your data don't have enough data behind them yet, so I don't cite them.`;
+  return `${count} numbers in your data don't have enough behind them yet, so I don't cite them.`;
 }
 
 export function TransparencyPanel({ metadata, isOpen, onClose, className }: TransparencyPanelProps) {
