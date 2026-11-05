@@ -70,9 +70,12 @@ describe('normalizeTransaction', () => {
     expect(row!.parentCategory).toBe('Expenses');
   });
 
-  it('maps SalesReceipt to Income', () => {
+  it('maps SalesReceipt to Income at its full amount', () => {
     const [row] = normalizeTransaction(makeInvoice({ Id: 'tx-sr' }), 'SalesReceipt');
     expect(row!.parentCategory).toBe('Income');
+    // Control for the refund-sign tests below: a sale with no refund in the
+    // picture has to keep its full amount, not something a fix quietly shaved.
+    expect(row!.amount).toBe('2500');
   });
 
   it('maps Transfer to Other', () => {
@@ -295,6 +298,86 @@ describe('normalizeTransactions', () => {
     });
     const rows = normalizeTransactions([multiLine], 'Purchase');
     expect(rows).toHaveLength(2);
+  });
+});
+
+// DW-233: CreditMemo and RefundReceipt were both in INCOME_TYPES, so a refund
+// added to reported revenue instead of subtracting from it, overstating net
+// income by twice the refund amount. Mirrors the fix square/normalize.ts
+// already shipped for Square refunds, rather than inventing a second rule.
+describe('refund sign', () => {
+  const soldLine = {
+    Id: 'line-1',
+    Amount: 1000,
+    DetailType: 'SalesItemLineDetail',
+    SalesItemLineDetail: { ItemRef: { value: 'item-1', name: 'Consulting' } },
+  };
+
+  function makeRefund(overrides: Partial<QbTransaction> = {}): QbTransaction {
+    return {
+      Id: 'ref-1',
+      TxnDate: '2026-04-15',
+      DocNumber: 'REF-001',
+      CustomerRef: { value: '99', name: 'Big Client Co' },
+      Line: [
+        {
+          Id: 'line-1',
+          Amount: 300,
+          DetailType: 'SalesItemLineDetail',
+          SalesItemLineDetail: { ItemRef: { value: 'item-1', name: 'Consulting' } },
+        },
+      ],
+      ...overrides,
+    };
+  }
+
+  it('nets an Invoice and a RefundReceipt against it to the true amount', () => {
+    const rows = [
+      ...normalizeTransaction(makeInvoice({ Id: 'inv-1', Line: [soldLine] }), 'Invoice'),
+      ...normalizeTransaction(makeRefund(), 'RefundReceipt'),
+    ];
+
+    const income = rows
+      .filter((r) => r.parentCategory === 'Income')
+      .reduce((sum, r) => sum + Number(r.amount), 0);
+    const expenseRows = rows.filter((r) => r.parentCategory === 'Expenses');
+
+    expect(income).toBe(1000);
+    expect(expenseRows).toHaveLength(1);
+    expect(expenseRows[0]!.category).toBe('Refunds');
+    expect(expenseRows[0]!.amount).toBe('300');
+  });
+
+  it('nets an Invoice and a CreditMemo against it the same way', () => {
+    const rows = [
+      ...normalizeTransaction(makeInvoice({ Id: 'inv-2', Line: [soldLine] }), 'Invoice'),
+      ...normalizeTransaction(makeRefund({ Id: 'cm-1' }), 'CreditMemo'),
+    ];
+
+    const income = rows
+      .filter((r) => r.parentCategory === 'Income')
+      .reduce((sum, r) => sum + Number(r.amount), 0);
+    const expenseRows = rows.filter((r) => r.parentCategory === 'Expenses');
+
+    expect(income).toBe(1000);
+    expect(expenseRows).toHaveLength(1);
+    expect(expenseRows[0]!.category).toBe('Refunds');
+    expect(expenseRows[0]!.amount).toBe('300');
+  });
+
+  // VendorCredit stays in Expenses under its own account category. Moving it
+  // to Income, the mirror of the fix above, would count a vendor return as
+  // revenue and corrupt the revenue-specific stats keyed on parentCategory
+  // === 'Income' (see the comment beside it in normalize.ts). The category
+  // assertion guards a quieter version of the same mistake: routing
+  // VendorCredit into REFUND_TYPES instead of EXPENSE_TYPES leaves
+  // parentCategory at 'Expenses', so a parentCategory-only check would still
+  // pass, while silently relabeling every vendor credit 'Refunds' and
+  // merging it into the customer-refund line.
+  it('leaves VendorCredit in Expenses under its own category, not folded into Refunds', () => {
+    const [row] = normalizeTransaction(makePurchase({ Id: 'vc-1' }), 'VendorCredit');
+    expect(row!.parentCategory).toBe('Expenses');
+    expect(row!.category).toBe('Office Supplies');
   });
 });
 

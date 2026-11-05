@@ -9,23 +9,41 @@ const EXPENSE_TYPES = new Set<QbTransactionType>([
   'Purchase',
   'Bill',
   'BillPayment',
+  // Reduces what we owe a vendor, so it overstates Expenses the same way a
+  // refund overstated Income below. The mirror fix, moving it to Income,
+  // would count a vendor return as revenue and corrupt latestMonthlyRevenue,
+  // computeYearOverYear, and computeSeasonalProjection. 'Other' would dodge
+  // that and would even clear the margin and cash-flow side of this same
+  // overstatement, both filter by parentCategory, but groupByCategory does
+  // not, so computeTotals, computeCategoryBreakdowns, and the category-plan
+  // variance would still count it exactly as they do today. That trades this
+  // defect for a smaller one rather than removing it, so Expenses stays;
+  // the overstatement itself is a known, separate defect.
   'VendorCredit',
 ]);
+
+// CreditMemo and RefundReceipt hand money back to a customer. Same rule
+// Square uses for its refunds (square/normalize.ts): never a negative sale,
+// always a positive Expenses row, so the sign means one thing no matter which
+// connector wrote the row. Category is 'Refunds', plural, matching Shopify
+// (shopify/normalize.ts) and the curation test fixtures, both of which pin
+// that spelling. Square alone writes the singular 'Refund' and nothing pins
+// it; that mismatch predates this fix, so it stays a separate cleanup rather
+// than something this change should touch.
+const REFUND_TYPES = new Set<QbTransactionType>(['CreditMemo', 'RefundReceipt']);
 
 const INCOME_TYPES = new Set<QbTransactionType>([
   'Invoice',
   'Payment',
   'SalesReceipt',
   'Deposit',
-  'CreditMemo',
-  'RefundReceipt',
 ]);
 
 function getParentCategory(
   txnType: QbTransactionType,
   line: QbLine,
 ): 'Income' | 'Expenses' | 'Other' {
-  if (EXPENSE_TYPES.has(txnType)) return 'Expenses';
+  if (EXPENSE_TYPES.has(txnType) || REFUND_TYPES.has(txnType)) return 'Expenses';
   if (INCOME_TYPES.has(txnType)) return 'Income';
 
   if (txnType === 'JournalEntry') {
@@ -72,6 +90,7 @@ export function normalizeTransaction(
   const lines = (tx.Line ?? []).filter(carriesItsOwnAmount);
   const label = getLabel(tx);
   const date = new Date(tx.TxnDate);
+  const isRefund = REFUND_TYPES.has(txnType);
 
   // No line items (a Payment), or nothing left after dropping aggregates (an
   // invoice whose only line is its subtotal): one synthetic row off TotalAmt.
@@ -83,8 +102,8 @@ export function normalizeTransaction(
         sourceId: `${tx.Id}-0`,
         date,
         amount: String(Math.abs(tx.TotalAmt ?? 0)),
-        category: 'Uncategorized',
-        parentCategory: EXPENSE_TYPES.has(txnType)
+        category: isRefund ? 'Refunds' : 'Uncategorized',
+        parentCategory: EXPENSE_TYPES.has(txnType) || isRefund
           ? 'Expenses'
           : INCOME_TYPES.has(txnType)
             ? 'Income'
@@ -103,7 +122,7 @@ export function normalizeTransaction(
 
   return lines.map((line, index) => {
     const accountRef = getAccountRef(line);
-    const category = accountRef?.name ?? 'Uncategorized';
+    const category = isRefund ? 'Refunds' : accountRef?.name ?? 'Uncategorized';
     const parentCategory = getParentCategory(txnType, line);
     // QuickBooks line Ids are 1-based and this index is 0-based, so a bare
     // String(index) collides with the Id of the line before it. That is what
