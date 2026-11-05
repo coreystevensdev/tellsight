@@ -76,6 +76,11 @@ describe('isBelowFloor', () => {
     ).toBe(false);
   });
 
+  it('gates a trend below six months but not at six, its own floor', () => {
+    expect(isBelowFloor({ statType: StatType.Trend, sampleSize: 5 } as ComputedStat)).toBe(true);
+    expect(isBelowFloor({ statType: StatType.Trend, sampleSize: 6 } as ComputedStat)).toBe(false);
+  });
+
   it('gates a margin_trend window below six months on its thinner side', () => {
     expect(isBelowFloor({ statType: StatType.MarginTrend, sampleSize: 5 } as ComputedStat)).toBe(
       true,
@@ -89,8 +94,14 @@ describe('isBelowFloor', () => {
     expect(isBelowFloor({ statType: StatType.BreakEven, sampleSize: 5 } as ComputedStat)).toBe(
       true,
     );
+    expect(isBelowFloor({ statType: StatType.BreakEven, sampleSize: 6 } as ComputedStat)).toBe(
+      false,
+    );
     expect(isBelowFloor({ statType: StatType.CashForecast, sampleSize: 5 } as ComputedStat)).toBe(
       true,
+    );
+    expect(isBelowFloor({ statType: StatType.CashForecast, sampleSize: 6 } as ComputedStat)).toBe(
+      false,
     );
   });
 
