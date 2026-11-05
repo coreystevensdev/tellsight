@@ -64,6 +64,17 @@ describe('getLastDigest', () => {
     expect(mockFindFirst).toHaveBeenCalledOnce();
   });
 
+  it('normalizes a missing sampleSize to null in keyStats, the same cast-site gap getTrailingDigests has', async () => {
+    const keyStats = [
+      { statType: 'trend', category: 'Sales', value: 100, details: { slope: 1, intercept: 0, growthPercent: 5, dataPoints: 4, firstValue: 90, lastValue: 100 } },
+    ];
+    mockFindFirst.mockResolvedValueOnce({ id: 5, orgId: 3, weekStart: new Date('2026-05-25T00:00:00Z'), keyStats });
+
+    const result = await getLastDigest(3);
+
+    expect(result!.keyStats).toEqual([{ ...keyStats[0], sampleSize: null }]);
+  });
+
   it('returns undefined when the org has no history', async () => {
     mockFindFirst.mockResolvedValueOnce(undefined);
 
@@ -164,7 +175,7 @@ describe('getTrailingDigests', () => {
     expect(await getTrailingDigests(99, 4)).toEqual([]);
   });
 
-  it('passes each row\'s well-formed keyStats entries through, proving the ComputedStat[] cast preserves valid data', async () => {
+  it('passes each row\'s well-formed keyStats entries through, normalizing a missing sampleSize to null', async () => {
     const keyStats = [
       { statType: 'trend', category: 'Sales', value: 100, details: { slope: 1, intercept: 0, growthPercent: 5, dataPoints: 4, firstValue: 90, lastValue: 100 } },
     ];
@@ -172,7 +183,7 @@ describe('getTrailingDigests', () => {
 
     const [result] = await getTrailingDigests(3, 4);
 
-    expect(result!.keyStats).toEqual(keyStats);
+    expect(result!.keyStats).toEqual([{ ...keyStats[0], sampleSize: null }]);
   });
 
   it('drops keyStats entries that fail the base ComputedStat shape check, now that compare_to_prior_periods reads them into a model-citable response', async () => {
@@ -189,7 +200,7 @@ describe('getTrailingDigests', () => {
 
     const [result] = await getTrailingDigests(3, 4);
 
-    expect(result!.keyStats).toEqual([valid]);
+    expect(result!.keyStats).toEqual([{ ...valid, sampleSize: null }]);
   });
 
   it('drops year_over_year/seasonal_projection/cash_flow entries with a missing discriminator field, since statInstanceId dereferences it on every compare_to_prior_periods match', async () => {
@@ -208,7 +219,7 @@ describe('getTrailingDigests', () => {
 
     const [result] = await getTrailingDigests(3, 4);
 
-    expect(result!.keyStats).toEqual([validYoy]);
+    expect(result!.keyStats).toEqual([{ ...validYoy, sampleSize: null }]);
   });
 
   it('drops a year_over_year entry whose details.month is not a real month name, since mostRecentMatch ties break on MONTH_NAMES.indexOf', async () => {
@@ -259,7 +270,7 @@ describe('getTrailingDigests', () => {
 
     const [result] = await getTrailingDigests(3, 4);
 
-    expect(result!.keyStats).toEqual([trendWithGarbageDetails]);
+    expect(result!.keyStats).toEqual([{ ...trendWithGarbageDetails, sampleSize: null }]);
   });
 
   it('passes each row\'s well-formed milestones entries through', async () => {

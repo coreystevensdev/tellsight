@@ -79,9 +79,11 @@ export function computeMarginTrend(rows: DataRow[]): MarginTrendStat[] {
       category: null,
       value: recentMargin,
       comparison: priorMargin,
-      // Total months behind the comparison, not just the recent half: a
-      // direction claim ("expanding") rests on both windows agreeing.
-      sampleSize: recentMonths.length + priorMonths.length,
+      // The thinner of the two windows, not their sum. marginTrendMonths
+      // splits into floor/ceil halves, so the sum always collapses back to
+      // sorted.length -- a 6-month dataset split 3-and-3 would report 6, and a
+      // comparison is no stronger than its thinner side.
+      sampleSize: Math.min(recentMonths.length, priorMonths.length),
       details: {
         recentMarginPercent: Math.round(recentMargin * 10) / 10,
         priorMarginPercent: Math.round(priorMargin * 10) / 10,

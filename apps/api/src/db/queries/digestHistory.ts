@@ -84,13 +84,19 @@ export async function getLastDigest(
     orderBy: desc(digestHistory.weekStart),
   });
   if (!row) return row;
+  const keyStats = row.keyStats as ComputedStat[];
   return {
     ...row,
     // key_stats is stored as untyped jsonb; cast at the query-helper layer per
     // schema.ts's comment on the column ("typed at the query-helper layer"), no
-    // runtime validation added here -- spec-digest-lastdigest-hardening.md's
-    // explicit prior scope decision, unchanged by this bundle.
-    keyStats: row.keyStats as ComputedStat[],
+    // shape validation added here -- spec-digest-lastdigest-hardening.md's
+    // explicit prior scope decision, unchanged by this bundle. sampleSize is the
+    // one field normalized regardless: rows written before it existed cast to
+    // `undefined`, and `null` is the honest "no n recorded" value, not an
+    // accidental exemption from whatever floor a reader applies to it.
+    keyStats: Array.isArray(keyStats)
+      ? keyStats.map((stat) => ({ ...stat, sampleSize: stat.sampleSize ?? null }))
+      : keyStats,
     milestones: Array.isArray(row.milestones) ? row.milestones.filter(isDigestMilestone) : [],
   };
 }
@@ -110,7 +116,12 @@ export async function getTrailingDigests(
     // key_stats is untyped jsonb; this cast now also feeds compare_to_prior_periods
     // (a model-facing tool), so entries failing the ComputedStat shape check are
     // dropped rather than cast through unchecked like getLastDigest's keyStats.
-    keyStats: Array.isArray(row.keyStats) ? row.keyStats.filter(isComputedStat) : [],
+    // isComputedStat never checks sampleSize, so a row written before that field
+    // existed would otherwise pass through with it `undefined` -- normalize to
+    // `null` here, the same honest value getLastDigest's cast site uses.
+    keyStats: Array.isArray(row.keyStats)
+      ? row.keyStats.filter(isComputedStat).map((stat) => ({ ...stat, sampleSize: stat.sampleSize ?? null }))
+      : [],
     milestones: Array.isArray(row.milestones) ? row.milestones.filter(isDigestMilestone) : [],
   }));
 }
