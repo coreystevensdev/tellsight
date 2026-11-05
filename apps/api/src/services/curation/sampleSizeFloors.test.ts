@@ -51,16 +51,20 @@ describe('isBelowFloor', () => {
     expect(isBelowFloor({ statType: 'trend', sampleSize: 0 } as ComputedStat)).toBe(true);
   });
 
-  // null is a deliberate "no single n" (year_over_year); a missing field is
-  // an unknown, and undefined < floor is always false in JS, so this used to
+  // null is a deliberate "no single n" (year_over_year); anything non-finite
+  // compares false either direction against a floor in JS, so this used to
   // read as ungated no matter the stat type. null, a number, and zero all
-  // keep their prior answers; only the missing case flips.
+  // keep their prior answers; only the non-finite cases flip. typeof alone
+  // missed NaN and Infinity, both typeof 'number', both still comparing
+  // false, so the predicate is Number.isFinite, not typeof.
   it('gates a missing sample size differently from null, even with no floor', () => {
     expect(isBelowFloor({ statType: 'trend', sampleSize: null } as ComputedStat)).toBe(false);
     expect(isBelowFloor({ statType: 'trend', sampleSize: 12 } as ComputedStat)).toBe(false);
     expect(isBelowFloor({ statType: 'trend', sampleSize: 0 } as ComputedStat)).toBe(true);
     expect(isBelowFloor({ statType: 'trend' } as ComputedStat)).toBe(true);
     expect(isBelowFloor({ statType: 'total' } as ComputedStat)).toBe(true);
+    expect(isBelowFloor({ statType: 'trend', sampleSize: NaN } as ComputedStat)).toBe(true);
+    expect(isBelowFloor({ statType: 'trend', sampleSize: Infinity } as ComputedStat)).toBe(true);
   });
 
   it('leaves a stat type with no floor ungated', () => {

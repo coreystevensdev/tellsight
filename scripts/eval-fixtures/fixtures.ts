@@ -155,15 +155,15 @@ export function cashCrunch(): ComputedStat[] {
         method: 'linear_regression',
         slope: -9000,
         intercept: 24000,
-        // 12 months, matching sampleSize above instead of contradicting it.
-        // formatStatBody's CashForecast case (assembly.ts:117) never reads
-        // basisMonths or basisValues, only startingBalance, projectedMonths,
-        // crossesZeroAtMonth, method and confidence, so populating these
-        // can't move anything the eval scores. The decline is the same
-        // business cash_flow and runway already describe: comfortable
-        // through early 2025, crossing into burning by month four, landing
-        // on -10000 net for the trailing six (median of the last six below,
-        // same figure cash_flow.monthlyNet reports).
+        // 12 months, matching sampleSize's length. Doesn't reach the
+        // prompt (formatStatBody's CashForecast case, assembly.ts:117, never
+        // reads these) or the citable set (validator.ts excludes slope and
+        // intercept on purpose), so populating them is score-neutral.
+        // Regression on these 12 values gives slope -1465/intercept 2474,
+        // not the stated -9000/24000: a pre-existing gap, deferred rather
+        // than fixed here, alongside hasValidDiscriminatorFields's missing
+        // CashForecast case, the reason this went unnoticed in the first
+        // place.
         basisMonths: [
           '2025-01',
           '2025-02',

@@ -44,13 +44,11 @@ export function minimumSampleSize(statType: StatType): number | null {
 export function isBelowFloor(stat: ComputedStat): boolean {
   if (stat.sampleSize === null) return false;
   // null means "no single meaningful n," stated on purpose (year_over_year).
-  // undefined means the field didn't survive a cast or a loosely-typed
-  // factory, an unknown rather than a statement. undefined < floor is always
-  // false in JS, which read as "ungated" until this line existed, three
-  // separate sites (a digest_history row, a test factory, a test for this
-  // file) reached exactly that gap. Fail closed on anything that isn't
-  // actually a number.
-  if (typeof stat.sampleSize !== 'number') return true;
+  // Anything else non-finite, undefined, NaN, Infinity, compares false
+  // either direction against a floor in JS, which read as "ungated" until
+  // this line existed, three separate sites (a digest_history row, a test
+  // factory, a test for this file) reached exactly that gap.
+  if (!Number.isFinite(stat.sampleSize)) return true;
   const floor = minimumSampleSize(stat.statType);
   return floor !== null && stat.sampleSize < floor;
 }
