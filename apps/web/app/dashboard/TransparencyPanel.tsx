@@ -51,13 +51,16 @@ function Badge({ children }: { children: React.ReactNode }) {
 }
 
 // Describes the product's own reticence, not the data's reliability -- a
-// suppressed number isn't wrong, it just doesn't have enough history yet for
-// a sentence to assert something about it.
+// suppressed number isn't wrong, it just doesn't have enough data yet for a
+// sentence to assert something about it. "Data," not "history": average and
+// anomaly gate on a transaction count, not a span of time, so "history"
+// would misstate what's actually thin for those two (StatDetailSheet.tsx
+// draws the same distinction for its own per-stat sentence).
 function suppressedForSampleSizeSentence(count: number): string {
   if (count === 1) {
-    return "1 number in your data doesn't have enough history behind it yet, so I don't cite it.";
+    return "1 number in your data doesn't have enough data behind it yet, so I don't cite it.";
   }
-  return `${count} numbers in your data don't have enough history behind them yet, so I don't cite them.`;
+  return `${count} numbers in your data don't have enough data behind them yet, so I don't cite them.`;
 }
 
 export function TransparencyPanel({ metadata, isOpen, onClose, className }: TransparencyPanelProps) {
