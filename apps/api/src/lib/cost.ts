@@ -10,6 +10,13 @@
  *     Acceptable for an anomaly detector; not acceptable for a global quota.
  *     Move to Redis if/when this needs to be a real spending cap across
  *     replicas.
+ *   - Per-model history. config.ts lets CLAUDE_MODEL_TOOLS differ from
+ *     CLAUDE_MODEL, and the eval harness runs a subject and a judge at once, so
+ *     one shared window would hold two price points at the same time. A median
+ *     over a bimodal distribution describes neither mode: cheap calls hold it
+ *     down and the dearer model's ordinary calls read as anomalies. Measured on
+ *     2026-11-03 with sonnet-4-6 and opus-5 sharing a window: 37 of ~300 calls
+ *     refused, none of them anomalous.
  *   - A refused cost does not seed the median, but ADAPT_AFTER_CONSECUTIVE_REFUSALS
  *     of them in a row clears the window so the floor can follow a real shift.
  *   - Post-call check. By the time we know the cost, the tokens are spent.
@@ -46,7 +53,19 @@ export function computeCost(usage: Usage, model: string = env.CLAUDE_MODEL): num
   );
 }
 
-const history: number[] = [];
+// Keyed by model. A missing key is an unseeded window, which exceedsBudget
+// treats as cold start, so a model's first call seeds its own level rather than
+// being judged against another model's.
+const history = new Map<string, number[]>();
+
+function windowFor(model: string): number[] {
+  let w = history.get(model);
+  if (!w) {
+    w = [];
+    history.set(model, w);
+  }
+  return w;
+}
 
 // A refused cost stays out of history so one runaway prompt cannot raise the
 // floor for everything after it. On its own that leaves the floor unable to
@@ -61,31 +80,36 @@ const history: number[] = [];
 // Clearing rather than admitting the cost: one sample barely moves a 50-entry
 // median, so admitting would need hundreds of refusals to adapt.
 export const ADAPT_AFTER_CONSECUTIVE_REFUSALS = 10;
-let consecutiveRefusals = 0;
+const consecutiveRefusals = new Map<string, number>();
 
-export function recordCost(cost: number): void {
+export function recordCost(cost: number, model: string): void {
   if (!Number.isFinite(cost) || cost < 0) return;
-  consecutiveRefusals = 0;
-  history.push(cost);
-  if (history.length > HISTORY_CAP) history.shift();
+  consecutiveRefusals.set(model, 0);
+  const w = windowFor(model);
+  w.push(cost);
+  if (w.length > HISTORY_CAP) w.shift();
 }
 
 // Call for a cost the gate refused. Returns true when the run was long enough
 // to recalibrate, which the caller logs: a floor moving is worth a line.
 // ABSOLUTE_CEILING_USD still applies afterwards, so recalibration widens the
 // band the median sets and never removes the hard stop.
-export function recordRefusedCost(cost: number): boolean {
+export function recordRefusedCost(cost: number, model: string): boolean {
   if (!Number.isFinite(cost) || cost < 0) return false;
-  consecutiveRefusals += 1;
-  if (consecutiveRefusals < ADAPT_AFTER_CONSECUTIVE_REFUSALS) return false;
-  consecutiveRefusals = 0;
-  history.length = 0;
+  const run = (consecutiveRefusals.get(model) ?? 0) + 1;
+  if (run < ADAPT_AFTER_CONSECUTIVE_REFUSALS) {
+    consecutiveRefusals.set(model, run);
+    return false;
+  }
+  consecutiveRefusals.set(model, 0);
+  windowFor(model).length = 0;
   return true;
 }
 
-export function medianCost(): number | null {
-  if (history.length === 0) return null;
-  const sorted = [...history].sort((a, b) => a - b);
+export function medianCost(model: string): number | null {
+  const w = history.get(model);
+  if (!w || w.length === 0) return null;
+  const sorted = [...w].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   // Bounds are mathematically proven (length > 0, mid < length) but
   // noUncheckedIndexedAccess can't see it. The non-null assertions are safe.
@@ -102,8 +126,8 @@ export interface BudgetCheck {
   median: number | null;
 }
 
-export function exceedsBudget(current: number): BudgetCheck {
-  const median = medianCost();
+export function exceedsBudget(current: number, model: string): BudgetCheck {
+  const median = medianCost(model);
 
   // Cold-start floor: the rolling median is unseeded for the first request,
   // so the absolute ceiling is the only thing that bounds a misconfigured
@@ -121,6 +145,6 @@ export function exceedsBudget(current: number): BudgetCheck {
 }
 
 export function resetHistoryForTests(): void {
-  history.length = 0;
-  consecutiveRefusals = 0;
+  history.clear();
+  consecutiveRefusals.clear();
 }

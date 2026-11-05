@@ -277,7 +277,7 @@ export async function runQaLoop(question: string, ctx: ToolContext, signal?: Abo
     // just-under-cap turns can't evade. Either alone is enough to trip
     // cost-exceeded, checked ahead of the turn cap so a turn that trips both
     // reports the more informative outcome.
-    if (exceedsBudget(totalCost / turnCount).exceeded || totalCost > MAX_LOOP_COST_USD) {
+    if (exceedsBudget(totalCost / turnCount, modelFor('tools')).exceeded || totalCost > MAX_LOOP_COST_USD) {
       forcedTermination = 'cost-exceeded';
     } else if (turnCount >= MAX_TOOL_TURNS) {
       forcedTermination = 'turn-cap';

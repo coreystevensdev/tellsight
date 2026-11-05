@@ -51,7 +51,7 @@ describe('Anthropic runtime policy', () => {
   it('records and returns an allowed request cost', () => {
     expect(applyCostGate(usage, 'generate', 'claude-test')).toBe(0.02);
     expect(mocks.computeCost).toHaveBeenCalledWith(usage, 'claude-test');
-    expect(mocks.recordCost).toHaveBeenCalledWith(0.02);
+    expect(mocks.recordCost).toHaveBeenCalledWith(0.02, 'claude-test');
     expect(mocks.budgetInc).not.toHaveBeenCalled();
   });
 

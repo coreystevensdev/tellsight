@@ -28,10 +28,10 @@ export function applyCostGate(usage: Usage, caller: string, model: string): numb
     return null;
   }
 
-  const budget = exceedsBudget(cost);
+  const budget = exceedsBudget(cost, model);
   if (budget.exceeded) {
     aiCostBudgetExceeded.inc({ caller });
-    const recalibrated = recordRefusedCost(cost);
+    const recalibrated = recordRefusedCost(cost, model);
     logger.warn(
       { cost, cap: budget.cap, median: budget.median, model, recalibrated },
       recalibrated
@@ -40,7 +40,7 @@ export function applyCostGate(usage: Usage, caller: string, model: string): numb
     );
     throw new CostBudgetExceededError(cost, budget.cap);
   }
-  recordCost(cost);
+  recordCost(cost, model);
   return cost;
 }
 
