@@ -41,19 +41,11 @@ export interface QbTransaction {
   PrivateNote?: string;
   TotalAmt?: number;
   Line?: QbLine[];
-  // Inherited from the base Transaction type: Intuit's .NET SDK class
-  // reference lists it on every entity, "A linked (related) transaction...
-  // (Inherited from Transaction.)", the same inheritance TxnDate, DocNumber
-  // and TotalAmt use above. Confirmed, not a guess, though every Intuit
-  // sample (the PHP CRUD sample, the .NET sample, the Postman collection)
-  // puts the actual link on Line instead, which is why Line is the path
-  // that fires in practice.
+  // Inherited onto every entity, but every real Intuit payload puts the
+  // actual link on Line instead, so normalize.ts checks both.
   LinkedTxn?: QbLinkedTxn[];
-  // Payment-only. "The amount that has not been applied to pay amounts
-  // owed for sales transactions" (Intuit's Payment reference). Non-QB-writable,
-  // QuickBooks computes and returns it, so normalize.ts only ever reads it.
-  // Nets out whatever LinkedTxn applied, which is what makes a partially
-  // applied payment answerable without re-deriving the math ourselves.
+  // Payment-only, QuickBooks-computed. Nets out whatever LinkedTxn already
+  // applied, which is what answers a partially applied payment.
   UnappliedAmt?: number;
 
   CustomerRef?: QbRef;

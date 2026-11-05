@@ -1,6 +1,7 @@
 import type {
   NormalizedQbRow,
   QbLine,
+  QbLinkedTxn,
   QbTransaction,
   QbTransactionType,
 } from './types.js';
@@ -32,12 +33,7 @@ const EXPENSE_TYPES = new Set<QbTransactionType>([
 // than something this change should touch.
 const REFUND_TYPES = new Set<QbTransactionType>(['CreditMemo', 'RefundReceipt']);
 
-const INCOME_TYPES = new Set<QbTransactionType>([
-  'Invoice',
-  'Payment',
-  'SalesReceipt',
-  'Deposit',
-]);
+const INCOME_TYPES = new Set<QbTransactionType>(['Invoice', 'Payment', 'SalesReceipt', 'Deposit']);
 
 function getParentCategory(
   txnType: QbTransactionType,
@@ -65,34 +61,20 @@ function carriesItsOwnAmount(line: QbLine): boolean {
   return line.DetailType === undefined || !AGGREGATE_DETAIL_TYPES.has(line.DetailType);
 }
 
-// Reads LinkedTxn from the transaction root as well as every line (see
-// QbTransaction.LinkedTxn in types.ts for the citation): a Payment with no
-// Line array still needs an answer, and the root is where it would carry one.
-function linkedTxnTypes(tx: QbTransaction): Set<string> {
-  const types = new Set<string>();
-  for (const link of tx.LinkedTxn ?? []) types.add(link.TxnType);
-  for (const line of tx.Line ?? []) {
-    for (const link of line.LinkedTxn ?? []) types.add(link.TxnType);
-  }
-  return types;
+function linksToIncomeType(links: QbLinkedTxn[] | undefined): boolean {
+  return (links ?? []).some((link) => INCOME_TYPES.has(link.TxnType as QbTransactionType));
 }
 
-function linksToIncome(tx: QbTransaction): boolean {
-  const linked = linkedTxnTypes(tx);
-  for (const incomeType of INCOME_TYPES) {
-    if (linked.has(incomeType)) return true;
-  }
-  return false;
-}
-
-// A Payment or Deposit whose LinkedTxn names any INCOME_TYPES entity, the
-// Invoice it settles, the Payment it batches out of Undeposited Funds, even
-// a SalesReceipt, restates money that other transaction already recorded.
-// Decided transaction-wide, before the line-count branch below picks a
-// shape, so a lineless payment and a lined one get the same answer.
-function isAlreadyRecorded(tx: QbTransaction, txnType: QbTransactionType): boolean {
-  if (txnType !== 'Payment' && txnType !== 'Deposit') return false;
-  return linksToIncome(tx);
+// Payment only: a LinkedTxn naming any INCOME_TYPES entity, the Invoice it
+// settles or the Payment it batches out of Undeposited Funds, restates
+// money that other transaction already recorded. Reads the root as well as
+// every line since a lineless payment still needs an answer and the root is
+// where it would carry one. Deposit asks the same question per line, below,
+// since a deposit form routinely mixes an already-recorded line with new
+// money in the same transaction.
+function isAlreadyRecorded(tx: QbTransaction): boolean {
+  if (linksToIncomeType(tx.LinkedTxn)) return true;
+  return (tx.Line ?? []).some((line) => linksToIncomeType(line.LinkedTxn));
 }
 
 function getAccountRef(line: QbLine) {
@@ -105,8 +87,7 @@ function getAccountRef(line: QbLine) {
 }
 
 function getLabel(tx: QbTransaction): string | null {
-  const entityName =
-    tx.CustomerRef?.name ?? tx.VendorRef?.name ?? tx.EntityRef?.name;
+  const entityName = tx.CustomerRef?.name ?? tx.VendorRef?.name ?? tx.EntityRef?.name;
   if (entityName) return entityName;
   if (tx.PrivateNote) return tx.PrivateNote;
   if (tx.DocNumber) return tx.DocNumber;
@@ -146,29 +127,58 @@ export function normalizeTransaction(
   tx: QbTransaction,
   txnType: QbTransactionType,
 ): NormalizedQbRow[] {
-  // UnappliedAmt is the net amount QuickBooks already computed after netting
-  // out whatever LinkedTxn applied, so it gets a partially applied payment
-  // right where a plain linked/unlinked check can't: $400 applied out of a
-  // $1,000 payment still leaves $600 with no invoice behind it, and the
-  // linked/unlinked check alone would call the whole payment settled. Only
-  // Payment carries this field; falls back to the LinkedTxn check below when
-  // it's absent rather than assuming every payload has it.
-  if (txnType === 'Payment' && Number.isFinite(tx.UnappliedAmt)) {
-    const unapplied = Math.abs(tx.UnappliedAmt!);
-    return unapplied === 0 ? [] : [uncategorizedRow(tx, txnType, unapplied, 'Income')];
+  if (txnType === 'Payment') {
+    // UnappliedAmt is what QuickBooks already netted out after applying
+    // every LinkedTxn, so it catches a partially applied payment where a
+    // plain linked/unlinked check can't: $400 applied out of $1,000 still
+    // leaves $600 with no invoice behind it. Number() coerces first because
+    // api.ts casts the API response with no runtime validation, so a
+    // stringified amount must not fail the finite check and fall back to
+    // the link rule, dropping that $600.
+    const unapplied = Number(tx.UnappliedAmt);
+    const total = Math.abs(tx.TotalAmt ?? NaN);
+    const isSane = Number.isFinite(unapplied) && unapplied >= 0 && unapplied <= total;
+
+    if (isSane && unapplied > 0) {
+      return [uncategorizedRow(tx, txnType, unapplied, 'Income')];
+    }
+    // Zero alone isn't proof this payment settled something we can see:
+    // QuickBooks can report it off a link we don't treat as income (a
+    // Bill) or no link at all, and trusting it there is how a payment tied
+    // to an expense loses its own money instead of landing as Income. An
+    // out-of-range value (negative, or bigger than the payment) is just as
+    // untrustworthy. Either way, fall through to the same LinkedTxn rule
+    // below that every other payment shape uses.
   }
 
-  if (isAlreadyRecorded(tx, txnType)) return [];
+  if (txnType === 'Payment' && isAlreadyRecorded(tx)) return [];
 
-  const lines = (tx.Line ?? []).filter(carriesItsOwnAmount);
+  const realLines = (tx.Line ?? []).filter(carriesItsOwnAmount);
+
+  // A Deposit mixes "Select the payments" lines (LinkedTxn to the thing
+  // that already recorded this money) with "Add funds" lines (new money,
+  // a loan or owner contribution, with no record anywhere else). Dropping
+  // only the linked lines, rather than the whole transaction the way
+  // Payment does above, is what keeps a $5,000 owner loan swept into the
+  // same deposit as a $500 payment from disappearing along with it.
+  const lines =
+    txnType === 'Deposit'
+      ? realLines.filter((line) => !linksToIncomeType(line.LinkedTxn))
+      : realLines;
+
   const label = getLabel(tx);
   const date = new Date(tx.TxnDate);
   const isRefund = REFUND_TYPES.has(txnType);
 
-  // No line items (a Payment), or nothing left after dropping aggregates (an
-  // invoice whose only line is its subtotal): one synthetic row off TotalAmt.
-  // Returning [] instead would lose the transaction entirely.
   if (lines.length === 0) {
+    // A Deposit whose real lines all linked to income is fully recorded by
+    // whatever they link to; that is different from never having a line to
+    // begin with, and falling back to TotalAmt here would double-count it.
+    if (txnType === 'Deposit' && realLines.length > 0) return [];
+
+    // No line items (a Payment), or nothing left after dropping aggregates
+    // (an invoice whose only line is its subtotal): one synthetic row off
+    // TotalAmt. Returning [] instead would lose the transaction entirely.
     return [
       uncategorizedRow(
         tx,
@@ -185,7 +195,7 @@ export function normalizeTransaction(
 
   return lines.map((line, index) => {
     const accountRef = getAccountRef(line);
-    const category = isRefund ? 'Refunds' : accountRef?.name ?? 'Uncategorized';
+    const category = isRefund ? 'Refunds' : (accountRef?.name ?? 'Uncategorized');
     const parentCategory = getParentCategory(txnType, line);
     // QuickBooks line Ids are 1-based and this index is 0-based, so a bare
     // String(index) collides with the Id of the line before it. That is what

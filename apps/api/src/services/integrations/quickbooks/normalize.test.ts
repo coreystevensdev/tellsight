@@ -73,10 +73,7 @@ describe('normalizeTransaction', () => {
   });
 
   it('maps Bill to Expenses', () => {
-    const [row] = normalizeTransaction(
-      makePurchase({ Id: 'tx-bill' }),
-      'Bill',
-    );
+    const [row] = normalizeTransaction(makePurchase({ Id: 'tx-bill' }), 'Bill');
     expect(row!.parentCategory).toBe('Expenses');
   });
 
@@ -302,8 +299,16 @@ describe('normalizeTransactions', () => {
   it('expands multi-line transactions when flattening', () => {
     const multiLine = makePurchase({
       Line: [
-        { Id: 'a', Amount: 10, AccountBasedExpenseLineDetail: { AccountRef: { value: '1', name: 'A' } } },
-        { Id: 'b', Amount: 20, AccountBasedExpenseLineDetail: { AccountRef: { value: '2', name: 'B' } } },
+        {
+          Id: 'a',
+          Amount: 10,
+          AccountBasedExpenseLineDetail: { AccountRef: { value: '1', name: 'A' } },
+        },
+        {
+          Id: 'b',
+          Amount: 20,
+          AccountBasedExpenseLineDetail: { AccountRef: { value: '2', name: 'B' } },
+        },
       ],
     });
     const rows = normalizeTransactions([multiLine], 'Purchase');
@@ -401,9 +406,24 @@ describe('aggregate lines', () => {
       Id: '130',
       TotalAmt: 335.25,
       Line: [
-        { Id: '1', Amount: 275, DetailType: 'SalesItemLineDetail', SalesItemLineDetail: { ItemRef: { value: '5', name: 'Rock Fountain' } } },
-        { Id: '2', Amount: 12.75, DetailType: 'SalesItemLineDetail', SalesItemLineDetail: { ItemRef: { value: '11', name: 'Pump' } } },
-        { Id: '3', Amount: 47.5, DetailType: 'SalesItemLineDetail', SalesItemLineDetail: { ItemRef: { value: '3', name: 'Concrete' } } },
+        {
+          Id: '1',
+          Amount: 275,
+          DetailType: 'SalesItemLineDetail',
+          SalesItemLineDetail: { ItemRef: { value: '5', name: 'Rock Fountain' } },
+        },
+        {
+          Id: '2',
+          Amount: 12.75,
+          DetailType: 'SalesItemLineDetail',
+          SalesItemLineDetail: { ItemRef: { value: '11', name: 'Pump' } },
+        },
+        {
+          Id: '3',
+          Amount: 47.5,
+          DetailType: 'SalesItemLineDetail',
+          SalesItemLineDetail: { ItemRef: { value: '3', name: 'Concrete' } },
+        },
         { Amount: 335.25, DetailType: 'SubTotalLineDetail' },
       ],
     });
@@ -429,7 +449,12 @@ describe('aggregate lines', () => {
   it('drops a DescriptionOnly line, which carries text rather than money', () => {
     const tx = makeInvoice({
       Line: [
-        { Id: '1', Amount: 100, DetailType: 'SalesItemLineDetail', SalesItemLineDetail: { ItemRef: { value: '6', name: 'Gardening' } } },
+        {
+          Id: '1',
+          Amount: 100,
+          DetailType: 'SalesItemLineDetail',
+          SalesItemLineDetail: { ItemRef: { value: '6', name: 'Gardening' } },
+        },
         { Id: '2', Amount: 0, DetailType: 'DescriptionOnly' },
       ],
     });
@@ -441,7 +466,13 @@ describe('aggregate lines', () => {
 
   it('keeps a line with no DetailType rather than silently dropping money', () => {
     const tx = makeInvoice({
-      Line: [{ Id: '1', Amount: 42, SalesItemLineDetail: { ItemRef: { value: '6', name: 'Gardening' } } }],
+      Line: [
+        {
+          Id: '1',
+          Amount: 42,
+          SalesItemLineDetail: { ItemRef: { value: '6', name: 'Gardening' } },
+        },
+      ],
     });
 
     const rows = normalizeTransaction(tx, 'Invoice');
@@ -518,14 +549,18 @@ describe('LinkedTxn settlement, DW-231', () => {
     // body might not carry it, and this is what the normalizer does without
     // it. See the next test for the same $1,000/$400 shape with the field
     // present, where the answer changes.
-    const invoice = makeInvoice({ Id: 'inv-partial', TotalAmt: 1000, Line: [
-      {
-        Id: '1',
-        Amount: 1000,
-        DetailType: 'SalesItemLineDetail',
-        SalesItemLineDetail: { ItemRef: { value: '1', name: 'Consulting' } },
-      },
-    ] });
+    const invoice = makeInvoice({
+      Id: 'inv-partial',
+      TotalAmt: 1000,
+      Line: [
+        {
+          Id: '1',
+          Amount: 1000,
+          DetailType: 'SalesItemLineDetail',
+          SalesItemLineDetail: { ItemRef: { value: '1', name: 'Consulting' } },
+        },
+      ],
+    });
     const partialPayment = makePayment({
       Id: 'pay-partial',
       TotalAmt: 400,
@@ -552,14 +587,18 @@ describe('LinkedTxn settlement, DW-231', () => {
     // UnappliedAmt. The LinkedTxn-only rule above would call this fully
     // settled and add nothing; UnappliedAmt knows $600 of it was not applied
     // to anything and is real, uncounted money.
-    const invoice = makeInvoice({ Id: 'inv-partial-2', TotalAmt: 1000, Line: [
-      {
-        Id: '1',
-        Amount: 1000,
-        DetailType: 'SalesItemLineDetail',
-        SalesItemLineDetail: { ItemRef: { value: '1', name: 'Consulting' } },
-      },
-    ] });
+    const invoice = makeInvoice({
+      Id: 'inv-partial-2',
+      TotalAmt: 1000,
+      Line: [
+        {
+          Id: '1',
+          Amount: 1000,
+          DetailType: 'SalesItemLineDetail',
+          SalesItemLineDetail: { ItemRef: { value: '1', name: 'Consulting' } },
+        },
+      ],
+    });
     const partialPayment = makePayment({
       Id: 'pay-partial-2',
       TotalAmt: 1000,
@@ -583,14 +622,18 @@ describe('LinkedTxn settlement, DW-231', () => {
   });
 
   it('a fully-applied payment with UnappliedAmt of 0 adds nothing', () => {
-    const invoice = makeInvoice({ Id: 'inv-full', TotalAmt: 1000, Line: [
-      {
-        Id: '1',
-        Amount: 1000,
-        DetailType: 'SalesItemLineDetail',
-        SalesItemLineDetail: { ItemRef: { value: '1', name: 'Consulting' } },
-      },
-    ] });
+    const invoice = makeInvoice({
+      Id: 'inv-full',
+      TotalAmt: 1000,
+      Line: [
+        {
+          Id: '1',
+          Amount: 1000,
+          DetailType: 'SalesItemLineDetail',
+          SalesItemLineDetail: { ItemRef: { value: '1', name: 'Consulting' } },
+        },
+      ],
+    });
     const fullyAppliedPayment = makePayment({
       Id: 'pay-full',
       TotalAmt: 1000,
@@ -710,5 +753,115 @@ describe('LinkedTxn settlement, DW-231', () => {
 
     expect(income(rows)).toBe(5000);
     expect(rows[0]!.category).toBe('Owner Loan');
+  });
+
+  // The deposit form has two sections, "Select the payments" (LinkedTxn,
+  // already recorded) and "Add funds to this deposit" (new money), and a
+  // real deposit routinely has both. The three tests above are each pure
+  // one or the other, which is why suppressing the whole transaction on
+  // "any line links" passed every one of them while still losing the
+  // add-funds money.
+  it('a mixed deposit drops the linked line and keeps the add-funds line', () => {
+    const sweptPayment = makePayment({ Id: 'pay-swept', TotalAmt: 500 });
+    const deposit: QbTransaction = {
+      Id: 'dep-mixed',
+      TxnDate: '2026-04-14',
+      TotalAmt: 5500,
+      Line: [
+        {
+          Id: '1',
+          Amount: 500,
+          LinkedTxn: [{ TxnId: sweptPayment.Id, TxnType: 'Payment' }],
+        },
+        {
+          Id: '2',
+          Amount: 5000,
+          DetailType: 'DepositLineDetail',
+          DepositLineDetail: { AccountRef: { value: '2', name: 'Owner Loan' } },
+        },
+      ],
+    };
+
+    const rows = normalizeTransaction(deposit, 'Deposit');
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.amount).toBe('5000');
+    expect(rows[0]!.category).toBe('Owner Loan');
+    expect(rows[0]!.sourceId).toBe('dep-mixed-2');
+  });
+});
+
+// DW-233 follow-up: UnappliedAmt ran before any look at links, so a payment
+// reporting 0 with nothing to corroborate it, no LinkedTxn at all, or one
+// linked only to an expense, returned zero rows instead of its own TotalAmt.
+describe('UnappliedAmt needs a link to income to suppress, DW-233 follow-up', () => {
+  it('UnappliedAmt of 0 with no LinkedTxn at all falls back to TotalAmt as Income', () => {
+    const payment = makePayment({ Id: 'pay-zero-unlinked', TotalAmt: 1000, UnappliedAmt: 0 });
+
+    const rows = normalizeTransaction(payment, 'Payment');
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.amount).toBe('1000');
+    expect(rows[0]!.parentCategory).toBe('Income');
+  });
+
+  it('UnappliedAmt of 0 linked only to a Bill falls back to TotalAmt instead of vanishing', () => {
+    // A Bill is EXPENSE_TYPES, not INCOME_TYPES, so it settles nothing this
+    // payment's own revenue is already counted by. Reproduces the bug found
+    // by execution: this used to return zero rows, cash vanishing on an
+    // expense link.
+    const payment = makePayment({
+      Id: 'pay-zero-bill',
+      TotalAmt: 1000,
+      UnappliedAmt: 0,
+      LinkedTxn: [{ TxnId: 'bill-1', TxnType: 'Bill' }],
+    });
+
+    const rows = normalizeTransaction(payment, 'Payment');
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.amount).toBe('1000');
+    expect(rows[0]!.parentCategory).toBe('Income');
+  });
+});
+
+describe('UnappliedAmt numeric guards, DW-233 follow-up', () => {
+  it('a stringified UnappliedAmt is coerced rather than falling back to the link rule', () => {
+    // api.ts:113 casts the QuickBooks response with no runtime validation,
+    // so a payload where UnappliedAmt arrives as text is not hypothetical.
+    // Number.isFinite alone does not coerce, so this used to silently
+    // revert to suppression and drop the $600 remainder.
+    const payment = makePayment({
+      Id: 'pay-string-unapplied',
+      TotalAmt: 1000,
+      UnappliedAmt: '600' as unknown as number,
+    });
+
+    const rows = normalizeTransaction(payment, 'Payment');
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.amount).toBe('600');
+  });
+
+  it('an UnappliedAmt bigger than TotalAmt is unusable, not a bigger Income row', () => {
+    const payment = makePayment({ Id: 'pay-over-unapplied', TotalAmt: 1000, UnappliedAmt: 1500 });
+
+    const rows = normalizeTransaction(payment, 'Payment');
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.amount).toBe('1000');
+  });
+
+  it('a negative UnappliedAmt is unusable, not a positive Income row via Math.abs', () => {
+    const payment = makePayment({
+      Id: 'pay-negative-unapplied',
+      TotalAmt: 1000,
+      UnappliedAmt: -600,
+    });
+
+    const rows = normalizeTransaction(payment, 'Payment');
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.amount).toBe('1000');
   });
 });
