@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 
 import { FIXTURES } from './fixtures.js';
 import { hasValidDiscriminatorFields } from '../../apps/api/src/services/curation/statIdentity.js';
+import { isBelowFloor } from '../../apps/api/src/services/curation/sampleSizeFloors.js';
 
 // The third guard over these fixtures, after arithmetic and dates. Those two ask
 // whether the numbers could have been computed and whether the dates could have
@@ -24,7 +25,10 @@ describe('eval fixture shape', () => {
     const rejected = FIXTURES.flatMap((fixture) =>
       fixture
         .build()
-        .filter((stat) => !hasValidDiscriminatorFields({ statType: stat.statType, details: stat.details }))
+        .filter(
+          (stat) =>
+            !hasValidDiscriminatorFields({ statType: stat.statType, details: stat.details }),
+        )
         .map(
           (stat) =>
             `${fixture.id}/${stat.statType}/${stat.category ?? '_'}: ${JSON.stringify(stat.details)}`,
@@ -34,6 +38,26 @@ describe('eval fixture shape', () => {
     expect(
       rejected,
       'these fixture stats carry field values production would reject, so the eval is scoring a prompt it cannot produce',
+    ).toEqual([]);
+  });
+
+  // assembly.ts gates on isBelowFloor before a stat ever reaches the prompt. A
+  // fixture stat thin enough to be gated would score against a summary built
+  // from fewer stats than the fixture claims to grade, silently.
+  it('every fixture stat clears its own sample-size floor', () => {
+    const thin = FIXTURES.flatMap((fixture) =>
+      fixture
+        .build()
+        .filter((stat) => isBelowFloor(stat))
+        .map(
+          (stat) =>
+            `${fixture.id}/${stat.statType}/${stat.category ?? '_'}: sampleSize ${stat.sampleSize}`,
+        ),
+    );
+
+    expect(
+      thin,
+      'these fixture stats fall below their own sample-size floor and would be gated out of the prompt',
     ).toEqual([]);
   });
 });

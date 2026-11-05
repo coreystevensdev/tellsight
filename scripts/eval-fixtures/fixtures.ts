@@ -44,6 +44,9 @@ export function healthyGrowth(): ComputedStat[] {
       statType: 'trend',
       category: 'Revenue',
       value: 1666,
+      // Mirrors dataPoints below: computeTrends sets sampleSize from the same
+      // monthly count (statisticalAnalysis.ts:52), so the two can never differ.
+      sampleSize: 6,
       details: {
         slope: 1666,
         intercept: 40000,
@@ -59,6 +62,9 @@ export function healthyGrowth(): ComputedStat[] {
       statType: 'margin_trend',
       category: null,
       value: 24,
+      // The thinner of the recent/prior windows (marginMetrics.ts:86). Eight
+      // months a side, real history behind the comparison, not the bare floor.
+      sampleSize: 8,
       details: {
         recentMarginPercent: 24,
         priorMarginPercent: 19,
@@ -71,6 +77,7 @@ export function healthyGrowth(): ComputedStat[] {
       statType: 'cash_flow',
       category: null,
       value: 9000,
+      sampleSize: 6,
       details: {
         monthlyNet: 9000,
         trailingMonths: 6,
@@ -88,6 +95,7 @@ export function cashCrunch(): ComputedStat[] {
       statType: 'runway',
       category: null,
       value: 2.4,
+      sampleSize: 6,
       details: {
         cashOnHand: 24000,
         monthlyNet: -10000,
@@ -101,6 +109,7 @@ export function cashCrunch(): ComputedStat[] {
       statType: 'cash_flow',
       category: null,
       value: -10000,
+      sampleSize: 6,
       details: {
         monthlyNet: -10000,
         trailingMonths: 6,
@@ -121,6 +130,9 @@ export function cashCrunch(): ComputedStat[] {
       statType: 'break_even',
       category: null,
       value: 80000,
+      // Inherits margin_trend's sampleSize outright (financialMetrics.ts:161),
+      // same floor and same real-margin reasoning as healthyGrowth's.
+      sampleSize: 8,
       details: {
         monthlyFixedCosts: 16000,
         marginPercent: 20,
@@ -134,6 +146,9 @@ export function cashCrunch(): ComputedStat[] {
       statType: 'cash_forecast',
       category: null,
       value: -3000,
+      // netsFromBuckets defaults to a 12-month basis window
+      // (cashFlowMetrics.ts:132), a year of history behind the regression.
+      sampleSize: 12,
       details: {
         startingBalance: 24000,
         asOfDate: '2026-01-01',
@@ -160,6 +175,10 @@ export function seasonalAnomaly(): ComputedStat[] {
       statType: 'anomaly',
       category: 'Revenue',
       value: 28000,
+      // The category baseline the IQR fence is built on, every Revenue row
+      // across the window (statisticalAnalysis.ts:127), not just the one
+      // flagged December transaction.
+      sampleSize: 20,
       details: {
         direction: 'above',
         zScore: 2.6,
@@ -172,6 +191,9 @@ export function seasonalAnomaly(): ComputedStat[] {
       statType: 'year_over_year',
       category: 'Revenue',
       value: 16000,
+      // Null by construction: this compares two monthly totals, not a count
+      // (revenueMetrics.ts:51), so there's no single n to report.
+      sampleSize: null,
       details: {
         // 50000 against 45000 was three times the 12000-18000 range the anomaly
         // stat declares normal for this business, on a month five months after
@@ -193,6 +215,9 @@ export function seasonalAnomaly(): ComputedStat[] {
       statType: 'seasonal_projection',
       category: 'Revenue',
       value: 15000,
+      // Matches basisValues.length below, same count computeSeasonalProjection
+      // assigns to both (revenueMetrics.ts:114): two basis Julys.
+      sampleSize: 2,
       details: {
         projectedMonth: '2026-07',
         projectedAmount: 15000,
@@ -210,6 +235,7 @@ export function seasonalAnomaly(): ComputedStat[] {
       statType: 'trend',
       category: 'Revenue',
       value: 600,
+      sampleSize: 6,
       details: {
         slope: 600,
         intercept: 13000,
@@ -225,6 +251,7 @@ export function seasonalAnomaly(): ComputedStat[] {
       statType: 'trend',
       category: 'Marketing',
       value: -80,
+      sampleSize: 6,
       details: {
         slope: -80,
         intercept: 1200,
