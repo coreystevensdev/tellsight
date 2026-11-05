@@ -95,6 +95,11 @@ export async function getLastDigest(
     // accidental exemption from whatever floor a reader applies to it.
     keyStats: Array.isArray(row.keyStats)
       ? row.keyStats.map((stat) => {
+          // Passed through unchanged, not dropped: this function does no shape
+          // validation by design (see the comment above), so a caller reading
+          // .sampleSize off a null/non-object element here throws one `await`
+          // before prepareDigestContext's try/catch, which exists precisely to
+          // absorb a malformed prior row.
           if (stat === null || typeof stat !== 'object') return stat as ComputedStat;
           return { ...(stat as ComputedStat), sampleSize: (stat as ComputedStat).sampleSize ?? null };
         })

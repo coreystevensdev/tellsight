@@ -27,9 +27,20 @@ import { StatType } from './types.js';
 // quartile boundary averages two real points instead of resting on one.
 const SAMPLE_SIZE_FLOORS: Partial<Record<StatType, number>> = {
   [StatType.Average]: 3, // first n where the median is a real middle value, not an average of two restating the mean
+  // Raising this moves the seed snapshot (scripts/__snapshots__/seed-validation.snap.json,
+  // built on 12 months of data) and breaks eval-fixtures/fixtures.ts's trend
+  // fixture, which sits at sampleSize 6 on purpose. Both would need updating
+  // in the same change, not as a surprise.
   [StatType.Trend]: 6, // one outlier in 6 points is a sixth of the signal vs. a third at the compute floor (trendMinDataPoints: 3, config/scoring-weights.json); move both together
   [StatType.Anomaly]: 8, // see above
+  // Raising this moves the seed snapshot the same way Trend's does -- the
+  // seed fixture's 12 months split 6-and-6 sits exactly at this floor, not
+  // above it, and eval-fixtures/fixtures.ts has margin_trend entries at the
+  // same number.
   [StatType.MarginTrend]: 6, // per window, the thinner half (marginMetrics.ts:86), so this needs 12 months of data total, 6 on each side
+  // Raising this breaks eval-fixtures/fixtures.ts's seasonal_projection
+  // fixture, which sits at sampleSize 2 on purpose, one basis value above the
+  // floor below.
   [StatType.SeasonalProjection]: 2, // see above; one basis value is already the code's own 'low' confidence (revenueMetrics.ts:106)
   [StatType.CashFlow]: 3, // monthlyNet is a median (cashFlowMetrics.ts:64), same reasoning as average; trailingMonths is pinned to 3 everywhere today (computation.ts:81), so this only guards a future shorter window
   [StatType.Runway]: 3, // inherits cash_flow's trailingMonths outright (financialMetrics.ts:70)
