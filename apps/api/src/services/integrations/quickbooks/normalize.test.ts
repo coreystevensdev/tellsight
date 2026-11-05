@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { normalizeTransaction, normalizeTransactions } from './normalize.js';
-import type { QbTransaction } from './types.js';
+import type { QbTransaction, QbTransactionType } from './types.js';
 
 function makePurchase(overrides: Partial<QbTransaction> = {}): QbTransaction {
   return {
@@ -864,4 +864,41 @@ describe('UnappliedAmt numeric guards, DW-233 follow-up', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]!.amount).toBe('1000');
   });
+});
+
+// I6: the review said treating a CreditMemo or RefundReceipt link as
+// "already counted" was wrong on both sign and direction, and asked for the
+// suppression set to narrow. Moving both into REFUND_TYPES (8e7e6be)
+// narrowed linksToIncomeType on its own; this pins the resulting set so a
+// future change to either Set has to look at this test, not just discover
+// the gap by execution the way the review did with Bill.
+describe('which LinkedTxn types suppress a payment, I6', () => {
+  const suppresses: QbTransactionType[] = ['Invoice', 'SalesReceipt', 'Deposit'];
+  const doesNotSuppress: QbTransactionType[] = ['CreditMemo', 'RefundReceipt', 'Bill'];
+
+  for (const txnType of suppresses) {
+    it(`a ${txnType} link suppresses the payment`, () => {
+      const payment = makePayment({
+        Id: `pay-link-${txnType}`,
+        TotalAmt: 500,
+        LinkedTxn: [{ TxnId: 'linked-1', TxnType: txnType }],
+      });
+
+      expect(normalizeTransaction(payment, 'Payment')).toEqual([]);
+    });
+  }
+
+  for (const txnType of doesNotSuppress) {
+    it(`a ${txnType} link does not suppress the payment`, () => {
+      const payment = makePayment({
+        Id: `pay-link-${txnType}`,
+        TotalAmt: 500,
+        LinkedTxn: [{ TxnId: 'linked-1', TxnType: txnType }],
+      });
+
+      const rows = normalizeTransaction(payment, 'Payment');
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.parentCategory).toBe('Income');
+    });
+  }
 });
