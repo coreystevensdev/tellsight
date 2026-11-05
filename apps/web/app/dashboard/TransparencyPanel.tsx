@@ -50,6 +50,16 @@ function Badge({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Describes the product's own reticence, not the data's reliability -- a
+// suppressed number isn't wrong, it just doesn't have enough history yet for
+// a sentence to assert something about it.
+function suppressedForSampleSizeSentence(count: number): string {
+  if (count === 1) {
+    return "1 number in your data doesn't have enough history behind it yet, so I don't cite it.";
+  }
+  return `${count} numbers in your data don't have enough history behind them yet, so I don't cite them.`;
+}
+
 export function TransparencyPanel({ metadata, isOpen, onClose, className }: TransparencyPanelProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
 
@@ -69,6 +79,8 @@ export function TransparencyPanel({ metadata, isOpen, onClose, className }: Tran
   }, [isOpen, onClose]);
 
   if (!isOpen || !metadata) return null;
+
+  const suppressedCount = metadata.suppressedForSampleSize ?? 0;
 
   return (
     <aside
@@ -105,6 +117,11 @@ export function TransparencyPanel({ metadata, isOpen, onClose, className }: Tran
         <p className="mt-2 text-sm text-muted-foreground">
           {metadata.insightCount} key insights from {metadata.categoryCount} categories
         </p>
+        {suppressedCount > 0 && (
+          <p className="mt-2 text-sm text-muted-foreground">
+            {suppressedForSampleSizeSentence(suppressedCount)}
+          </p>
+        )}
       </div>
 
       {/* scoring weights */}

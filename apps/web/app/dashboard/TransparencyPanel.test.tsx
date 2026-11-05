@@ -102,4 +102,37 @@ describe('TransparencyPanel', () => {
     expect(within(panel).queryByText('cash_flow')).toBeNull();
     expect(within(panel).queryByText('runway')).toBeNull();
   });
+
+  it('renders no suppression sentence when suppressedForSampleSize is absent', () => {
+    render(<TransparencyPanel metadata={metadata} isOpen={true} onClose={vi.fn()} />);
+
+    expect(screen.queryByText(/don't have enough history/)).toBeNull();
+  });
+
+  it('renders no suppression sentence when suppressedForSampleSize is zero', () => {
+    const customMeta = { ...metadata, suppressedForSampleSize: 0 };
+    render(<TransparencyPanel metadata={customMeta} isOpen={true} onClose={vi.fn()} />);
+
+    expect(screen.queryByText(/don't have enough history/)).toBeNull();
+  });
+
+  it('renders the plural suppression sentence with the count when suppressedForSampleSize is above zero', () => {
+    const customMeta = { ...metadata, suppressedForSampleSize: 7 };
+    render(<TransparencyPanel metadata={customMeta} isOpen={true} onClose={vi.fn()} />);
+
+    const panel = screen.getByRole('complementary');
+    expect(
+      within(panel).getByText("7 numbers in your data don't have enough history behind them yet, so I don't cite them."),
+    ).toBeTruthy();
+  });
+
+  it('renders the singular suppression sentence when suppressedForSampleSize is exactly one', () => {
+    const customMeta = { ...metadata, suppressedForSampleSize: 1 };
+    render(<TransparencyPanel metadata={customMeta} isOpen={true} onClose={vi.fn()} />);
+
+    const panel = screen.getByRole('complementary');
+    expect(
+      within(panel).getByText("1 number in your data doesn't have enough history behind it yet, so I don't cite it."),
+    ).toBeTruthy();
+  });
 });
