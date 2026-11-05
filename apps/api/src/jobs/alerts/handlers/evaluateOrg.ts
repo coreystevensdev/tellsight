@@ -170,8 +170,10 @@ export async function handleEvaluateOrgJob(job: Job): Promise<void> {
 
   // dbAdmin, not the default client: this runs from a cross-org worker with
   // no per-request RLS session, same reasoning as every other query call in
-  // this handler.
-  const insights = await runCurationPipeline(orgId, datasetId, dbAdmin, financials, activeCorrectionIds);
+  // this handler. Rule matching works against the same topN-capped pool it
+  // always has, scoredPool is unused here, the sample-size floor doesn't
+  // apply to alerts (see isPreselected in assemblePrompt).
+  const { insights } = await runCurationPipeline(orgId, datasetId, dbAdmin, financials, activeCorrectionIds);
 
   // cash_burn_spikes reads a separate cash-flow signal from the one in
   // `insights`: the shared curation pipeline suppresses CashFlow for orgs

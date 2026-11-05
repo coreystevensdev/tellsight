@@ -157,10 +157,10 @@ function specificityScore(stat: ComputedStat): number {
 
 // excludedStatIds is the only allowed effect of an approved Tier 2 stat
 // correction (see stat-corrections intent-contract): a suppression set
-// applied before topN truncation, never text injected into the prompt.
+// applied before ranking, never text injected into the prompt.
 // datasetId is required to compute an id worth excluding by, callers with
 // no corrections in play can omit both and nothing changes.
-export function scoreInsights(
+export function rankInsights(
   stats: ComputedStat[],
   excludedStatIds?: Set<string>,
   datasetId?: number,
@@ -177,7 +177,7 @@ export function scoreInsights(
     // nothing to score.
     logger.warn(
       { hasExcludedStatIds: excludedStatIds !== undefined, hasDatasetId: datasetId !== undefined },
-      'scoreInsights called with only one of excludedStatIds/datasetId; exclusion silently skipped',
+      'rankInsights called with only one of excludedStatIds/datasetId; exclusion silently skipped',
     );
   }
 
@@ -209,5 +209,18 @@ export function scoreInsights(
 
   scored.sort((a, b) => b.score - a.score);
 
-  return scored.slice(0, scoringConfig.topN);
+  return scored;
+}
+
+// Thin wrapper kept for every caller that only ever wanted the top-N slice
+// (the stat-detail path, NL Q&A, alert rule matching): same ranking,
+// capped the way it always has been. assemblePrompt needs the full ranked
+// pool instead, see runCurationPipeline's `scoredPool`, so a thin stat that
+// outranks a thick one can be filtered out before the cap rather than after.
+export function scoreInsights(
+  stats: ComputedStat[],
+  excludedStatIds?: Set<string>,
+  datasetId?: number,
+): ScoredInsight[] {
+  return rankInsights(stats, excludedStatIds, datasetId).slice(0, scoringConfig.topN);
 }

@@ -4,12 +4,25 @@ import type { Mock } from 'vitest';
 import type { ScoredInsight, TrendStat, CategoryBreakdownStat } from './types.js';
 import { StatType } from './types.js';
 
+// assemblePrompt now loads scoring.js for the sample-size gate's topN cap,
+// and scoring.js imports the real logger, which imports the real config and
+// throws on a test host with no .env.
+vi.mock('../../lib/logger.js', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+
 vi.mock('node:fs', () => ({
   // The assembly loader looks for split templates first (-system.md / -user.md),
   // then falls back to the single-file convention. Tests stay on the single-file
   // path by throwing ENOENT for split filenames, the legacy template content
   // below still drives every assertion.
   readFileSync: vi.fn((path: string) => {
+    // assemblePrompt now loads scoring.ts's config too (topN, for the
+    // filter-then-cap gate), so this mock has to answer that path with real
+    // JSON or scoring.ts's module load throws before any test body runs.
+    if (path.includes('scoring-weights.json')) {
+      return '{"version":"1.0","topN":8,"weights":{"novelty":0.35,"actionability":0.4,"specificity":0.25},"thresholds":{"anomalyZScore":2,"trendMinDataPoints":3,"significantChangePercent":10}}';
+    }
     if (path.includes('-system.md') || path.includes('-user.md')) {
       const err = new Error('ENOENT: no such file (test mock)') as Error & { code: string };
       err.code = 'ENOENT';
@@ -109,6 +122,9 @@ function scoredBreakdown(overrides: Partial<CategoryBreakdownStat> = {}): Scored
 function setDefaultFsMock(readFileSyncMock: Mock) {
   readFileSyncMock.mockImplementation((path: unknown) => {
     const p = String(path);
+    if (p.includes('scoring-weights.json')) {
+      return '{"version":"1.0","topN":8,"weights":{"novelty":0.35,"actionability":0.4,"specificity":0.25},"thresholds":{"anomalyZScore":2,"trendMinDataPoints":3,"significantChangePercent":10}}';
+    }
     if (p.includes('-system.md') || p.includes('-user.md')) {
       const err = new Error('ENOENT (test mock)') as Error & { code: string };
       err.code = 'ENOENT';
@@ -173,7 +189,12 @@ describe('assemblePrompt', () => {
 
   it('accepts a custom prompt version', async () => {
     const { readFileSync } = await import('node:fs');
-    vi.mocked(readFileSync).mockReturnValue('custom {{statSummaries}} {{statTypeList}} {{categoryCount}} {{insightCount}}');
+    vi.mocked(readFileSync).mockImplementation((path: unknown) => {
+      if (String(path).includes('scoring-weights.json')) {
+        return '{"version":"1.0","topN":8,"weights":{"novelty":0.35,"actionability":0.4,"specificity":0.25},"thresholds":{"anomalyZScore":2,"trendMinDataPoints":3,"significantChangePercent":10}}';
+      }
+      return 'custom {{statSummaries}} {{statTypeList}} {{categoryCount}} {{insightCount}}';
+    });
 
     const { assemblePrompt } = await import('./assembly.js');
     const result = assemblePrompt(fixtureInsights, 1, 'v2');
@@ -188,6 +209,9 @@ describe('assemblePrompt', () => {
     // entire prompt, split-file mode would compose system + user instead.
     vi.mocked(readFileSync).mockImplementation((path: unknown) => {
       const p = String(path);
+      if (p.includes('scoring-weights.json')) {
+        return '{"version":"1.0","topN":8,"weights":{"novelty":0.35,"actionability":0.4,"specificity":0.25},"thresholds":{"anomalyZScore":2,"trendMinDataPoints":3,"significantChangePercent":10}}';
+      }
       if (p.includes('-system.md') || p.includes('-user.md')) {
         const err = new Error('ENOENT (test mock)') as Error & { code: string };
         err.code = 'ENOENT';
@@ -207,6 +231,9 @@ describe('assemblePrompt', () => {
     const { readFileSync } = await import('node:fs');
     vi.mocked(readFileSync).mockImplementation((path: unknown) => {
       const p = String(path);
+      if (p.includes('scoring-weights.json')) {
+        return '{"version":"1.0","topN":8,"weights":{"novelty":0.35,"actionability":0.4,"specificity":0.25},"thresholds":{"anomalyZScore":2,"trendMinDataPoints":3,"significantChangePercent":10}}';
+      }
       if (p.includes('-system.md') || p.includes('-user.md')) {
         const err = new Error('ENOENT (test mock)') as Error & { code: string };
         err.code = 'ENOENT';
@@ -393,6 +420,9 @@ describe('assemblePrompt', () => {
     const { readFileSync } = await import('node:fs');
     vi.mocked(readFileSync).mockImplementation((path: unknown) => {
       const p = String(path);
+      if (p.includes('scoring-weights.json')) {
+        return '{"version":"1.0","topN":8,"weights":{"novelty":0.35,"actionability":0.4,"specificity":0.25},"thresholds":{"anomalyZScore":2,"trendMinDataPoints":3,"significantChangePercent":10}}';
+      }
       if (p.includes('-system.md') || p.includes('-user.md')) {
         const err = new Error('ENOENT (test mock)') as Error & { code: string };
         err.code = 'ENOENT';
@@ -411,6 +441,9 @@ describe('assemblePrompt', () => {
     const { readFileSync } = await import('node:fs');
     vi.mocked(readFileSync).mockImplementation((path: unknown) => {
       const p = String(path);
+      if (p.includes('scoring-weights.json')) {
+        return '{"version":"1.0","topN":8,"weights":{"novelty":0.35,"actionability":0.4,"specificity":0.25},"thresholds":{"anomalyZScore":2,"trendMinDataPoints":3,"significantChangePercent":10}}';
+      }
       if (p.includes('-system.md') || p.includes('-user.md')) {
         const err = new Error('ENOENT (test mock)') as Error & { code: string };
         err.code = 'ENOENT';
@@ -429,6 +462,9 @@ describe('assemblePrompt', () => {
     const { readFileSync } = await import('node:fs');
     vi.mocked(readFileSync).mockImplementation((path: unknown) => {
       const p = String(path);
+      if (p.includes('scoring-weights.json')) {
+        return '{"version":"1.0","topN":8,"weights":{"novelty":0.35,"actionability":0.4,"specificity":0.25},"thresholds":{"anomalyZScore":2,"trendMinDataPoints":3,"significantChangePercent":10}}';
+      }
       if (p.includes('-system.md') || p.includes('-user.md')) {
         const err = new Error('ENOENT (test mock)') as Error & { code: string };
         err.code = 'ENOENT';
@@ -479,6 +515,9 @@ describe('assemblePrompt', () => {
     const { readFileSync } = await import('node:fs');
     vi.mocked(readFileSync).mockImplementation((path: unknown) => {
       const p = String(path);
+      if (p.includes('scoring-weights.json')) {
+        return '{"version":"1.0","topN":8,"weights":{"novelty":0.35,"actionability":0.4,"specificity":0.25},"thresholds":{"anomalyZScore":2,"trendMinDataPoints":3,"significantChangePercent":10}}';
+      }
       if (p.includes('-system.md') || p.includes('-user.md')) {
         const err = new Error('ENOENT (test mock)') as Error & { code: string };
         err.code = 'ENOENT';
@@ -506,6 +545,9 @@ describe('assemblePrompt', () => {
     const { readFileSync } = await import('node:fs');
     vi.mocked(readFileSync).mockImplementation((path: unknown) => {
       const p = String(path);
+      if (p.includes('scoring-weights.json')) {
+        return '{"version":"1.0","topN":8,"weights":{"novelty":0.35,"actionability":0.4,"specificity":0.25},"thresholds":{"anomalyZScore":2,"trendMinDataPoints":3,"significantChangePercent":10}}';
+      }
       if (p.includes('-system.md') || p.includes('-user.md')) {
         const err = new Error('ENOENT (test mock)') as Error & { code: string };
         err.code = 'ENOENT';
@@ -559,6 +601,9 @@ describe('assemblePrompt', () => {
     const { readFileSync } = await import('node:fs');
     vi.mocked(readFileSync).mockImplementation((path: unknown) => {
       const p = String(path);
+      if (p.includes('scoring-weights.json')) {
+        return '{"version":"1.0","topN":8,"weights":{"novelty":0.35,"actionability":0.4,"specificity":0.25},"thresholds":{"anomalyZScore":2,"trendMinDataPoints":3,"significantChangePercent":10}}';
+      }
       if (p.includes('-system.md') || p.includes('-user.md')) {
         const err = new Error('ENOENT (test mock)') as Error & { code: string };
         err.code = 'ENOENT';
@@ -584,6 +629,9 @@ describe('assemblePrompt', () => {
     const { readFileSync } = await import('node:fs');
     vi.mocked(readFileSync).mockImplementation((path: unknown) => {
       const p = String(path);
+      if (p.includes('scoring-weights.json')) {
+        return '{"version":"1.0","topN":8,"weights":{"novelty":0.35,"actionability":0.4,"specificity":0.25},"thresholds":{"anomalyZScore":2,"trendMinDataPoints":3,"significantChangePercent":10}}';
+      }
       if (p.includes('-system.md') || p.includes('-user.md')) {
         const err = new Error('ENOENT (test mock)') as Error & { code: string };
         err.code = 'ENOENT';
@@ -610,6 +658,9 @@ describe('assemblePrompt', () => {
     const { readFileSync } = await import('node:fs');
     vi.mocked(readFileSync).mockImplementation((path: unknown) => {
       const p = String(path);
+      if (p.includes('scoring-weights.json')) {
+        return '{"version":"1.0","topN":8,"weights":{"novelty":0.35,"actionability":0.4,"specificity":0.25},"thresholds":{"anomalyZScore":2,"trendMinDataPoints":3,"significantChangePercent":10}}';
+      }
       if (p.includes('-system.md') || p.includes('-user.md')) {
         const err = new Error('ENOENT (test mock)') as Error & { code: string };
         err.code = 'ENOENT';
@@ -636,6 +687,35 @@ describe('assemblePrompt', () => {
       expect(user).toContain('Revenue');
       expect(user).not.toContain('Marketing');
       expect(metadata.suppressedForSampleSize).toBe(1);
+    });
+
+    // Pins the fix: a below-floor stat ranked ahead of thicker ones must not
+    // cost the prompt a slot a thicker stat earned. Two below-floor stats
+    // rank first here, ten above-floor ones follow -- more than topN (8) on
+    // their own. Slicing to topN before filtering (the old order) would take
+    // the first 8 (2 thin + 6 thick), filter the 2 thin out, and land on 6
+    // survivors with two wasted slots instead of the 8 available.
+    it('fills topN from survivors instead of slicing before the floor filter', async () => {
+      const { assemblePrompt } = await import('./assembly.js');
+
+      const belowFloor = ['BelowA', 'BelowB'].map((category) =>
+        scoredTrend({ sampleSize: 3, category }),
+      );
+      const aboveFloor = Array.from({ length: 10 }, (_, i) =>
+        scoredTrend({ sampleSize: 12, category: `Above${i}` }),
+      );
+
+      const { user, metadata } = assemblePrompt([...belowFloor, ...aboveFloor], 1);
+
+      expect(metadata.insightCount).toBe(8);
+      expect(metadata.suppressedForSampleSize).toBe(2);
+      expect(user).not.toContain('BelowA');
+      expect(user).not.toContain('BelowB');
+      for (let i = 0; i < 8; i++) {
+        expect(user).toContain(`Above${i}`);
+      }
+      expect(user).not.toContain('Above8');
+      expect(user).not.toContain('Above9');
     });
 
     // Pins the default so a future caller that doesn't know isPreselected

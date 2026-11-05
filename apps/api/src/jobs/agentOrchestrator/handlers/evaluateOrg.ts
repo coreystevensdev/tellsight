@@ -128,7 +128,10 @@ export async function handleEvaluateOrgJob(job: Job): Promise<void> {
     : null;
 
   const activeCorrectionIds = await statCorrectionsQueries.getActiveCorrectionStatIds(orgId, dbAdmin);
-  const insights = await runCurationPipeline(orgId, datasetId, dbAdmin, financials, activeCorrectionIds);
+  // scoredPool, not the topN-capped insights: generateProposals' own prompt
+  // needs the full ranked candidate pool so a thin stat ranked ahead of a
+  // thick one doesn't cost the prompt a slot the thick one earned.
+  const { scoredPool } = await runCurationPipeline(orgId, datasetId, dbAdmin, financials, activeCorrectionIds);
 
   // recordRunSpend runs in `finally`, not after a plain await: generateProposals
   // can still throw after onCost already fired (e.g. its own safety-cap check),
@@ -138,7 +141,7 @@ export async function handleEvaluateOrgJob(job: Job): Promise<void> {
   let cost: number | null = null;
   let proposals: AgentProposal[];
   try {
-    proposals = await generateProposals(insights, datasetId, businessProfile, now, (c) => {
+    proposals = await generateProposals(scoredPool, datasetId, businessProfile, now, (c) => {
       cost = c;
     });
   } finally {

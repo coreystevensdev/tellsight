@@ -332,4 +332,9 @@ export interface AssembledContext {
   system: string;
   user: string;
   metadata: TransparencyMetadata;
+  // The stats actually rendered into statSummaries, post sample-size gate.
+  // Tier 2 validators (validateStatRefs/validateCiteRefs/validateSummary)
+  // must build their whitelist from this, not from the caller's full
+  // candidate pool, or a suppressed stat's id still passes as grounded.
+  promptedStats: ComputedStat[];
 }

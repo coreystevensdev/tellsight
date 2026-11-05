@@ -6,6 +6,7 @@ import {
 } from '../../db/queries/index.js';
 import { dbAdmin } from '../../lib/db.js';
 import { logger } from '../../lib/logger.js';
+import { isBelowFloor } from '../../services/curation/sampleSizeFloors.js';
 import type { ComputedStat } from '../../services/curation/types.js';
 import { buildPriorContext, type PriorContextEntry } from './buildPriorContext.js';
 import { composePriorContext } from './composePriorContext.js';
@@ -50,8 +51,17 @@ export async function prepareDigestContext({
   let transitionMilestones: TransitionMilestone[] = [];
   try {
     const priorStats = lastDigest?.keyStats ?? [];
-    deltaEntries = buildPriorContext(currentStats, priorStats);
-    transitionMilestones = detectTransitionMilestones(currentStats, priorStats);
+    // Gated by the same floor assemblePrompt applies to the prompt itself.
+    // Without this, a stat the gate suppresses from statSummaries still
+    // narrates its own appearance or delta through priorContext, which
+    // asserts a number the summary isn't supposed to state. isBelowFloor
+    // reads .sampleSize off whatever getLastDigest handed back, which can be
+    // a malformed element on an old row -- that's exactly what this try/catch
+    // already exists to absorb.
+    const gatedCurrentStats = currentStats.filter((stat) => !isBelowFloor(stat));
+    const gatedPriorStats = priorStats.filter((stat) => !isBelowFloor(stat));
+    deltaEntries = buildPriorContext(gatedCurrentStats, gatedPriorStats);
+    transitionMilestones = detectTransitionMilestones(gatedCurrentStats, gatedPriorStats);
   } catch (err) {
     logger.error(
       { correlationId, orgId, weekStart, err },

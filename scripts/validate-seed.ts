@@ -22,7 +22,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { computeStats } from '../apps/api/src/services/curation/computation.js';
-import { scoreInsights } from '../apps/api/src/services/curation/scoring.js';
+import { rankInsights } from '../apps/api/src/services/curation/scoring.js';
 import { assemblePrompt } from '../apps/api/src/services/curation/assembly.js';
 import { StatType } from '../apps/api/src/services/curation/types.js';
 import { round4 } from './round4.js';
@@ -144,12 +144,15 @@ function validate() {
   }
   console.log(`computeStats produced ${stats.length} stats`);
 
-  const scored = scoreInsights(stats);
+  // rankInsights, not scoreInsights: assemblePrompt below needs the full
+  // ranked pool so it can fill its topN slots from survivors, the same
+  // reason runCurationPipeline hands it scoredPool instead of insights.
+  const scored = rankInsights(stats);
   if (scored.length === 0) {
-    console.error('FAIL: scoreInsights returned 0 insights');
+    console.error('FAIL: rankInsights returned 0 insights');
     process.exit(1);
   }
-  console.log(`scoreInsights produced ${scored.length} ranked insights`);
+  console.log(`rankInsights produced ${scored.length} ranked insights`);
 
   // Freeze the date so the snapshot stays deterministic. Otherwise the
   // `{{today}}` placeholder in the prompt template rolls over at UTC midnight

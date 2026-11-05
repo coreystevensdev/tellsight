@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 // These two are config-free, so they're safe at top level (validate-seed.ts
 // imports the same surface and runs keyless in CI). The provider, by contrast,
 // pulls in config.ts and must be imported dynamically after the key guard.
-import { scoreInsights } from '../apps/api/src/services/curation/scoring.js';
+import { rankInsights } from '../apps/api/src/services/curation/scoring.js';
 import { assemblePrompt } from '../apps/api/src/services/curation/assembly.js';
 import { FIXTURES, FROZEN_NOW } from './eval-fixtures/fixtures.js';
 import { insightGate, INSIGHT_MISS_CEILING } from './eval-fixtures/insight-gate.js';
@@ -118,7 +118,7 @@ async function scoreAgentFixture(
     '../apps/api/src/services/curation/proposals.js'
   );
 
-  const scored = scoreInsights(fixture.build());
+  const scored = rankInsights(fixture.build());
   const { user } = assemblePrompt(scored, 1, PROMPT_VERSION, undefined, FROZEN_NOW);
   const groundTruth = extractGroundTruth(user, AGENT_SUMMARIES_START);
 
@@ -171,7 +171,7 @@ async function scoreFixture(
   judgeProvider: GenerateProvider,
   fixture: (typeof FIXTURES)[number],
 ): Promise<{ score: FixtureScore; promptVersion: string }> {
-  const scored = scoreInsights(fixture.build());
+  const scored = rankInsights(fixture.build());
   const { system, user, metadata } = assemblePrompt(scored, 1, PINNED_PROMPT_VERSION, undefined, FROZEN_NOW);
   const groundTruth = extractGroundTruth(user);
 

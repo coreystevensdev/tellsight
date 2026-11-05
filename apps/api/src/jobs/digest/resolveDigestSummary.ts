@@ -23,7 +23,10 @@ interface ResolveDigestSummaryInput {
   promptVersion: string;
   businessProfile: BusinessProfile | null;
   priorContext: string;
-  insights: ScoredInsight[];
+  // The full ranked pool (runCurationPipeline's scoredPool), not the
+  // already-capped insights array -- assemblePrompt fills the prompt's topN
+  // slots from whichever of these clear the sample-size floor.
+  candidates: ScoredInsight[];
 }
 
 export interface ResolvedDigestSummary {
@@ -41,7 +44,7 @@ export async function resolveDigestSummary({
   promptVersion,
   businessProfile,
   priorContext,
-  insights,
+  candidates,
 }: ResolveDigestSummaryInput): Promise<ResolvedDigestSummary> {
   const cached = await aiSummariesQueries.getCachedDigest(
     orgId,
@@ -63,8 +66,8 @@ export async function resolveDigestSummary({
     };
   }
 
-  const { system, user, metadata } = assemblePrompt(
-    insights,
+  const { system, user, metadata, promptedStats } = assemblePrompt(
+    candidates,
     datasetId,
     promptVersion,
     businessProfile,
@@ -74,17 +77,13 @@ export async function resolveDigestSummary({
   const validatedMetadata = transparencyMetadataSchema.parse(metadata);
   const generated = await generateInterpretation({ system, user });
 
-  const statRefReport = validateStatRefs(generated, insights.map((insight) => insight.stat));
+  const statRefReport = validateStatRefs(generated, promptedStats);
   const chartRefsStripped =
     statRefReport.invalidRefs.length > 0
       ? stripInvalidStatRefs(generated, statRefReport.invalidRefs)
       : generated;
 
-  const citeReport = validateCiteRefs(
-    chartRefsStripped,
-    insights.map((insight) => insight.stat),
-    datasetId,
-  );
+  const citeReport = validateCiteRefs(chartRefsStripped, promptedStats, datasetId);
   const content =
     citeReport.invalidRefs.length > 0
       ? stripInvalidCiteRefs(chartRefsStripped, citeReport.invalidRefs)
@@ -110,7 +109,7 @@ export async function resolveDigestSummary({
   return {
     summaryId: stored.id,
     cacheHit: false,
-    insightCount: insights.length,
+    insightCount: metadata.insightCount,
     content,
     generatedPromptVersion: promptVersion,
   };

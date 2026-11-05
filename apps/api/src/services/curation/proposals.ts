@@ -166,20 +166,21 @@ function buildCandidate(input: unknown, period: string): Record<string, unknown>
 // callable and tested here, not wired into any job, cron, or route yet --
 // that orchestration is separate work.
 export async function generateProposals(
-  insights: ScoredInsight[],
+  candidates: ScoredInsight[],
   datasetId: number,
   businessProfile?: BusinessProfile | null,
   now: Date = new Date(),
   onCost?: (cost: number | null) => void,
 ): Promise<AgentProposal[]> {
-  const { system, user } = assemblePrompt(insights, datasetId, PROMPT_VERSION, businessProfile, now);
-  // Keyed by the id the prompt printed in each `[cite: id]` token, which is what
-  // every check downstream needs: the keys scope evidence, the values verify
-  // figures and direction against the stat the model actually cited.
-  const statsById = new Map(insights.map((insight) => [statInstanceId(insight.stat, datasetId), insight.stat]));
+  const { system, user, promptedStats } = assemblePrompt(candidates, datasetId, PROMPT_VERSION, businessProfile, now);
+  // Keyed by the id the prompt printed in each `[cite: id]` token, built from
+  // promptedStats (what the prompt actually carried after the sample-size
+  // gate), not the full candidate pool -- otherwise a suppressed stat's id
+  // would still validate as evidence the model was never shown.
+  const statsById = new Map(promptedStats.map((stat) => [statInstanceId(stat, datasetId), stat]));
   const period = currentPeriod(now);
 
-  logger.info({ datasetId, insightCount: insights.length }, 'agent proposal generation started');
+  logger.info({ datasetId, insightCount: promptedStats.length }, 'agent proposal generation started');
 
   const calls = await generateWithTools({ system, user }, [RECORD_PROPOSAL_TOOL], onCost);
 

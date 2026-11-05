@@ -93,7 +93,7 @@ export async function streamToSSE(
     return { ok: false };
   }
 
-  const { promptInput, validatedMetadata, promptVersion, pipelineInsights } = prepared;
+  const { promptInput, validatedMetadata, promptVersion, promptedStats } = prepared;
 
   const streamStart = Date.now();
   const textPolicy = new StreamTextPolicy(
@@ -141,7 +141,7 @@ export async function streamToSSE(
       tier,
       promptVersion,
       fullText: result.fullText,
-      pipelineInsights,
+      promptedStats,
       metadata: validatedMetadata,
       client,
     });

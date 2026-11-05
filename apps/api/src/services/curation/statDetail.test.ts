@@ -1,4 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// statDetail.js pulls in assembly.js for its currency formatters, and
+// assembly.js now loads scoring.js for the sample-size gate's topN cap --
+// scoring.js imports the real logger, which imports the real config and
+// throws on a test host with no .env. Mock it away like every other
+// curation test does.
+vi.mock('../../lib/logger.js', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
 
 import { buildStatDetail } from './statDetail.js';
 import { computeStats, assignIds } from './computation.js';

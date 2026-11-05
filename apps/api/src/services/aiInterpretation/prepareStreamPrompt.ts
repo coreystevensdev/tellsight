@@ -6,13 +6,16 @@ import {
   runCurationPipeline,
   transparencyMetadataSchema,
 } from '../curation/index.js';
-import type { ScoredInsight } from '../curation/index.js';
+import type { ComputedStat } from '../curation/index.js';
 
 export interface PreparedStreamPrompt {
   promptInput: { system: string; user: string };
   validatedMetadata: ReturnType<typeof transparencyMetadataSchema.parse>;
   promptVersion: string;
-  pipelineInsights: ScoredInsight[];
+  // The stats the prompt actually carried, post sample-size gate -- what
+  // finalizeStreamSummary's Tier 2 validators need to check the model's
+  // output against.
+  promptedStats: ComputedStat[];
 }
 
 export async function prepareStreamPrompt(
@@ -21,9 +24,9 @@ export async function prepareStreamPrompt(
   client?: typeof db | DbTransaction,
   businessProfile?: BusinessProfile | null,
 ): Promise<PreparedStreamPrompt> {
-  const pipelineInsights = await runCurationPipeline(orgId, datasetId, client);
-  const { system, user, metadata } = assemblePrompt(
-    pipelineInsights,
+  const { scoredPool } = await runCurationPipeline(orgId, datasetId, client);
+  const { system, user, metadata, promptedStats } = assemblePrompt(
+    scoredPool,
     datasetId,
     undefined,
     businessProfile,
@@ -33,6 +36,6 @@ export async function prepareStreamPrompt(
     promptInput: { system, user },
     validatedMetadata: transparencyMetadataSchema.parse(metadata),
     promptVersion: metadata.promptVersion,
-    pipelineInsights,
+    promptedStats,
   };
 }

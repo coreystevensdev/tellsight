@@ -18,7 +18,10 @@ const mockSendQueueAdd = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('bullmq', () => ({
   Queue: class {
-    constructor(public name: string, public opts: unknown) {}
+    constructor(
+      public name: string,
+      public opts: unknown,
+    ) {}
   },
 }));
 
@@ -28,7 +31,9 @@ vi.mock('../../../lib/logger.js', () => ({
 }));
 vi.mock('../../../lib/db.js', () => ({ dbAdmin: { __tag: 'dbAdmin' } }));
 vi.mock('../../../lib/sentry.js', () => ({
-  Sentry: { withScope: (cb: (scope: { setTag: () => void }) => Promise<void>) => cb({ setTag: vi.fn() }) },
+  Sentry: {
+    withScope: (cb: (scope: { setTag: () => void }) => Promise<void>) => cb({ setTag: vi.fn() }),
+  },
 }));
 
 vi.mock('../../../db/queries/index.js', () => ({
@@ -223,7 +228,12 @@ function breakEvenInsight(details: { breakEvenRevenue: number; gap: number }) {
   };
 }
 
-const baseJobData = { orgId: 42, datasetId: 100, trigger: 'cron' as const, correlationId: 'corr-123' };
+const baseJobData = {
+  orgId: 42,
+  datasetId: 100,
+  trigger: 'cron' as const,
+  correlationId: 'corr-123',
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -263,7 +273,10 @@ describe('tier and dataset gates', () => {
   it('evaluates against the freshly-fetched dataset id, ignoring a stale job payload datasetId (I/O matrix row 8)', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(555);
     mockGetEnabledRules.mockResolvedValueOnce([runwayRule()]);
-    mockRunCurationPipeline.mockResolvedValueOnce([runwayInsight(2)]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [runwayInsight(2)],
+      scoredPool: [runwayInsight(2)],
+    });
 
     await handleEvaluateOrgJob({
       id: 'j-stale-dataset',
@@ -286,7 +299,10 @@ describe('tier and dataset gates', () => {
 describe('cron: fire decisions', () => {
   it('fires, writes a fire row, and enqueues a send job (I/O matrix row 1)', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([runwayRule()]);
-    mockRunCurationPipeline.mockResolvedValueOnce([runwayInsight(2)]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [runwayInsight(2)],
+      scoredPool: [runwayInsight(2)],
+    });
 
     await handleEvaluateOrgJob({ id: 'j4', data: baseJobData } as never);
 
@@ -312,7 +328,10 @@ describe('cron: fire decisions', () => {
 
   it('suppresses a same-band re-fire within 7 days (I/O matrix row 2)', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([runwayRule()]);
-    mockRunCurationPipeline.mockResolvedValueOnce([runwayInsight(2)]); // band 2
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [runwayInsight(2)],
+      scoredPool: [runwayInsight(2)],
+    }); // band 2
     mockGetLatestFire.mockResolvedValueOnce({
       id: 50,
       band: 2,
@@ -327,7 +346,10 @@ describe('cron: fire decisions', () => {
 
   it('re-fires when the value worsens into a new band despite a recent fire (I/O matrix row 3)', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([runwayRule()]);
-    mockRunCurationPipeline.mockResolvedValueOnce([runwayInsight(0.8)]); // band 3
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [runwayInsight(0.8)],
+      scoredPool: [runwayInsight(0.8)],
+    }); // band 3
     mockGetLatestFire.mockResolvedValueOnce({
       id: 50,
       band: 1,
@@ -336,16 +358,17 @@ describe('cron: fire decisions', () => {
 
     await handleEvaluateOrgJob({ id: 'j6', data: baseJobData } as never);
 
-    expect(mockCreateIfUnderQuota).toHaveBeenCalledWith(
-      expect.objectContaining({ band: 3 }),
-      3,
-      { __tag: 'dbAdmin' },
-    );
+    expect(mockCreateIfUnderQuota).toHaveBeenCalledWith(expect.objectContaining({ band: 3 }), 3, {
+      __tag: 'dbAdmin',
+    });
   });
 
   it('ignores a fire older than the 7-day dedup window even with the same band', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([runwayRule()]);
-    mockRunCurationPipeline.mockResolvedValueOnce([runwayInsight(2)]); // band 2
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [runwayInsight(2)],
+      scoredPool: [runwayInsight(2)],
+    }); // band 2
     mockGetLatestFire.mockResolvedValueOnce({
       id: 50,
       band: 2,
@@ -359,7 +382,10 @@ describe('cron: fire decisions', () => {
 
   it('suppresses a 4th candidate fire once the org quota is exhausted (I/O matrix row 4)', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([runwayRule()]);
-    mockRunCurationPipeline.mockResolvedValueOnce([runwayInsight(2)]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [runwayInsight(2)],
+      scoredPool: [runwayInsight(2)],
+    });
     mockCreateIfUnderQuota.mockResolvedValueOnce(null);
 
     await handleEvaluateOrgJob({ id: 'j8', data: baseJobData } as never);
@@ -376,7 +402,7 @@ describe('cron: fire decisions', () => {
 
   it('suppresses when no matching stat exists for the rule kind', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([runwayRule()]);
-    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockRunCurationPipeline.mockResolvedValueOnce({ insights: [], scoredPool: [] });
 
     await handleEvaluateOrgJob({ id: 'j9', data: baseJobData } as never);
 
@@ -386,7 +412,10 @@ describe('cron: fire decisions', () => {
 
   it('logs a fire but skips the send enqueue when the org has no owner', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([runwayRule()]);
-    mockRunCurationPipeline.mockResolvedValueOnce([runwayInsight(2)]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [runwayInsight(2)],
+      scoredPool: [runwayInsight(2)],
+    });
     mockGetOrgOwnerId.mockResolvedValueOnce(null);
 
     await handleEvaluateOrgJob({ id: 'j10', data: baseJobData } as never);
@@ -405,7 +434,7 @@ describe('cron: fire decisions', () => {
 
   it('reports a maximal-change band when zero prior expenses hide a real cash burn spike', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([cashBurnRule()]);
-    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockRunCurationPipeline.mockResolvedValueOnce({ insights: [], scoredPool: [] });
     mockGetMonthlyBuckets.mockResolvedValueOnce(
       monthlyBuckets([
         ['2026-04', { revenue: 1_000, expenses: 0 }],
@@ -426,7 +455,7 @@ describe('cron: fire decisions', () => {
 
   it('fetches active stat corrections for the org and excludes a matching cash-flow-for-alerting instance (AC: evaluateOrg wiring)', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([cashBurnRule()]);
-    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockRunCurationPipeline.mockResolvedValueOnce({ insights: [], scoredPool: [] });
     const buckets = monthlyBuckets([
       ['2026-04', { revenue: 1_000, expenses: 0 }],
       ['2026-05', { revenue: 1_000, expenses: 0 }],
@@ -450,7 +479,7 @@ describe('cron: fire decisions', () => {
 
   it('fetches the active correction set exactly once per job run and passes it to runCurationPipeline (no double-fetch)', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([cashBurnRule()]);
-    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockRunCurationPipeline.mockResolvedValueOnce({ insights: [], scoredPool: [] });
     mockGetMonthlyBuckets.mockResolvedValueOnce(
       monthlyBuckets([
         ['2026-04', { revenue: 1_000, expenses: 0 }],
@@ -463,18 +492,17 @@ describe('cron: fire decisions', () => {
     await handleEvaluateOrgJob({ id: 'j-cb-single-fetch', data: baseJobData } as never);
 
     expect(mockGetActiveCorrections).toHaveBeenCalledTimes(1);
-    expect(mockRunCurationPipeline).toHaveBeenCalledWith(
-      42,
-      100,
-      { __tag: 'dbAdmin' },
-      null,
-      ['5:runway:_:_'],
-    );
+    expect(mockRunCurationPipeline).toHaveBeenCalledWith(42, 100, { __tag: 'dbAdmin' }, null, [
+      '5:runway:_:_',
+    ]);
   });
 
   it('skips the getMonthlyBucketsByDataset query, but still fetches corrections once, when cash_burn_spikes is not enabled', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([runwayRule()]);
-    mockRunCurationPipeline.mockResolvedValueOnce([runwayInsight(2)]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [runwayInsight(2)],
+      scoredPool: [runwayInsight(2)],
+    });
     mockGetActiveCorrections.mockResolvedValueOnce([]);
 
     await handleEvaluateOrgJob({ id: 'j-no-cash-burn', data: baseJobData } as never);
@@ -485,7 +513,7 @@ describe('cron: fire decisions', () => {
 
   it('leaves cash_burn_spikes unaffected when the active correction does not match this dataset instance', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([cashBurnRule()]);
-    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockRunCurationPipeline.mockResolvedValueOnce({ insights: [], scoredPool: [] });
     mockGetMonthlyBuckets.mockResolvedValueOnce(
       monthlyBuckets([
         ['2026-04', { revenue: 1_000, expenses: 0 }],
@@ -506,7 +534,7 @@ describe('cron: fire decisions', () => {
 
   it('reports no genuine change when prior and latest cash burn expenses are both zero', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([cashBurnRule()]);
-    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockRunCurationPipeline.mockResolvedValueOnce({ insights: [], scoredPool: [] });
     mockGetMonthlyBuckets.mockResolvedValueOnce(
       monthlyBuckets([
         ['2026-04', { revenue: 1_000, expenses: 0 }],
@@ -522,7 +550,7 @@ describe('cron: fire decisions', () => {
 
   it('fires cash_burn_spikes for a near-break-even org the dashboard would suppress (DW-7)', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([cashBurnRule()]);
-    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockRunCurationPipeline.mockResolvedValueOnce({ insights: [], scoredPool: [] });
     // avg revenue 10,500, 5% band = 525; median net here is 500, inside the
     // band, so cashFlowFromBuckets (the dashboard path) would return [] for
     // this exact data. cashFlowForAlerting skips that guard.
@@ -546,7 +574,10 @@ describe('cron: fire decisions', () => {
 
   it('does not fetch monthly buckets when no cash_burn_spikes rule is enabled', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([runwayRule()]);
-    mockRunCurationPipeline.mockResolvedValueOnce([runwayInsight(2)]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [runwayInsight(2)],
+      scoredPool: [runwayInsight(2)],
+    });
 
     await handleEvaluateOrgJob({ id: 'j-cb-not-enabled', data: baseJobData } as never);
 
@@ -555,7 +586,10 @@ describe('cron: fire decisions', () => {
 
   it('reports a maximal-change band when break-even revenue is zero but a real gap exists', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([breakevenRule()]);
-    mockRunCurationPipeline.mockResolvedValueOnce([breakEvenInsight({ breakEvenRevenue: 0, gap: 2_000 })]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [breakEvenInsight({ breakEvenRevenue: 0, gap: 2_000 })],
+      scoredPool: [breakEvenInsight({ breakEvenRevenue: 0, gap: 2_000 })],
+    });
 
     await handleEvaluateOrgJob({ id: 'j-be-spike', data: baseJobData } as never);
 
@@ -569,7 +603,10 @@ describe('cron: fire decisions', () => {
 
   it('reports no genuine change when break-even revenue is zero and the gap is non-positive', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([breakevenRule()]);
-    mockRunCurationPipeline.mockResolvedValueOnce([breakEvenInsight({ breakEvenRevenue: 0, gap: -500 })]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [breakEvenInsight({ breakEvenRevenue: 0, gap: -500 })],
+      scoredPool: [breakEvenInsight({ breakEvenRevenue: 0, gap: -500 })],
+    });
 
     await handleEvaluateOrgJob({ id: 'j-be-flat', data: baseJobData } as never);
 
@@ -578,7 +615,12 @@ describe('cron: fire decisions', () => {
 });
 
 describe('on-upload trigger', () => {
-  const uploadJobData = { orgId: 42, datasetId: 100, trigger: 'on-upload' as const, correlationId: 'corr-up' };
+  const uploadJobData = {
+    orgId: 42,
+    datasetId: 100,
+    trigger: 'on-upload' as const,
+    correlationId: 'corr-up',
+  };
 
   it('restricts evaluation to runway/cash-burn kinds (I/O matrix row 5)', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([runwayRule(), marginRule()]);
@@ -586,7 +628,10 @@ describe('on-upload trigger', () => {
       earliest: new Date('2026-01-01'),
       latest: new Date('2026-06-01'),
     });
-    mockRunCurationPipeline.mockResolvedValueOnce([runwayInsight(2)]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [runwayInsight(2)],
+      scoredPool: [runwayInsight(2)],
+    });
 
     await handleEvaluateOrgJob({ id: 'j12', data: uploadJobData } as never);
 
@@ -632,7 +677,10 @@ describe('on-upload trigger', () => {
       latest: new Date('2026-01-31'),
     });
     mockCountDistinctDates.mockResolvedValueOnce(20);
-    mockRunCurationPipeline.mockResolvedValueOnce([runwayInsight(2)]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [runwayInsight(2)],
+      scoredPool: [runwayInsight(2)],
+    });
 
     await handleEvaluateOrgJob({ id: 'j-density-boundary-pass', data: uploadJobData } as never);
 
@@ -667,7 +715,7 @@ describe('on-upload trigger', () => {
       earliest: new Date('2026-01-01'),
       latest: new Date('2026-06-01'),
     });
-    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockRunCurationPipeline.mockResolvedValueOnce({ insights: [], scoredPool: [] });
     mockGetMonthlyBuckets.mockResolvedValueOnce(
       monthlyBuckets([
         ['2026-04', { revenue: 1_000, expenses: 0 }],
@@ -756,7 +804,10 @@ describe('org scoping of the queries this handler issues', () => {
   it('hands every query the org from the job payload', async () => {
     mockGetActiveDatasetId.mockResolvedValue(555);
     mockGetEnabledRules.mockResolvedValueOnce([runwayRule()]);
-    mockRunCurationPipeline.mockResolvedValueOnce([runwayInsight(2)]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [runwayInsight(2)],
+      scoredPool: [runwayInsight(2)],
+    });
 
     await handleEvaluateOrgJob({ id: 'scope-1', data: baseJobData } as never);
 
@@ -776,11 +827,19 @@ describe('org scoping of the queries this handler issues', () => {
       earliest: new Date('2026-01-01'),
       latest: new Date('2026-06-01'),
     });
-    mockRunCurationPipeline.mockResolvedValueOnce([runwayInsight(2)]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [runwayInsight(2)],
+      scoredPool: [runwayInsight(2)],
+    });
 
     await handleEvaluateOrgJob({
       id: 'scope-2',
-      data: { orgId: 42, datasetId: 100, trigger: 'on-upload' as const, correlationId: 'corr-scope' },
+      data: {
+        orgId: 42,
+        datasetId: 100,
+        trigger: 'on-upload' as const,
+        correlationId: 'corr-scope',
+      },
     } as never);
 
     // 555, not the 100 in the payload: the handler re-reads the active dataset
@@ -799,7 +858,10 @@ describe('anomaly_fires rule evaluation', () => {
     ['at high confidence', 3.2, true],
   ])('a z-score %s fires: %s', async (_label, zScore, shouldFire) => {
     mockGetEnabledRules.mockResolvedValueOnce([anomalyRule()]);
-    mockRunCurationPipeline.mockResolvedValueOnce([anomalyInsight(zScore)]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [anomalyInsight(zScore)],
+      scoredPool: [anomalyInsight(zScore)],
+    });
 
     await handleEvaluateOrgJob({ id: 'anom-1', data: baseJobData } as never);
 
@@ -811,7 +873,10 @@ describe('anomaly_fires rule evaluation', () => {
   // anomaly.
   it('fires on a large negative deviation too', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([anomalyRule()]);
-    mockRunCurationPipeline.mockResolvedValueOnce([anomalyInsight(-3.2)]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [anomalyInsight(-3.2)],
+      scoredPool: [anomalyInsight(-3.2)],
+    });
 
     await handleEvaluateOrgJob({ id: 'anom-2', data: baseJobData } as never);
 
@@ -824,10 +889,10 @@ describe('anomaly_fires rule evaluation', () => {
   // that: the reduce returns its only element whichever way it compares.
   it('prefers a severe negative anomaly over a milder positive one', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([anomalyRule({ threshold: { confidence: 'high' } })]);
-    mockRunCurationPipeline.mockResolvedValueOnce([
-      anomalyInsight(2.1, 'Rent'),
-      anomalyInsight(-3.4, 'Refunds'),
-    ]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [anomalyInsight(2.1, 'Rent'), anomalyInsight(-3.4, 'Refunds')],
+      scoredPool: [anomalyInsight(2.1, 'Rent'), anomalyInsight(-3.4, 'Refunds')],
+    });
 
     await handleEvaluateOrgJob({ id: 'anom-2b', data: baseJobData } as never);
 
@@ -840,11 +905,18 @@ describe('anomaly_fires rule evaluation', () => {
   // the severity, or miss the rule entirely when only one clears the bar.
   it('drives the band from the most extreme anomaly, not the first', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([anomalyRule({ threshold: { confidence: 'high' } })]);
-    mockRunCurationPipeline.mockResolvedValueOnce([
-      anomalyInsight(2.1, 'Rent'),
-      anomalyInsight(3.4, 'Payroll'),
-      anomalyInsight(2.2, 'Software'),
-    ]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [
+        anomalyInsight(2.1, 'Rent'),
+        anomalyInsight(3.4, 'Payroll'),
+        anomalyInsight(2.2, 'Software'),
+      ],
+      scoredPool: [
+        anomalyInsight(2.1, 'Rent'),
+        anomalyInsight(3.4, 'Payroll'),
+        anomalyInsight(2.2, 'Software'),
+      ],
+    });
 
     await handleEvaluateOrgJob({ id: 'anom-3', data: baseJobData } as never);
 
@@ -856,7 +928,10 @@ describe('anomaly_fires rule evaluation', () => {
 
   it('does not fire when the pass surfaced no anomalies at all', async () => {
     mockGetEnabledRules.mockResolvedValueOnce([anomalyRule()]);
-    mockRunCurationPipeline.mockResolvedValueOnce([runwayInsight(2)]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [runwayInsight(2)],
+      scoredPool: [runwayInsight(2)],
+    });
 
     await handleEvaluateOrgJob({ id: 'anom-4', data: baseJobData } as never);
 
@@ -870,10 +945,11 @@ describe('anomaly_fires rule evaluation', () => {
     ['low', 2.0, true],
     ['high', 2.5, false],
   ])('a %s-threshold rule against z=%s fires: %s', async (confidence, zScore, shouldFire) => {
-    mockGetEnabledRules.mockResolvedValueOnce([
-      anomalyRule({ threshold: { confidence } }),
-    ]);
-    mockRunCurationPipeline.mockResolvedValueOnce([anomalyInsight(zScore)]);
+    mockGetEnabledRules.mockResolvedValueOnce([anomalyRule({ threshold: { confidence } })]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [anomalyInsight(zScore)],
+      scoredPool: [anomalyInsight(zScore)],
+    });
 
     await handleEvaluateOrgJob({ id: 'anom-5', data: baseJobData } as never);
 

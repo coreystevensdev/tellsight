@@ -9,6 +9,7 @@ import type { BusinessProfile } from 'shared/types';
 import { getIndustryBenchmarks } from './config/industry-benchmarks.js';
 import { statInstanceId } from './computation.js';
 import { isBelowFloor } from './sampleSizeFloors.js';
+import { scoringConfig } from './scoring.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_VERSION = 'v2.1';
@@ -252,8 +253,17 @@ export function assemblePrompt(
   // to be careful is a request, not a guarantee. isPreselected is how a
   // caller passing a single rule-selected stat says so; omitting it is
   // always safe, since false gates.
-  const survivors = isPreselected ? insights : insights.filter((i) => !isBelowFloor(i.stat));
-  const suppressedForSampleSize = insights.length - survivors.length;
+  //
+  // Filtered before the topN cap, not after. `insights` here is the full
+  // ranked candidate pool (runCurationPipeline's `scoredPool`), not the
+  // already-capped array it also returns -- capping first would spend a
+  // prompt slot on a below-floor stat and then cut it anyway, leaving the
+  // prompt short even when enough above-floor stats exist to fill it.
+  const aboveFloor = isPreselected ? insights : insights.filter((i) => !isBelowFloor(i.stat));
+  const survivors = isPreselected ? aboveFloor : aboveFloor.slice(0, scoringConfig.topN);
+  // Against aboveFloor, not survivors: survivors also drops anything that
+  // simply lost the topN ranking, and that is not a sample-size suppression.
+  const suppressedForSampleSize = insights.length - aboveFloor.length;
 
   if (survivors.length === 0) {
     const user = renderUser(template.user, {
@@ -281,6 +291,7 @@ export function assemblePrompt(
         generatedAt: now.toISOString(),
         suppressedForSampleSize,
       },
+      promptedStats: [],
     };
   }
 
@@ -312,5 +323,5 @@ export function assemblePrompt(
     suppressedForSampleSize,
   };
 
-  return { system: template.system, user, metadata };
+  return { system: template.system, user, metadata, promptedStats: survivors.map((i) => i.stat) };
 }

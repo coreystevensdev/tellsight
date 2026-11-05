@@ -151,7 +151,7 @@ async function seed() {
     } else {
       try {
         const { computeStats } = await import('../services/curation/computation.js');
-        const { scoreInsights } = await import('../services/curation/scoring.js');
+        const { rankInsights } = await import('../services/curation/scoring.js');
         const { assemblePrompt } = await import('../services/curation/assembly.js');
 
         const Anthropic = (await import('@anthropic-ai/sdk')).default;
@@ -176,7 +176,9 @@ async function seed() {
         }));
 
         const stats = computeStats(dbRows, { trendMinPoints: 3 });
-        const scored = scoreInsights(stats);
+        // rankInsights, not scoreInsights: assemblePrompt fills its topN slots
+        // from the full ranked pool, not an already-capped one.
+        const scored = rankInsights(stats);
         const { system, user, metadata } = assemblePrompt(scored, dataset.id);
 
         const model = process.env.CLAUDE_MODEL ?? 'claude-sonnet-4-6';

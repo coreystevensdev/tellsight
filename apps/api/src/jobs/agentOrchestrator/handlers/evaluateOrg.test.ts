@@ -72,7 +72,7 @@ beforeEach(() => {
   mockGetActiveDatasetId.mockResolvedValue(100);
   mockFindOrgById.mockResolvedValue(baseOrg);
   mockGetActiveCorrections.mockResolvedValue([]);
-  mockRunCurationPipeline.mockResolvedValue([]);
+  mockRunCurationPipeline.mockResolvedValue({ insights: [], scoredPool: [] });
   mockGenerateProposals.mockResolvedValue([]);
   mockGetRecentDedupKeys.mockResolvedValue([]);
   mockInsertProposal.mockResolvedValue({ id: 1 });

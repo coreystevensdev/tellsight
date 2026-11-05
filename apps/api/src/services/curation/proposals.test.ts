@@ -8,6 +8,12 @@ vi.mock('node:fs', () => ({
   // so the legacy single-file path renders this fixed content regardless of
   // which prompt version is requested.
   readFileSync: vi.fn((path: string) => {
+    // assemblePrompt now loads scoring.ts's config too (topN, for the
+    // filter-then-cap gate), so this mock has to answer that path with real
+    // JSON or scoring.ts's module load throws before any test body runs.
+    if (path.includes('scoring-weights.json')) {
+      return '{"version":"1.0","topN":8,"weights":{"novelty":0.35,"actionability":0.4,"specificity":0.25},"thresholds":{"anomalyZScore":2,"trendMinDataPoints":3,"significantChangePercent":10}}';
+    }
     if (path.includes('-system.md') || path.includes('-user.md')) {
       const err = new Error('ENOENT: no such file (test mock)') as Error & { code: string };
       err.code = 'ENOENT';
@@ -374,5 +380,43 @@ describe('generateProposals', () => {
 
     const promptArg = mockGenerateWithTools.mock.calls[0]![0] as { user: string };
     expect(promptArg.user).not.toContain('[Payroll] Anomaly');
+  });
+
+  // statInstanceId doesn't know about the sample-size gate, so the suppressed
+  // stat's id is a real, well-formed id -- the only thing that can reject it
+  // as evidence is statsById being built from promptedStats, not the full
+  // candidate pool. Building it from the full pool would validate this as
+  // grounded even though the model was never shown the stat.
+  it('rejects evidence citing a stat the floor suppressed from the prompt', async () => {
+    const belowFloorAnomaly: ScoredInsight = {
+      stat: {
+        statType: StatType.Anomaly,
+        category: 'Payroll',
+        value: 9_000,
+        comparison: 4_000,
+        sampleSize: 2, // anomaly's floor is 8
+        details: {
+          direction: 'above',
+          zScore: 3.1,
+          iqrBounds: { lower: 3_000, upper: 5_000 },
+          deviation: 4_000,
+          period: '2026-05',
+        },
+      },
+      score: 0.95,
+      breakdown: { novelty: 0.95, actionability: 0.9, specificity: 0.9 },
+    };
+    const belowFloorId = statInstanceId(belowFloorAnomaly.stat, DATASET_ID);
+    mockGenerateWithTools.mockResolvedValue([
+      toolCall(validInput({ title: 'Cites the suppressed stat', evidence: [belowFloorId] })),
+    ]);
+
+    const result = await generateProposals([...insights, belowFloorAnomaly], DATASET_ID, null, NOW);
+
+    expect(result).toHaveLength(0);
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({ outOfScope: [belowFloorId] }),
+      expect.any(String),
+    );
   });
 });

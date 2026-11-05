@@ -32,7 +32,12 @@ vi.mock('../../../services/analytics/trackEvent.js', () => ({
 }));
 
 vi.mock('bullmq', () => ({
-  Queue: class { constructor(public name: string, public opts: unknown) {} },
+  Queue: class {
+    constructor(
+      public name: string,
+      public opts: unknown,
+    ) {}
+  },
 }));
 
 vi.mock('../../../config.js', () => ({ env: { REDIS_URL: 'redis://localhost:6379' } }));
@@ -175,6 +180,7 @@ beforeEach(() => {
     system: 'sys',
     user: 'user prompt',
     metadata: { promptVersion: 'v1-digest', statTypes: ['Total', 'Trend'] },
+    promptedStats: [{ statType: 'Total' }, { statType: 'Trend' }],
   });
   mockGetLastDigest.mockResolvedValue(undefined);
   // Fresh by default: created after any weekStart these tests use, so the
@@ -196,7 +202,10 @@ describe('cache miss path', () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
     mockGetCachedDigest.mockResolvedValueOnce(undefined);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGenerateInterpretation.mockResolvedValueOnce('- bullet 1\n- bullet 2\n- bullet 3');
     mockStoreSummary.mockResolvedValueOnce({ id: 999 });
     mockFindOrgRecipients.mockResolvedValueOnce([]);
@@ -256,7 +265,10 @@ describe('cache miss path', () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(orgWithProfile);
     mockGetCachedDigest.mockResolvedValueOnce(undefined);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGenerateInterpretation.mockResolvedValueOnce('');
     mockStoreSummary.mockResolvedValueOnce({ id: 1 });
     mockFindOrgRecipients.mockResolvedValueOnce([]);
@@ -280,9 +292,22 @@ describe('cache miss path', () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
     mockGetCachedDigest.mockResolvedValueOnce(undefined);
-    mockRunCurationPipeline.mockResolvedValueOnce([
-      { stat: runwayStat(4.6), score: 1, breakdown: { novelty: 1, actionability: 1, specificity: 1 } },
-    ]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [
+        {
+          stat: runwayStat(4.6),
+          score: 1,
+          breakdown: { novelty: 1, actionability: 1, specificity: 1 },
+        },
+      ],
+      scoredPool: [
+        {
+          stat: runwayStat(4.6),
+          score: 1,
+          breakdown: { novelty: 1, actionability: 1, specificity: 1 },
+        },
+      ],
+    });
     mockGetLastDigest.mockResolvedValueOnce({
       keyStats: [runwayStat(4.0)],
       stateSentence: 'Runway was holding steady.',
@@ -310,9 +335,22 @@ describe('cache miss path', () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
     mockGetCachedDigest.mockResolvedValueOnce(undefined);
-    mockRunCurationPipeline.mockResolvedValueOnce([
-      { stat: runwayStat(4.05), score: 1, breakdown: { novelty: 1, actionability: 1, specificity: 1 } },
-    ]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [
+        {
+          stat: runwayStat(4.05),
+          score: 1,
+          breakdown: { novelty: 1, actionability: 1, specificity: 1 },
+        },
+      ],
+      scoredPool: [
+        {
+          stat: runwayStat(4.05),
+          score: 1,
+          breakdown: { novelty: 1, actionability: 1, specificity: 1 },
+        },
+      ],
+    });
     mockGetLastDigest.mockResolvedValueOnce({
       keyStats: [runwayStat(4.0)],
       stateSentence: 'Runway was holding steady.',
@@ -333,12 +371,64 @@ describe('cache miss path', () => {
     );
   });
 
+  // A below-floor stat must not narrate its own appearance through
+  // priorContext even when there is no prior digest to compare against --
+  // buildPriorContext's first_tracked branch only needs the stat present now
+  // and absent from priorStats, which an empty prior digest satisfies for
+  // free, floor or no floor. Margin's floor is 6; sampleSize 4 is below it.
+  it('does not narrate a below-floor stat appearing for the first time through priorContext', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockGetCachedDigest.mockResolvedValueOnce(undefined);
+    const thinMargin = {
+      stat: {
+        statType: 'margin_trend',
+        category: null,
+        value: 31,
+        sampleSize: 4,
+        details: {
+          recentMarginPercent: 31,
+          priorMarginPercent: 28,
+          direction: 'expanding',
+          revenueGrowthPercent: 5,
+          expenseGrowthPercent: 2,
+        },
+      },
+      score: 1,
+      breakdown: { novelty: 1, actionability: 1, specificity: 1 },
+    };
+    mockRunCurationPipeline.mockResolvedValueOnce({ insights: [thinMargin], scoredPool: [thinMargin] });
+    mockGetLastDigest.mockResolvedValueOnce(undefined);
+    mockGenerateInterpretation.mockResolvedValueOnce('- margin update');
+    mockStoreSummary.mockResolvedValueOnce({ id: 30 });
+    mockFindOrgRecipients.mockResolvedValueOnce([]);
+
+    await handlePerOrgJob({ id: 'org-thin-margin', data: baseJobData } as never);
+
+    // v1-digest, not v2: the gate leaves both buildPriorContext and
+    // detectTransitionMilestones with nothing, same empty priorContext as
+    // the no-prior-digest case.
+    expect(mockAssemblePrompt).toHaveBeenCalledWith(
+      expect.any(Array),
+      100,
+      'v1-digest',
+      null,
+      expect.any(Date),
+      '',
+    );
+  });
+
   it('logs a warning when the Tier 2b cite strip removes hallucinated citations', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
     mockGetCachedDigest.mockResolvedValueOnce(undefined);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
-    mockGenerateInterpretation.mockResolvedValueOnce('- bullet <cite id="ghost"/> <cite id="phantom"/>');
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
+    mockGenerateInterpretation.mockResolvedValueOnce(
+      '- bullet <cite id="ghost"/> <cite id="phantom"/>',
+    );
     mockValidateCiteRefs.mockReturnValueOnce({ invalidRefs: ['ghost', 'phantom'] });
     mockStoreSummary.mockResolvedValueOnce({ id: 4 });
     mockFindOrgRecipients.mockResolvedValueOnce([]);
@@ -368,9 +458,22 @@ describe('no new data since the prior digest', () => {
   function unchangedSince(datasetCreatedAt: Date) {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
-    mockRunCurationPipeline.mockResolvedValueOnce([
-      { stat: runwayStat(4.0), score: 1, breakdown: { novelty: 1, actionability: 1, specificity: 1 } },
-    ]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [
+        {
+          stat: runwayStat(4.0),
+          score: 1,
+          breakdown: { novelty: 1, actionability: 1, specificity: 1 },
+        },
+      ],
+      scoredPool: [
+        {
+          stat: runwayStat(4.0),
+          score: 1,
+          breakdown: { novelty: 1, actionability: 1, specificity: 1 },
+        },
+      ],
+    });
     mockGetLastDigest.mockResolvedValueOnce({
       keyStats: [runwayStat(4.0)],
       stateSentence: 'Runway was holding steady.',
@@ -414,9 +517,22 @@ describe('no new data since the prior digest', () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
     mockGetCachedDigest.mockResolvedValueOnce(undefined);
-    mockRunCurationPipeline.mockResolvedValueOnce([
-      { stat: runwayStat(4.0), score: 1, breakdown: { novelty: 1, actionability: 1, specificity: 1 } },
-    ]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [
+        {
+          stat: runwayStat(4.0),
+          score: 1,
+          breakdown: { novelty: 1, actionability: 1, specificity: 1 },
+        },
+      ],
+      scoredPool: [
+        {
+          stat: runwayStat(4.0),
+          score: 1,
+          breakdown: { novelty: 1, actionability: 1, specificity: 1 },
+        },
+      ],
+    });
     mockGetLastDigest.mockResolvedValueOnce(undefined);
     mockGetDatasetById.mockResolvedValue({ id: 100, createdAt: new Date('2026-01-01T00:00:00Z') });
     mockGenerateInterpretation.mockResolvedValueOnce('- first');
@@ -480,7 +596,10 @@ describe('cache hit path', () => {
   it('still runs the curation pipeline for currentStats but skips the LLM call', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGetCachedDigest.mockResolvedValueOnce({
       id: 555,
       content: 'cached',
@@ -500,7 +619,10 @@ describe('fan-out', () => {
   it('enqueues one digest-send job per recipient with summaryId only', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGetCachedDigest.mockResolvedValueOnce({
       id: 555,
       content: 'cached',
@@ -538,7 +660,10 @@ describe('fan-out', () => {
   it('continues fan-out when one enqueue throws (AC #4 isolation)', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
     mockFindOrgRecipients.mockResolvedValueOnce([
       { userId: 1, email: 'a@x.com', name: 'A' },
@@ -550,7 +675,9 @@ describe('fan-out', () => {
       .mockRejectedValueOnce(new Error('Redis blip'))
       .mockResolvedValueOnce(undefined);
 
-    await expect(handlePerOrgJob({ id: 'org-5', data: baseJobData } as never)).resolves.toBeUndefined();
+    await expect(
+      handlePerOrgJob({ id: 'org-5', data: baseJobData } as never),
+    ).resolves.toBeUndefined();
 
     expect(mockSendQueueAdd).toHaveBeenCalledTimes(3);
   });
@@ -560,12 +687,17 @@ describe('agent proposal fold-in', () => {
   it('sends the digest without agent bullets when the fold-in lookup throws', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
     mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
     mockGetAgentEnabled.mockRejectedValueOnce(new Error('connection refused'));
 
-    await expect(handlePerOrgJob({ id: 'org-agent-8', data: baseJobData } as never)).resolves.toBeUndefined();
+    await expect(
+      handlePerOrgJob({ id: 'org-agent-8', data: baseJobData } as never),
+    ).resolves.toBeUndefined();
 
     const payload = mockSendQueueAdd.mock.calls[0]![1] as SendJobData;
     expect(payload.agentBullets).toEqual([]);
@@ -575,7 +707,10 @@ describe('agent proposal fold-in', () => {
   it('re-verifies Agent-tier entitlement and skips the fold-in entirely when it was revoked', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
     mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
     mockGetAgentEnabled.mockResolvedValueOnce(false);
@@ -591,7 +726,10 @@ describe('agent proposal fold-in', () => {
   it('does not mark proposals notified when every recipient enqueue fails (nothing actually delivered)', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
     mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
     mockGetPendingProposals.mockResolvedValueOnce([
@@ -607,7 +745,10 @@ describe('agent proposal fold-in', () => {
   it('does not mark proposals notified when there are zero eligible recipients', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
     mockFindOrgRecipients.mockResolvedValueOnce([]);
     mockGetPendingProposals.mockResolvedValueOnce([
@@ -620,18 +761,31 @@ describe('agent proposal fold-in', () => {
     expect(mockMarkNotified).not.toHaveBeenCalled();
   });
 
-  it('folds pending auto_notify proposals into every recipient\'s agentBullets', async () => {
+  it("folds pending auto_notify proposals into every recipient's agentBullets", async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
     mockFindOrgRecipients.mockResolvedValueOnce([
       { userId: 1, email: 'a@x.com', name: 'A' },
       { userId: 2, email: 'b@x.com', name: 'B' },
     ]);
     mockGetPendingProposals.mockResolvedValueOnce([
-      { id: 10, lane: 'auto_notify', title: 'Marketing spend up', recommendation: 'Review recent spend.' },
-      { id: 11, lane: 'needs_approval', title: 'Reclassify invoice', recommendation: 'Confirm the category.' },
+      {
+        id: 10,
+        lane: 'auto_notify',
+        title: 'Marketing spend up',
+        recommendation: 'Review recent spend.',
+      },
+      {
+        id: 11,
+        lane: 'needs_approval',
+        title: 'Reclassify invoice',
+        recommendation: 'Confirm the category.',
+      },
     ]);
 
     await handlePerOrgJob({ id: 'org-agent-1', data: baseJobData } as never);
@@ -646,11 +800,19 @@ describe('agent proposal fold-in', () => {
   it('excludes needs_approval proposals from the digest and leaves them unresolved', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
     mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
     mockGetPendingProposals.mockResolvedValueOnce([
-      { id: 11, lane: 'needs_approval', title: 'Reclassify invoice', recommendation: 'Confirm the category.' },
+      {
+        id: 11,
+        lane: 'needs_approval',
+        title: 'Reclassify invoice',
+        recommendation: 'Confirm the category.',
+      },
     ]);
 
     await handlePerOrgJob({ id: 'org-agent-2', data: baseJobData } as never);
@@ -663,7 +825,10 @@ describe('agent proposal fold-in', () => {
   it('marks only the auto_notify proposal ids notified, inside the same tx as digest history', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
     mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
     mockGetPendingProposals.mockResolvedValueOnce([
@@ -685,7 +850,10 @@ describe('agent proposal fold-in', () => {
   it('leaves agentBullets empty and markNotified called with no ids when nothing is pending', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
     mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
     mockGetPendingProposals.mockResolvedValueOnce([]);
@@ -700,11 +868,19 @@ describe('agent proposal fold-in', () => {
   it('folds expired proposals into agentBullets alongside auto_notify ones', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
     mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
     mockGetPendingProposals.mockResolvedValueOnce([
-      { id: 10, lane: 'auto_notify', title: 'Marketing spend up', recommendation: 'Review recent spend.' },
+      {
+        id: 10,
+        lane: 'auto_notify',
+        title: 'Marketing spend up',
+        recommendation: 'Review recent spend.',
+      },
     ]);
     mockGetExpiredUnfoldedProposals.mockResolvedValueOnce([
       { id: 20, title: 'Runway dropped below 3 months', recommendation: 'Revisit the burn rate.' },
@@ -723,7 +899,10 @@ describe('agent proposal fold-in', () => {
   it('leaves agentBullets unaffected when there are no newly-expired proposals to fold in', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
     mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
     mockGetPendingProposals.mockResolvedValueOnce([]);
@@ -738,7 +917,10 @@ describe('agent proposal fold-in', () => {
   it('caps auto_notify proposals at 5 bullets, appends the omitted note, and only marks the shown ones notified', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
     mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
     mockGetPendingProposals.mockResolvedValueOnce(
@@ -767,7 +949,10 @@ describe('agent proposal fold-in', () => {
   it('appends the omitted note when the expired group is capped, using the true count from countExpiredUnfoldedProposals', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
     mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
     mockGetPendingProposals.mockResolvedValueOnce([]);
@@ -790,7 +975,10 @@ describe('agent proposal fold-in', () => {
   it('marks ids from both the auto_notify and expired groups in one combined markNotified call', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
     mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
     mockGetPendingProposals.mockResolvedValueOnce([
@@ -811,7 +999,10 @@ describe('agent proposal fold-in', () => {
   it('sums the omitted count across both groups when both overflow in the same run', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
     mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
     mockGetPendingProposals.mockResolvedValueOnce(
@@ -840,13 +1031,26 @@ describe('agent proposal fold-in', () => {
 });
 
 describe('digest history', () => {
-  it('saves history once after fan-out with this week\'s valence, state sentence, key stats, and milestones', async () => {
+  it("saves history once after fan-out with this week's valence, state sentence, key stats, and milestones", async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
     mockGetCachedDigest.mockResolvedValueOnce(undefined);
-    mockRunCurationPipeline.mockResolvedValueOnce([
-      { stat: runwayStat(2.8), score: 1, breakdown: { novelty: 1, actionability: 1, specificity: 1 } },
-    ]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [
+        {
+          stat: runwayStat(2.8),
+          score: 1,
+          breakdown: { novelty: 1, actionability: 1, specificity: 1 },
+        },
+      ],
+      scoredPool: [
+        {
+          stat: runwayStat(2.8),
+          score: 1,
+          breakdown: { novelty: 1, actionability: 1, specificity: 1 },
+        },
+      ],
+    });
     mockGetLastDigest.mockResolvedValueOnce({
       keyStats: [runwayStat(3.5)],
       stateSentence: 'Runway was comfortable.',
@@ -892,7 +1096,10 @@ describe('digest history', () => {
   it('strips the leading bullet marker from a cached digest to build the state sentence', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGetCachedDigest.mockResolvedValueOnce({
       id: 555,
       content: '\n  - Revenue held flat this week.\n- second bullet',
@@ -911,12 +1118,21 @@ describe('digest history', () => {
   it('logs and continues when saveDigestHistory throws, without failing the job or blocking sends', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
-    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: 'cached', transparencyMetadata: {} });
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
+    mockGetCachedDigest.mockResolvedValueOnce({
+      id: 555,
+      content: 'cached',
+      transparencyMetadata: {},
+    });
     mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
     mockSaveDigestHistory.mockRejectedValueOnce(new Error('unique violation'));
 
-    await expect(handlePerOrgJob({ id: 'org-13', data: baseJobData } as never)).resolves.toBeUndefined();
+    await expect(
+      handlePerOrgJob({ id: 'org-13', data: baseJobData } as never),
+    ).resolves.toBeUndefined();
 
     expect(mockSendQueueAdd).toHaveBeenCalledOnce();
     expect(mockTransaction).toHaveBeenCalledOnce();
@@ -929,8 +1145,15 @@ describe('digest history', () => {
   it('still saves history after a partial fan-out failure (isolated from enqueue errors)', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
-    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: 'cached', transparencyMetadata: {} });
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
+    mockGetCachedDigest.mockResolvedValueOnce({
+      id: 555,
+      content: 'cached',
+      transparencyMetadata: {},
+    });
     mockFindOrgRecipients.mockResolvedValueOnce([
       { userId: 1, email: 'a@x.com', name: 'A' },
       { userId: 2, email: 'b@x.com', name: 'B' },
@@ -947,11 +1170,14 @@ describe('digest history', () => {
 });
 
 describe('prior-digest lookup', () => {
-  it('excludes the current run\'s own week by passing weekStart to getLastDigest', async () => {
+  it("excludes the current run's own week by passing weekStart to getLastDigest", async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
     mockGetCachedDigest.mockResolvedValueOnce(undefined);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGenerateInterpretation.mockResolvedValueOnce('- steady week');
     mockStoreSummary.mockResolvedValueOnce({ id: 20 });
     mockFindOrgRecipients.mockResolvedValueOnce([]);
@@ -965,20 +1191,36 @@ describe('prior-digest lookup', () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
     mockGetCachedDigest.mockResolvedValueOnce(undefined);
-    mockRunCurationPipeline.mockResolvedValueOnce([
-      { stat: runwayStat(4.6), score: 1, breakdown: { novelty: 1, actionability: 1, specificity: 1 } },
-    ]);
-    // `runway` statType matches, but `details` is missing -- buildPriorContext
-    // dereferences `.details.runwayMonths` on it and throws.
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [
+        {
+          stat: runwayStat(4.6),
+          score: 1,
+          breakdown: { novelty: 1, actionability: 1, specificity: 1 },
+        },
+      ],
+      scoredPool: [
+        {
+          stat: runwayStat(4.6),
+          score: 1,
+          breakdown: { novelty: 1, actionability: 1, specificity: 1 },
+        },
+      ],
+    });
+    // `runway` statType matches and sampleSize clears the floor (3), so the
+    // sample-size gate lets this entry through, but `details` is missing --
+    // buildPriorContext dereferences `.details.runwayMonths` on it and throws.
     mockGetLastDigest.mockResolvedValueOnce({
-      keyStats: [{ statType: 'runway', category: null, value: 4.0 }],
+      keyStats: [{ statType: 'runway', category: null, value: 4.0, sampleSize: 3 }],
       stateSentence: 'Runway was holding steady.',
     });
     mockGenerateInterpretation.mockResolvedValueOnce('- runway update');
     mockStoreSummary.mockResolvedValueOnce({ id: 21 });
     mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
 
-    await expect(handlePerOrgJob({ id: 'org-20', data: baseJobData } as never)).resolves.toBeUndefined();
+    await expect(
+      handlePerOrgJob({ id: 'org-20', data: baseJobData } as never),
+    ).resolves.toBeUndefined();
 
     expect(mockSendQueueAdd).toHaveBeenCalledOnce();
     expect(mockSaveDigestHistory).toHaveBeenCalledOnce();
@@ -1018,7 +1260,10 @@ describe('first-time milestones', () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
     mockGetCachedDigest.mockResolvedValueOnce(undefined);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGetMonthlyBucketsByDataset.mockResolvedValueOnce(
       new Map([
         ['2026-04', { revenue: 4000, expenses: 5000 }],
@@ -1036,7 +1281,9 @@ describe('first-time milestones', () => {
     expect(mockGetAwardedKinds).toHaveBeenCalledWith(42);
 
     const sendPayload = mockSendQueueAdd.mock.calls[0]![1] as SendJobData;
-    expect(sendPayload.subjectLine).toBe("You've hit your first profitable month - Acme Coffee weekly insights");
+    expect(sendPayload.subjectLine).toBe(
+      "You've hit your first profitable month - Acme Coffee weekly insights",
+    );
 
     expect(mockSaveDigestHistory).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1067,7 +1314,10 @@ describe('first-time milestones', () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
     mockGetCachedDigest.mockResolvedValueOnce(undefined);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGetMonthlyBucketsByDataset.mockResolvedValueOnce(
       new Map([
         ['2026-04', { revenue: 4000, expenses: 5000 }],
@@ -1102,9 +1352,22 @@ describe('first-time milestones', () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(orgWithFixedCosts);
     mockGetCachedDigest.mockResolvedValueOnce(undefined);
-    mockRunCurationPipeline.mockResolvedValueOnce([
-      { stat: breakEvenStat(-1000), score: 1, breakdown: { novelty: 1, actionability: 1, specificity: 1 } },
-    ]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [
+        {
+          stat: breakEvenStat(-1000),
+          score: 1,
+          breakdown: { novelty: 1, actionability: 1, specificity: 1 },
+        },
+      ],
+      scoredPool: [
+        {
+          stat: breakEvenStat(-1000),
+          score: 1,
+          breakdown: { novelty: 1, actionability: 1, specificity: 1 },
+        },
+      ],
+    });
     mockGetLastDigest.mockResolvedValueOnce({
       keyStats: [breakEvenStat(500)],
       stateSentence: 'Revenue was below fixed costs.',
@@ -1140,7 +1403,10 @@ describe('first-time milestones', () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
     mockGetCachedDigest.mockResolvedValueOnce(undefined);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGetMonthlyBucketsByDataset.mockResolvedValueOnce(
       new Map([
         ['2026-04', { revenue: 4000, expenses: 5000 }],
@@ -1153,7 +1419,9 @@ describe('first-time milestones', () => {
     mockFindOrgRecipients.mockResolvedValueOnce([]);
     mockAwardMilestone.mockRejectedValueOnce(new Error('unique violation'));
 
-    await expect(handlePerOrgJob({ id: 'org-18', data: baseJobData } as never)).resolves.toBeUndefined();
+    await expect(
+      handlePerOrgJob({ id: 'org-18', data: baseJobData } as never),
+    ).resolves.toBeUndefined();
 
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({ orgId: 42 }),
@@ -1165,7 +1433,10 @@ describe('first-time milestones', () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
     mockGetCachedDigest.mockResolvedValueOnce(undefined);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGetMonthlyBucketsByDataset.mockResolvedValueOnce(
       new Map([
         ['2026-04', { revenue: 4000, expenses: 5000 }],
@@ -1178,7 +1449,9 @@ describe('first-time milestones', () => {
     mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
     mockAwardMilestone.mockRejectedValueOnce(new Error('connection reset'));
 
-    await expect(handlePerOrgJob({ id: 'org-21', data: baseJobData } as never)).resolves.toBeUndefined();
+    await expect(
+      handlePerOrgJob({ id: 'org-21', data: baseJobData } as never),
+    ).resolves.toBeUndefined();
 
     // Send jobs are enqueued before the transaction, so they aren't affected
     // by the award write rolling the history write back with it.
@@ -1208,7 +1481,10 @@ describe('first-time milestones', () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(orgWithFixedCosts);
     mockGetCachedDigest.mockResolvedValueOnce(undefined);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGetMonthlyBucketsByDataset.mockResolvedValueOnce(
       new Map([['2026-05', { revenue: 6000, expenses: 1000 }]]),
     );
@@ -1216,9 +1492,13 @@ describe('first-time milestones', () => {
     mockGenerateInterpretation.mockResolvedValueOnce('- steady week');
     mockStoreSummary.mockResolvedValueOnce({ id: 10 });
     mockFindOrgRecipients.mockResolvedValueOnce([]);
-    mockAwardMilestone.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('connection reset'));
+    mockAwardMilestone
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('connection reset'));
 
-    await expect(handlePerOrgJob({ id: 'org-22', data: baseJobData } as never)).resolves.toBeUndefined();
+    await expect(
+      handlePerOrgJob({ id: 'org-22', data: baseJobData } as never),
+    ).resolves.toBeUndefined();
 
     expect(mockAwardMilestone).toHaveBeenCalledTimes(2);
     expect(mockAwardMilestone).toHaveBeenNthCalledWith(
@@ -1259,7 +1539,7 @@ describe('defensive paths', () => {
   it('skips the send entirely when the week has no computable stats', async () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
-    mockRunCurationPipeline.mockResolvedValueOnce([]);
+    mockRunCurationPipeline.mockResolvedValueOnce({ insights: [], scoredPool: [] });
 
     await handlePerOrgJob({ id: 'org-nostats', data: baseJobData } as never);
 
@@ -1312,7 +1592,10 @@ describe('invalid job payload', () => {
   it('skips and logs a warning when orgId is missing', async () => {
     const { weekStart, weekEnd, correlationId } = baseJobData;
 
-    await handlePerOrgJob({ id: 'org-bad-1', data: { weekStart, weekEnd, correlationId } } as never);
+    await handlePerOrgJob({
+      id: 'org-bad-1',
+      data: { weekStart, weekEnd, correlationId },
+    } as never);
 
     expect(mockGetActiveDatasetId).not.toHaveBeenCalled();
     expect(logger.warn).toHaveBeenCalledWith(
@@ -1346,7 +1629,10 @@ describe('org scoping of the queries this handler issues', () => {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
     mockGetCachedDigest.mockResolvedValueOnce(undefined);
-    mockRunCurationPipeline.mockResolvedValueOnce([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGenerateInterpretation.mockResolvedValueOnce('- bullet 1\n- bullet 2\n- bullet 3');
     mockStoreSummary.mockResolvedValueOnce({ id: 999 });
     mockFindOrgRecipients.mockResolvedValueOnce([]);

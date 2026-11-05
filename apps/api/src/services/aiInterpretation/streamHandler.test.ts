@@ -117,7 +117,7 @@ describe('streamToSSE', () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
 
-    mockRunCurationPipeline.mockResolvedValue([]);
+    mockRunCurationPipeline.mockResolvedValue({ insights: [], scoredPool: [] });
     // Shape has to match what assemblePrompt actually returns. It was
     // { prompt, metadata } here while production destructures
     // { system, user, metadata }, so every test in this file ran with
@@ -127,6 +127,7 @@ describe('streamToSSE', () => {
       system: 'test system prompt',
       user: 'test user prompt',
       metadata: defaultMetadata,
+      promptedStats: [],
     });
     mockValidateSummary.mockReturnValue({
       status: 'clean',
@@ -969,11 +970,12 @@ describe('AI latency instrumentation (NFR2, NFR3)', () => {
     vi.clearAllMocks();
     vi.useRealTimers();
 
-    mockRunCurationPipeline.mockResolvedValue([]);
+    mockRunCurationPipeline.mockResolvedValue({ insights: [], scoredPool: [] });
     mockAssemblePrompt.mockReturnValue({
       system: 'test system prompt',
       user: 'test user prompt',
       metadata: defaultMetadata,
+      promptedStats: [],
     });
     mockValidateSummary.mockReturnValue({
       status: 'clean',

@@ -1,7 +1,16 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 import type { ScoredInsight } from './types.js';
 import { StatType } from './types.js';
+
+// assemblePrompt now loads scoring.js for the sample-size gate's topN cap,
+// and scoring.js imports the real logger, which imports the real config and
+// throws on a test host with no .env. Mocking the logger doesn't touch the
+// real on-disk template loading this file exists to exercise.
+vi.mock('../../lib/logger.js', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+
 import { assemblePrompt } from './assembly.js';
 
 // No node:fs mock here, unlike assembly.test.ts, this exercises the real

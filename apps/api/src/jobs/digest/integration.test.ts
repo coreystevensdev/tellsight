@@ -190,6 +190,7 @@ beforeEach(() => {
     system: 'sys',
     user: 'user',
     metadata: { promptVersion: 'v1-digest', statTypes: ['Total', 'Trend'] },
+    promptedStats: [{ statType: 'Total' }, { statType: 'Trend' }],
   });
   mockValidateStatRefs.mockReturnValue({ invalidRefs: [] });
   mockGetLastDigest.mockResolvedValue(undefined);
@@ -215,7 +216,10 @@ describe('orchestrator -> per-org -> per-send choreography', () => {
       return undefined;
     });
     mockGetCachedDigest.mockResolvedValue(undefined);
-    mockRunCurationPipeline.mockResolvedValue([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValue({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockGenerateInterpretation.mockResolvedValue('- Revenue up 12%\n- Payroll spiked\n- Runway 8 months');
 
     let nextSummaryId = 500;
@@ -312,7 +316,7 @@ describe('orchestrator -> per-org -> per-send choreography', () => {
     mockGetCachedDigest.mockResolvedValue(undefined);
     mockRunCurationPipeline.mockImplementation(async (orgId: number) => {
       if (orgId === orgA.id) throw new Error('LLM provider down');
-      return [{ stat: { statType: 'Total' } }];
+      return { insights: [{ stat: { statType: 'Total' } }], scoredPool: [{ stat: { statType: 'Total' } }] };
     });
     mockGenerateInterpretation.mockResolvedValue('- ok');
     mockStoreSummary.mockResolvedValue({ id: 999 });
@@ -349,7 +353,10 @@ describe('orchestrator -> per-org -> per-send choreography', () => {
       content: 'cached content',
       transparencyMetadata: { statTypes: ['Total'] },
     });
-    mockRunCurationPipeline.mockResolvedValue([{ stat: { statType: 'Total' } }]);
+    mockRunCurationPipeline.mockResolvedValue({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
     mockFindOrgRecipients.mockResolvedValue([{ userId: 11, email: 'alice@a.com', name: 'Alice' }]);
 
     // Orchestrator + per-org first.

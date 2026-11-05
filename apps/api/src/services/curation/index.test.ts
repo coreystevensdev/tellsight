@@ -68,26 +68,41 @@ const fixtureRows = [
   { id: 6, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-03-01'), amount: '550.00', label: 'F', metadata: null, createdAt: new Date() },
 ];
 
-// Same Sales/Marketing shape as fixtureRows, but 7 months each instead of 3.
+// Same Sales/Marketing shape as fixtureRows, but 12 months each instead of 3.
 // The two correction tests below need their targeted trend stat to survive
 // the sample-size floor (6) on its own, so the correction is the only reason
-// it ever leaves the prompt. Sales still opens at 1000 and closes at 2000,
-// the exact figures the "$1000 -> $2000" assertions below were written against.
+// it ever leaves the prompt. 12 months puts it 6 above the floor rather than
+// 1: a future floor bump of one would no longer make the gate independently
+// suppress this stat and recreate the which-mechanism-excluded-it ambiguity a
+// prior round closed. Sales still opens at 1000 and closes at 2000, the exact
+// figures the "$1000 -> $2000" assertions below were written against. Every
+// row carries parentCategory: null, so the extra months pull in no new stat
+// types and can't disturb those assertions.
 const trendFixtureRows = [
   { id: 1, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-01-01'), amount: '1000.00', label: 'A', metadata: null, createdAt: new Date() },
-  { id: 2, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-02-01'), amount: '1300.00', label: 'B', metadata: null, createdAt: new Date() },
-  { id: 3, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-03-01'), amount: '1450.00', label: 'C', metadata: null, createdAt: new Date() },
-  { id: 4, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-04-01'), amount: '1600.00', label: 'D', metadata: null, createdAt: new Date() },
-  { id: 5, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-05-01'), amount: '1750.00', label: 'E', metadata: null, createdAt: new Date() },
-  { id: 6, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-06-01'), amount: '1900.00', label: 'F', metadata: null, createdAt: new Date() },
-  { id: 7, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-07-01'), amount: '2000.00', label: 'G', metadata: null, createdAt: new Date() },
-  { id: 8, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-01-01'), amount: '500.00', label: 'H', metadata: null, createdAt: new Date() },
-  { id: 9, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-02-01'), amount: '520.00', label: 'I', metadata: null, createdAt: new Date() },
-  { id: 10, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-03-01'), amount: '550.00', label: 'J', metadata: null, createdAt: new Date() },
-  { id: 11, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-04-01'), amount: '530.00', label: 'K', metadata: null, createdAt: new Date() },
-  { id: 12, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-05-01'), amount: '560.00', label: 'L', metadata: null, createdAt: new Date() },
-  { id: 13, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-06-01'), amount: '580.00', label: 'M', metadata: null, createdAt: new Date() },
-  { id: 14, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-07-01'), amount: '600.00', label: 'N', metadata: null, createdAt: new Date() },
+  { id: 2, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-02-01'), amount: '1100.00', label: 'B', metadata: null, createdAt: new Date() },
+  { id: 3, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-03-01'), amount: '1200.00', label: 'C', metadata: null, createdAt: new Date() },
+  { id: 4, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-04-01'), amount: '1300.00', label: 'D', metadata: null, createdAt: new Date() },
+  { id: 5, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-05-01'), amount: '1400.00', label: 'E', metadata: null, createdAt: new Date() },
+  { id: 6, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-06-01'), amount: '1500.00', label: 'F', metadata: null, createdAt: new Date() },
+  { id: 7, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-07-01'), amount: '1600.00', label: 'G', metadata: null, createdAt: new Date() },
+  { id: 8, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-08-01'), amount: '1700.00', label: 'H', metadata: null, createdAt: new Date() },
+  { id: 9, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-09-01'), amount: '1800.00', label: 'I', metadata: null, createdAt: new Date() },
+  { id: 10, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-10-01'), amount: '1850.00', label: 'J', metadata: null, createdAt: new Date() },
+  { id: 11, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-11-01'), amount: '1930.00', label: 'K', metadata: null, createdAt: new Date() },
+  { id: 12, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Sales', parentCategory: null, date: new Date('2026-12-01'), amount: '2000.00', label: 'L', metadata: null, createdAt: new Date() },
+  { id: 13, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-01-01'), amount: '500.00', label: 'M', metadata: null, createdAt: new Date() },
+  { id: 14, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-02-01'), amount: '520.00', label: 'N', metadata: null, createdAt: new Date() },
+  { id: 15, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-03-01'), amount: '550.00', label: 'O', metadata: null, createdAt: new Date() },
+  { id: 16, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-04-01'), amount: '530.00', label: 'P', metadata: null, createdAt: new Date() },
+  { id: 17, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-05-01'), amount: '560.00', label: 'Q', metadata: null, createdAt: new Date() },
+  { id: 18, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-06-01'), amount: '580.00', label: 'R', metadata: null, createdAt: new Date() },
+  { id: 19, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-07-01'), amount: '600.00', label: 'S', metadata: null, createdAt: new Date() },
+  { id: 20, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-08-01'), amount: '590.00', label: 'T', metadata: null, createdAt: new Date() },
+  { id: 21, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-09-01'), amount: '610.00', label: 'U', metadata: null, createdAt: new Date() },
+  { id: 22, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-10-01'), amount: '605.00', label: 'V', metadata: null, createdAt: new Date() },
+  { id: 23, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-11-01'), amount: '620.00', label: 'W', metadata: null, createdAt: new Date() },
+  { id: 24, orgId: 1, datasetId: 1, sourceType: 'csv', category: 'Marketing', parentCategory: null, date: new Date('2026-12-01'), amount: '640.00', label: 'X', metadata: null, createdAt: new Date() },
 ];
 
 describe('runCurationPipeline', () => {
@@ -98,7 +113,7 @@ describe('runCurationPipeline', () => {
   it('orchestrates computation -> scoring end-to-end', async () => {
     vi.mocked(dataRowsQueries.getRowsByDataset).mockResolvedValue(fixtureRows as never);
 
-    const insights = await runCurationPipeline(1, 1);
+    const { insights } = await runCurationPipeline(1, 1);
 
     expect(dataRowsQueries.getRowsByDataset).toHaveBeenCalledWith(1, 1, undefined);
     expect(insights.length).toBeGreaterThan(0);
@@ -122,7 +137,7 @@ describe('runCurationPipeline', () => {
       { category: 'Marketing', plannedMonthly: 500 },
     ]);
 
-    const insights = await runCurationPipeline(1, 1);
+    const { insights } = await runCurationPipeline(1, 1);
     const variance = insights.find((i) => i.stat.statType === 'category_variance');
 
     expect(variance?.stat.category).toBe('Marketing');
@@ -146,7 +161,7 @@ describe('runCurationPipeline', () => {
   it('returns sorted by score descending', async () => {
     vi.mocked(dataRowsQueries.getRowsByDataset).mockResolvedValue(fixtureRows as never);
 
-    const insights = await runCurationPipeline(1, 1);
+    const { insights } = await runCurationPipeline(1, 1);
 
     for (let i = 1; i < insights.length; i++) {
       expect(insights[i - 1]!.score).toBeGreaterThanOrEqual(insights[i]!.score);
@@ -156,14 +171,14 @@ describe('runCurationPipeline', () => {
   it('returns empty array for empty dataset', async () => {
     vi.mocked(dataRowsQueries.getRowsByDataset).mockResolvedValue([]);
 
-    const insights = await runCurationPipeline(1, 1);
+    const { insights } = await runCurationPipeline(1, 1);
     expect(insights).toEqual([]);
   });
 
   it('never leaks DataRow references into output', async () => {
     vi.mocked(dataRowsQueries.getRowsByDataset).mockResolvedValue(fixtureRows as never);
 
-    const insights = await runCurationPipeline(1, 1);
+    const { insights } = await runCurationPipeline(1, 1);
 
     for (const insight of insights) {
       const statKeys = Object.keys(insight.stat);
@@ -178,7 +193,7 @@ describe('runCurationPipeline', () => {
   it('fetches active stat corrections for the org and excludes the matching instance from scoring', async () => {
     vi.mocked(dataRowsQueries.getRowsByDataset).mockResolvedValue(fixtureRows as never);
 
-    const baseline = await runCurationPipeline(1, 1);
+    const { insights: baseline } = await runCurationPipeline(1, 1);
     const target = baseline.find((i) => i.stat.statType === 'trend' && i.stat.category === 'Sales');
     expect(target).toBeDefined();
 
@@ -187,7 +202,7 @@ describe('runCurationPipeline', () => {
 
     vi.mocked(statCorrectionsQueries.getActiveCorrectionStatIds).mockResolvedValueOnce([targetId]);
 
-    const excluded = await runCurationPipeline(1, 1);
+    const { insights: excluded } = await runCurationPipeline(1, 1);
 
     expect(excluded.some((i) => i.stat.statType === 'trend' && i.stat.category === 'Sales')).toBe(false);
     // Marketing's trend instance has a different id, an unrelated correction never touches it.
@@ -199,7 +214,7 @@ describe('runCurationPipeline', () => {
     vi.mocked(dataRowsQueries.getRowsByDataset).mockResolvedValue(fixtureRows as never);
     vi.mocked(statCorrectionsQueries.getActiveCorrectionStatIds).mockResolvedValueOnce([]);
 
-    const insights = await runCurationPipeline(1, 1);
+    const { insights } = await runCurationPipeline(1, 1);
 
     expect(insights.length).toBeGreaterThan(0);
   });
@@ -210,7 +225,7 @@ describe('runCurationPipeline', () => {
   it('skips its own getActiveCorrectionStatIds query when the caller already fetched the ids', async () => {
     vi.mocked(dataRowsQueries.getRowsByDataset).mockResolvedValue(fixtureRows as never);
 
-    const baseline = await runCurationPipeline(1, 1);
+    const { insights: baseline } = await runCurationPipeline(1, 1);
     const target = baseline.find((i) => i.stat.statType === 'trend' && i.stat.category === 'Sales');
     expect(target).toBeDefined();
 
@@ -219,7 +234,7 @@ describe('runCurationPipeline', () => {
 
     vi.mocked(statCorrectionsQueries.getActiveCorrectionStatIds).mockClear();
 
-    const excluded = await runCurationPipeline(1, 1, undefined, null, [targetId]);
+    const { insights: excluded } = await runCurationPipeline(1, 1, undefined, null, [targetId]);
 
     expect(statCorrectionsQueries.getActiveCorrectionStatIds).not.toHaveBeenCalled();
     expect(excluded.some((i) => i.stat.statType === 'trend' && i.stat.category === 'Sales')).toBe(false);
@@ -324,7 +339,7 @@ describe('runFullPipeline', () => {
     vi.mocked(dataRowsQueries.getRowsByDataset).mockResolvedValue(fixtureRows as never);
     vi.mocked(aiSummariesQueries.storeSummary).mockResolvedValue({} as never);
 
-    const insights = await runCurationPipeline(1, 1);
+    const { insights } = await runCurationPipeline(1, 1);
     const { statInstanceId } = await import('./computation.js');
     const validId = statInstanceId(insights[0]!.stat, 1);
 
@@ -350,7 +365,7 @@ describe('runFullPipeline', () => {
     vi.mocked(generateInterpretation).mockResolvedValue('Fresh AI analysis.');
     vi.mocked(aiSummariesQueries.storeSummary).mockResolvedValue({} as never);
 
-    const baselineInsights = await runCurationPipeline(1, 1);
+    const { insights: baselineInsights } = await runCurationPipeline(1, 1);
     const target = baselineInsights.find((i) => i.stat.statType === 'trend' && i.stat.category === 'Sales');
     expect(target).toBeDefined();
 
@@ -380,7 +395,7 @@ describe('runFullPipeline', () => {
     vi.mocked(generateInterpretation).mockResolvedValue('Fresh AI analysis.');
     vi.mocked(aiSummariesQueries.storeSummary).mockResolvedValue({} as never);
 
-    const baselineInsights = await runCurationPipeline(1, 1);
+    const { insights: baselineInsights } = await runCurationPipeline(1, 1);
     const target = baselineInsights.find((i) => i.stat.statType === 'trend' && i.stat.category === 'Sales');
     expect(target).toBeDefined();
 
@@ -426,7 +441,7 @@ describe('cash flow end-to-end pipeline', () => {
 
     vi.mocked(dataRowsQueries.getRowsByDataset).mockResolvedValue(burningRows as never);
 
-    const insights = await runCurationPipeline(1, 1);
+    const { insights } = await runCurationPipeline(1, 1);
     const { assemblePrompt } = await import('./assembly.js');
     const result = assemblePrompt(insights, 1);
 

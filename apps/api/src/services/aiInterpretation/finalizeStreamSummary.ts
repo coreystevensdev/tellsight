@@ -12,7 +12,7 @@ import {
   validateStatRefs,
   validateSummary,
 } from '../curation/index.js';
-import type { ScoredInsight } from '../curation/index.js';
+import type { ComputedStat } from '../curation/index.js';
 import { transparencyMetadataSchema } from '../curation/index.js';
 
 interface FinalizeStreamSummaryInput {
@@ -22,7 +22,7 @@ interface FinalizeStreamSummaryInput {
   tier: SubscriptionTier;
   promptVersion: string;
   fullText: string;
-  pipelineInsights: ScoredInsight[];
+  promptedStats: ComputedStat[];
   metadata: ReturnType<typeof transparencyMetadataSchema.parse>;
   client?: typeof db | DbTransaction;
 }
@@ -34,11 +34,10 @@ export async function finalizeStreamSummary({
   tier,
   promptVersion,
   fullText,
-  pipelineInsights,
+  promptedStats: pipelineStats,
   metadata,
   client,
 }: FinalizeStreamSummaryInput): Promise<void> {
-  const pipelineStats = pipelineInsights.map((insight) => insight.stat);
   const statRefReport = validateStatRefs(fullText, pipelineStats);
   let cachedText = fullText;
   if (statRefReport.invalidRefs.length > 0) {

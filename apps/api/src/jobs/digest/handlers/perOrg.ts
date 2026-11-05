@@ -99,7 +99,7 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
   // The alerts and agent workers both pass dbAdmin here. This one did not, which
   // is why no digest has ever been sent. Line 165 of this same file already
   // passes dbAdmin explicitly for the monthly buckets.
-  const insights = await runCurationPipeline(orgId, datasetId, dbAdmin, financials);
+  const { insights, scoredPool } = await runCurationPipeline(orgId, datasetId, dbAdmin, financials);
   const currentStats = insights.map((i) => i.stat);
 
   // Nothing computable means nothing to interpret, and interpretation is the
@@ -177,7 +177,7 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
       promptVersion,
       businessProfile,
       priorContext,
-      insights,
+      candidates: scoredPool,
     });
 
   const stateSentence = extractStateSentence(content);

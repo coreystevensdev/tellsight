@@ -9,12 +9,24 @@ import {
 } from '../../db/queries/index.js';
 import type { db, DbTransaction } from '../../lib/db.js';
 import { computeStats } from './computation.js';
-import { scoreInsights, scoringConfig } from './scoring.js';
+import { rankInsights, scoringConfig } from './scoring.js';
 import { assemblePrompt } from './assembly.js';
 import { validateSummary, validateStatRefs, stripInvalidStatRefs, validateCiteRefs, stripInvalidCiteRefs } from './validator.js';
 import { generateInterpretation } from '../aiInterpretation/claudeClient.js';
 import { transparencyMetadataSchema } from './types.js';
 import type { ScoredInsight } from './types.js';
+
+export interface CurationPipelineResult {
+  // Ranked and capped to scoringConfig.topN -- the array this function has
+  // always returned, used by the stat-detail path, NL Q&A, and alert rule
+  // matching.
+  insights: ScoredInsight[];
+  // Every scored candidate, same order, before the topN cap. assemblePrompt
+  // needs this rather than `insights`: filtering below-floor stats out of an
+  // already-capped array can only shrink it, never backfill from a thicker
+  // stat ranked just past the cut.
+  scoredPool: ScoredInsight[];
+}
 
 export async function runCurationPipeline(
   orgId: number,
@@ -25,12 +37,12 @@ export async function runCurationPipeline(
   // reason (evaluateOrg.ts needs the same set for a side-channel query) can
   // pass it through here instead of paying for a second identical query.
   activeCorrectionIds?: string[],
-): Promise<ScoredInsight[]> {
+): Promise<CurationPipelineResult> {
   const rows = await dataRowsQueries.getRowsByDataset(orgId, datasetId, client);
 
   if (rows.length === 0) {
     logger.warn({ orgId, datasetId }, 'curation pipeline got 0 rows, dataset may not exist');
-    return [];
+    return { insights: [], scoredPool: [] };
   }
 
   logger.info({ orgId, datasetId, rowCount: rows.length }, 'curation pipeline started');
@@ -60,10 +72,11 @@ export async function runCurationPipeline(
     logger.info({ orgId, datasetId, excludedCount: excludedStatIds.size }, 'excluding approved stat corrections from scoring');
   }
 
-  const insights = scoreInsights(stats, excludedStatIds, datasetId);
+  const scoredPool = rankInsights(stats, excludedStatIds, datasetId);
+  const insights = scoredPool.slice(0, scoringConfig.topN);
   logger.info({ orgId, insightCount: insights.length }, 'curation layer 2 complete');
 
-  return insights;
+  return { insights, scoredPool };
 }
 
 export interface FullPipelineResult {
@@ -96,18 +109,18 @@ export async function runFullPipeline(
       }
     : null;
 
-  const insights = await runCurationPipeline(orgId, datasetId, undefined, financials);
-  const { system, user, metadata } = assemblePrompt(insights, datasetId, undefined, businessProfile);
+  const { scoredPool } = await runCurationPipeline(orgId, datasetId, undefined, financials);
+  const { system, user, metadata, promptedStats } = assemblePrompt(scoredPool, datasetId, undefined, businessProfile);
 
   const validatedMetadata = transparencyMetadataSchema.parse(metadata);
 
   logger.info(
-    { orgId, datasetId, promptVersion: metadata.promptVersion, statCount: insights.length },
+    { orgId, datasetId, promptVersion: metadata.promptVersion, statCount: metadata.insightCount },
     'calling Claude API',
   );
 
   const content = await generateInterpretation({ system, user });
-  const pipelineStats = insights.map((i) => i.stat);
+  const pipelineStats = promptedStats;
 
   // Tier 2 chart-ref check, same defense-in-depth as streamHandler.ts.
   // Strip hallucinated stat refs before cache write so non-streaming
