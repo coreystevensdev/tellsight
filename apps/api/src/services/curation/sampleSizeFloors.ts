@@ -1,0 +1,48 @@
+import type { ComputedStat } from './types.js';
+import { StatType } from './types.js';
+
+// Partial, an absent key means ungated (minimumSampleSize returns null).
+//
+// total, category_breakdown and category_variance stay absent: each sums or
+// counts every transaction in its own scope rather than estimating from a
+// sample, so there's no "too few data points" failure to guard against. A
+// zero-transaction category_variance is still correct, "nothing went out" is
+// a real finding (categoryMetrics.ts:41), not a thin one.
+//
+// year_over_year also stays absent, for an unrelated reason: its sampleSize
+// is null by construction, two monthly totals rather than a count
+// (revenueMetrics.ts:51), so a number here would never fire. Its "enough
+// history" gate is structural and already runs before the stat exists,
+// years.length < 2 (revenueMetrics.ts:28). seasonal_projection shares that
+// same structural gate (revenueMetrics.ts:69) but still gets a real floor
+// below: years.length >= 2 only guarantees two years of overall history, not
+// that the projected month has a value in more than one of them.
+//
+// anomaly's floor is not about the IQR algorithm's false-positive rate, it's
+// about whether quantile() (statisticalAnalysis.ts:83) can flag anything at
+// all. Verified by brute force over random and adversarial inputs: at n <= 4
+// the point under test is always at least half of the fence built to catch
+// it, so nothing can ever clear it, 0% false positives at n = 4 is a
+// guarantee, not a measurement. n = 8 is the first size afterward where each
+// quartile boundary averages two real points instead of resting on one.
+const SAMPLE_SIZE_FLOORS: Partial<Record<StatType, number>> = {
+  [StatType.Average]: 3, // first n where the median is a real middle value, not an average of two restating the mean
+  [StatType.Trend]: 6, // one outlier in 6 points is a sixth of the signal vs. a third at the compute floor (trendMinDataPoints: 3, config/scoring-weights.json); move both together
+  [StatType.Anomaly]: 8, // see above
+  [StatType.MarginTrend]: 6, // per window, the thinner half (marginMetrics.ts:86), so this needs 12 months of data total, 6 on each side
+  [StatType.SeasonalProjection]: 2, // see above; one basis value is already the code's own 'low' confidence (revenueMetrics.ts:106)
+  [StatType.CashFlow]: 3, // monthlyNet is a median (cashFlowMetrics.ts:64), same reasoning as average; trailingMonths is pinned to 3 everywhere today (computation.ts:81), so this only guards a future shorter window
+  [StatType.Runway]: 3, // inherits cash_flow's trailingMonths outright (financialMetrics.ts:70)
+  [StatType.BreakEven]: 6, // inherits margin_trend's sampleSize outright (financialMetrics.ts:161); must equal margin_trend's floor
+  [StatType.CashForecast]: 6, // matches this function's own confidence rule: months.length < 6 is already 'low' right here (cashForecastMetrics.ts:126)
+};
+
+export function minimumSampleSize(statType: StatType): number | null {
+  return SAMPLE_SIZE_FLOORS[statType] ?? null;
+}
+
+export function isBelowFloor(stat: ComputedStat): boolean {
+  if (stat.sampleSize === null) return false;
+  const floor = minimumSampleSize(stat.statType);
+  return floor !== null && stat.sampleSize < floor;
+}
