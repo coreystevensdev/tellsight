@@ -289,7 +289,7 @@ describe('compareToPriorPeriods', () => {
     // sampleSize: 6 clears the Trend floor -- omitting it reads as a
     // non-finite sampleSize to isBelowFloor, which fails closed and would
     // drop this fixture out of priorPeriods for the wrong reason.
-    const trendStat = { statType: StatType.Trend, category: 'Sales', value: 150, sampleSize: 6, details: { slope: 150, intercept: 0, growthPercent: 50, dataPoints: 4, firstValue: 1000, lastValue: 1600 } };
+    const trendStat = { statType: StatType.Trend, category: 'Sales', value: 150, sampleSize: 6, details: { slope: 150, intercept: 0, growthPercent: 50, dataPoints: 6, firstValue: 1000, lastValue: 1600 } };
     mockGetTrailingDigests.mockResolvedValue([
       { weekStart: new Date('2026-04-06'), keyStats: [trendStat] },
       { weekStart: new Date('2026-03-30'), keyStats: [{ ...trendStat, value: 100 }] },
@@ -480,7 +480,7 @@ describe('sample-size floor', () => {
       sampleSize: 6,
       details: { slope: 150, intercept: 0, growthPercent: 50, dataPoints: 6, firstValue: 1000, lastValue: 1600, firstPeriod: '2025-11', lastPeriod: '2026-04' },
     };
-    const thinTrendStat = { ...healthyTrendStat, value: 40, sampleSize: 3 };
+    const thinTrendStat = { ...healthyTrendStat, value: 40, sampleSize: 3, details: { ...healthyTrendStat.details, dataPoints: 3 } };
     mockGetTrailingDigests.mockResolvedValue([
       { weekStart: new Date('2026-04-06'), keyStats: [healthyTrendStat] },
       { weekStart: new Date('2026-03-30'), keyStats: [thinTrendStat] },
