@@ -513,7 +513,11 @@ describe('LinkedTxn settlement, DW-231', () => {
     expect(rows).toHaveLength(1);
   });
 
-  it('a partial payment leaves the invoice amount unchanged and adds nothing', () => {
+  it('a partial payment with no UnappliedAmt falls back to the LinkedTxn rule and adds nothing', () => {
+    // UnappliedAmt deliberately absent: an older payload or a trimmed webhook
+    // body might not carry it, and this is what the normalizer does without
+    // it. See the next test for the same $1,000/$400 shape with the field
+    // present, where the answer changes.
     const invoice = makeInvoice({ Id: 'inv-partial', TotalAmt: 1000, Line: [
       {
         Id: '1',
@@ -543,8 +547,86 @@ describe('LinkedTxn settlement, DW-231', () => {
     expect(income(rows)).toBe(1000);
   });
 
+  it('a partially applied payment contributes its UnappliedAmt, not zero', () => {
+    // Same $1,000 invoice, same $400 applied, but this payment also reports
+    // UnappliedAmt. The LinkedTxn-only rule above would call this fully
+    // settled and add nothing; UnappliedAmt knows $600 of it was not applied
+    // to anything and is real, uncounted money.
+    const invoice = makeInvoice({ Id: 'inv-partial-2', TotalAmt: 1000, Line: [
+      {
+        Id: '1',
+        Amount: 1000,
+        DetailType: 'SalesItemLineDetail',
+        SalesItemLineDetail: { ItemRef: { value: '1', name: 'Consulting' } },
+      },
+    ] });
+    const partialPayment = makePayment({
+      Id: 'pay-partial-2',
+      TotalAmt: 1000,
+      UnappliedAmt: 600,
+      Line: [
+        {
+          Id: '1',
+          Amount: 400,
+          DetailType: 'PaymentLineDetail',
+          LinkedTxn: [{ TxnId: invoice.Id, TxnType: 'Invoice' }],
+        },
+      ],
+    });
+
+    const rows = [
+      ...normalizeTransaction(invoice, 'Invoice'),
+      ...normalizeTransaction(partialPayment, 'Payment'),
+    ];
+
+    expect(income(rows)).toBe(1600);
+  });
+
+  it('a fully-applied payment with UnappliedAmt of 0 adds nothing', () => {
+    const invoice = makeInvoice({ Id: 'inv-full', TotalAmt: 1000, Line: [
+      {
+        Id: '1',
+        Amount: 1000,
+        DetailType: 'SalesItemLineDetail',
+        SalesItemLineDetail: { ItemRef: { value: '1', name: 'Consulting' } },
+      },
+    ] });
+    const fullyAppliedPayment = makePayment({
+      Id: 'pay-full',
+      TotalAmt: 1000,
+      UnappliedAmt: 0,
+      Line: [
+        {
+          Id: '1',
+          Amount: 1000,
+          DetailType: 'PaymentLineDetail',
+          LinkedTxn: [{ TxnId: invoice.Id, TxnType: 'Invoice' }],
+        },
+      ],
+    });
+
+    const rows = [
+      ...normalizeTransaction(invoice, 'Invoice'),
+      ...normalizeTransaction(fullyAppliedPayment, 'Payment'),
+    ];
+
+    expect(income(rows)).toBe(1000);
+  });
+
   it('a payment with no LinkedTxn stays Income, real money with no invoice behind it', () => {
     const unapplied = makePayment({ Id: 'pay-unapplied', TotalAmt: 500 });
+
+    const rows = normalizeTransaction(unapplied, 'Payment');
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.amount).toBe('500');
+    expect(rows[0]!.parentCategory).toBe('Income');
+  });
+
+  it('a fully unapplied payment with UnappliedAmt set stays Income at the full amount', () => {
+    // UnappliedAmt equal to TotalAmt is what a real prepayment looks like:
+    // nothing to net out, the whole thing is still uncounted.
+    const unapplied = makePayment({ Id: 'pay-unapplied-2', TotalAmt: 500, UnappliedAmt: 500 });
 
     const rows = normalizeTransaction(unapplied, 'Payment');
 
@@ -582,6 +664,31 @@ describe('LinkedTxn settlement, DW-231', () => {
     ];
 
     expect(income(rows)).toBe(500);
+  });
+
+  it('a deposit linked to a SalesReceipt adds nothing, the receipt already recorded it', () => {
+    // Deposit's rule checks INCOME_TYPES generally, not Payment specifically,
+    // so a SalesReceipt batched into a bank deposit closes the same way.
+    const receipt = makeInvoice({ Id: 'sr-dep-1' });
+    const deposit: QbTransaction = {
+      Id: 'dep-sr-1',
+      TxnDate: '2026-04-14',
+      TotalAmt: 2500,
+      Line: [
+        {
+          Id: '1',
+          Amount: 2500,
+          LinkedTxn: [{ TxnId: receipt.Id, TxnType: 'SalesReceipt' }],
+        },
+      ],
+    };
+
+    const rows = [
+      ...normalizeTransaction(receipt, 'SalesReceipt'),
+      ...normalizeTransaction(deposit, 'Deposit'),
+    ];
+
+    expect(income(rows)).toBe(2500);
   });
 
   it('a deposit with no LinkedTxn stays Income, e.g. a loan deposit', () => {

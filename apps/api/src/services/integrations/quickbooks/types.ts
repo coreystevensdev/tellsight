@@ -41,13 +41,20 @@ export interface QbTransaction {
   PrivateNote?: string;
   TotalAmt?: number;
   Line?: QbLine[];
-  // Not documented at the transaction root for Payment or Deposit, Intuit's
-  // reference only shows Line.LinkedTxn for those two. Kept here anyway: a
-  // fully-applied Payment can arrive with no Line array at all (TotalAmt-only),
-  // and that shape needs somewhere to carry the link other than a line that
-  // does not exist. Invoice does document a root-level LinkedTxn (the reverse
-  // direction, which Payments paid it), so the shape has real precedent.
+  // Inherited from the base Transaction type: Intuit's .NET SDK class
+  // reference lists it on every entity, "A linked (related) transaction...
+  // (Inherited from Transaction.)", the same inheritance TxnDate, DocNumber
+  // and TotalAmt use above. Confirmed, not a guess, though every Intuit
+  // sample (the PHP CRUD sample, the .NET sample, the Postman collection)
+  // puts the actual link on Line instead, which is why Line is the path
+  // that fires in practice.
   LinkedTxn?: QbLinkedTxn[];
+  // Payment-only. "The amount that has not been applied to pay amounts
+  // owed for sales transactions" (Intuit's Payment reference). Non-QB-writable,
+  // QuickBooks computes and returns it, so normalize.ts only ever reads it.
+  // Nets out whatever LinkedTxn applied, which is what makes a partially
+  // applied payment answerable without re-deriving the math ourselves.
+  UnappliedAmt?: number;
 
   CustomerRef?: QbRef;
   VendorRef?: QbRef;

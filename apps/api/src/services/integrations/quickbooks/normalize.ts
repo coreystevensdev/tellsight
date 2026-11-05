@@ -65,17 +65,9 @@ function carriesItsOwnAmount(line: QbLine): boolean {
   return line.DetailType === undefined || !AGGREGATE_DETAIL_TYPES.has(line.DetailType);
 }
 
-// A Payment linked to an Invoice, or a Deposit linked to a Payment, restates
-// money a different synced transaction already recorded. Keyed by the type
-// being normalized, valued by the TxnType its LinkedTxn has to name.
-const SETTLES: Partial<Record<QbTransactionType, string>> = {
-  Payment: 'Invoice',
-  Deposit: 'Payment',
-};
-
-// Checks the transaction root as well as every line (see QbTransaction.LinkedTxn
-// in types.ts for why the root is read even though Intuit only documents Line
-// for Payment and Deposit): a Payment with no Line array still needs an answer.
+// Reads LinkedTxn from the transaction root as well as every line (see
+// QbTransaction.LinkedTxn in types.ts for the citation): a Payment with no
+// Line array still needs an answer, and the root is where it would carry one.
 function linkedTxnTypes(tx: QbTransaction): Set<string> {
   const types = new Set<string>();
   for (const link of tx.LinkedTxn ?? []) types.add(link.TxnType);
@@ -85,12 +77,22 @@ function linkedTxnTypes(tx: QbTransaction): Set<string> {
   return types;
 }
 
-// Decided once, transaction-wide, before the line-count branch below picks
-// a shape. That ordering is the fix: checking per-line would let a payment
-// with no lines fall through to the TotalAmt fallback and get re-added.
+function linksToIncome(tx: QbTransaction): boolean {
+  const linked = linkedTxnTypes(tx);
+  for (const incomeType of INCOME_TYPES) {
+    if (linked.has(incomeType)) return true;
+  }
+  return false;
+}
+
+// A Payment or Deposit whose LinkedTxn names any INCOME_TYPES entity, the
+// Invoice it settles, the Payment it batches out of Undeposited Funds, even
+// a SalesReceipt, restates money that other transaction already recorded.
+// Decided transaction-wide, before the line-count branch below picks a
+// shape, so a lineless payment and a lined one get the same answer.
 function isAlreadyRecorded(tx: QbTransaction, txnType: QbTransactionType): boolean {
-  const sourceType = SETTLES[txnType];
-  return sourceType !== undefined && linkedTxnTypes(tx).has(sourceType);
+  if (txnType !== 'Payment' && txnType !== 'Deposit') return false;
+  return linksToIncome(tx);
 }
 
 function getAccountRef(line: QbLine) {
@@ -111,10 +113,51 @@ function getLabel(tx: QbTransaction): string | null {
   return null;
 }
 
+// Shared by the TotalAmt fallback below and the UnappliedAmt path: both are
+// "one row for the whole transaction, no account or item ref to categorize
+// it by," they just disagree on which field holds the amount.
+function uncategorizedRow(
+  tx: QbTransaction,
+  txnType: QbTransactionType,
+  amount: number,
+  parentCategory: 'Income' | 'Expenses' | 'Other',
+): NormalizedQbRow {
+  return {
+    sourceType: 'quickbooks',
+    sourceId: `${tx.Id}-0`,
+    date: new Date(tx.TxnDate),
+    amount: String(amount),
+    // A refund's category and its parent are one decision, so the helper owns
+    // both rather than letting a caller pass a parent that disagrees.
+    category: REFUND_TYPES.has(txnType) ? 'Refunds' : 'Uncategorized',
+    parentCategory,
+    label: getLabel(tx),
+    metadata: {
+      qb_id: tx.Id,
+      txnType,
+      docNumber: tx.DocNumber ?? null,
+      memo: tx.PrivateNote ?? null,
+      accountCode: null,
+    },
+  };
+}
+
 export function normalizeTransaction(
   tx: QbTransaction,
   txnType: QbTransactionType,
 ): NormalizedQbRow[] {
+  // UnappliedAmt is the net amount QuickBooks already computed after netting
+  // out whatever LinkedTxn applied, so it gets a partially applied payment
+  // right where a plain linked/unlinked check can't: $400 applied out of a
+  // $1,000 payment still leaves $600 with no invoice behind it, and the
+  // linked/unlinked check alone would call the whole payment settled. Only
+  // Payment carries this field; falls back to the LinkedTxn check below when
+  // it's absent rather than assuming every payload has it.
+  if (txnType === 'Payment' && Number.isFinite(tx.UnappliedAmt)) {
+    const unapplied = Math.abs(tx.UnappliedAmt!);
+    return unapplied === 0 ? [] : [uncategorizedRow(tx, txnType, unapplied, 'Income')];
+  }
+
   if (isAlreadyRecorded(tx, txnType)) return [];
 
   const lines = (tx.Line ?? []).filter(carriesItsOwnAmount);
@@ -127,26 +170,16 @@ export function normalizeTransaction(
   // Returning [] instead would lose the transaction entirely.
   if (lines.length === 0) {
     return [
-      {
-        sourceType: 'quickbooks',
-        sourceId: `${tx.Id}-0`,
-        date,
-        amount: String(Math.abs(tx.TotalAmt ?? 0)),
-        category: isRefund ? 'Refunds' : 'Uncategorized',
-        parentCategory: EXPENSE_TYPES.has(txnType) || isRefund
+      uncategorizedRow(
+        tx,
+        txnType,
+        Math.abs(tx.TotalAmt ?? 0),
+        EXPENSE_TYPES.has(txnType) || REFUND_TYPES.has(txnType)
           ? 'Expenses'
           : INCOME_TYPES.has(txnType)
             ? 'Income'
             : 'Other',
-        label,
-        metadata: {
-          qb_id: tx.Id,
-          txnType,
-          docNumber: tx.DocNumber ?? null,
-          memo: tx.PrivateNote ?? null,
-          accountCode: null,
-        },
-      },
+      ),
     ];
   }
 
