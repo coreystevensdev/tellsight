@@ -222,6 +222,7 @@ export function assemblePrompt(
   businessProfile?: BusinessProfile | null,
   now: Date = new Date(),
   priorContext = '',
+  isPreselected = false,
 ): AssembledContext {
   const template = getTemplate(promptVersion);
   const businessContext = formatBusinessContext(businessProfile);
@@ -242,7 +243,13 @@ export function assemblePrompt(
   // legitimately outrank a thick one on novelty. This is the one place that
   // decides what the model actually gets told, so it is the one place a
   // below-floor stat gets cut rather than just outranked.
-  const survivors = insights.filter((i) => !isBelowFloor(i.stat));
+  //
+  // Gated by default, not universally. The floor exists to stop this function
+  // volunteering a weak statistic from a candidate pool, not to overrule a
+  // decision something else already made about one specific stat (an alert
+  // rule firing, an agent proposing it). isPreselected is how a caller in
+  // that position says so; omitting it is always safe, since false gates.
+  const survivors = isPreselected ? insights : insights.filter((i) => !isBelowFloor(i.stat));
   const suppressedForSampleSize = insights.length - survivors.length;
 
   if (survivors.length === 0) {

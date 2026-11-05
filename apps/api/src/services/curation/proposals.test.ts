@@ -344,4 +344,35 @@ describe('generateProposals', () => {
 
     expect(mockGenerateWithTools).toHaveBeenCalledWith(expect.any(Object), expect.any(Array), onCost);
   });
+
+  // record_proposal's own description already tells the model to call it
+  // only for a genuine finding, so the sample-size floor would be a second,
+  // redundant filter on top of one the model already applies. A below-floor
+  // stat still has to reach the prompt for the model to be able to cite it.
+  it('does not suppress a below-floor stat from the prompt', async () => {
+    const belowFloorAnomaly: ScoredInsight = {
+      stat: {
+        statType: StatType.Anomaly,
+        category: 'Payroll',
+        value: 9_000,
+        comparison: 4_000,
+        sampleSize: 2, // anomaly's floor is 8
+        details: {
+          direction: 'above',
+          zScore: 3.1,
+          iqrBounds: { lower: 3_000, upper: 5_000 },
+          deviation: 4_000,
+          period: '2026-05',
+        },
+      },
+      score: 0.95,
+      breakdown: { novelty: 0.95, actionability: 0.9, specificity: 0.9 },
+    };
+    mockGenerateWithTools.mockResolvedValue([]);
+
+    await generateProposals([...insights, belowFloorAnomaly], DATASET_ID, null, NOW);
+
+    const promptArg = mockGenerateWithTools.mock.calls[0]![0] as { user: string };
+    expect(promptArg.user).toContain('[Payroll] Anomaly');
+  });
 });

@@ -59,6 +59,10 @@ export async function resolveAlertParagraph(data: SendJobData): Promise<string> 
       businessProfile,
       new Date(),
       cashBurnSpikeCaveat(data.ruleKind, data.firedInsight),
+      // The rule in ruleEvaluation.ts already decided this exact stat crossed
+      // a threshold worth an alert. Re-applying the sample-size floor here
+      // would suppress the one thing this paragraph exists to explain.
+      true,
     );
     const validatedMetadata = transparencyMetadataSchema.parse(metadata);
     const content = await generateInterpretation({ system, user });

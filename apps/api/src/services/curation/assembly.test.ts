@@ -638,6 +638,34 @@ describe('assemblePrompt', () => {
       expect(metadata.suppressedForSampleSize).toBe(1);
     });
 
+    // Pins the default so a future caller that doesn't know isPreselected
+    // exists still gets gated, same case as the first test but with the
+    // 7th argument omitted instead of left implicit.
+    it('gates by default when isPreselected is not passed', async () => {
+      const { assemblePrompt } = await import('./assembly.js');
+      const thin = scoredTrend({ sampleSize: 3 });
+
+      const { metadata } = assemblePrompt([thin], 1);
+
+      expect(metadata.suppressedForSampleSize).toBe(1);
+      expect(metadata.statTypes).toEqual([]);
+    });
+
+    // The alert and agent-proposal paths: a rule or the model's own tool-use
+    // judgment already decided this exact stat was worth surfacing, so the
+    // floor should not override that decision.
+    it('does not suppress a below-floor stat when isPreselected is true', async () => {
+      const { assemblePrompt } = await import('./assembly.js');
+      const thin = scoredTrend({ sampleSize: 3, category: 'Marketing' });
+
+      const { user, metadata } = assemblePrompt([thin], 1, undefined, undefined, new Date(), '', true);
+
+      expect(user).toContain('Marketing');
+      expect(user).not.toContain('No statistical insights available');
+      expect(metadata.statTypes).toEqual(['trend']);
+      expect(metadata.suppressedForSampleSize).toBe(0);
+    });
+
     it('still assembles when every stat is below its floor', async () => {
       const { assemblePrompt } = await import('./assembly.js');
 
