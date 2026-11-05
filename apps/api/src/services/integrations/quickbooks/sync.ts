@@ -37,7 +37,12 @@ const ENTITY_TYPES: QbTransactionType[] = [
   'Transfer',
 ];
 
-const UPSERT_BATCH_SIZE = 500;
+// Governs both loops in upsertRows. postgres.js enforces a 65,533 total
+// bind-parameter ceiling before a query reaches the wire (build.js:45), and
+// 500 ids plus the rows they produce stays far under it even for a
+// transaction with many lines, while matching the chunk size the insert
+// side already used.
+const BATCH_SIZE = 500;
 
 export type SyncTrigger = 'initial' | 'scheduled' | 'manual';
 
@@ -95,6 +100,7 @@ export async function runSync(connectionId: number, trigger: SyncTrigger): Promi
       const { upserted, reconciled } = await upsertRows(
         orgId,
         dataset.id,
+        entityType,
         fetchedTxnIds,
         normalized,
       );
@@ -199,38 +205,65 @@ export interface UpsertResult {
  * stale rows behind forever, since upsertRows never used to delete anything.
  *
  * Scoped to source_type = 'quickbooks' (metadata is untyped jsonb on a
- * shared table) and to fetchedTxnIds (this batch's transactions, not the
+ * shared table), to entityType (QuickBooks allocates Id per entity type, so
+ * an Invoice and a Purchase can share the same Id, and qb_id alone would
+ * match both), and to fetchedTxnIds (this batch's transactions, not the
  * whole dataset), since sync.ts fetches incrementally and a dataset-wide
  * diff would read every unchanged transaction as deleted.
+ *
+ * The delete runs in chunks of BATCH_SIZE fetched ids, each paired with
+ * only the produced source ids for that chunk's own transactions (keyed off
+ * metadata.qb_id, the same id every row's sourceId is built from), not the
+ * full produced set. Chunking only the id list and leaving the produced-set
+ * predicate unchunked raises the parameter ceiling instead of removing it.
+ * All chunks run inside the one transaction the caller gets, so the
+ * per-batch atomicity still holds across every statement.
  */
 export async function upsertRows(
   orgId: number,
   datasetId: number,
+  entityType: QbTransactionType,
   fetchedTxnIds: string[],
   rows: NormalizedQbRow[],
 ): Promise<UpsertResult> {
-  if (fetchedTxnIds.length === 0) return { upserted: 0, reconciled: 0 };
-
-  const producedSourceIds = rows.map((row) => row.sourceId);
+  // Deduplicated so a transaction STARTPOSITION-paginated into two pages
+  // can't double-count toward the per-statement budget, and so the chunks
+  // below partition the id space into disjoint sets with no id repeated
+  // across two statements.
+  const uniqueFetchedTxnIds = [...new Set(fetchedTxnIds)];
+  if (uniqueFetchedTxnIds.length === 0) return { upserted: 0, reconciled: 0 };
 
   return dbAdmin.transaction(async (tx) => {
-    const deleted = await tx
-      .delete(dataRows)
-      .where(
-        and(
-          eq(dataRows.orgId, orgId),
-          eq(dataRows.datasetId, datasetId),
-          eq(dataRows.sourceType, 'quickbooks'),
-          inArray(sql`${dataRows.metadata}->>'qb_id'`, fetchedTxnIds),
-          notInArray(dataRows.sourceId, producedSourceIds),
-        ),
-      )
-      .returning({ id: dataRows.id });
+    let reconciled = 0;
+
+    for (let i = 0; i < uniqueFetchedTxnIds.length; i += BATCH_SIZE) {
+      const idChunk = uniqueFetchedTxnIds.slice(i, i + BATCH_SIZE);
+      const idChunkSet = new Set(idChunk);
+      const producedForChunk = rows
+        .filter((row) => idChunkSet.has(row.metadata.qb_id))
+        .map((row) => row.sourceId);
+
+      const deleted = await tx
+        .delete(dataRows)
+        .where(
+          and(
+            eq(dataRows.orgId, orgId),
+            eq(dataRows.datasetId, datasetId),
+            eq(dataRows.sourceType, 'quickbooks'),
+            eq(sql`${dataRows.metadata}->>'txnType'`, entityType),
+            inArray(sql`${dataRows.metadata}->>'qb_id'`, idChunk),
+            notInArray(dataRows.sourceId, producedForChunk),
+          ),
+        )
+        .returning({ id: dataRows.id });
+
+      reconciled += deleted.length;
+    }
 
     let upserted = 0;
 
-    for (let i = 0; i < rows.length; i += UPSERT_BATCH_SIZE) {
-      const chunk = rows.slice(i, i + UPSERT_BATCH_SIZE);
+    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+      const chunk = rows.slice(i, i + BATCH_SIZE);
       const values = chunk.map((row) => ({
         orgId,
         datasetId,
@@ -264,6 +297,6 @@ export async function upsertRows(
       upserted += result.length;
     }
 
-    return { upserted, reconciled: deleted.length };
+    return { upserted, reconciled };
   });
 }

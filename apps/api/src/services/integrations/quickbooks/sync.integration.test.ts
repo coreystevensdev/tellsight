@@ -4,7 +4,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { dbAdmin } from '../../../lib/db.js';
 import { orgs, datasets, dataRows } from '../../../db/schema.js';
 import { upsertRows } from './sync.js';
-import type { NormalizedQbRow } from './types.js';
+import type { NormalizedQbRow, QbTransactionType } from './types.js';
 
 // upsertRows never deleted anything until this change, so a transaction
 // that used to produce rows and now produces fewer (or none) left the old
@@ -20,7 +20,10 @@ const suffix = `qb-reconcile-${process.pid}`;
 let orgId: number;
 let datasetId: number;
 
-function row(overrides: Partial<NormalizedQbRow> & { sourceId: string }): NormalizedQbRow {
+function row(
+  overrides: Partial<NormalizedQbRow> & { sourceId: string; txnType?: QbTransactionType },
+): NormalizedQbRow {
+  const { txnType = 'Payment', ...rest } = overrides;
   return {
     sourceType: 'quickbooks',
     date: new Date('2026-04-10'),
@@ -32,13 +35,13 @@ function row(overrides: Partial<NormalizedQbRow> & { sourceId: string }): Normal
       // sourceId is `${qbId}-${lineId}` and the qb_id fixtures below (e.g.
       // 'txn-shrink') contain hyphens themselves, so this has to split on
       // the last '-', not the first.
-      qb_id: overrides.sourceId.slice(0, overrides.sourceId.lastIndexOf('-')),
-      txnType: 'Payment',
+      qb_id: rest.sourceId.slice(0, rest.sourceId.lastIndexOf('-')),
+      txnType,
       docNumber: null,
       memo: null,
       accountCode: null,
     },
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -81,7 +84,7 @@ describe('upsertRows reconciliation against real Postgres', () => {
       { orgId, datasetId, ...row({ sourceId: 'txn-b-0' }) },
     ]);
 
-    const result = await upsertRows(orgId, datasetId, ['txn-a'], []);
+    const result = await upsertRows(orgId, datasetId, 'Payment', ['txn-a'], []);
 
     expect(result.reconciled).toBe(1);
     expect(await sourceIdsFor('txn-a')).toEqual([]);
@@ -101,6 +104,7 @@ describe('upsertRows reconciliation against real Postgres', () => {
     const result = await upsertRows(
       orgId,
       datasetId,
+      'Payment',
       ['txn-shrink'],
       [row({ sourceId: 'txn-shrink-0', amount: '400.00' })],
     );
@@ -127,7 +131,7 @@ describe('upsertRows reconciliation against real Postgres', () => {
       metadata: { qb_id: 'txn-collide' },
     });
 
-    await upsertRows(orgId, datasetId, ['txn-collide'], []);
+    await upsertRows(orgId, datasetId, 'Payment', ['txn-collide'], []);
 
     const survivors = await dbAdmin.query.dataRows.findMany({
       where: and(eq(dataRows.orgId, orgId), eq(dataRows.sourceId, 'csv-row-1')),
@@ -145,6 +149,7 @@ describe('upsertRows reconciliation against real Postgres', () => {
     const result = await upsertRows(
       orgId,
       datasetId,
+      'Payment',
       ['txn-new'],
       [row({ sourceId: 'txn-new-0' })],
     );
@@ -152,5 +157,26 @@ describe('upsertRows reconciliation against real Postgres', () => {
     expect(result).toEqual({ upserted: 1, reconciled: 0 });
     expect(await sourceIdsFor('txn-new')).toEqual(['txn-new-0']);
     expect(await sourceIdsFor('txn-untouched')).toEqual(['txn-untouched-0']);
+  });
+
+  // QuickBooks allocates Id per entity type, not globally, so an Invoice and
+  // a Purchase can carry the exact same Id. metadata.qb_id alone cannot
+  // tell them apart; this is the shape that let a Purchase batch delete an
+  // Invoice's row.
+  it('never deletes a different entity type that happens to share the same qb_id', async () => {
+    await dbAdmin.insert(dataRows).values([
+      { orgId, datasetId, ...row({ sourceId: '501-1', txnType: 'Invoice' }) },
+      { orgId, datasetId, ...row({ sourceId: '501-2', txnType: 'Invoice' }) },
+      { orgId, datasetId, ...row({ sourceId: '999-1', txnType: 'Invoice' }) },
+    ]);
+
+    // A Purchase batch that happens to fetch an id of '501' and produces no
+    // rows for it (Purchase 501's own shape is irrelevant here; what matters
+    // is whether this call can reach Invoice 501's rows at all).
+    const result = await upsertRows(orgId, datasetId, 'Purchase', ['501'], []);
+
+    expect(result.reconciled).toBe(0);
+    expect(await sourceIdsFor('501')).toEqual(expect.arrayContaining(['501-1', '501-2']));
+    expect(await sourceIdsFor('999')).toEqual(['999-1']);
   });
 });

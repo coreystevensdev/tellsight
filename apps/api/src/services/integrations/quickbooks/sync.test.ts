@@ -447,13 +447,13 @@ describe('upsertRows', () => {
 
   it('returns 0 upserted and 0 reconciled when nothing was fetched', async () => {
     const { upsertRows } = await import('./sync.js');
-    const result = await upsertRows(10, 500, [], []);
+    const result = await upsertRows(10, 500, 'Purchase', [], []);
     expect(result).toEqual({ upserted: 0, reconciled: 0 });
   });
 
   it('skips the delete and insert entirely when nothing was fetched', async () => {
     const { upsertRows } = await import('./sync.js');
-    await upsertRows(10, 500, [], []);
+    await upsertRows(10, 500, 'Purchase', [], []);
 
     expect(mockDeleteWhere).not.toHaveBeenCalled();
     expect(mockInsertValues).not.toHaveBeenCalled();
@@ -467,11 +467,84 @@ describe('upsertRows', () => {
     mockDeleteReturning._result = Promise.resolve([{ id: 1 }]);
 
     const { upsertRows } = await import('./sync.js');
-    const result = await upsertRows(10, 500, ['tx-now-empty'], []);
+    const result = await upsertRows(10, 500, 'Purchase', ['tx-now-empty'], []);
 
     expect(mockDeleteWhere).toHaveBeenCalledTimes(1);
     expect(mockInsertValues).not.toHaveBeenCalled();
     expect(result).toEqual({ upserted: 0, reconciled: 1 });
+  });
+
+  it('deduplicates fetchedTxnIds before building the delete', async () => {
+    // STARTPOSITION pagination over data that changes mid-page can hand
+    // back the same transaction twice. A literal duplicate would otherwise
+    // count twice toward the chunk budget and could straddle two chunks,
+    // breaking the assumption that chunks partition the id space.
+    const { upsertRows } = await import('./sync.js');
+    await upsertRows(10, 500, 'Purchase', ['tx-1', 'tx-1', 'tx-2'], []);
+
+    expect(mockDeleteWhere).toHaveBeenCalledTimes(1);
+    const where = mockDeleteWhere.mock.calls[0]![0] as { conditions: unknown[] };
+    const inArrayCond = where.conditions.find(
+      (c): c is { vals: unknown[] } =>
+        typeof c === 'object' && c !== null && (c as { op?: string }).op === 'inArray',
+    );
+    expect(inArrayCond?.vals).toEqual(['tx-1', 'tx-2']);
+  });
+
+  it('chunks the delete when fetchedTxnIds exceeds the batch size', async () => {
+    const fetchedTxnIds = Array.from({ length: 1200 }, (_, i) => `tx-${i}`);
+
+    const { upsertRows } = await import('./sync.js');
+    await upsertRows(10, 500, 'Purchase', fetchedTxnIds, []);
+
+    // 1200 ids / 500 batch = 3 delete statements, matching the insert side's
+    // existing chunking rather than one statement with 1200 bind params.
+    expect(mockDeleteWhere).toHaveBeenCalledTimes(3);
+    const chunkSizes = mockDeleteWhere.mock.calls.map((call) => {
+      const where = call[0] as { conditions: unknown[] };
+      const inArrayCond = where.conditions.find(
+        (c): c is { vals: unknown[] } =>
+          typeof c === 'object' && c !== null && (c as { op?: string }).op === 'inArray',
+      );
+      return inArrayCond?.vals.length;
+    });
+    expect(chunkSizes).toEqual([500, 500, 200]);
+  });
+
+  it("subsets the produced source ids to each chunk's own transactions, not the full set", async () => {
+    // The conservative-but-still-broken variant chunks only the fetched-id
+    // list and leaves the full produced set on every statement, which still
+    // blows the parameter ceiling at scale. Each chunk's NOT IN list must
+    // only ever name rows whose qb_id is one of that chunk's own ids.
+    const fetchedTxnIds = Array.from({ length: 501 }, (_, i) => `tx-${i}`);
+    const rows = [
+      normalizedRow({
+        sourceId: 'tx-500-0',
+        metadata: {
+          qb_id: 'tx-500',
+          txnType: 'Purchase',
+          docNumber: null,
+          memo: null,
+          accountCode: null,
+        },
+      }),
+    ];
+
+    const { upsertRows } = await import('./sync.js');
+    await upsertRows(10, 500, 'Purchase', fetchedTxnIds, rows);
+
+    expect(mockDeleteWhere).toHaveBeenCalledTimes(2);
+    const notInArrayValsByChunk = mockDeleteWhere.mock.calls.map((call) => {
+      const where = call[0] as { conditions: unknown[] };
+      const notInArrayCond = where.conditions.find(
+        (c): c is { vals: unknown[] } =>
+          typeof c === 'object' && c !== null && (c as { op?: string }).op === 'notInArray',
+      );
+      return notInArrayCond?.vals;
+    });
+
+    expect(notInArrayValsByChunk[0]).toEqual([]);
+    expect(notInArrayValsByChunk[1]).toEqual(['tx-500-0']);
   });
 
   it('batches rows in groups of 500', async () => {
@@ -479,7 +552,7 @@ describe('upsertRows', () => {
     mockReturning._result = Promise.resolve(new Array(500).fill({ id: 1 }));
 
     const { upsertRows } = await import('./sync.js');
-    await upsertRows(10, 500, ['tx-1'], rows);
+    await upsertRows(10, 500, 'Purchase', ['tx-1'], rows);
 
     // 1200 rows / 500 batch = 3 batches
     expect(mockInsertValues).toHaveBeenCalledTimes(3);
@@ -492,7 +565,7 @@ describe('upsertRows', () => {
     mockReturning._result = Promise.resolve([{ id: 1 }]);
 
     const { upsertRows } = await import('./sync.js');
-    await upsertRows(10, 500, ['tx-1'], [normalizedRow()]);
+    await upsertRows(10, 500, 'Purchase', ['tx-1'], [normalizedRow()]);
 
     expect(mockOnConflict).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -507,34 +580,41 @@ describe('upsertRows', () => {
     mockDeleteReturning._result = Promise.resolve([{ id: 99 }]);
 
     const { upsertRows } = await import('./sync.js');
-    const result = await upsertRows(10, 500, ['tx-1'], rows);
+    const result = await upsertRows(10, 500, 'Purchase', ['tx-1'], rows);
 
     expect(result).toEqual({ upserted: 3, reconciled: 1 });
   });
 
   it('deletes within the same transaction the insert runs in, not a separate call', async () => {
     const { upsertRows } = await import('./sync.js');
-    await upsertRows(10, 500, ['tx-1'], [normalizedRow()]);
+    await upsertRows(10, 500, 'Purchase', ['tx-1'], [normalizedRow()]);
 
     expect(mockDeleteWhere).toHaveBeenCalledTimes(1);
     expect(mockInsertValues).toHaveBeenCalledTimes(1);
   });
 
-  // Structural check that the delete predicate carries the four scoping
+  // Structural check that the delete predicate carries the five scoping
   // conditions the design requires. This can't prove the SQL filters rows
   // correctly against real data, a mocked .where() says nothing about what
   // Postgres would do with it, so sync.integration.test.ts proves that part
   // against a real database. This only proves the right pieces were asked
   // for.
-  it('scopes the delete to org, dataset, quickbooks rows, and this batch fetched ids', async () => {
+  it('scopes the delete to org, dataset, quickbooks rows, this entity type, and this batch fetched ids', async () => {
     const { upsertRows } = await import('./sync.js');
-    await upsertRows(10, 500, ['tx-1', 'tx-2'], [normalizedRow({ sourceId: 'tx-1-line-1' })]);
+    await upsertRows(
+      10,
+      500,
+      'Invoice',
+      ['tx-1', 'tx-2'],
+      [normalizedRow({ sourceId: 'tx-1-line-1' })],
+    );
 
     const where = mockDeleteWhere.mock.calls[0]![0] as { conditions: unknown[] };
     expect(where.conditions).toEqual([
       { op: 'eq', col: 'org_id', val: 10 },
       { op: 'eq', col: 'dataset_id', val: 500 },
       { op: 'eq', col: 'source_type', val: 'quickbooks' },
+      { op: 'eq', col: expect.anything(), val: 'Invoice' },
       expect.objectContaining({ op: 'inArray', vals: ['tx-1', 'tx-2'] }),
       expect.objectContaining({ op: 'notInArray', vals: ['tx-1-line-1'] }),
     ]);

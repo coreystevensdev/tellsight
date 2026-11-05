@@ -10,6 +10,10 @@ export default defineConfig({
     setupFiles: ['../../packages/shared/src/test/blockExternalNetwork.ts'],
     fileParallelism: false,
     include: ['src/**/*.integration.test.ts'],
+    // Default is 10s. A cold vite cache spends about 6.5s just resolving the
+    // import graph before any hook body runs, which left beforeAll/afterAll
+    // timing out on the first run after a cache clear.
+    hookTimeout: 30_000,
     pool: 'forks',
     // vitest 4 removed poolOptions; the pool settings are top-level now.
     execArgv: ['--max-old-space-size=4096'],
@@ -17,9 +21,11 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': new URL('./src', import.meta.url).pathname,
-      'shared/constants': new URL('../../packages/shared/src/constants/index.ts', import.meta.url).pathname,
+      'shared/constants': new URL('../../packages/shared/src/constants/index.ts', import.meta.url)
+        .pathname,
       'shared/types': new URL('../../packages/shared/src/types/index.ts', import.meta.url).pathname,
-      'shared/schemas': new URL('../../packages/shared/src/schemas/index.ts', import.meta.url).pathname,
+      'shared/schemas': new URL('../../packages/shared/src/schemas/index.ts', import.meta.url)
+        .pathname,
       // apps/web aliases all five; these two were missing here, so anything
       // importing shared/agent or shared/formatting resolved through the package
       // exports to packages/shared/dist and the suite tested the last build.
@@ -28,7 +34,8 @@ export default defineConfig({
       // CI builds shared first so it was never wrong there, but the documented
       // dev loop, pnpm -C apps/api test, was.
       'shared/agent': new URL('../../packages/shared/src/agent/index.ts', import.meta.url).pathname,
-      'shared/formatting': new URL('../../packages/shared/src/formatting/index.ts', import.meta.url).pathname,
+      'shared/formatting': new URL('../../packages/shared/src/formatting/index.ts', import.meta.url)
+        .pathname,
     },
   },
 });
