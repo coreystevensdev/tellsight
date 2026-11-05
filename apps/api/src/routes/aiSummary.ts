@@ -17,6 +17,7 @@ import { ValidationError, QuotaExceededError } from '../lib/appError.js';
 import { logger } from '../lib/logger.js';
 import { aiSummaryTotal, aiTokensUsed, statCitationTotal } from '../lib/metrics.js';
 import { buildStatDetail } from '../services/curation/statDetail.js';
+import { sampleFloorBreach } from '../services/curation/sampleSizeFloors.js';
 import { resolveSourceRows } from '../services/curation/sourceRows.js';
 import { fetchAndResolveStat } from '../services/curation/citation.js';
 
@@ -102,6 +103,7 @@ aiSummaryRouter.get('/:datasetId/stats/:statId', rateLimitDashboardCompute, asyn
   }
   const { stat } = resolution;
   const detail = buildStatDetail(stat);
+  const belowSampleFloor = sampleFloorBreach(stat);
   statCitationTotal.inc({ outcome: 'ok' });
 
   logger.info({ orgId, datasetId: rawId, statType: stat.statType }, 'stat citation resolved');
@@ -110,6 +112,7 @@ aiSummaryRouter.get('/:datasetId/stats/:statId', rateLimitDashboardCompute, asyn
       statType: stat.statType,
       value: stat.value,
       detail,
+      belowSampleFloor,
     },
   });
 });

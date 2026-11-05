@@ -144,6 +144,8 @@ describe('resolveCitation', () => {
       statType: StatType.Runway,
       value: expectedStat.value,
       detail: buildStatDetail(expectedStat),
+      // the fixture's trailingMonths (3) sits at runway's floor (3), not below it
+      belowSampleFloor: null,
     });
   });
 
@@ -167,11 +169,18 @@ describe('resolveCitation', () => {
     await expect(resolveCitation(ORG_ID, false, DATASET_ID, statId)).resolves.toBeNull();
   });
 
-  it('CitationResponse carries no row-shaped field: only statId/datasetId/statType/value/detail', async () => {
+  it('CitationResponse carries no row-shaped field: only statId/datasetId/statType/value/detail/belowSampleFloor', async () => {
     const statId = findRunwayId();
     const result = await resolveCitation(ORG_ID, false, DATASET_ID, statId);
 
     expect(result).not.toBeNull();
-    expect(Object.keys(result!).sort()).toEqual(['datasetId', 'detail', 'statId', 'statType', 'value']);
+    expect(Object.keys(result!).sort()).toEqual([
+      'belowSampleFloor',
+      'datasetId',
+      'detail',
+      'statId',
+      'statType',
+      'value',
+    ]);
   });
 });

@@ -28,6 +28,11 @@ export interface StatDetailResponse {
   statType: string;
   value: number;
   detail: StatDetailView;
+  // Computed fresh per request and never persisted, unlike transparencyMetadata
+  // (an ai_summaries column), so there's no stored history to tolerate a
+  // missing key for. Required, so a response built without it fails to
+  // compile instead of shipping a sheet that can never explain an omission.
+  belowSampleFloor: { sampleSize: number; minimum: number } | null;
 }
 
 // Citation surface for same-process callers that resolve a stat by id

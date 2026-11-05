@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { isBelowFloor, minimumSampleSize } from './sampleSizeFloors.js';
+import { isBelowFloor, minimumSampleSize, sampleFloorBreach } from './sampleSizeFloors.js';
 import type { ComputedStat } from './types.js';
 import { StatType } from './types.js';
 
@@ -132,5 +132,41 @@ describe('isBelowFloor', () => {
   it('gates an average below three transactions', () => {
     expect(isBelowFloor({ statType: StatType.Average, sampleSize: 2 } as ComputedStat)).toBe(true);
     expect(isBelowFloor({ statType: StatType.Average, sampleSize: 3 } as ComputedStat)).toBe(false);
+  });
+});
+
+describe('sampleFloorBreach', () => {
+  it('reports the sampleSize and minimum for a stat below its floor', () => {
+    expect(sampleFloorBreach({ statType: 'trend', sampleSize: 3 } as ComputedStat)).toEqual({
+      sampleSize: 3,
+      minimum: 6,
+    });
+  });
+
+  it('reports null for a stat at or above its floor', () => {
+    expect(sampleFloorBreach({ statType: 'trend', sampleSize: 6 } as ComputedStat)).toBeNull();
+    expect(sampleFloorBreach({ statType: 'trend', sampleSize: 12 } as ComputedStat)).toBeNull();
+  });
+
+  it('reports null for year_over_year, whose sampleSize is deliberately null', () => {
+    expect(
+      sampleFloorBreach({ statType: StatType.YearOverYear, sampleSize: null } as ComputedStat),
+    ).toBeNull();
+  });
+
+  // isBelowFloor fails closed here (true) even though minimumSampleSize('total')
+  // is null, so "below floor" and "has a minimum worth citing" disagree. There's
+  // no real minimum to report, and inventing one would tell the owner "fewer
+  // than N months" for what is actually "this count isn't usable."
+  it('reports null for an unusable sampleSize on a stat type with no floor', () => {
+    expect(isBelowFloor({ statType: 'total', sampleSize: NaN } as ComputedStat)).toBe(true);
+    expect(minimumSampleSize('total')).toBeNull();
+    expect(sampleFloorBreach({ statType: 'total', sampleSize: NaN } as ComputedStat)).toBeNull();
+  });
+
+  it('reports null for an unusable sampleSize even on a stat type that does have a floor', () => {
+    expect(sampleFloorBreach({ statType: 'trend', sampleSize: NaN } as ComputedStat)).toBeNull();
+    expect(sampleFloorBreach({ statType: 'trend', sampleSize: Infinity } as ComputedStat)).toBeNull();
+    expect(sampleFloorBreach({ statType: 'trend' } as ComputedStat)).toBeNull();
   });
 });

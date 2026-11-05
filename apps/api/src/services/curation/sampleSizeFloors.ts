@@ -52,3 +52,17 @@ export function isBelowFloor(stat: ComputedStat): boolean {
   const floor = minimumSampleSize(stat.statType);
   return floor !== null && stat.sampleSize < floor;
 }
+
+// The one place that turns "below floor" into the two real numbers a response
+// can cite. isBelowFloor fails closed above (true) on a non-finite sampleSize
+// even for a stat type with no floor at all, so "below floor" and "has a
+// minimum worth citing" are different questions; this only answers yes to
+// both, so a caller never has to invent a minimum or report a sampleSize that
+// isn't a real count.
+export function sampleFloorBreach(stat: ComputedStat): { sampleSize: number; minimum: number } | null {
+  const minimum = minimumSampleSize(stat.statType);
+  if (minimum === null || typeof stat.sampleSize !== 'number' || !Number.isFinite(stat.sampleSize)) {
+    return null;
+  }
+  return isBelowFloor(stat) ? { sampleSize: stat.sampleSize, minimum } : null;
+}

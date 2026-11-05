@@ -117,6 +117,71 @@ describe('StatDetailSheet', () => {
     expect(screen.getByText('3.10')).toBeInTheDocument();
   });
 
+  it('explains that the summary omitted a thin stat', () => {
+    mockUseStatDetail.mockReturnValue({
+      status: 'done',
+      data: {
+        statType: 'trend',
+        value: -40,
+        detail: {
+          kind: 'inputs',
+          methodName: 'Linear regression over the trailing data points',
+          inputs: [],
+        },
+        belowSampleFloor: { sampleSize: 3, minimum: 6 },
+      },
+      error: null,
+    });
+
+    render(
+      <StatDetailSheet open={true} onOpenChange={() => {}} datasetId={1} statId="1:trend:Expenses:_" />,
+    );
+
+    expect(screen.getByText(/based on 3 months/i)).toBeInTheDocument();
+  });
+
+  it('says nothing about sample size for a stat above its floor', () => {
+    mockUseStatDetail.mockReturnValue({
+      status: 'done',
+      data: {
+        statType: 'trend',
+        value: 18,
+        detail: {
+          kind: 'inputs',
+          methodName: 'Linear regression over the trailing data points',
+          inputs: [],
+        },
+        belowSampleFloor: null,
+      },
+      error: null,
+    });
+
+    render(
+      <StatDetailSheet open={true} onOpenChange={() => {}} datasetId={1} statId="1:trend:Sales:_" />,
+    );
+
+    expect(screen.queryByText(/based on/i)).not.toBeInTheDocument();
+  });
+
+  it('names the count in transactions for a transaction-gated stat type', () => {
+    mockUseStatDetail.mockReturnValue({
+      status: 'done',
+      data: {
+        statType: 'average',
+        value: 450,
+        detail: { kind: 'formula', expression: 'average $450.00, median $420.00', terms: [] },
+        belowSampleFloor: { sampleSize: 2, minimum: 3 },
+      },
+      error: null,
+    });
+
+    render(
+      <StatDetailSheet open={true} onOpenChange={() => {}} datasetId={1} statId="1:average:Sales:_" />,
+    );
+
+    expect(screen.getByText(/based on 2 transactions/i)).toBeInTheDocument();
+  });
+
   it('closes on escape', () => {
     mockUseStatDetail.mockReturnValue({ status: 'loading', data: null, error: null });
     const onOpenChange = vi.fn();

@@ -5,6 +5,7 @@ import { withRlsContext } from '../../lib/rls.js';
 import { logger } from '../../lib/logger.js';
 import { resolveStatById } from './computation.js';
 import { buildStatDetail } from './statDetail.js';
+import { sampleFloorBreach } from './sampleSizeFloors.js';
 import { scoringConfig } from './scoring.js';
 import type { IdentifiedStat } from './types.js';
 
@@ -70,5 +71,6 @@ export async function resolveCitation(
     statType: stat.statType,
     value: stat.value,
     detail: buildStatDetail(stat),
+    belowSampleFloor: sampleFloorBreach(stat),
   };
 }

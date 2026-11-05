@@ -21,6 +21,16 @@ function statTypeLabel(statType: string): string {
   return statType.replace(/_/g, ' ');
 }
 
+// average and anomaly gate on a transaction count; every other floor
+// (sampleSizeFloors.ts, API) measures months of history, so "months" would
+// misstate what the number means for those two.
+function sampleSizeLabel(statType: string, n: number): string {
+  if (statType === 'average' || statType === 'anomaly') {
+    return `${n} transaction${n === 1 ? '' : 's'}`;
+  }
+  return `${n} month${n === 1 ? '' : 's'} of data`;
+}
+
 // Per-claim reconciliation view: fetches the value + arithmetic (or method)
 // behind one <cite> tag. Separate from InsightChartSheet (chart drill-down,
 // gated on getStatChartConfig covering 6 of 12 stat types) and
@@ -82,6 +92,12 @@ export function StatDetailSheet({ open, onOpenChange, datasetId, statId }: StatD
                   </div>
                 ))}
               </dl>
+              {data.belowSampleFloor && (
+                <p className="text-sm text-muted-foreground">
+                  This is based on {sampleSizeLabel(data.statType, data.belowSampleFloor.sampleSize)}, so
+                  the summary leaves it out.
+                </p>
+              )}
             </>
           )}
 

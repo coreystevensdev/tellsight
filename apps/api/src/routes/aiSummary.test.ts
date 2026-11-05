@@ -367,6 +367,28 @@ describe('GET /ai-summaries/:datasetId/stats/:statId', () => {
     expect(body.data.detail.kind).toBe('inputs');
   });
 
+  // Expenses has 3 months of rows, Sales has 6 -- same category shape detailFixtureId
+  // already uses above, same trend floor (6), one on each side of it.
+  it('tells the detail endpoint when a stat is below its citation floor', async () => {
+    const statId = detailFixtureId(StatType.Trend, (s) => s.category === 'Expenses');
+
+    const res = await fetch(`${baseUrl}/ai-summaries/42/stats/${encodeURIComponent(statId)}`);
+    const body = await res.json() as { data: { belowSampleFloor: unknown } };
+
+    expect(res.status).toBe(200);
+    expect(body.data.belowSampleFloor).toEqual({ sampleSize: 3, minimum: 6 });
+  });
+
+  it('reports null for a stat at its citation floor', async () => {
+    const statId = detailFixtureId(StatType.Trend, (s) => s.category === 'Sales');
+
+    const res = await fetch(`${baseUrl}/ai-summaries/42/stats/${encodeURIComponent(statId)}`);
+    const body = await res.json() as { data: { belowSampleFloor: unknown } };
+
+    expect(res.status).toBe(200);
+    expect(body.data.belowSampleFloor).toBeNull();
+  });
+
   it('returns 404 for an id that was never computed', async () => {
     const res = await fetch(`${baseUrl}/ai-summaries/42/stats/${encodeURIComponent('42:total:Nonexistent:category')}`);
     const body = await res.json() as { error: { code: string } };
