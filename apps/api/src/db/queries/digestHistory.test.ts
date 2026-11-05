@@ -75,6 +75,16 @@ describe('getLastDigest', () => {
     expect(result!.keyStats).toEqual([{ ...keyStats[0], sampleSize: null }]);
   });
 
+  it('does not throw on a legacy null entry in keyStats, and leaves it untouched', async () => {
+    const trend = { statType: 'trend', category: 'Sales', value: 100, details: { slope: 1, intercept: 0, growthPercent: 5, dataPoints: 4, firstValue: 90, lastValue: 100 } };
+    const keyStats = [null, trend];
+    mockFindFirst.mockResolvedValueOnce({ id: 5, orgId: 3, weekStart: new Date('2026-05-25T00:00:00Z'), keyStats });
+
+    const result = await getLastDigest(3);
+
+    expect(result!.keyStats).toEqual([null, { ...trend, sampleSize: null }]);
+  });
+
   it('returns undefined when the org has no history', async () => {
     mockFindFirst.mockResolvedValueOnce(undefined);
 

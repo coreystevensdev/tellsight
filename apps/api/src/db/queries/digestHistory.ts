@@ -84,7 +84,6 @@ export async function getLastDigest(
     orderBy: desc(digestHistory.weekStart),
   });
   if (!row) return row;
-  const keyStats = row.keyStats as ComputedStat[];
   return {
     ...row,
     // key_stats is stored as untyped jsonb; cast at the query-helper layer per
@@ -94,9 +93,12 @@ export async function getLastDigest(
     // one field normalized regardless: rows written before it existed cast to
     // `undefined`, and `null` is the honest "no n recorded" value, not an
     // accidental exemption from whatever floor a reader applies to it.
-    keyStats: Array.isArray(keyStats)
-      ? keyStats.map((stat) => ({ ...stat, sampleSize: stat.sampleSize ?? null }))
-      : keyStats,
+    keyStats: Array.isArray(row.keyStats)
+      ? row.keyStats.map((stat) => {
+          if (stat === null || typeof stat !== 'object') return stat as ComputedStat;
+          return { ...(stat as ComputedStat), sampleSize: (stat as ComputedStat).sampleSize ?? null };
+        })
+      : (row.keyStats as ComputedStat[]),
     milestones: Array.isArray(row.milestones) ? row.milestones.filter(isDigestMilestone) : [],
   };
 }
