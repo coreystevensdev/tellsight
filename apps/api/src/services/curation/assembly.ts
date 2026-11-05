@@ -246,9 +246,12 @@ export function assemblePrompt(
   //
   // Gated by default, not universally. The floor exists to stop this function
   // volunteering a weak statistic from a candidate pool, not to overrule a
-  // decision something else already made about one specific stat (an alert
-  // rule firing, an agent proposing it). isPreselected is how a caller in
-  // that position says so; omitting it is always safe, since false gates.
+  // deterministic rule that already examined this exact stat and found it
+  // over a threshold (an alert firing). A model choosing which stat to write
+  // about from a pool hasn't made that kind of decision: a prompt asking it
+  // to be careful is a request, not a guarantee. isPreselected is how a
+  // caller passing a single rule-selected stat says so; omitting it is
+  // always safe, since false gates.
   const survivors = isPreselected ? insights : insights.filter((i) => !isBelowFloor(i.stat));
   const suppressedForSampleSize = insights.length - survivors.length;
 

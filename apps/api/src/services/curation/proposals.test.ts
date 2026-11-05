@@ -345,11 +345,11 @@ describe('generateProposals', () => {
     expect(mockGenerateWithTools).toHaveBeenCalledWith(expect.any(Object), expect.any(Array), onCost);
   });
 
-  // record_proposal's own description already tells the model to call it
-  // only for a genuine finding, so the sample-size floor would be a second,
-  // redundant filter on top of one the model already applies. A below-floor
-  // stat still has to reach the prompt for the model to be able to cite it.
-  it('does not suppress a below-floor stat from the prompt', async () => {
+  // generateProposals hands assemblePrompt the full curated candidate pool
+  // (evaluateOrg.ts's runCurationPipeline output), the same breadth the
+  // dashboard gets, not one rule-selected stat. It keeps the default gate:
+  // a below-floor stat must not reach the model for it to possibly cite.
+  it('suppresses a below-floor stat from the prompt', async () => {
     const belowFloorAnomaly: ScoredInsight = {
       stat: {
         statType: StatType.Anomaly,
@@ -373,6 +373,6 @@ describe('generateProposals', () => {
     await generateProposals([...insights, belowFloorAnomaly], DATASET_ID, null, NOW);
 
     const promptArg = mockGenerateWithTools.mock.calls[0]![0] as { user: string };
-    expect(promptArg.user).toContain('[Payroll] Anomaly');
+    expect(promptArg.user).not.toContain('[Payroll] Anomaly');
   });
 });

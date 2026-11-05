@@ -172,12 +172,7 @@ export async function generateProposals(
   now: Date = new Date(),
   onCost?: (cost: number | null) => void,
 ): Promise<AgentProposal[]> {
-  // RECORD_PROPOSAL_TOOL's own description already tells the model to call it
-  // "once per genuine finding, or not at all when nothing in the stats is
-  // worth flagging": that judgment call is the filter here, the same role a
-  // fired alert rule plays. The sample-size floor would second-guess a
-  // finding the model already chose to back with cited evidence.
-  const { system, user } = assemblePrompt(insights, datasetId, PROMPT_VERSION, businessProfile, now, '', true);
+  const { system, user } = assemblePrompt(insights, datasetId, PROMPT_VERSION, businessProfile, now);
   // Keyed by the id the prompt printed in each `[cite: id]` token, which is what
   // every check downstream needs: the keys scope evidence, the values verify
   // figures and direction against the stat the model actually cited.

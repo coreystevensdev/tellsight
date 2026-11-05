@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { ScoredInsight } from '../../../services/curation/types.js';
 
 const mockSendEmail = vi.fn();
 const mockGetCachedAlertSummary = vi.fn();
@@ -63,12 +64,16 @@ vi.mock('../templates/alertEmail.js', () => ({
 
 const { handleSendJob } = await import('./send.js');
 
-function runwayInsight(runwayMonths = 2) {
+function runwayInsight(runwayMonths = 2): ScoredInsight {
   return {
     stat: {
       statType: 'runway',
       category: null,
       value: runwayMonths,
+      // Matches details.trailingMonths below: computeRunway inherits the
+      // underlying CashFlowStat's window outright, and that window is
+      // hardcoded to 3 everywhere in production (computation.ts).
+      sampleSize: 3,
       details: {
         cashOnHand: 10_000,
         monthlyNet: -2_500,
@@ -83,12 +88,17 @@ function runwayInsight(runwayMonths = 2) {
   };
 }
 
-function breakevenInsight() {
+function breakevenInsight(): ScoredInsight {
   return {
     stat: {
       statType: 'break_even',
       category: null,
       value: 5_000,
+      // break_even inherits margin_trend's sampleSize outright. A trend worth
+      // alerting on a widening gap implies a year of tracked history, and
+      // marginTrendMonths splits 12 months into 6 recent / 6 prior, so the
+      // thinner side (what sampleSize actually holds) is 6.
+      sampleSize: 6,
       details: {
         monthlyFixedCosts: 8_000,
         marginPercent: 20,
@@ -103,21 +113,24 @@ function breakevenInsight() {
   };
 }
 
-function cashFlowInsight(direction: 'burning' | 'surplus' = 'surplus', monthsBurning = 0) {
+function cashFlowInsight(direction: 'burning' | 'surplus' = 'surplus', monthsBurning = 0): ScoredInsight {
   return {
     stat: {
       statType: 'cash_flow',
       category: null,
       value: 500,
+      // Matches details.trailingMonths below, the window computeCashFlow
+      // always uses in production (computation.ts hardcodes it to 3).
+      sampleSize: 3,
       details: {
         monthlyNet: 500,
         trailingMonths: 3,
         direction,
         monthsBurning,
         recentMonths: [
-          { month: '2026-05', expenses: 10_000 },
-          { month: '2026-06', expenses: 10_000 },
-          { month: '2026-07', expenses: 15_000 },
+          { month: '2026-05', revenue: 10_500, expenses: 10_000, net: 500 },
+          { month: '2026-06', revenue: 10_500, expenses: 10_000, net: 500 },
+          { month: '2026-07', revenue: 15_500, expenses: 15_000, net: 500 },
         ],
       },
     },

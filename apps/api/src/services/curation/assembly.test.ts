@@ -651,9 +651,8 @@ describe('assemblePrompt', () => {
       expect(metadata.statTypes).toEqual([]);
     });
 
-    // The alert and agent-proposal paths: a rule or the model's own tool-use
-    // judgment already decided this exact stat was worth surfacing, so the
-    // floor should not override that decision.
+    // The alert path: a deterministic rule already examined this exact stat
+    // and found it over a threshold, so the floor should not override that.
     it('does not suppress a below-floor stat when isPreselected is true', async () => {
       const { assemblePrompt } = await import('./assembly.js');
       const thin = scoredTrend({ sampleSize: 3, category: 'Marketing' });
