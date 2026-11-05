@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { ANALYTICS_EVENTS } from 'shared/constants';
 
 import { dbAdmin } from '../../../lib/db.js';
@@ -91,11 +91,17 @@ export async function runSync(connectionId: number, trigger: SyncTrigger): Promi
       if (transactions.length === 0) continue;
 
       const normalized = normalizeTransactions(transactions, entityType);
-      const affected = await upsertRows(orgId, dataset.id, normalized);
-      totalRows += affected;
+      const fetchedTxnIds = transactions.map((tx) => tx.Id);
+      const { upserted, reconciled } = await upsertRows(
+        orgId,
+        dataset.id,
+        fetchedTxnIds,
+        normalized,
+      );
+      totalRows += upserted;
 
       logger.info(
-        { orgId, entityType, fetched: transactions.length, upserted: affected },
+        { orgId, entityType, fetched: transactions.length, upserted, reconciled },
         'QB entity synced',
       );
     }
@@ -180,54 +186,84 @@ async function findOrCreateQbDataset(orgId: number, companyName: string) {
   );
 }
 
+export interface UpsertResult {
+  upserted: number;
+  reconciled: number;
+}
+
 /**
- * Batched upsert against (org_id, source_id). Updates amount, date,
- * category, parentCategory, label, and metadata on conflict.
- * Returns the number of rows affected (inserted + updated).
+ * Batched upsert against (org_id, source_id), plus reconciliation: a row
+ * from this batch's fetched transactions that the normalizer no longer
+ * produces gets deleted, in the same transaction as the insert. Without
+ * this, a transaction that now produces fewer rows (or none) leaves its
+ * stale rows behind forever, since upsertRows never used to delete anything.
+ *
+ * Scoped to source_type = 'quickbooks' (metadata is untyped jsonb on a
+ * shared table) and to fetchedTxnIds (this batch's transactions, not the
+ * whole dataset), since sync.ts fetches incrementally and a dataset-wide
+ * diff would read every unchanged transaction as deleted.
  */
 export async function upsertRows(
   orgId: number,
   datasetId: number,
+  fetchedTxnIds: string[],
   rows: NormalizedQbRow[],
-): Promise<number> {
-  if (rows.length === 0) return 0;
+): Promise<UpsertResult> {
+  if (fetchedTxnIds.length === 0) return { upserted: 0, reconciled: 0 };
 
-  let affected = 0;
+  const producedSourceIds = rows.map((row) => row.sourceId);
 
-  for (let i = 0; i < rows.length; i += UPSERT_BATCH_SIZE) {
-    const chunk = rows.slice(i, i + UPSERT_BATCH_SIZE);
-    const values = chunk.map((row) => ({
-      orgId,
-      datasetId,
-      sourceType: row.sourceType,
-      sourceId: row.sourceId,
-      category: row.category,
-      parentCategory: row.parentCategory,
-      date: row.date,
-      amount: row.amount,
-      label: row.label,
-      metadata: row.metadata,
-    }));
-
-    const result = await dbAdmin
-      .insert(dataRows)
-      .values(values)
-      .onConflictDoUpdate({
-        target: [dataRows.orgId, dataRows.sourceId],
-        targetWhere: sql`${dataRows.sourceId} IS NOT NULL`,
-        set: {
-          amount: sql`excluded.amount`,
-          date: sql`excluded.date`,
-          category: sql`excluded.category`,
-          parentCategory: sql`excluded.parent_category`,
-          label: sql`excluded.label`,
-          metadata: sql`excluded.metadata`,
-        },
-      })
+  return dbAdmin.transaction(async (tx) => {
+    const deleted = await tx
+      .delete(dataRows)
+      .where(
+        and(
+          eq(dataRows.orgId, orgId),
+          eq(dataRows.datasetId, datasetId),
+          eq(dataRows.sourceType, 'quickbooks'),
+          inArray(sql`${dataRows.metadata}->>'qb_id'`, fetchedTxnIds),
+          notInArray(dataRows.sourceId, producedSourceIds),
+        ),
+      )
       .returning({ id: dataRows.id });
 
-    affected += result.length;
-  }
+    let upserted = 0;
 
-  return affected;
+    for (let i = 0; i < rows.length; i += UPSERT_BATCH_SIZE) {
+      const chunk = rows.slice(i, i + UPSERT_BATCH_SIZE);
+      const values = chunk.map((row) => ({
+        orgId,
+        datasetId,
+        sourceType: row.sourceType,
+        sourceId: row.sourceId,
+        category: row.category,
+        parentCategory: row.parentCategory,
+        date: row.date,
+        amount: row.amount,
+        label: row.label,
+        metadata: row.metadata,
+      }));
+
+      const result = await tx
+        .insert(dataRows)
+        .values(values)
+        .onConflictDoUpdate({
+          target: [dataRows.orgId, dataRows.sourceId],
+          targetWhere: sql`${dataRows.sourceId} IS NOT NULL`,
+          set: {
+            amount: sql`excluded.amount`,
+            date: sql`excluded.date`,
+            category: sql`excluded.category`,
+            parentCategory: sql`excluded.parent_category`,
+            label: sql`excluded.label`,
+            metadata: sql`excluded.metadata`,
+          },
+        })
+        .returning({ id: dataRows.id });
+
+      upserted += result.length;
+    }
+
+    return { upserted, reconciled: deleted.length };
+  });
 }

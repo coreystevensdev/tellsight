@@ -17,35 +17,59 @@ const mockNormalizeTransactions = vi.fn();
 const mockTrackEvent = vi.fn();
 const mockInsertValues = vi.fn();
 const mockOnConflict = vi.fn();
+const mockDeleteWhere = vi.fn();
 // vitest 5 types a bare vi.fn() as Mock<Procedure | Constructable>, which is
 // not callable without narrowing, so name the signature.
 const mockReturning = vi.fn() as Mock & { _result: Promise<unknown[]> };
+const mockDeleteReturning = vi.fn() as Mock & { _result: Promise<unknown[]> };
 
-vi.mock('../../../lib/db.js', () => ({
-  dbAdmin: {
-    // Branded so an assertion can tell the clients apart. expect.anything()
-    // matches either one, which made the assertion below read as coverage of
-    // the scoped-client fix while observing nothing about it.
-    __brand: 'dbAdmin',
-    insert: () => ({
-      values: (v: unknown) => {
-        mockInsertValues(v);
-        return {
-          onConflictDoUpdate: (c: unknown) => {
-            mockOnConflict(c);
-            return {
-              returning: () => {
-                mockReturning();
-                return mockReturning._result;
-              },
-            };
-          },
-        };
-      },
-    }),
-  },
-  db: { __brand: 'db' },
-}));
+vi.mock('../../../lib/db.js', () => {
+  // Shared by dbAdmin itself and by the client a .transaction() callback
+  // receives, so a test can call either path and land on the same mocks.
+  function queryClient() {
+    return {
+      insert: () => ({
+        values: (v: unknown) => {
+          mockInsertValues(v);
+          return {
+            onConflictDoUpdate: (c: unknown) => {
+              mockOnConflict(c);
+              return {
+                returning: () => {
+                  mockReturning();
+                  return mockReturning._result;
+                },
+              };
+            },
+          };
+        },
+      }),
+      delete: () => ({
+        where: (c: unknown) => {
+          mockDeleteWhere(c);
+          return {
+            returning: () => {
+              mockDeleteReturning();
+              return mockDeleteReturning._result;
+            },
+          };
+        },
+      }),
+    };
+  }
+
+  return {
+    dbAdmin: {
+      // Branded so an assertion can tell the clients apart. expect.anything()
+      // matches either one, which made the assertion below read as coverage
+      // of the scoped-client fix while observing nothing about it.
+      __brand: 'dbAdmin',
+      ...queryClient(),
+      transaction: async (fn: (tx: ReturnType<typeof queryClient>) => unknown) => fn(queryClient()),
+    },
+    db: { __brand: 'db' },
+  };
+});
 
 vi.mock('../../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -106,7 +130,14 @@ vi.mock('./normalize.js', () => ({
 }));
 
 vi.mock('drizzle-orm', () => ({
-  sql: (strings: TemplateStringsArray) => ({ sql: strings.join('?') }),
+  sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({
+    sql: strings.join('?'),
+    values,
+  }),
+  eq: (col: unknown, val: unknown) => ({ op: 'eq', col, val }),
+  and: (...conditions: unknown[]) => ({ op: 'and', conditions }),
+  inArray: (col: unknown, vals: unknown[]) => ({ op: 'inArray', col, vals }),
+  notInArray: (col: unknown, vals: unknown[]) => ({ op: 'notInArray', col, vals }),
 }));
 
 function mockConnection(overrides: Record<string, unknown> = {}) {
@@ -154,6 +185,7 @@ describe('runSync', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockReturning._result = Promise.resolve([]);
+    mockDeleteReturning._result = Promise.resolve([]);
     mockSyncJobCreate.mockResolvedValue({ id: 100, orgId: 10, connectionId: 1 });
     mockGetOrgOwnerId.mockResolvedValue(1);
   });
@@ -409,12 +441,37 @@ describe('runSync', () => {
 describe('upsertRows', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockReturning._result = Promise.resolve([]);
+    mockDeleteReturning._result = Promise.resolve([]);
   });
 
-  it('returns 0 for empty array', async () => {
+  it('returns 0 upserted and 0 reconciled when nothing was fetched', async () => {
     const { upsertRows } = await import('./sync.js');
-    const count = await upsertRows(10, 500, []);
-    expect(count).toBe(0);
+    const result = await upsertRows(10, 500, [], []);
+    expect(result).toEqual({ upserted: 0, reconciled: 0 });
+  });
+
+  it('skips the delete and insert entirely when nothing was fetched', async () => {
+    const { upsertRows } = await import('./sync.js');
+    await upsertRows(10, 500, [], []);
+
+    expect(mockDeleteWhere).not.toHaveBeenCalled();
+    expect(mockInsertValues).not.toHaveBeenCalled();
+  });
+
+  it('still reconciles a transaction that was fetched and now produces no rows', async () => {
+    // The sharpest case in the design doc: a transaction that used to
+    // produce a row now produces none. rows.length === 0 on its own used
+    // to short-circuit before any delete ran, which is exactly how that
+    // case went unreconciled, not just under-tested.
+    mockDeleteReturning._result = Promise.resolve([{ id: 1 }]);
+
+    const { upsertRows } = await import('./sync.js');
+    const result = await upsertRows(10, 500, ['tx-now-empty'], []);
+
+    expect(mockDeleteWhere).toHaveBeenCalledTimes(1);
+    expect(mockInsertValues).not.toHaveBeenCalled();
+    expect(result).toEqual({ upserted: 0, reconciled: 1 });
   });
 
   it('batches rows in groups of 500', async () => {
@@ -422,7 +479,7 @@ describe('upsertRows', () => {
     mockReturning._result = Promise.resolve(new Array(500).fill({ id: 1 }));
 
     const { upsertRows } = await import('./sync.js');
-    await upsertRows(10, 500, rows);
+    await upsertRows(10, 500, ['tx-1'], rows);
 
     // 1200 rows / 500 batch = 3 batches
     expect(mockInsertValues).toHaveBeenCalledTimes(3);
@@ -435,7 +492,7 @@ describe('upsertRows', () => {
     mockReturning._result = Promise.resolve([{ id: 1 }]);
 
     const { upsertRows } = await import('./sync.js');
-    await upsertRows(10, 500, [normalizedRow()]);
+    await upsertRows(10, 500, ['tx-1'], [normalizedRow()]);
 
     expect(mockOnConflict).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -444,13 +501,42 @@ describe('upsertRows', () => {
     );
   });
 
-  it('counts affected rows from returning', async () => {
+  it('counts upserted rows from returning, separate from reconciled', async () => {
     const rows = Array.from({ length: 3 }, (_, i) => normalizedRow({ sourceId: `tx-${i}` }));
     mockReturning._result = Promise.resolve([{ id: 1 }, { id: 2 }, { id: 3 }]);
+    mockDeleteReturning._result = Promise.resolve([{ id: 99 }]);
 
     const { upsertRows } = await import('./sync.js');
-    const count = await upsertRows(10, 500, rows);
+    const result = await upsertRows(10, 500, ['tx-1'], rows);
 
-    expect(count).toBe(3);
+    expect(result).toEqual({ upserted: 3, reconciled: 1 });
+  });
+
+  it('deletes within the same transaction the insert runs in, not a separate call', async () => {
+    const { upsertRows } = await import('./sync.js');
+    await upsertRows(10, 500, ['tx-1'], [normalizedRow()]);
+
+    expect(mockDeleteWhere).toHaveBeenCalledTimes(1);
+    expect(mockInsertValues).toHaveBeenCalledTimes(1);
+  });
+
+  // Structural check that the delete predicate carries the four scoping
+  // conditions the design requires. This can't prove the SQL filters rows
+  // correctly against real data, a mocked .where() says nothing about what
+  // Postgres would do with it, so sync.integration.test.ts proves that part
+  // against a real database. This only proves the right pieces were asked
+  // for.
+  it('scopes the delete to org, dataset, quickbooks rows, and this batch fetched ids', async () => {
+    const { upsertRows } = await import('./sync.js');
+    await upsertRows(10, 500, ['tx-1', 'tx-2'], [normalizedRow({ sourceId: 'tx-1-line-1' })]);
+
+    const where = mockDeleteWhere.mock.calls[0]![0] as { conditions: unknown[] };
+    expect(where.conditions).toEqual([
+      { op: 'eq', col: 'org_id', val: 10 },
+      { op: 'eq', col: 'dataset_id', val: 500 },
+      { op: 'eq', col: 'source_type', val: 'quickbooks' },
+      expect.objectContaining({ op: 'inArray', vals: ['tx-1', 'tx-2'] }),
+      expect.objectContaining({ op: 'notInArray', vals: ['tx-1-line-1'] }),
+    ]);
   });
 });
