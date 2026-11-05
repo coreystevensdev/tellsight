@@ -789,6 +789,43 @@ describe('LinkedTxn settlement, DW-231', () => {
     expect(rows[0]!.category).toBe('Owner Loan');
     expect(rows[0]!.sourceId).toBe('dep-mixed-2');
   });
+
+  // Before this rework, isAlreadyRecorded read root plus every line for
+  // both Payment and Deposit. The per-line fix above only ever reads
+  // line.LinkedTxn, which silently dropped the root check for Deposit.
+  // Real Intuit payloads put the link on Line, not the root, so this
+  // guards a shape that has not been observed rather than one that has.
+  it('a root-linked deposit still suppresses even when its one line is unlinked', () => {
+    const unappliedPayment = makePayment({ Id: 'pay-root-linked', TotalAmt: 500 });
+    const deposit: QbTransaction = {
+      Id: 'dep-root-linked',
+      TxnDate: '2026-04-14',
+      TotalAmt: 500,
+      LinkedTxn: [{ TxnId: unappliedPayment.Id, TxnType: 'Payment' }],
+      Line: [
+        {
+          Id: '1',
+          Amount: 500,
+          DetailType: 'DepositLineDetail',
+          DepositLineDetail: { AccountRef: { value: '1', name: 'Owner Loan' } },
+        },
+      ],
+    };
+
+    expect(normalizeTransaction(deposit, 'Deposit')).toEqual([]);
+  });
+
+  it('a root-linked deposit with no lines at all still suppresses', () => {
+    const unappliedPayment = makePayment({ Id: 'pay-root-linked-2', TotalAmt: 500 });
+    const deposit: QbTransaction = {
+      Id: 'dep-root-linked-2',
+      TxnDate: '2026-04-14',
+      TotalAmt: 500,
+      LinkedTxn: [{ TxnId: unappliedPayment.Id, TxnType: 'Payment' }],
+    };
+
+    expect(normalizeTransaction(deposit, 'Deposit')).toEqual([]);
+  });
 });
 
 // DW-233 follow-up: UnappliedAmt ran before any look at links, so a payment
@@ -863,6 +900,37 @@ describe('UnappliedAmt numeric guards, DW-233 follow-up', () => {
 
     expect(rows).toHaveLength(1);
     expect(rows[0]!.amount).toBe('1000');
+  });
+
+  // A missing TotalAmt used to turn a perfectly good UnappliedAmt into an
+  // unusable one: unapplied <= NaN is always false, so the range check
+  // failed even though there was nothing to be out of range of. api.ts's
+  // unvalidated cast can drop TotalAmt exactly as easily as UnappliedAmt,
+  // so its absence is not evidence the other field is wrong.
+  it('a sane UnappliedAmt with no TotalAmt still produces its row, unlinked', () => {
+    const payment = makePayment({ Id: 'pay-no-total', TotalAmt: undefined, UnappliedAmt: 600 });
+
+    const rows = normalizeTransaction(payment, 'Payment');
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.amount).toBe('600');
+  });
+
+  it('a sane UnappliedAmt with no TotalAmt still produces its row even when linked', () => {
+    // Previously this returned zero rows: isSane went false on the missing
+    // TotalAmt, which fell through to isAlreadyRecorded, which saw the
+    // link and suppressed. The $600 vanished with no trace.
+    const payment = makePayment({
+      Id: 'pay-no-total-linked',
+      TotalAmt: undefined,
+      UnappliedAmt: 600,
+      LinkedTxn: [{ TxnId: 'inv-1', TxnType: 'Invoice' }],
+    });
+
+    const rows = normalizeTransaction(payment, 'Payment');
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.amount).toBe('600');
   });
 });
 

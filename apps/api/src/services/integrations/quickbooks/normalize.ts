@@ -137,7 +137,15 @@ export function normalizeTransaction(
     // the link rule, dropping that $600.
     const unapplied = Number(tx.UnappliedAmt);
     const total = Math.abs(tx.TotalAmt ?? NaN);
-    const isSane = Number.isFinite(unapplied) && unapplied >= 0 && unapplied <= total;
+    // api.ts's unvalidated cast can hand back a missing TotalAmt just as
+    // easily as a missing UnappliedAmt, so a NaN total is not evidence the
+    // unapplied amount is out of range, it is an absent yardstick. Checking
+    // unapplied <= NaN is always false, which used to fail a genuinely sane
+    // value and turn a real $600 into a zero-amount row or no row at all.
+    const isSane =
+      Number.isFinite(unapplied) &&
+      unapplied >= 0 &&
+      (!Number.isFinite(total) || unapplied <= total);
 
     if (isSane && unapplied > 0) {
       return [uncategorizedRow(tx, txnType, unapplied, 'Income')];
@@ -146,12 +154,19 @@ export function normalizeTransaction(
     // QuickBooks can report it off a link we don't treat as income (a
     // Bill) or no link at all, and trusting it there is how a payment tied
     // to an expense loses its own money instead of landing as Income. An
-    // out-of-range value (negative, or bigger than the payment) is just as
-    // untrustworthy. Either way, fall through to the same LinkedTxn rule
+    // out-of-range value (negative, or bigger than a known payment) is just
+    // as untrustworthy. Either way, fall through to the same LinkedTxn rule
     // below that every other payment shape uses.
   }
 
   if (txnType === 'Payment' && isAlreadyRecorded(tx)) return [];
+  // Deposit's per-line check below only ever reads line.LinkedTxn, but a
+  // deposit can carry the link on the transaction root instead (the shape
+  // every other type on this path defends against). A root link means the
+  // whole deposit is already recorded, same as isAlreadyRecorded does for
+  // Payment above; the per-line filter still runs for everything else a
+  // root-unlinked deposit mixes in.
+  if (txnType === 'Deposit' && linksToIncomeType(tx.LinkedTxn)) return [];
 
   const realLines = (tx.Line ?? []).filter(carriesItsOwnAmount);
 
