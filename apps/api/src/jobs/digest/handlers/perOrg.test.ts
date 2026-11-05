@@ -138,6 +138,7 @@ function breakEvenStat(gap: number): ComputedStat {
     statType: 'break_even',
     category: null,
     value: gap,
+    sampleSize: 6,
     details: {
       monthlyFixedCosts: 5000,
       marginPercent: 20,
@@ -154,6 +155,7 @@ function runwayStat(runwayMonths: number): ComputedStat {
     statType: 'runway',
     category: null,
     value: runwayMonths,
+    sampleSize: 3,
     details: {
       cashOnHand: 12000,
       monthlyNet: -2000,

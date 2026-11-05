@@ -331,6 +331,49 @@ describe('computeStats', () => {
       expect(pct).toBeLessThanOrEqual(100);
     }
   });
+
+  // One row per category per month so trend's dataPoints and breakdown's
+  // transactionCount land on the same number (12) without coinciding by luck.
+  function twelveMonthsOfSixCategories() {
+    const categories = ['Sales', 'Marketing', 'Payroll', 'Rent', 'Utilities', 'Software'];
+    const rows = [];
+    let id = 1;
+    for (const [categoryIndex, category] of categories.entries()) {
+      for (let month = 0; month < 12; month++) {
+        rows.push({
+          id: id++,
+          orgId: 1,
+          datasetId: 1,
+          sourceType: 'csv' as const,
+          category,
+          parentCategory: null,
+          date: new Date(Date.UTC(2026, month, 15)),
+          amount: (1000 + categoryIndex * 150 + month * 25).toFixed(2),
+          label: null,
+          metadata: null,
+          createdAt: new Date(),
+        });
+      }
+    }
+    return rows;
+  }
+
+  it('records a sample size on every computed stat', () => {
+    const stats = computeStats(twelveMonthsOfSixCategories());
+    expect(stats.length).toBeGreaterThan(0);
+    for (const stat of stats) {
+      expect(stat).toHaveProperty('sampleSize');
+      expect(stat.sampleSize === null || typeof stat.sampleSize === 'number').toBe(true);
+    }
+  });
+
+  it('reports the period count for a trend and the transaction count for a breakdown', () => {
+    const stats = computeStats(twelveMonthsOfSixCategories());
+    const trend = stats.find((s) => s.statType === 'trend');
+    const breakdown = stats.find((s) => s.statType === 'category_breakdown');
+    expect(trend?.sampleSize).toBe(12);
+    expect(breakdown?.sampleSize).toBe(12);
+  });
 });
 
 // Trailing burn/surplus stat. Revenue and expense rows are tagged via
@@ -550,6 +593,7 @@ function burningCashFlow(monthlyNet = -5000, monthsBurning = 3): CashFlowStat {
     statType: StatType.CashFlow,
     category: null,
     value: monthlyNet,
+    sampleSize: 3,
     details: {
       monthlyNet,
       trailingMonths: 3,
@@ -569,6 +613,7 @@ function surplusCashFlow(): CashFlowStat {
     statType: StatType.CashFlow,
     category: null,
     value: 3000,
+    sampleSize: 3,
     details: {
       monthlyNet: 3000,
       trailingMonths: 3,
@@ -778,6 +823,7 @@ function marginStat(
     category: null,
     value: recentMarginPercent,
     comparison: recentMarginPercent,
+    sampleSize: 6,
     details: {
       recentMarginPercent,
       priorMarginPercent: recentMarginPercent,

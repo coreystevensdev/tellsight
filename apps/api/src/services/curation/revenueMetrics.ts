@@ -46,6 +46,9 @@ export function computeYearOverYear(rows: DataRow[]): ComputedStat[] {
       category: 'Revenue',
       value: current,
       comparison: prior,
+      // Neither side of the comparison carries a transaction count (just a
+      // monthly sum), and "2 periods" would be constant, not a thinness signal.
+      sampleSize: null,
       details: {
         currentRevenue: current,
         priorRevenue: prior,
@@ -108,6 +111,7 @@ export function computeSeasonalProjection(rows: DataRow[]): ComputedStat[] {
       statType: StatType.SeasonalProjection,
       category: 'Revenue',
       value: projected,
+      sampleSize: basisValues.length,
       details: {
         projectedMonth: `${MONTH_NAMES[nextMonth]} ${nextYear}`,
         projectedAmount: projected,

@@ -32,6 +32,7 @@ const fixtureInsights: ScoredInsight[] = [
       category: 'Sales',
       value: 900,
       comparison: 500,
+      sampleSize: 5,
       details: { direction: 'above', zScore: 2.5, iqrBounds: { lower: 200, upper: 800 }, deviation: 400, period: '2026-03' },
     },
     score: 0.85,
@@ -42,6 +43,7 @@ const fixtureInsights: ScoredInsight[] = [
       statType: StatType.Trend,
       category: 'Marketing',
       value: 0.05,
+      sampleSize: 6,
       details: { slope: 0.05, intercept: 100, growthPercent: 25, dataPoints: 6, firstValue: 400, lastValue: 500, firstPeriod: '2026-01', lastPeriod: '2026-06' },
     },
     score: 0.72,
@@ -52,6 +54,7 @@ const fixtureInsights: ScoredInsight[] = [
       statType: StatType.Total,
       category: null,
       value: 8333,
+      sampleSize: 20,
       details: { scope: 'overall', count: 20 },
     },
     score: 0.15,
@@ -197,6 +200,7 @@ describe('assemblePrompt', () => {
           category: 'Sales',
           value: 900,
           comparison: 500,
+          sampleSize: 5,
           details: { direction: 'above', zScore: 2.5, iqrBounds: { lower: 200, upper: 800 }, deviation: 400, period: '2026-03' },
         },
         score: 0.123456789,
@@ -252,6 +256,7 @@ describe('assemblePrompt', () => {
           category: 'Marketing',
           value: 100,
           comparison: 500,
+          sampleSize: 5,
           details: { direction: 'below', zScore: -3, iqrBounds: { lower: 200, upper: 800 }, deviation: -400, period: '2026-03' },
         },
         score: 0.8,
@@ -271,6 +276,7 @@ describe('assemblePrompt', () => {
         statType: StatType.CashForecast,
         category: null,
         value: -5_000,
+        sampleSize: 6,
         details: {
           startingBalance: 58_000,
           asOfDate: '2026-06-01T00:00:00.000Z',
@@ -306,6 +312,7 @@ describe('assemblePrompt', () => {
         statType: StatType.CashForecast,
         category: null,
         value: -12_000,
+        sampleSize: 6,
         details: {
           startingBalance: 25_000,
           asOfDate: '2026-06-01T00:00:00.000Z',
@@ -407,12 +414,12 @@ describe('assemblePrompt', () => {
   it('gives two same-type stats in different categories distinct cite ids', async () => {
     const twoTotals: ScoredInsight[] = [
       {
-        stat: { statType: StatType.Total, category: 'Food', value: 400_000, details: { scope: 'category', count: 10 } },
+        stat: { statType: StatType.Total, category: 'Food', value: 400_000, sampleSize: 10, details: { scope: 'category', count: 10 } },
         score: 0.5,
         breakdown: { novelty: 0.5, actionability: 0.5, specificity: 0.5 },
       },
       {
-        stat: { statType: StatType.Total, category: 'Drinks', value: 229_000, details: { scope: 'category', count: 8 } },
+        stat: { statType: StatType.Total, category: 'Drinks', value: 229_000, sampleSize: 8, details: { scope: 'category', count: 8 } },
         score: 0.4,
         breakdown: { novelty: 0.4, actionability: 0.4, specificity: 0.4 },
       },
@@ -490,6 +497,7 @@ describe('assemblePrompt', () => {
           statType: StatType.Total,
           category: '{{fake}}',
           value: 500,
+          sampleSize: 3,
           details: { scope: 'category', count: 3 },
         },
         score: 0.5,

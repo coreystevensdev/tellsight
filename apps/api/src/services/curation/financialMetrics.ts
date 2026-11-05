@@ -65,6 +65,9 @@ export function computeRunway(
     statType: StatType.Runway,
     category: null,
     value: runwayMonths,
+    // runwayMonths divides by the same monthlyNet the underlying CashFlowStat
+    // computed over trailingMonths; inherit its window rather than invent one.
+    sampleSize: cashFlowStat.details.trailingMonths,
     details: {
       cashOnHand: financials.cashOnHand,
       monthlyNet,
@@ -153,6 +156,9 @@ export function computeBreakEven(
     statType: StatType.BreakEven,
     category: null,
     value: breakEvenRevenue,
+    // breakEvenRevenue is solved from margin's recentMarginPercent; its
+    // thinness is inherited, not independently measurable here.
+    sampleSize: margin.sampleSize,
     details: {
       monthlyFixedCosts,
       marginPercent,

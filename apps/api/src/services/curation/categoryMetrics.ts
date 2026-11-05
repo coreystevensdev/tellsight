@@ -72,9 +72,13 @@ export function computeCategoryVariance(
 
     const group = groups.get(plan.category);
     let actualMonthly = 0;
+    let transactionCount = 0;
     if (group) {
       for (const [timestamp, amount] of group.timeSeries) {
-        if (monthKey(new Date(timestamp)) === targetMonth) actualMonthly += Math.abs(amount);
+        if (monthKey(new Date(timestamp)) === targetMonth) {
+          actualMonthly += Math.abs(amount);
+          transactionCount++;
+        }
       }
     }
 
@@ -90,6 +94,7 @@ export function computeCategoryVariance(
       statType: StatType.CategoryVariance,
       category: plan.category,
       value: variance,
+      sampleSize: transactionCount,
       details: {
         plannedMonthly: plan.plannedMonthly,
         actualMonthly,

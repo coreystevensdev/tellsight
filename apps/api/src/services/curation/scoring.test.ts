@@ -29,12 +29,12 @@ function mockConfig(cfg: unknown) {
 }
 
 const fixtureStats: ComputedStat[] = [
-  { statType: StatType.Total, category: 'Sales', value: 5000, details: { scope: 'category', count: 10 } },
-  { statType: StatType.Anomaly, category: 'Sales', value: 900, comparison: 500, details: { direction: 'above', zScore: 2.5, iqrBounds: { lower: 200, upper: 800 }, deviation: 400, period: '2026-03' } },
-  { statType: StatType.Trend, category: 'Sales', value: 0.05, details: { slope: 0.05, intercept: 100, growthPercent: 25, dataPoints: 6, firstValue: 400, lastValue: 500, firstPeriod: '2026-01', lastPeriod: '2026-06' } },
-  { statType: StatType.Average, category: 'Sales', value: 500, details: { scope: 'category', median: 480 } },
-  { statType: StatType.CategoryBreakdown, category: 'Sales', value: 5000, details: { percentage: 60, absoluteTotal: 5000, transactionCount: 10, min: 100, max: 900 } },
-  { statType: StatType.Total, category: null, value: 8333, details: { scope: 'overall', count: 20 } },
+  { statType: StatType.Total, category: 'Sales', value: 5000, sampleSize: 10, details: { scope: 'category', count: 10 } },
+  { statType: StatType.Anomaly, category: 'Sales', value: 900, comparison: 500, sampleSize: 10, details: { direction: 'above', zScore: 2.5, iqrBounds: { lower: 200, upper: 800 }, deviation: 400, period: '2026-03' } },
+  { statType: StatType.Trend, category: 'Sales', value: 0.05, sampleSize: 6, details: { slope: 0.05, intercept: 100, growthPercent: 25, dataPoints: 6, firstValue: 400, lastValue: 500, firstPeriod: '2026-01', lastPeriod: '2026-06' } },
+  { statType: StatType.Average, category: 'Sales', value: 500, sampleSize: 10, details: { scope: 'category', median: 480 } },
+  { statType: StatType.CategoryBreakdown, category: 'Sales', value: 5000, sampleSize: 10, details: { percentage: 60, absoluteTotal: 5000, transactionCount: 10, min: 100, max: 900 } },
+  { statType: StatType.Total, category: null, value: 8333, sampleSize: 20, details: { scope: 'overall', count: 20 } },
 ];
 
 describe('scoreInsights', () => {
@@ -157,6 +157,7 @@ describe('scoreInsights', () => {
     statType: StatType.CashFlow,
     category: null,
     value: -3000,
+    sampleSize: 3,
     details: { monthlyNet: -3000, trailingMonths: 3, direction: 'burning', monthsBurning: 3, recentMonths: monthsStub },
   };
 
@@ -164,6 +165,7 @@ describe('scoreInsights', () => {
     statType: StatType.CashFlow,
     category: null,
     value: -2500,
+    sampleSize: 3,
     details: { monthlyNet: -2500, trailingMonths: 3, direction: 'burning', monthsBurning: 2, recentMonths: monthsStub },
   };
 
@@ -171,6 +173,7 @@ describe('scoreInsights', () => {
     statType: StatType.CashFlow,
     category: null,
     value: -1500,
+    sampleSize: 3,
     details: { monthlyNet: -1500, trailingMonths: 3, direction: 'burning', monthsBurning: 1, recentMonths: monthsStub },
   };
 
@@ -178,6 +181,7 @@ describe('scoreInsights', () => {
     statType: StatType.CashFlow,
     category: null,
     value: 2000,
+    sampleSize: 3,
     details: { monthlyNet: 2000, trailingMonths: 3, direction: 'surplus', monthsBurning: 0, recentMonths: monthsStub },
   };
 
@@ -186,6 +190,7 @@ describe('scoreInsights', () => {
     category: null,
     value: 18,
     comparison: 25,
+    sampleSize: 6,
     details: {
       recentMarginPercent: 18,
       priorMarginPercent: 25,
@@ -251,6 +256,7 @@ describe('scoreInsights, Runway scoring', () => {
     statType: StatType.Runway,
     category: null,
     value: runwayMonths,
+    sampleSize: 3,
     details: {
       cashOnHand: 15000,
       monthlyNet: -5000,
@@ -283,6 +289,7 @@ describe('scoreInsights, Runway scoring', () => {
       statType: StatType.CashFlow,
       category: null,
       value: -5000,
+      sampleSize: 3,
       details: {
         monthlyNet: -5000,
         trailingMonths: 3,
@@ -325,6 +332,7 @@ describe('scoreInsights, Runway scoring', () => {
       statType: StatType.MarginTrend,
       category: null,
       value: 0,
+      sampleSize: 6,
       details: {
         recentMarginPercent: 10,
         priorMarginPercent: 25,
@@ -362,6 +370,7 @@ describe('scoreInsights, BreakEven scoring', () => {
       statType: StatType.BreakEven,
       category: null,
       value: 75_000,
+      sampleSize: 6,
       details: {
         monthlyFixedCosts: 15_000,
         marginPercent: 20,
@@ -416,6 +425,7 @@ describe('scoreInsights, BreakEven scoring', () => {
       statType: StatType.Runway,
       category: null,
       value: 3,
+      sampleSize: 3,
       details: {
         cashOnHand: 15000,
         monthlyNet: -5000,
@@ -429,6 +439,7 @@ describe('scoreInsights, BreakEven scoring', () => {
       statType: StatType.CashFlow,
       category: null,
       value: -5000,
+      sampleSize: 3,
       details: {
         monthlyNet: -5000,
         trailingMonths: 3,
@@ -476,6 +487,7 @@ describe('scoreInsights, CashForecast scoring', () => {
       statType: StatType.CashForecast,
       category: null,
       value: crossesZeroAtMonth !== null ? -5_000 : 20_000,
+      sampleSize: 6,
       details: {
         startingBalance: 30_000,
         asOfDate: '2026-06-01T00:00:00Z',
@@ -525,6 +537,7 @@ describe('scoreInsights, CashForecast scoring', () => {
       statType: StatType.Runway,
       category: null,
       value: 3,
+      sampleSize: 3,
       details: {
         cashOnHand: 15000,
         monthlyNet: -5000,
@@ -538,6 +551,7 @@ describe('scoreInsights, CashForecast scoring', () => {
       statType: StatType.CashFlow,
       category: null,
       value: -5000,
+      sampleSize: 3,
       details: {
         monthlyNet: -5000,
         trailingMonths: 3,
@@ -550,6 +564,7 @@ describe('scoreInsights, CashForecast scoring', () => {
       statType: StatType.BreakEven,
       category: null,
       value: 75_000,
+      sampleSize: 6,
       details: {
         monthlyFixedCosts: 15_000,
         marginPercent: 20,
@@ -683,6 +698,7 @@ describe('branch constants in the score functions', () => {
       statType: StatType.YearOverYear,
       category: 'Sales',
       value: 1000,
+      sampleSize: null,
       details: {
         changePercent,
         currentRevenue: 1000,

@@ -15,6 +15,7 @@ export function computeTotals(
       statType: StatType.Total,
       category,
       value: sum(group.amounts),
+      sampleSize: group.amounts.length,
       details: { scope: 'category', count: group.amounts.length },
     });
   }
@@ -24,6 +25,7 @@ export function computeTotals(
       statType: StatType.Total,
       category: null,
       value: sum(allAmounts),
+      sampleSize: allAmounts.length,
       details: { scope: 'overall', count: allAmounts.length },
     });
   }
@@ -44,6 +46,7 @@ export function computeAverages(
       category,
       value: mean(group.amounts),
       comparison: categoryMedian,
+      sampleSize: group.amounts.length,
       details: { scope: 'category', median: categoryMedian },
     });
   }
@@ -55,6 +58,7 @@ export function computeAverages(
       category: null,
       value: mean(allAmounts),
       comparison: overallMedian,
+      sampleSize: allAmounts.length,
       details: { scope: 'overall', median: overallMedian },
     });
   }
@@ -85,6 +89,7 @@ export function computeCategoryBreakdowns(
       statType: StatType.CategoryBreakdown,
       category,
       value: sum(group.amounts),
+      sampleSize: group.amounts.length,
       details: {
         percentage,
         absoluteTotal: categoryAbsolute,

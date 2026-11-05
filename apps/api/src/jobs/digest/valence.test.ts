@@ -12,6 +12,7 @@ function runway(runwayMonths: number): ComputedStat {
     statType: 'runway',
     category: null,
     value: runwayMonths,
+    sampleSize: 3,
     details: {
       cashOnHand: 12000,
       monthlyNet: -2000,
@@ -28,6 +29,7 @@ function cashFlow(direction: CashFlowDetails['direction']): ComputedStat {
     statType: 'cash_flow',
     category: null,
     value: direction === 'burning' ? -2000 : 2000,
+    sampleSize: 6,
     details: {
       monthlyNet: direction === 'burning' ? -2000 : 2000,
       trailingMonths: 6,
@@ -43,6 +45,7 @@ function margin(direction: MarginTrendDetails['direction']): ComputedStat {
     statType: 'margin_trend',
     category: null,
     value: 18,
+    sampleSize: 6,
     details: {
       recentMarginPercent: 18,
       priorMarginPercent: 20,
@@ -58,6 +61,7 @@ function breakEven(gap: number): ComputedStat {
     statType: 'break_even',
     category: null,
     value: gap,
+    sampleSize: 6,
     details: {
       monthlyFixedCosts: 8000,
       marginPercent: 20,
@@ -74,6 +78,7 @@ function forecast(crossesZeroAtMonth: number | null): ComputedStat {
     statType: 'cash_forecast',
     category: null,
     value: 0,
+    sampleSize: 0,
     details: {
       startingBalance: 12000,
       asOfDate: '2026-06-01',
@@ -104,14 +109,15 @@ type NonFinancialType =
 function nonFinancial(kind: NonFinancialType): ComputedStat {
   switch (kind) {
     case 'total':
-      return { statType: 'total', category: 'revenue', value: 50000, details: { scope: 'all', count: 120 } };
+      return { statType: 'total', category: 'revenue', value: 50000, sampleSize: 120, details: { scope: 'all', count: 120 } };
     case 'average':
-      return { statType: 'average', category: 'revenue', value: 417, details: { scope: 'all', median: 400 } };
+      return { statType: 'average', category: 'revenue', value: 417, sampleSize: 120, details: { scope: 'all', median: 400 } };
     case 'trend':
       return {
         statType: 'trend',
         category: 'revenue',
         value: 12,
+        sampleSize: 6,
         details: { slope: 1666, intercept: 40000, growthPercent: 25, dataPoints: 6, firstValue: 40000, lastValue: 50000, firstPeriod: '2026-01', lastPeriod: '2026-06' },
       };
     case 'anomaly':
@@ -119,6 +125,7 @@ function nonFinancial(kind: NonFinancialType): ComputedStat {
         statType: 'anomaly',
         category: 'expenses',
         value: 9000,
+        sampleSize: 5,
         details: { direction: 'above', zScore: 2.4, iqrBounds: { lower: 3000, upper: 7000 }, deviation: 4000, period: '2026-03' },
       };
     case 'category_breakdown':
@@ -126,6 +133,7 @@ function nonFinancial(kind: NonFinancialType): ComputedStat {
         statType: 'category_breakdown',
         category: 'payroll',
         value: 30000,
+        sampleSize: 12,
         details: { percentage: 60, absoluteTotal: 30000, transactionCount: 12, min: 2000, max: 4000 },
       };
     case 'year_over_year':
@@ -133,6 +141,7 @@ function nonFinancial(kind: NonFinancialType): ComputedStat {
         statType: 'year_over_year',
         category: 'revenue',
         value: 10,
+        sampleSize: null,
         details: {
           currentRevenue: 50000,
           priorRevenue: 45000,
@@ -147,6 +156,7 @@ function nonFinancial(kind: NonFinancialType): ComputedStat {
         statType: 'seasonal_projection',
         category: 'revenue',
         value: 52000,
+        sampleSize: 0,
         details: { projectedMonth: '2026-07', projectedAmount: 52000, basisMonths: [], basisValues: [], confidence: 'high' },
       };
   }

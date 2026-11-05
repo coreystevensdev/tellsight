@@ -28,6 +28,7 @@ describe('statInstanceId', () => {
       statType: StatType.Total,
       category: 'Sales',
       value: 7000,
+      sampleSize: 6,
       details: { scope: 'category', count: 6 },
     };
     expect(statInstanceId(totalStat, 1)).toBe('1:total:Sales:category');
@@ -38,6 +39,7 @@ describe('statInstanceId', () => {
       statType: StatType.Total,
       category: null,
       value: 7000,
+      sampleSize: 9,
       details: { scope: 'overall', count: 9 },
     };
     expect(statInstanceId(totalStat, 1)).toBe('1:total:_:overall');
@@ -60,6 +62,7 @@ describe('statInstanceId', () => {
       statType: StatType.Total,
       category: '',
       value: 7000,
+      sampleSize: 6,
       details: { scope: 'category', count: 6 },
     };
     expect(statInstanceId(totalStat, 1)).toBe('1:total::category');
@@ -70,12 +73,14 @@ describe('statInstanceId', () => {
       statType: StatType.Total,
       category: '',
       value: 7000,
+      sampleSize: 6,
       details: { scope: 'category', count: 6 },
     };
     const nullCategory: ComputedStat = {
       statType: StatType.Total,
       category: null,
       value: 7000,
+      sampleSize: 6,
       details: { scope: 'category', count: 6 },
     };
     expect(statInstanceId(emptyStringCategory, 1)).not.toBe(statInstanceId(nullCategory, 1));
@@ -86,6 +91,7 @@ describe('statInstanceId', () => {
       statType: StatType.Total,
       category: 'Sales',
       value: 7000,
+      sampleSize: 6,
       details: { scope: 'category', count: 6 },
     };
     expect(statInstanceId(stat, 1)).not.toBe(statInstanceId(stat, 2));
@@ -96,6 +102,7 @@ describe('statInstanceId', () => {
       statType: StatType.Average,
       category: 'Expenses',
       value: 500,
+      sampleSize: 3,
       details: { scope: 'category', median: 500 },
     };
     expect(statInstanceId(avgStat, 1)).toBe('1:average:Expenses:category');
@@ -106,6 +113,7 @@ describe('statInstanceId', () => {
       statType: StatType.YearOverYear,
       category: 'Sales',
       value: 15,
+      sampleSize: null,
       details: {
         currentRevenue: 1300,
         priorRevenue: 1130,
@@ -123,6 +131,7 @@ describe('statInstanceId', () => {
       statType: StatType.SeasonalProjection,
       category: 'Sales',
       value: 1500,
+      sampleSize: 3,
       details: {
         projectedMonth: 'April',
         projectedAmount: 1500,
@@ -139,6 +148,7 @@ describe('statInstanceId', () => {
       statType: StatType.CashFlow,
       category: null,
       value: 200,
+      sampleSize: 3,
       details: {
         monthlyNet: 200,
         trailingMonths: 3,
@@ -155,6 +165,7 @@ describe('statInstanceId', () => {
       statType: StatType.Total,
       category: 'Bob\'s "Best" Coffee',
       value: 7000,
+      sampleSize: 6,
       details: { scope: 'category', count: 6 },
     };
     const id = statInstanceId(totalStat, 1);
@@ -173,6 +184,7 @@ describe('statInstanceId', () => {
       statType: StatType.Total,
       category: '"',
       value: 500,
+      sampleSize: 1,
       details: { scope: 'category', count: 1 },
     };
     expect(statInstanceId(totalStat, 1)).toBe('1:total:”:category');
@@ -183,12 +195,14 @@ describe('statInstanceId', () => {
       statType: StatType.Total,
       category: 'Bob"s Cafe',
       value: 100,
+      sampleSize: 1,
       details: { scope: 'category', count: 1 },
     };
     const withoutQuote: ComputedStat = {
       statType: StatType.Total,
       category: 'Bobs Cafe',
       value: 200,
+      sampleSize: 1,
       details: { scope: 'category', count: 1 },
     };
     expect(statInstanceId(withQuote, 1)).not.toBe(statInstanceId(withoutQuote, 1));
@@ -199,6 +213,7 @@ describe('statInstanceId', () => {
       statType: StatType.Total,
       category: 'Coffee: Retail',
       value: 7000,
+      sampleSize: 6,
       details: { scope: 'category', count: 6 },
     };
     expect(statInstanceId(totalStat, 1)).toBe('1:total:Coffee： Retail:category');
@@ -209,6 +224,7 @@ describe('statInstanceId', () => {
       statType: StatType.Total,
       category: ':',
       value: 500,
+      sampleSize: 1,
       details: { scope: 'category', count: 1 },
     };
     expect(statInstanceId(totalStat, 1)).toBe('1:total:：:category');
@@ -219,12 +235,14 @@ describe('statInstanceId', () => {
       statType: StatType.Total,
       category: 'Bob:s Cafe',
       value: 100,
+      sampleSize: 1,
       details: { scope: 'category', count: 1 },
     };
     const withoutColon: ComputedStat = {
       statType: StatType.Total,
       category: 'Bobs Cafe',
       value: 200,
+      sampleSize: 1,
       details: { scope: 'category', count: 1 },
     };
     expect(statInstanceId(withColon, 1)).not.toBe(statInstanceId(withoutColon, 1));
@@ -235,12 +253,14 @@ describe('statInstanceId', () => {
       statType: StatType.Total,
       category: 'Coffee： Retail',
       value: 100,
+      sampleSize: 1,
       details: { scope: 'category', count: 1 },
     };
     const escapedAscii: ComputedStat = {
       statType: StatType.Total,
       category: 'Coffee: Retail',
       value: 200,
+      sampleSize: 1,
       details: { scope: 'category', count: 1 },
     };
     // documents the current behavior rather than asserting it's correct --
@@ -288,6 +308,7 @@ describe('assignIds', () => {
       statType: StatType.Anomaly,
       category: 'Sales',
       value: 500,
+      sampleSize: 5,
       details: { direction: 'above', zScore: 3.1, iqrBounds: { lower: 100, upper: 400 }, deviation: 100, period: '2026-03' },
     };
     // two identical anomaly objects, same value -> same id
@@ -305,6 +326,7 @@ describe('assignIds', () => {
       statType: StatType.Anomaly,
       category: 'Sales',
       value: 500,
+      sampleSize: 5,
       details: { direction: 'above', zScore: 3.1, iqrBounds: { lower: 100, upper: 400 }, deviation: 100, period: '2026-03' },
     };
     const later: ComputedStat = {
@@ -331,6 +353,7 @@ describe('assignIds', () => {
       statType: StatType.CashFlow,
       category: null,
       value: 200,
+      sampleSize: 3,
       details: {
         monthlyNet: 200,
         trailingMonths: 3,
@@ -363,6 +386,7 @@ describe('assignIds', () => {
       statType: StatType.CashForecast,
       category: null,
       value: -500,
+      sampleSize: 3,
       details: {
         startingBalance: 10000,
         asOfDate: '2026-07-01',
@@ -380,6 +404,7 @@ describe('assignIds', () => {
       statType: StatType.SeasonalProjection,
       category: 'Sales',
       value: 1500,
+      sampleSize: 3,
       details: {
         projectedMonth: 'April',
         projectedAmount: 1500,
@@ -412,6 +437,7 @@ describe('assignIds', () => {
       statType: StatType.Anomaly,
       category: 'Sales',
       value: 500,
+      sampleSize: 5,
       details: { direction: 'above', zScore: 3.1, iqrBounds: { lower: 100, upper: 400 }, deviation: 100, period: '2026-03' },
     };
     const [identified] = assignIds([anomaly], 1);

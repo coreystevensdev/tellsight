@@ -302,6 +302,7 @@ describe('compareToPriorPeriods', () => {
       category: 'Revenue',
       value: 1200,
       comparison: 1000,
+      sampleSize: null,
       details: { currentRevenue: 1200, priorRevenue: 1000, currentYearLabel: '2026', priorYearLabel: '2025', changePercent: 20, month: 'Jan' },
     };
     mockGetActiveCorrectionStatIds.mockResolvedValue([statInstanceId(januaryYoy, DATASET_ID)]);

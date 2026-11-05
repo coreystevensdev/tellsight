@@ -49,6 +49,7 @@ export function computeTrends(
       statType: StatType.Trend,
       category,
       value: regression.m,
+      sampleSize: sorted.length,
       details: {
         slope: regression.m,
         intercept: regression.b,
@@ -123,6 +124,7 @@ export function detectAnomalies(groups: Map<string, CategoryGroup>): ComputedSta
           category,
           value: amount,
           comparison: categoryMean,
+          sampleSize: group.amounts.length,
           details: {
             direction: amount > upper ? 'above' : 'below',
             zScore,

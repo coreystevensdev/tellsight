@@ -14,6 +14,7 @@ function runway(runwayMonths: number): ComputedStat {
     statType: 'runway',
     category: null,
     value: runwayMonths,
+    sampleSize: 3,
     details: {
       cashOnHand: 12000,
       monthlyNet: -2000,
@@ -30,6 +31,7 @@ function breakEven(gap: number): ComputedStat {
     statType: 'break_even',
     category: null,
     value: gap,
+    sampleSize: 6,
     details: {
       monthlyFixedCosts: 8000,
       marginPercent: 20,
@@ -46,6 +48,7 @@ function cashFlow(monthlyNet: number): ComputedStat {
     statType: 'cash_flow',
     category: null,
     value: monthlyNet,
+    sampleSize: 6,
     details: {
       monthlyNet,
       trailingMonths: 6,
@@ -61,6 +64,7 @@ function margin(recentMarginPercent: number): ComputedStat {
     statType: 'margin_trend',
     category: null,
     value: recentMarginPercent,
+    sampleSize: 6,
     details: {
       recentMarginPercent,
       priorMarginPercent: recentMarginPercent,
@@ -76,6 +80,7 @@ function categoryBreakdown(category: string): ComputedStat {
     statType: 'category_breakdown',
     category,
     value: 30000,
+    sampleSize: 12,
     details: { percentage: 60, absoluteTotal: 30000, transactionCount: 12, min: 2000, max: 4000 },
   };
 }
@@ -85,6 +90,7 @@ function cashForecast(crossesZeroAtMonth: number | null): ComputedStat {
     statType: 'cash_forecast',
     category: null,
     value: 0,
+    sampleSize: 0,
     details: {
       startingBalance: 12000,
       asOfDate: '2026-06-01',

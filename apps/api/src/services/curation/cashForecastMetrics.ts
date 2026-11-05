@@ -133,6 +133,9 @@ export function computeCashForecast(
     statType: StatType.CashForecast,
     category: null,
     value: runningBalance,
+    // The regression (or its rolling-mean fallback) runs on exactly these
+    // basis months.
+    sampleSize: months.length,
     details: {
       startingBalance,
       asOfDate: financials.cashAsOfDate,

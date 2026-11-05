@@ -71,6 +71,8 @@ function buildCashFlowStat(
     statType: StatType.CashFlow,
     category: null,
     value: monthlyNet,
+    // monthlyNet is the median of exactly trailingMonths monthly nets.
+    sampleSize: trailingMonths,
     details: { monthlyNet, trailingMonths, direction, monthsBurning, recentMonths },
   }];
 }

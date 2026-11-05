@@ -17,12 +17,14 @@ const trend: ComputedStat = {
   statType: StatType.Trend,
   category: 'Sales',
   value: 0.15,
+  sampleSize: 6,
   details: { slope: 0.15, intercept: 100, growthPercent: 15, dataPoints: 6, firstValue: 400, lastValue: 460, firstPeriod: '2026-01', lastPeriod: '2026-06' },
 };
 const breakdown: ComputedStat = {
   statType: StatType.CategoryBreakdown,
   category: 'Marketing',
   value: 3000,
+  sampleSize: 10,
   details: { percentage: 72, absoluteTotal: 3000, transactionCount: 10, min: 100, max: 900 },
 };
 
@@ -32,6 +34,7 @@ const cashFlow: ComputedStat = {
   statType: StatType.CashFlow,
   category: 'Overall',
   value: -2100,
+  sampleSize: 6,
   details: { monthlyNet: -2100, trailingMonths: 6, direction: 'burning', monthsBurning: 4, recentMonths: [] },
 };
 
@@ -183,6 +186,7 @@ describe('movement', () => {
       statType: StatType.MarginTrend,
       category: 'Overall',
       value: -3,
+      sampleSize: 6,
       details: {
         recentMarginPercent: 19,
         priorMarginPercent: 22,

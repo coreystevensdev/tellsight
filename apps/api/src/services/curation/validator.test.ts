@@ -16,6 +16,7 @@ function totalStat(value: number, count = 12): ComputedStat {
     statType: StatType.Total,
     category: null,
     value,
+    sampleSize: count,
     details: { scope: 'overall', count },
   };
 }
@@ -25,6 +26,7 @@ function breakdown(value: number, percentage: number, total: number): ComputedSt
     statType: StatType.CategoryBreakdown,
     category: 'Acme Corp',
     value,
+    sampleSize: 12,
     details: {
       percentage,
       absoluteTotal: total,
@@ -40,6 +42,7 @@ function trend(growth: number, first: number, last: number): ComputedStat {
     statType: StatType.Trend,
     category: 'Acme Corp',
     value: 0,
+    sampleSize: 12,
     details: {
       slope: 0,
       intercept: first,
@@ -89,8 +92,8 @@ describe('validateSummary', () => {
 
   it('allows pairwise sums of stat values (derived arithmetic)', () => {
     const stats: ComputedStat[] = [
-      { statType: StatType.Total, category: 'Food', value: 400000, details: { scope: 'food', count: 100 } },
-      { statType: StatType.Total, category: 'Drinks', value: 229000, details: { scope: 'drinks', count: 50 } },
+      { statType: StatType.Total, category: 'Food', value: 400000, sampleSize: 100, details: { scope: 'food', count: 100 } },
+      { statType: StatType.Total, category: 'Drinks', value: 229000, sampleSize: 50, details: { scope: 'drinks', count: 50 } },
     ];
     // 400000 + 229000 = 629000
     const summary = 'Combined revenue across both categories was $629,000.';
@@ -198,6 +201,7 @@ function runwayStat(cashOnHand: number, monthlyNet: number, runwayMonths: number
     statType: StatType.Runway,
     category: null,
     value: runwayMonths,
+    sampleSize: 3,
     details: {
       cashOnHand,
       monthlyNet,
@@ -268,6 +272,7 @@ function breakEvenStat(
     statType: StatType.BreakEven,
     category: null,
     value: breakEvenRevenue,
+    sampleSize: 6,
     details: {
       monthlyFixedCosts,
       marginPercent,
@@ -323,6 +328,7 @@ describe('validateSummary, BreakEven coverage', () => {
       statType: StatType.MarginTrend,
       category: null,
       value: 20,
+      sampleSize: 6,
       details: {
         recentMarginPercent: 20,
         priorMarginPercent: 20,
@@ -356,6 +362,7 @@ function forecastStat(
     statType: StatType.CashForecast,
     category: null,
     value: projected[projected.length - 1]?.balance ?? startingBalance,
+    sampleSize: 6,
     details: {
       startingBalance,
       asOfDate: '2026-06-01T00:00:00.000Z',

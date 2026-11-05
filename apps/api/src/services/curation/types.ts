@@ -185,6 +185,10 @@ interface BaseComputedStat {
   category: string | null;
   value: number;
   comparison?: number;
+  // Observations backing the stat: period count for regression types, row
+  // count for totals, transaction count for breakdowns/anomalies. Null only
+  // when there's no single meaningful n (year_over_year, a two-total compare).
+  sampleSize: number | null;
 }
 
 export interface TotalStat extends BaseComputedStat {

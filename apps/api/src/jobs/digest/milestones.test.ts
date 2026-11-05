@@ -8,6 +8,7 @@ function runway(runwayMonths: number): ComputedStat {
     statType: 'runway',
     category: null,
     value: runwayMonths,
+    sampleSize: 3,
     details: {
       cashOnHand: 12000,
       monthlyNet: -2000,
@@ -24,6 +25,7 @@ function cashFlow(direction: CashFlowDetails['direction']): ComputedStat {
     statType: 'cash_flow',
     category: null,
     value: direction === 'burning' ? -2000 : 2000,
+    sampleSize: 6,
     details: {
       monthlyNet: direction === 'burning' ? -2000 : 2000,
       trailingMonths: 6,
@@ -39,6 +41,7 @@ function margin(direction: MarginTrendDetails['direction']): ComputedStat {
     statType: 'margin_trend',
     category: null,
     value: 18,
+    sampleSize: 6,
     details: {
       recentMarginPercent: 18,
       priorMarginPercent: 20,
@@ -54,6 +57,7 @@ function breakEven(gap: number): ComputedStat {
     statType: 'break_even',
     category: null,
     value: gap,
+    sampleSize: 6,
     details: {
       monthlyFixedCosts: 8000,
       marginPercent: 20,
@@ -70,6 +74,7 @@ function forecast(crossesZeroAtMonth: number | null): ComputedStat {
     statType: 'cash_forecast',
     category: null,
     value: 0,
+    sampleSize: 0,
     details: {
       startingBalance: 12000,
       asOfDate: '2026-06-01',
