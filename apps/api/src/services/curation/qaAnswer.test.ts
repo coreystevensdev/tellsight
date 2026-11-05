@@ -95,6 +95,41 @@ describe('assembleQaAnswer', () => {
     expect(result.citedStatIds).toEqual([]);
   });
 
+  // The withheld shape carries belowSampleFloor's numbers but no `id`, so
+  // isIdentifiedStat rejects it the same as null -- the model can't cite a
+  // stat it was never given.
+  it('contributes no id when get_metric_with_trend withheld the stat for sample size', () => {
+    const result = assembleQaAnswer(
+      loopResult({
+        answer: 'Marketing is too new to cite <cite id="anything"/>.',
+        toolResults: [
+          getMetricResult('unused', { found: false, reason: 'below_sample_floor', belowSampleFloor: { sampleSize: 3, minimum: 6 } }),
+        ],
+      }),
+    );
+
+    expect(result.answer).not.toContain('anything');
+    expect(result.citedStatIds).toEqual([]);
+  });
+
+  it('contributes no id when compare_to_prior_periods withheld the current stat for sample size', () => {
+    const result = assembleQaAnswer(
+      loopResult({
+        answer: 'Too thin to cite <cite id="anything"/>.',
+        toolResults: [
+          {
+            name: 'compare_to_prior_periods',
+            input: { statType: 'trend' },
+            output: { found: false, reason: 'below_sample_floor', belowSampleFloor: { sampleSize: 2, minimum: 6 } },
+          },
+        ],
+      }),
+    );
+
+    expect(result.answer).not.toContain('anything');
+    expect(result.citedStatIds).toEqual([]);
+  });
+
   it('keeps a valid citation and strips a hallucinated one in the same answer', () => {
     const result = assembleQaAnswer(
       loopResult({

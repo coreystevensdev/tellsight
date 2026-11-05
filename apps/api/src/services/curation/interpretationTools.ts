@@ -3,6 +3,7 @@ import { withRlsContext } from '../../lib/rls.js';
 import type { ToolDefinition } from '../aiInterpretation/claudeClient.js';
 import { findMatchingStat, resolveStatByType, statInstanceId } from './computation.js';
 import { scoringConfig } from './scoring.js';
+import { sampleFloorBreach } from './sampleSizeFloors.js';
 import { StatType } from './types.js';
 import type { ComputedStat, IdentifiedStat } from './types.js';
 
@@ -77,7 +78,7 @@ export interface GetMetricWithTrendInput {
 export const GET_METRIC_WITH_TREND_TOOL: ToolDefinition = {
   name: 'get_metric_with_trend',
   description:
-    'Get one metric that already carries a trend or comparison (growth, margin direction, runway, cash forecast), never a bare total. Returns null if nothing matches.',
+    'Get one metric that already carries a trend or comparison (growth, margin direction, runway, cash forecast), never a bare total. Returns null if nothing matches, or { found: false, reason: "below_sample_floor", belowSampleFloor: { sampleSize, minimum } } when the metric exists but has too few data points to trust.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -167,8 +168,14 @@ function getCachedStat(
 // `found: false` distinguishes why no stat came back: `not_found` covers bad
 // input and a genuine no-match, `suppressed` means a stat matched but an
 // approved correction excludes it, information a future Q&A answer surface
-// can use ("you flagged this metric") instead of a bare miss.
-export type GetMetricWithTrendResult = { found: true; stat: IdentifiedStat } | { found: false; reason: 'not_found' | 'suppressed' };
+// can use ("you flagged this metric") instead of a bare miss. `below_sample_floor`
+// carries its breach numbers because, unlike the other two, the model needs to
+// say the metric exists rather than treat it as absent -- dispatchToolCall in
+// qaLoop.ts is the one place that stops collapsing this reason to null.
+export type GetMetricWithTrendResult =
+  | { found: true; stat: IdentifiedStat }
+  | { found: false; reason: 'not_found' | 'suppressed' }
+  | { found: false; reason: 'below_sample_floor'; belowSampleFloor: { sampleSize: number; minimum: number } };
 
 // signal?.throwIfAborted() below is best-effort: postgres/drizzle-orm's
 // postgres-js driver has no query-level AbortSignal support, so this stops
@@ -192,6 +199,8 @@ export async function getMetricWithTrend(
 
   if (!stat) return { found: false, reason: 'not_found' };
   if (loaded.excludedStatIds.has(stat.id)) return { found: false, reason: 'suppressed' };
+  const breach = sampleFloorBreach(stat);
+  if (breach) return { found: false, reason: 'below_sample_floor', belowSampleFloor: breach };
   return { found: true, stat };
 }
 
@@ -204,7 +213,7 @@ export interface CompareToPriorPeriodsInput {
 export const COMPARE_TO_PRIOR_PERIODS_TOOL: ToolDefinition = {
   name: 'compare_to_prior_periods',
   description:
-    'Compare a metric to its value in prior weekly digests, returning the current value plus a history series. Marks hasHistory: false rather than fabricating a trend when the org has too little digest history.',
+    'Compare a metric to its value in prior weekly digests, returning the current value plus a history series. Marks hasHistory: false rather than fabricating a trend when the org has too little digest history. Returns the same below_sample_floor shape as get_metric_with_trend when the current metric itself is too thin to trust.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -225,9 +234,12 @@ export type CompareToPriorPeriodsResult =
   | { current: IdentifiedStat; hasHistory: false }
   | { current: IdentifiedStat; hasHistory: true; priorPeriods: PriorPeriodPoint[] };
 
-// Same not_found/suppressed distinction as GetMetricWithTrendResult, applied
-// to the top-level `current` lookup.
-export type CompareToPriorPeriodsOutcome = ({ found: true } & CompareToPriorPeriodsResult) | { found: false; reason: 'not_found' | 'suppressed' };
+// Same not_found/suppressed/below_sample_floor distinction as
+// GetMetricWithTrendResult, applied to the top-level `current` lookup.
+export type CompareToPriorPeriodsOutcome =
+  | ({ found: true } & CompareToPriorPeriodsResult)
+  | { found: false; reason: 'not_found' | 'suppressed' }
+  | { found: false; reason: 'below_sample_floor'; belowSampleFloor: { sampleSize: number; minimum: number } };
 
 const DEFAULT_PERIODS_BACK = 4;
 
@@ -266,6 +278,10 @@ export async function compareToPriorPeriods(
 
   if (!current) return { found: false, reason: 'not_found' };
   if (loaded.excludedStatIds.has(current.id)) return { found: false, reason: 'suppressed' };
+  const breach = sampleFloorBreach(current);
+  // Bails before touching priorPeriods -- comparing a thin current value
+  // against its own history still hands the model a number it shouldn't trust.
+  if (breach) return { found: false, reason: 'below_sample_floor', belowSampleFloor: breach };
 
   const priorPeriods: PriorPeriodPoint[] = [];
   for (const digest of loaded.digests) {

@@ -138,10 +138,12 @@ type DispatchOutcome = { ok: true; output: unknown } | { ok: false };
 // call.input is unknown, the SDK doesn't validate tool-input shape against
 // our schema, so every call gets validated before it reaches a real query.
 //
-// The model still only ever sees the stat (or null) for a miss -- the
-// not_found/suppressed distinction interpretationTools.ts now carries isn't
-// wired into the prompt yet, so a suppressed lookup is logged for
-// observability and otherwise collapses to null the same as a genuine miss.
+// The model only ever sees the stat (or null) for not_found/suppressed -- that
+// distinction isn't wired into the prompt yet, so a suppressed lookup is
+// logged for observability and otherwise collapses to null the same as a
+// genuine miss. below_sample_floor is different: the model needs to say the
+// metric exists and why it's withheld, so its breach numbers pass through
+// instead of collapsing.
 async function dispatchToolCall(call: ToolCall, ctx: ToolContext, cache: ToolCallCache, signal?: AbortSignal): Promise<DispatchOutcome> {
   if (call.name === GET_METRIC_WITH_TREND_TOOL.name) {
     const input = validateGetMetricWithTrendInput(call.input);
@@ -149,6 +151,9 @@ async function dispatchToolCall(call: ToolCall, ctx: ToolContext, cache: ToolCal
     const result = await getMetricWithTrend(input, ctx, cache, signal);
     if (!result.found && result.reason === 'suppressed') {
       logger.info({ toolName: call.name, orgId: ctx.orgId, datasetId: ctx.datasetId }, 'Q&A tool result suppressed by an active correction');
+    }
+    if (!result.found && result.reason === 'below_sample_floor') {
+      return { ok: true, output: { found: false, reason: 'below_sample_floor', belowSampleFloor: result.belowSampleFloor } };
     }
     return { ok: true, output: result.found ? result.stat : null };
   }
@@ -160,6 +165,9 @@ async function dispatchToolCall(call: ToolCall, ctx: ToolContext, cache: ToolCal
     if (!result.found) {
       if (result.reason === 'suppressed') {
         logger.info({ toolName: call.name, orgId: ctx.orgId, datasetId: ctx.datasetId }, 'Q&A tool result suppressed by an active correction');
+      }
+      if (result.reason === 'below_sample_floor') {
+        return { ok: true, output: { found: false, reason: 'below_sample_floor', belowSampleFloor: result.belowSampleFloor } };
       }
       return { ok: true, output: null };
     }

@@ -202,6 +202,49 @@ describe('runQaLoop', () => {
     );
   });
 
+  it('passes a below_sample_floor getMetricWithTrend result through with its breach numbers, unlike not_found/suppressed', async () => {
+    mockGetMetricWithTrend.mockResolvedValueOnce({
+      found: false,
+      reason: 'below_sample_floor',
+      belowSampleFloor: { sampleSize: 3, minimum: 6 },
+    });
+    mockConverseWithTools
+      .mockResolvedValueOnce(turn({ toolCalls: [toolCall({ id: 'call_1' })] }))
+      .mockResolvedValueOnce(turn({ text: 'too thin to speak to' }));
+
+    await runQaLoop(QUESTION, CTX);
+
+    expect(mockConverseWithTools.mock.calls[1]![3]).toEqual([
+      {
+        toolCallId: 'call_1',
+        output: { found: false, reason: 'below_sample_floor', belowSampleFloor: { sampleSize: 3, minimum: 6 } },
+      },
+    ]);
+    expect(logger.info).not.toHaveBeenCalled();
+  });
+
+  it('passes a below_sample_floor compareToPriorPeriods result through the same way', async () => {
+    mockCompareToPriorPeriods.mockResolvedValueOnce({
+      found: false,
+      reason: 'below_sample_floor',
+      belowSampleFloor: { sampleSize: 2, minimum: 6 },
+    });
+    mockConverseWithTools
+      .mockResolvedValueOnce(
+        turn({ toolCalls: [toolCall({ id: 'call_2', name: 'compare_to_prior_periods', input: { statType: 'runway' } })] }),
+      )
+      .mockResolvedValueOnce(turn({ text: 'too thin to speak to' }));
+
+    await runQaLoop(QUESTION, CTX);
+
+    expect(mockConverseWithTools.mock.calls[1]![3]).toEqual([
+      {
+        toolCallId: 'call_2',
+        output: { found: false, reason: 'below_sample_floor', belowSampleFloor: { sampleSize: 2, minimum: 6 } },
+      },
+    ]);
+  });
+
   it('unwraps a found compare_to_prior_periods result to the bare current/hasHistory/priorPeriods shape, dropping the found tag', async () => {
     mockCompareToPriorPeriods.mockResolvedValueOnce({
       found: true,

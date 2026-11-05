@@ -60,13 +60,26 @@ function row(category: string, date: Date, amount: number) {
   };
 }
 
-// 4 months of rising Sales, enough points for computeTrends' default
-// trendMinPoints of 3 (scoring-weights.json).
+// 6 months of rising Sales, clears both computeTrends' minPoints (3,
+// scoring-weights.json) and the Trend sample-size floor (6, sampleSizeFloors.ts) --
+// below that floor this resolves to below_sample_floor instead of found: true,
+// which is what thinMarketingRows below exercises on purpose.
 const salesRows = [
   row('Sales', new Date(2026, 0, 15), 1000),
   row('Sales', new Date(2026, 1, 15), 1200),
   row('Sales', new Date(2026, 2, 15), 1400),
   row('Sales', new Date(2026, 3, 15), 1600),
+  row('Sales', new Date(2026, 4, 15), 1800),
+  row('Sales', new Date(2026, 5, 15), 2000),
+];
+
+// 3 months of Marketing data, clears computeTrends' minPoints (3) but sits
+// under the Trend sample-size floor (6) -- the brief's own "three months of
+// Marketing data" example for what the Q&A tools should withhold.
+const thinMarketingRows = [
+  row('Marketing', new Date(2026, 0, 15), 300),
+  row('Marketing', new Date(2026, 1, 15), 350),
+  row('Marketing', new Date(2026, 2, 15), 400),
 ];
 
 function ccfRow(parentCategory: 'Income' | 'Expenses', month: number, amount: number) {
@@ -388,6 +401,48 @@ describe('compareToPriorPeriods', () => {
     mockGetTrailingDigests.mockClear();
     await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales', periodsBack: Number.NaN }, ctx, cache);
     expect(mockGetTrailingDigests).toHaveBeenCalledWith(ORG_ID, 4, {});
+  });
+});
+
+describe('sample-size floor', () => {
+  it('withholds a below-floor stat from getMetricWithTrend instead of returning it, carrying the breach numbers', async () => {
+    mockGetRowsByDataset.mockResolvedValue(thinMarketingRows);
+
+    const result = await getMetricWithTrend({ statType: StatType.Trend, category: 'Marketing' }, ctx, cache);
+
+    expect(result).toEqual({
+      found: false,
+      reason: 'below_sample_floor',
+      belowSampleFloor: { sampleSize: 3, minimum: 6 },
+    });
+  });
+
+  it('withholds a below-floor current stat from compareToPriorPeriods the same way, without reporting hasHistory', async () => {
+    mockGetRowsByDataset.mockResolvedValue(thinMarketingRows);
+    mockGetTrailingDigests.mockResolvedValue([
+      { weekStart: new Date('2026-04-06'), keyStats: [] },
+      { weekStart: new Date('2026-03-30'), keyStats: [] },
+    ]);
+
+    const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Marketing' }, ctx, cache);
+
+    expect(result).toEqual({
+      found: false,
+      reason: 'below_sample_floor',
+      belowSampleFloor: { sampleSize: 3, minimum: 6 },
+    });
+  });
+
+  it('reports suppressed, not below_sample_floor, for a stat that is both corrected and thin', async () => {
+    mockGetRowsByDataset.mockResolvedValue(thinMarketingRows);
+    const identified = assignIds(computeStats(thinMarketingRows), DATASET_ID);
+    const thinTrend = identified.find((s) => s.statType === StatType.Trend && s.category === 'Marketing');
+    if (!thinTrend) throw new Error('fixture did not produce a Marketing trend stat');
+    mockGetActiveCorrectionStatIds.mockResolvedValue([thinTrend.id]);
+
+    const result = await getMetricWithTrend({ statType: StatType.Trend, category: 'Marketing' }, ctx, cache);
+
+    expect(result).toEqual({ found: false, reason: 'suppressed' });
   });
 });
 
