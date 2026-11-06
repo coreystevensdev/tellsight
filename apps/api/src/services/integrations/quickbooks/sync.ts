@@ -100,7 +100,20 @@ export async function runSync(connectionId: number, trigger: SyncTrigger): Promi
     let totalRows = 0;
 
     for (const entityType of ENTITY_TYPES) {
-      const transactions = (await client.query(entityType, since)) as QbTransaction[];
+      const fetched = (await client.query(entityType, since)) as QbTransaction[];
+      if (fetched.length === 0) continue;
+
+      // A transaction with no id cannot be reconciled, the delete keys on
+      // it, and letting one through renders metadata->>'qb_id' in () (or
+      // worse, a bare comma alongside real ids), a SQL syntax error that
+      // rolls back every chunk already committed in this entity type's
+      // batch. Skipping it loses one row; letting it through loses all of
+      // them.
+      const transactions = fetched.filter((tx) => typeof tx.Id === 'string' && tx.Id.length > 0);
+      const dropped = fetched.length - transactions.length;
+      if (dropped > 0) {
+        logger.warn({ orgId, entityType, dropped }, 'QB transaction missing a usable Id, skipped');
+      }
       if (transactions.length === 0) continue;
 
       const normalized = normalizeTransactions(transactions, entityType);
@@ -115,7 +128,7 @@ export async function runSync(connectionId: number, trigger: SyncTrigger): Promi
       totalRows += upserted;
 
       logger.info(
-        { orgId, entityType, fetched: transactions.length, upserted, reconciled },
+        { orgId, entityType, fetched: fetched.length, upserted, reconciled },
         'QB entity synced',
       );
     }

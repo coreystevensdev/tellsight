@@ -22,6 +22,7 @@ const mockDeleteWhere = vi.fn();
 // not callable without narrowing, so name the signature.
 const mockReturning = vi.fn() as Mock & { _result: Promise<unknown[]> };
 const mockDeleteReturning = vi.fn() as Mock & { _result: Promise<unknown[]> };
+const mockLoggerWarn = vi.fn();
 
 vi.mock('../../../lib/db.js', () => {
   // Shared by dbAdmin itself and by the client a .transaction() callback
@@ -72,7 +73,7 @@ vi.mock('../../../lib/db.js', () => {
 });
 
 vi.mock('../../../lib/logger.js', () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  logger: { info: vi.fn(), warn: mockLoggerWarn, error: vi.fn() },
 }));
 
 vi.mock('../../../db/schema.js', () => ({
@@ -159,7 +160,7 @@ function mockQbClient(overrides: Record<string, unknown> = {}) {
   };
 }
 
-import type { NormalizedQbRow } from './types.js';
+import type { NormalizedQbRow, QbTransaction } from './types.js';
 
 function normalizedRow(overrides: Partial<NormalizedQbRow> = {}): NormalizedQbRow {
   return {
@@ -328,6 +329,66 @@ describe('runSync', () => {
     await runSync(1, 'initial');
 
     expect(client.query).not.toHaveBeenCalledWith('Estimate', expect.anything());
+  });
+
+  it('skips a transaction with no usable Id and still reconciles the valid ones', async () => {
+    // The exact shape the probe proved fatal: one malformed transaction
+    // mixed among valid ones rendered metadata->>'qb_id' in (, $5), a SQL
+    // syntax error that rolled back every chunk already committed for
+    // this entity type. Dropping it before it reaches upsertRows is what
+    // keeps the two valid invoices reconciling at all.
+    mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
+    const noId = { TxnDate: '2026-04-10' } as unknown as QbTransaction;
+    const client = mockQbClient({
+      query: vi
+        .fn()
+        .mockImplementation((entityType: string) =>
+          Promise.resolve(
+            entityType === 'Invoice'
+              ? [
+                  { Id: 'inv-good-1', TxnDate: '2026-04-10' },
+                  noId,
+                  { Id: 'inv-good-2', TxnDate: '2026-04-10' },
+                ]
+              : [],
+          ),
+        ),
+    });
+    mockCreateQbClient.mockResolvedValueOnce(client);
+    mockGetDatasetsByOrg.mockResolvedValueOnce([]);
+    mockCreateDataset.mockResolvedValueOnce({ id: 500 });
+    mockNormalizeTransactions.mockReturnValue([normalizedRow()]);
+    mockReturning._result = Promise.resolve([{ id: 1 }]);
+
+    const { runSync } = await import('./sync.js');
+    await expect(runSync(1, 'initial')).resolves.not.toThrow();
+
+    expect(mockNormalizeTransactions).toHaveBeenCalledWith(
+      [
+        { Id: 'inv-good-1', TxnDate: '2026-04-10' },
+        { Id: 'inv-good-2', TxnDate: '2026-04-10' },
+      ],
+      'Invoice',
+    );
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      { orgId: 10, entityType: 'Invoice', dropped: 1 },
+      'QB transaction missing a usable Id, skipped',
+    );
+
+    // The real upsertRows ran against only the two valid ids, the thing
+    // that threw against real Postgres when the bad one was included.
+    const deleteWhere = mockDeleteWhere.mock.calls.find((call) => {
+      const where = call[0] as { conditions: unknown[] };
+      return where.conditions.some(
+        (c) => typeof c === 'object' && c !== null && (c as { op?: string }).op === 'inArray',
+      );
+    });
+    const where = deleteWhere![0] as { conditions: unknown[] };
+    const inArrayCond = where.conditions.find(
+      (c): c is { vals: unknown[] } =>
+        typeof c === 'object' && c !== null && (c as { op?: string }).op === 'inArray',
+    );
+    expect(inArrayCond?.vals).toEqual(['inv-good-1', 'inv-good-2']);
   });
 
   it('marks AI summaries stale after successful sync', async () => {
