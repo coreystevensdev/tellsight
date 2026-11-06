@@ -3,21 +3,16 @@ import { describe, expect, it } from 'vitest';
 import { classifyAudit, parseAuditReport } from './dependency-audit.js';
 import { findUncoveredSecretRoutes, parseBearerTokenPrefixes } from './log-redaction.js';
 import {
+  type Acknowledgement,
   classifyMigration,
-  extractJsonbColumns,
   findMigrationFindings,
 } from './migration-compat.js';
 
-describe('migration compatibility gate', () => {
-  it('extracts explicit and inferred JSONB column names without duplicates', () => {
-    const schema = `
-      profile: jsonb('business_profile'),
-      keyStats: jsonb(),
-      duplicate: jsonb('business_profile'),
-    `;
-    expect(extractJsonbColumns(schema)).toEqual(['business_profile', 'keyStats']);
-  });
+function ack(hits: string[], reason = 'reviewed'): Acknowledgement {
+  return { hits, reason };
+}
 
+describe('migration compatibility gate', () => {
   it('detects every relational operation that can break a rolled-back image', () => {
     const sql = `
       ALTER TABLE users DROP COLUMN legacy;
@@ -27,7 +22,7 @@ describe('migration compatibility gate', () => {
       ALTER TABLE totals ALTER COLUMN amount SET DATA TYPE numeric;
       ALTER TABLE users ALTER COLUMN email SET NOT NULL;
     `;
-    expect(classifyMigration(sql, [])).toEqual([
+    expect(classifyMigration(sql)).toEqual([
       'DROP COLUMN',
       'DROP TABLE',
       'RENAME COLUMN',
@@ -37,22 +32,54 @@ describe('migration compatibility gate', () => {
     ]);
   });
 
-  it('ignores policy words in line comments', () => {
-    expect(classifyMigration('-- DROP TABLE is intentionally not used\nSELECT 1;', [])).toEqual([]);
+  it('ignores policy words in comments, wherever the comment sits', () => {
+    expect(classifyMigration('-- DROP TABLE is intentionally not used\nSELECT 1;')).toEqual([]);
+    expect(classifyMigration('SELECT 1; -- DROP TABLE would be wrong here')).toEqual([]);
+    expect(classifyMigration('/* DROP TABLE old_events; */\nSELECT 1;')).toEqual([]);
   });
 
-  it('flags writes to quoted or unquoted JSONB columns but not ON UPDATE clauses', () => {
+  it('reads a referential action as a clause, not as a data write', () => {
+    // 24 of the repo's 46 migrations carry one of these, so treating the
+    // keyword as a statement would flag over half the history.
     expect(
       classifyMigration(
-        'UPDATE orgs SET "business_profile" = business_profile || $1;',
-        ['business_profile'],
+        'FOREIGN KEY (org_id) REFERENCES orgs(id) ON UPDATE NO ACTION ON DELETE CASCADE;',
       ),
-    ).toEqual(['JSONB WRITE (business_profile)']);
-    expect(
-      classifyMigration('FOREIGN KEY (org_id) REFERENCES orgs(id) ON UPDATE NO ACTION;', [
-        'business_profile',
-      ]),
     ).toEqual([]);
+    expect(classifyMigration('FOREIGN KEY (x) REFERENCES y(id) ON DELETE SET NULL;')).toEqual([]);
+    expect(classifyMigration('FOREIGN KEY (x) REFERENCES y(id) ON DELETE RESTRICT;')).toEqual([]);
+  });
+
+  it('flags a data write however the assignment is spelled', () => {
+    // Each of these escaped a check that matched on column names. They are
+    // listed one per case so a regression names the shape that came back.
+    const escapees = [
+      // a subquery's FROM used to end the scan before the real assignment
+      `UPDATE "data_rows" SET "label" = (SELECT "name" FROM "orgs"), "source_id" = 'x';`,
+      // a trailing comment's prose used to be read as SQL keywords
+      `UPDATE "data_rows"\nSET -- prefix taken from the txnType we store\n  "source_id" = 'x';`,
+      `UPDATE data_rows SET /* see WHERE clause below */ source_id = 'x';`,
+      // a semicolon inside a string literal used to end the statement early
+      `UPDATE "data_rows" SET "label" = 'legacy;import', "source_id" = 'x';`,
+      // postgres multi-column assignment never matched `col =` at all
+      `UPDATE "data_rows" SET ("source_id", "category") = ('a', 'b');`,
+      // unique via column-level .unique(), so never on any watch list
+      `UPDATE "users" SET "email" = lower("email");`,
+      `UPDATE "orgs" SET "slug" = "slug" || '-2';`,
+      // a primary key, likewise absent from a uniqueIndex() watch list
+      `UPDATE "digest_preferences" SET "id" = "id" + 1;`,
+      `DELETE FROM "data_rows" WHERE "source_type" = 'quickbooks';`,
+      `update data_rows set source_id = 'x';`,
+    ];
+    for (const sql of escapees) {
+      expect(classifyMigration(sql), sql).toEqual(['DATA WRITE']);
+    }
+  });
+
+  it('separates a schema change from a data write in the same file', () => {
+    expect(
+      classifyMigration('ALTER TABLE t DROP COLUMN old;\nUPDATE t SET name = lower(name);'),
+    ).toEqual(['DROP COLUMN', 'DATA WRITE']);
   });
 
   it('reports only unacknowledged migrations in stable filename order', () => {
@@ -62,20 +89,48 @@ describe('migration compatibility gate', () => {
         '0001_safe.sql': 'ALTER TABLE users ADD COLUMN nickname text;',
         '0002_ack.sql': 'DROP TABLE retired;',
       },
-      [],
-      new Set(['0002_ack.sql']),
+      new Map([['0002_ack.sql', ack(['DROP TABLE'])]]),
     );
     expect(findings).toEqual([{ file: '0003_drop.sql', hits: ['DROP COLUMN'] }]);
+  });
+
+  it('does not accept an acknowledgement whose reason is blank', () => {
+    // The gate's whole bargain is that a human wrote a sentence, and nothing
+    // used to check that the sentence existed.
+    const migrations = { '0001_x.sql': 'DROP TABLE retired;' };
+    expect(
+      findMigrationFindings(migrations, new Map([['0001_x.sql', ack(['DROP TABLE'], '')]])),
+    ).toEqual([{ file: '0001_x.sql', hits: ['DROP TABLE'] }]);
+    expect(
+      findMigrationFindings(migrations, new Map([['0001_x.sql', ack(['DROP TABLE'], '   ')]])),
+    ).toEqual([{ file: '0001_x.sql', hits: ['DROP TABLE'] }]);
+  });
+
+  it('re-flags an acknowledged migration that grew a second operation', () => {
+    // An acknowledgement used to exempt the whole file, so appending a
+    // DROP COLUMN to a reviewed data migration inherited its sentence.
+    expect(
+      findMigrationFindings(
+        { '0001_x.sql': 'UPDATE t SET a = 1;\nALTER TABLE t DROP COLUMN b;' },
+        new Map([['0001_x.sql', ack(['DATA WRITE'])]]),
+      ),
+    ).toEqual([{ file: '0001_x.sql', hits: ['DROP COLUMN', 'DATA WRITE'] }]);
+  });
+
+  it('accepts an acknowledgement that names every hit, in any order', () => {
+    expect(
+      findMigrationFindings(
+        { '0001_x.sql': 'UPDATE t SET a = 1;\nALTER TABLE t DROP COLUMN b;' },
+        new Map([['0001_x.sql', ack(['DATA WRITE', 'DROP COLUMN'])]]),
+      ),
+    ).toEqual([]);
   });
 });
 
 describe('access-log redaction gate', () => {
   it('parses matcher prefixes and removes only the trailing wildcard', () => {
     const workflow = '  @bearertoken path /invite/* /api/digest/unsubscribe/*';
-    expect(parseBearerTokenPrefixes(workflow)).toEqual([
-      '/invite/',
-      '/api/digest/unsubscribe/',
-    ]);
+    expect(parseBearerTokenPrefixes(workflow)).toEqual(['/invite/', '/api/digest/unsubscribe/']);
   });
 
   it('fails closed when the Caddy matcher disappears', () => {
