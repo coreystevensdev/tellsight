@@ -547,6 +547,76 @@ describe('upsertRows', () => {
     expect(notInArrayValsByChunk[1]).toEqual(['tx-500-0']);
   });
 
+  it('never lets a single delete chunk exceed its budget regardless of lines per transaction', async () => {
+    // The exact measured failure: 500 ids averaging 131 produced rows each
+    // is 66,004 total bind parameters against postgres.js's 65,533 ceiling
+    // (500 at 130 each succeeds at 65,504). Chunking by accumulated
+    // produced-row count, not just id count, means no chunk can reach
+    // either limit regardless of how many lines a transaction has.
+    const fetchedTxnIds = Array.from({ length: 500 }, (_, i) => `tx-${i}`);
+    const rows = fetchedTxnIds.flatMap((id) =>
+      Array.from({ length: 131 }, (_, lineIndex) =>
+        normalizedRow({
+          sourceId: `${id}-${lineIndex}`,
+          metadata: {
+            qb_id: id,
+            txnType: 'Invoice',
+            docNumber: null,
+            memo: null,
+            accountCode: null,
+          },
+        }),
+      ),
+    );
+
+    const { upsertRows } = await import('./sync.js');
+    await upsertRows(10, 500, 'Invoice', fetchedTxnIds, rows);
+
+    let totalNotInArrayVals = 0;
+    for (const call of mockDeleteWhere.mock.calls) {
+      const where = call[0] as { conditions: unknown[] };
+      const inArrayCond = where.conditions.find(
+        (c): c is { vals: unknown[] } =>
+          typeof c === 'object' && c !== null && (c as { op?: string }).op === 'inArray',
+      );
+      const notInArrayCond = where.conditions.find(
+        (c): c is { vals: unknown[] } =>
+          typeof c === 'object' && c !== null && (c as { op?: string }).op === 'notInArray',
+      );
+
+      expect(inArrayCond?.vals.length ?? 0).toBeLessThanOrEqual(500);
+      expect(notInArrayCond?.vals.length ?? 0).toBeLessThanOrEqual(500);
+      totalNotInArrayVals += notInArrayCond?.vals.length ?? 0;
+    }
+
+    // Every produced row has to land in exactly one chunk's NOT IN list;
+    // this is what rules out a transaction getting split across chunks or
+    // a row being dropped or double-counted along the way.
+    expect(totalNotInArrayVals).toBe(rows.length);
+  });
+
+  it('deduplicates rows by sourceId before inserting or counting toward the delete budget', async () => {
+    // STARTPOSITION pagination returning the same transaction twice
+    // duplicates its rows in this array too, not just its id in
+    // fetchedTxnIds. An undeduplicated pair here would insert the same
+    // sourceId twice in one statement, which postgres rejects with "ON
+    // CONFLICT DO UPDATE command cannot affect row a second time", and
+    // would count the transaction's rows twice toward the chunk budget.
+    const first = normalizedRow({ sourceId: 'tx-1-line-1', amount: '100' });
+    const second = normalizedRow({ sourceId: 'tx-1-line-1', amount: '200' });
+    mockReturning._result = Promise.resolve([{ id: 1 }]);
+
+    const { upsertRows } = await import('./sync.js');
+    await upsertRows(10, 500, 'Purchase', ['tx-1'], [first, second]);
+
+    expect(mockInsertValues).toHaveBeenCalledTimes(1);
+    const insertedValues = mockInsertValues.mock.calls[0]![0] as Array<{ amount: string }>;
+    expect(insertedValues).toHaveLength(1);
+    // The later occurrence wins, reflecting whatever changed between the
+    // two fetches on its second appearance.
+    expect(insertedValues[0]!.amount).toBe('200');
+  });
+
   it('batches rows in groups of 500', async () => {
     const rows = Array.from({ length: 1200 }, (_, i) => normalizedRow({ sourceId: `tx-${i}` }));
     mockReturning._result = Promise.resolve(new Array(500).fill({ id: 1 }));

@@ -37,12 +37,20 @@ const ENTITY_TYPES: QbTransactionType[] = [
   'Transfer',
 ];
 
-// Governs both loops in upsertRows. postgres.js enforces a 65,533 total
-// bind-parameter ceiling before a query reaches the wire (build.js:45), and
-// 500 ids plus the rows they produce stays far under it even for a
-// transaction with many lines, while matching the chunk size the insert
-// side already used.
-const BATCH_SIZE = 500;
+// postgres.js enforces a 65,533 total bind-parameter ceiling before a
+// query reaches the wire (build.js:45). The insert chunks rows, so this
+// alone bounds it (500 rows times ten columns is nowhere close). The
+// delete is two-dimensional: an id list and the produced-row list for
+// those same ids, and QuickBooks documents up to 750 line items on a
+// taxable invoice with no cap stated for non-taxable ones, so bounding
+// id count alone does not bound the produced-row side. Measured against
+// the real client: 500 ids averaging 130 produced rows each is 65,504
+// parameters and succeeds; at 131 it is 66,004 and throws
+// MAX_PARAMETERS_EXCEEDED. The delete chunks by both dimensions instead,
+// see chunkFetchedIds below.
+const INSERT_BATCH_SIZE = 500;
+const DELETE_ID_BATCH_SIZE = 500;
+const DELETE_ROW_BUDGET = 500;
 
 export type SyncTrigger = 'initial' | 'scheduled' | 'manual';
 
@@ -197,6 +205,38 @@ export interface UpsertResult {
   reconciled: number;
 }
 
+// Groups fetchedTxnIds into chunks where neither the id count nor the
+// accumulated produced-row count for that chunk's own transactions can
+// exceed its budget, whichever limit a given id would hit first. A
+// transaction is never split across two chunks, so a single transaction
+// whose own row count alone exceeds DELETE_ROW_BUDGET (QuickBooks allows
+// up to 750 line items on a taxable invoice) still gets a chunk of its
+// own rather than straddling a boundary; that chunk's parameter count stays
+// trivial regardless, since it carries only that one id.
+function chunkFetchedIds(ids: string[], rowCountByQbId: Map<string, number>): string[][] {
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  let currentRowCount = 0;
+
+  for (const id of ids) {
+    const idRowCount = rowCountByQbId.get(id) ?? 0;
+    const wouldOverflow =
+      current.length >= DELETE_ID_BATCH_SIZE || currentRowCount + idRowCount > DELETE_ROW_BUDGET;
+
+    if (current.length > 0 && wouldOverflow) {
+      chunks.push(current);
+      current = [];
+      currentRowCount = 0;
+    }
+
+    current.push(id);
+    currentRowCount += idRowCount;
+  }
+
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+}
+
 /**
  * Batched upsert against (org_id, source_id), plus reconciliation: a row
  * from this batch's fetched transactions that the normalizer no longer
@@ -211,8 +251,8 @@ export interface UpsertResult {
  * whole dataset), since sync.ts fetches incrementally and a dataset-wide
  * diff would read every unchanged transaction as deleted.
  *
- * The delete runs in chunks of BATCH_SIZE fetched ids, each paired with
- * only the produced source ids for that chunk's own transactions (keyed off
+ * The delete runs in chunks built by chunkFetchedIds, each paired with only
+ * the produced source ids for that chunk's own transactions (keyed off
  * metadata.qb_id, the same id every row's sourceId is built from), not the
  * full produced set. Chunking only the id list and leaving the produced-set
  * predicate unchunked raises the parameter ceiling instead of removing it.
@@ -233,15 +273,29 @@ export async function upsertRows(
   const uniqueFetchedTxnIds = [...new Set(fetchedTxnIds)];
   if (uniqueFetchedTxnIds.length === 0) return { upserted: 0, reconciled: 0 };
 
+  // rows gets the same pagination-duplicate treatment as fetchedTxnIds
+  // above: the dedupe there covers which ids get asked about, not how many
+  // times one transaction's own rows count toward this chunk's budget.
+  // Keeps the later occurrence, since a transaction STARTPOSITION
+  // pagination hands back twice reflects whatever changed between the two
+  // fetches on its second appearance.
+  const dedupedRows = Array.from(new Map(rows.map((row) => [row.sourceId, row])).values());
+
+  const sourceIdsByQbId = new Map<string, string[]>();
+  for (const row of dedupedRows) {
+    const existing = sourceIdsByQbId.get(row.metadata.qb_id);
+    if (existing) existing.push(row.sourceId);
+    else sourceIdsByQbId.set(row.metadata.qb_id, [row.sourceId]);
+  }
+  const rowCountByQbId = new Map(
+    Array.from(sourceIdsByQbId, ([qbId, sourceIds]) => [qbId, sourceIds.length] as const),
+  );
+
   return dbAdmin.transaction(async (tx) => {
     let reconciled = 0;
 
-    for (let i = 0; i < uniqueFetchedTxnIds.length; i += BATCH_SIZE) {
-      const idChunk = uniqueFetchedTxnIds.slice(i, i + BATCH_SIZE);
-      const idChunkSet = new Set(idChunk);
-      const producedForChunk = rows
-        .filter((row) => idChunkSet.has(row.metadata.qb_id))
-        .map((row) => row.sourceId);
+    for (const idChunk of chunkFetchedIds(uniqueFetchedTxnIds, rowCountByQbId)) {
+      const producedForChunk = idChunk.flatMap((id) => sourceIdsByQbId.get(id) ?? []);
 
       const deleted = await tx
         .delete(dataRows)
@@ -262,8 +316,8 @@ export async function upsertRows(
 
     let upserted = 0;
 
-    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-      const chunk = rows.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < dedupedRows.length; i += INSERT_BATCH_SIZE) {
+      const chunk = dedupedRows.slice(i, i + INSERT_BATCH_SIZE);
       const values = chunk.map((row) => ({
         orgId,
         datasetId,
