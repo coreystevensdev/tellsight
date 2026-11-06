@@ -242,22 +242,34 @@ export async function getCategoryVarianceWindow(
   const scope = scopeConditions(orgId, datasetId);
   const currentMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
 
+  // < not <>: a row typo'd into next year, or a forecast row, has to lose the
+  // max() the same way the current month does. !== alone lets any later
+  // month win and reports every category wildly under plan against data that
+  // hasn't happened yet. categoryMetrics.ts's completeMonths filter had the
+  // same gap, fixed there too.
   const [monthRow] = await client
     .select({
       month: sql<string | null>`to_char(max(date_trunc('month', ${dataRows.date})), 'YYYY-MM')`,
     })
     .from(dataRows)
     .where(
-      and(...scope, sql`to_char(date_trunc('month', ${dataRows.date}), 'YYYY-MM') <> ${currentMonth}`),
+      and(...scope, sql`to_char(date_trunc('month', ${dataRows.date}), 'YYYY-MM') < ${currentMonth}`),
     );
 
   const targetMonth = monthRow?.month ?? null;
   if (!targetMonth) return null;
 
+  // abs(): unlike every other sum in this file, this number is compared
+  // against a figure the owner typed into the plans UI, which is always
+  // nonnegative (categoryPlanSchema). A CSV with its own parent_category
+  // column stores amount verbatim, sign included (normalizer.ts), so a bank
+  // export carrying negative expense rows alongside that column is real
+  // input, not a hypothetical, and raw sum() would flip the comparison's
+  // sign entirely rather than just its magnitude.
   const expenseRows = await client
     .select({
       category: dataRows.category,
-      total: sql<string>`sum(${dataRows.amount})`,
+      total: sql<string>`sum(abs(${dataRows.amount}))`,
     })
     .from(dataRows)
     .where(

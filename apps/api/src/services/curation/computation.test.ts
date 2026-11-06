@@ -2396,4 +2396,19 @@ describe('computeCategoryVariance', () => {
     expect(computeStats(mayOnly, { categoryPlans: [{ category: 'Rent', plannedMonthly: 2400 }], now: VNOW })
       .filter((s) => s.statType === 'category_variance')).toEqual([]);
   });
+
+  // A !== filter only rules out the literal current month and lets anything
+  // later win. A forecast row, or one typo'd into next year, would then
+  // become "the latest complete month" and compare a real plan against data
+  // that has not happened yet.
+  it('excludes a future-dated row too, not just the current month', () => {
+    const withFutureRow = [...vrows, vrow(6, 'Rent', '2027-01-01', '50000.00')];
+
+    const [rent] = computeStats(withFutureRow, {
+      categoryPlans: [{ category: 'Rent', plannedMonthly: 2400 }],
+      now: VNOW,
+    }).filter((s) => s.statType === 'category_variance');
+
+    expect(rent?.details).toMatchObject({ monthLabel: '2026-04', actualMonthly: 2600 });
+  });
 });

@@ -54,7 +54,10 @@ export function computeCategoryVariance(
     }
   }
 
-  const completeMonths = [...months].filter((month) => month !== currentMonth).sort();
+  // < not !==: a forecast row or a typo'd future date must not win this,
+  // either. !== alone would let it through and compare a real plan against
+  // a month that hasn't happened, reporting every category wildly under.
+  const completeMonths = [...months].filter((month) => month < currentMonth).sort();
   const targetMonth = completeMonths[completeMonths.length - 1];
   if (!targetMonth) return [];
 

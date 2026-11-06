@@ -117,6 +117,19 @@ async function seed() {
 
     console.info(`Seeded "${SEED_ORG.name}" org (id=${orgId}) with ${rows.length} data rows`);
 
+    // Without these the budget-vs-actual chart's empty-data branch is the
+    // only one the public demo ever exercises, so accessibility.spec.ts and
+    // no-failing-requests.spec.ts give it zero real coverage. Matches the
+    // five expense categories buildSeedRows actually generates; anything
+    // else would plan against a category this org never spends in.
+    await tx.insert(schema.categoryPlans).values([
+      { orgId, category: 'Payroll', plannedMonthly: '6000.00' },
+      { orgId, category: 'Marketing', plannedMonthly: '1000.00' },
+      { orgId, category: 'Rent', plannedMonthly: '3000.00' },
+      { orgId, category: 'Supplies', plannedMonthly: '2000.00' },
+      { orgId, category: 'Utilities', plannedMonthly: '500.00' },
+    ]);
+
     // Bypasses runFullPipeline because seed uses its own Drizzle instance (standalone
     // postgres connection), not lib/db.ts which pulls in config.ts env validation.
     // Duplicates the pipeline steps manually so seed can run without full app config.

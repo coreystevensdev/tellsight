@@ -20,8 +20,58 @@ interface CategoryVarianceChartProps {
   data: CategoryVarianceItem[];
 }
 
-const MARKER_WIDTH = 44;
+// Measured against real recharts: a 343px card renders a 44.7px band at six
+// categories, the cap below. 28px leaves real margin at that floor instead
+// of the 44px this was before the cap existed, which was already flush with
+// the band at six and overlapping past it, since nothing bounded how many
+// plans could reach this chart (/settings/plans allows up to 100).
+const MARKER_WIDTH = 28;
 const MARKER_HEIGHT = 3;
+const MAX_NAMED_CATEGORIES = 6;
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function mergeIntoOther(base: CategoryVarianceItem, extra: CategoryVarianceItem[]): CategoryVarianceItem {
+  const plannedMonthly = round2(base.plannedMonthly + extra.reduce((s, c) => s + c.plannedMonthly, 0));
+  const actualMonthly = round2(base.actualMonthly + extra.reduce((s, c) => s + c.actualMonthly, 0));
+  const variance = round2(actualMonthly - plannedMonthly);
+  const variancePercent = plannedMonthly === 0 ? 0 : Math.round((variance / plannedMonthly) * 1000) / 10;
+  const direction: CategoryVarianceItem['direction'] =
+    Math.abs(variancePercent) < 5 ? 'on_plan' : variance > 0 ? 'over' : 'under';
+
+  return { ...base, plannedMonthly, actualMonthly, variance, variancePercent, direction };
+}
+
+// Same problem ProfitBridgeChart solves and the same fix: a fixed bar width
+// and marker width against an uncapped, data-dependent number of bars is how
+// bars end up wider than their own band. categoryPlansInputSchema permits up
+// to 100 plans and /settings/plans lets an owner plan every category they
+// have, so six-plus is reachable, not hypothetical. A real plan can already
+// be named Other, so folding into it instead of adding a second entry keeps
+// two rows from sharing one label with different numbers.
+export function foldOverflowIntoOther(data: CategoryVarianceItem[]): CategoryVarianceItem[] {
+  const named = data.slice(0, MAX_NAMED_CATEGORIES);
+  const overflow = data.slice(MAX_NAMED_CATEGORIES);
+  if (overflow.length === 0) return named;
+
+  const otherIndex = named.findIndex((c) => c.category.toLowerCase() === 'other');
+  if (otherIndex >= 0) {
+    return named.map((c, i) => (i === otherIndex ? mergeIntoOther(c, overflow) : c));
+  }
+
+  const seed: CategoryVarianceItem = {
+    category: 'Other',
+    plannedMonthly: 0,
+    actualMonthly: 0,
+    variance: 0,
+    variancePercent: 0,
+    monthLabel: data[0]!.monthLabel,
+    direction: 'on_plan',
+  };
+  return [...named, mergeIntoOther(seed, overflow)];
+}
 
 // direction, not the sign of variance: for spend, over plan is bad, the
 // opposite of the bridge chart's profit deltas, so this can't reuse
@@ -37,6 +87,10 @@ export function colorForDirection(direction: CategoryVarianceItem['direction']):
 // even when actualMonthly is zero, the one case a bar-height-ratio trick
 // can't handle. A grouped second bar was ruled out in the design doc: two
 // bars makes the reader compare heights, one bar crossing a line does not.
+// Passed to Scatter as `shape={PlannedMarker}` rather than wrapped in an
+// arrow: recharts calls a function shape as `shape(props, index)`, not as a
+// component, so the bare reference works the same and does not hand Scatter
+// a new closure identity on every render.
 export function PlannedMarker({ cx, cy }: { cx?: number; cy?: number }) {
   if (cx == null || cy == null) return null;
   return (
@@ -88,6 +142,11 @@ export function CategoryVarianceChart({ data }: CategoryVarianceChartProps) {
 
   if (data.length === 0) return null;
 
+  // The fold is a rendering concession, not a change to the real numbers: the
+  // bars below read chartData, but the summary line keeps summing data, so
+  // an org with eight plans still reports "across 8 categories" rather than
+  // the seven bars actually drawn.
+  const chartData = foldOverflowIntoOther(data);
   const monthLabel = data[0]!.monthLabel;
   const totalPlanned = data.reduce((sum, d) => sum + d.plannedMonthly, 0);
   const totalActual = data.reduce((sum, d) => sum + d.actualMonthly, 0);
@@ -107,7 +166,7 @@ export function CategoryVarianceChart({ data }: CategoryVarianceChartProps) {
       >
         <ResponsiveContainer width="100%" height="100%" debounce={CHART_CONFIG.RESIZE_DEBOUNCE_MS}>
           <ComposedChart
-            data={data}
+            data={chartData}
             title="Budget vs actual by category"
             margin={{ top: 5, right: 20, bottom: 5, left: 0 }}
             accessibilityLayer
@@ -131,20 +190,19 @@ export function CategoryVarianceChart({ data }: CategoryVarianceChartProps) {
             <Tooltip content={<VarianceTooltip />} />
             <Bar
               dataKey="actualMonthly"
-              barSize={40}
               radius={[4, 4, 0, 0]}
               animationDuration={CHART_CONFIG.ANIMATION_DURATION_MS}
               animationEasing={CHART_CONFIG.ANIMATION_EASING}
               isAnimationActive={!reducedMotion}
             >
-              {data.map((item, i) => (
+              {chartData.map((item, i) => (
                 <Cell key={i} fill={colorForDirection(item.direction)} />
               ))}
             </Bar>
             <Scatter
               dataKey="plannedMonthly"
               fill="transparent"
-              shape={(props: { cx?: number; cy?: number }) => <PlannedMarker cx={props.cx} cy={props.cy} />}
+              shape={PlannedMarker}
               isAnimationActive={!reducedMotion}
               animationDuration={CHART_CONFIG.ANIMATION_DURATION_MS}
             />

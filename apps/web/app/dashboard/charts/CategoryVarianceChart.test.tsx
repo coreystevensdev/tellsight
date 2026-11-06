@@ -29,7 +29,13 @@ vi.mock('recharts', () => ({
   Tooltip: () => null,
 }));
 
-import { CategoryVarianceChart, PlannedMarker, VarianceTooltip, colorForDirection } from './CategoryVarianceChart';
+import {
+  CategoryVarianceChart,
+  PlannedMarker,
+  VarianceTooltip,
+  colorForDirection,
+  foldOverflowIntoOther,
+} from './CategoryVarianceChart';
 
 afterEach(() => {
   cleanup();
@@ -76,6 +82,70 @@ describe('colorForDirection', () => {
   });
 });
 
+function item(category: string, plannedMonthly: number, actualMonthly: number) {
+  const variance = Math.round((actualMonthly - plannedMonthly) * 100) / 100;
+  const variancePercent = plannedMonthly === 0 ? 0 : Math.round((variance / plannedMonthly) * 1000) / 10;
+  const direction = Math.abs(variancePercent) < 5 ? 'on_plan' as const : variance > 0 ? 'over' as const : 'under' as const;
+  return { category, plannedMonthly, actualMonthly, variance, variancePercent, monthLabel: 'Oct 2026', direction };
+}
+
+describe('foldOverflowIntoOther', () => {
+  it('passes six or fewer categories through unchanged', () => {
+    const six = ['A', 'B', 'C', 'D', 'E', 'F'].map((c) => item(c, 1000, 1000));
+
+    expect(foldOverflowIntoOther(six)).toEqual(six);
+  });
+
+  it('folds overflow past six into a synthesized Other, summing and recomputing direction', () => {
+    const eight = [
+      ...['A', 'B', 'C', 'D', 'E', 'F'].map((c) => item(c, 1000, 1000)),
+      item('G', 500, 700), // over by 200
+      item('H', 300, 350), // over by 50
+    ];
+
+    const result = foldOverflowIntoOther(eight);
+
+    expect(result).toHaveLength(7);
+    expect(result[6]).toMatchObject({
+      category: 'Other',
+      plannedMonthly: 800,
+      actualMonthly: 1050,
+      variance: 250,
+      direction: 'over',
+    });
+  });
+
+  it('merges overflow into a real Other category instead of adding a second entry', () => {
+    const data = [
+      ...['A', 'B', 'C', 'D', 'E'].map((c) => item(c, 1000, 1000)),
+      item('Other', 100, 150), // over by 50 on its own
+      item('F', 200, 180), // under by 20
+      item('G', 50, 70), // over by 20
+    ];
+
+    const result = foldOverflowIntoOther(data);
+
+    expect(result).toHaveLength(6);
+    const others = result.filter((r) => r.category === 'Other');
+    expect(others).toHaveLength(1);
+    expect(others[0]).toMatchObject({ plannedMonthly: 350, actualMonthly: 400, variance: 50, direction: 'over' });
+  });
+
+  it('matches an existing Other category case-insensitively and keeps its original casing', () => {
+    const data = [
+      ...['A', 'B', 'C', 'D', 'E'].map((c) => item(c, 1000, 1000)),
+      item('OTHER', 100, 100),
+      item('F', 200, 180),
+    ];
+
+    const result = foldOverflowIntoOther(data);
+
+    const matches = result.filter((r) => r.category.toLowerCase() === 'other');
+    expect(matches).toHaveLength(1);
+    expect(matches[0]?.category).toBe('OTHER');
+  });
+});
+
 describe('CategoryVarianceChart', () => {
   it('renders as a figure with "Budget vs Actual" title', () => {
     render(<CategoryVarianceChart data={sampleData} />);
@@ -117,10 +187,32 @@ describe('CategoryVarianceChart', () => {
     expect(capturedScatter?.dataKey).toBe('plannedMonthly');
   });
 
+  // recharts calls a function shape as shape(props, index), not as a
+  // component, so the bare function reference works and stays stable across
+  // renders instead of a new closure identity every time.
+  it('passes PlannedMarker to Scatter by reference, not a wrapping closure', () => {
+    render(<CategoryVarianceChart data={sampleData} />);
+
+    expect(capturedScatter?.shape).toBe(PlannedMarker);
+  });
+
   it('singularizes "category" for exactly one row', () => {
     render(<CategoryVarianceChart data={[sampleData[0]!]} />);
 
     expect(screen.getByText(/across 1 category,/)).toBeInTheDocument();
+  });
+
+  it('caps the rendered bars at seven (six named plus Other) while the summary still counts every plan', () => {
+    const eight = [
+      ...['A', 'B', 'C', 'D', 'E', 'F'].map((c) => item(c, 1000, 1000)),
+      item('G', 500, 700),
+      item('H', 300, 350),
+    ];
+    render(<CategoryVarianceChart data={eight} />);
+
+    const bar = capturedBars.find((b) => b.dataKey === 'actualMonthly')!;
+    expect((bar.children as unknown[]).length).toBe(7);
+    expect(screen.getByText(/across 8 categories,/)).toBeInTheDocument();
   });
 
   it('returns null when there are no planned categories', () => {
