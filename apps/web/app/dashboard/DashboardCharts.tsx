@@ -9,6 +9,7 @@ import { ChartSkeleton } from './charts/ChartSkeleton';
 import { ExpenseChart } from './charts/ExpenseChart';
 import { ExpenseTrendChart } from './charts/ExpenseTrendChart';
 import { LazyChart } from './charts/LazyChart';
+import { ProfitBridgeChart } from './charts/ProfitBridgeChart';
 import { ProfitMarginChart } from './charts/ProfitMarginChart';
 import { RevenueChart } from './charts/RevenueChart';
 import { RevenueVsExpensesChart } from './charts/RevenueVsExpensesChart';
@@ -191,6 +192,16 @@ export function DashboardCharts({
               </LazyChart>
               <LazyChart skeletonVariant="line">
                 <ProfitMarginChart data={data.monthlyComparison} />
+              </LazyChart>
+            </div>
+          )}
+          {data.monthlyComparison?.length > 0 && (
+            <div className="mt-4 md:mt-6">
+              <LazyChart skeletonVariant="bar">
+                <ProfitBridgeChart
+                  monthlyComparison={data.monthlyComparison}
+                  expenseBreakdown={data.expenseBreakdown}
+                />
               </LazyChart>
             </div>
           )}
