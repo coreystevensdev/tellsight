@@ -5,6 +5,7 @@ import type {
   monthlyComparisonPointSchema,
   yoyComparisonPointSchema,
   datasetDateRangeSchema,
+  categoryVarianceItemSchema,
   chartDataSchema,
 } from '../schemas/charts.js';
 import type { chartFiltersSchema, granularitySchema } from '../schemas/filters.js';
@@ -16,5 +17,6 @@ export type ExpenseTrendPoint = Record<string, string | number>;
 export type MonthlyComparisonPoint = z.infer<typeof monthlyComparisonPointSchema>;
 export type YoyComparisonPoint = z.infer<typeof yoyComparisonPointSchema>;
 export type DatasetDateRange = z.infer<typeof datasetDateRangeSchema>;
+export type CategoryVarianceItem = z.infer<typeof categoryVarianceItemSchema>;
 export type ChartData = z.infer<typeof chartDataSchema>;
 export type ChartFilters = z.infer<typeof chartFiltersSchema>;

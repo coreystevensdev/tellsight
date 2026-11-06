@@ -5,7 +5,7 @@ import { chartFiltersSchema } from 'shared/schemas';
 import type { DemoModeState } from 'shared/types';
 import { verifyAccessToken } from '../services/auth/tokenService.js';
 import { AuthenticationError } from '../lib/appError.js';
-import { aiSummariesQueries, chartsQueries, dataRowsQueries, datasetsQueries, orgsQueries, userOrgsQueries } from '../db/queries/index.js';
+import { aiSummariesQueries, categoryPlansQueries, chartsQueries, dataRowsQueries, datasetsQueries, orgsQueries, userOrgsQueries } from '../db/queries/index.js';
 import { dbAdmin } from '../lib/db.js';
 import { DATASET_FRESHNESS_DAYS } from '../db/queries/digestEligibility.js';
 import { withRlsContext } from '../lib/rls.js';
@@ -66,7 +66,7 @@ dashboardRouter.get('/dashboard/charts', async (req: Request, res: Response) => 
       const orgName = org?.name ?? 'Your Organization';
 
       // data_rows + datasets are RLS-enabled, run inside tenant context
-      const { chartData, datasets, demoState, activeDatasetId, datasetRowCount, hasMarginSignal } = await withRlsContext(
+      const { chartData, datasets, demoState, activeDatasetId, datasetRowCount, hasMarginSignal, categoryVariance } = await withRlsContext(
         orgId,
         payload.isAdmin,
         async (tx) => {
@@ -92,7 +92,7 @@ dashboardRouter.get('/dashboard/charts', async (req: Request, res: Response) => 
             ? requestedId
             : (activeId != null && ds.some((d) => d.id === activeId) ? activeId : ds[0]?.id ?? null);
 
-          const [cd, rowCount, marginSignal] = await Promise.all([
+          const [cd, rowCount, marginSignal, plans, varianceWindow] = await Promise.all([
             chartsQueries.getChartData(orgId, filterArg, undefined, tx, resolvedId ?? undefined),
             resolvedId != null
               ? dataRowsQueries.getRowCount(orgId, resolvedId, tx)
@@ -100,9 +100,19 @@ dashboardRouter.get('/dashboard/charts', async (req: Request, res: Response) => 
             resolvedId != null
               ? chartsQueries.getHasMarginSignal(orgId, tx, resolvedId)
               : Promise.resolve(false),
+            categoryPlansQueries.listCategoryPlans(orgId, tx),
+            chartsQueries.getCategoryVarianceWindow(orgId, tx, resolvedId ?? undefined),
           ]);
 
-          return { chartData: cd, datasets: ds, demoState: state, activeDatasetId: resolvedId, datasetRowCount: rowCount, hasMarginSignal: marginSignal };
+          return {
+            chartData: cd,
+            datasets: ds,
+            demoState: state,
+            activeDatasetId: resolvedId,
+            datasetRowCount: rowCount,
+            hasMarginSignal: marginSignal,
+            categoryVariance: chartsQueries.buildCategoryVariance(plans, varianceWindow),
+          };
         },
       );
 
@@ -133,7 +143,7 @@ dashboardRouter.get('/dashboard/charts', async (req: Request, res: Response) => 
       logger.info({ orgId, isDemo: false, filtered: hasFilters(filters) }, 'Dashboard charts served');
 
       res.json({
-        data: { ...chartData, orgName, isDemo: false, demoState, datasetId, datasetName, datasetRowCount, hasMarginSignal, digestPausesAt },
+        data: { ...chartData, orgName, isDemo: false, demoState, datasetId, datasetName, datasetRowCount, hasMarginSignal, digestPausesAt, categoryVariance },
       });
       return;
     } catch (err) {
@@ -142,19 +152,26 @@ dashboardRouter.get('/dashboard/charts', async (req: Request, res: Response) => 
     }
   }
 
-  // unauthenticated, seed org via dbAdmin (no tenant context)
+  // unauthenticated, seed org via dbAdmin (no tenant context). categoryPlans
+  // and the variance window go through dbAdmin with this same explicit orgId
+  // too: the default db client filters by current_setting('app.current_org_id'),
+  // which is NULL with no session var, and org_id = NULL is never true, so it
+  // would silently return zero rows instead of erroring.
   const orgId = await orgsQueries.getSeedOrgId();
-  const [chartData, datasets, hasMarginSignal] = await Promise.all([
+  const [chartData, datasets, hasMarginSignal, plans, varianceWindow] = await Promise.all([
     chartsQueries.getChartData(orgId, filterArg, undefined, dbAdmin),
     datasetsQueries.getDatasetsByOrg(orgId, dbAdmin),
     chartsQueries.getHasMarginSignal(orgId, dbAdmin),
+    categoryPlansQueries.listCategoryPlans(orgId, dbAdmin),
+    chartsQueries.getCategoryVarianceWindow(orgId, dbAdmin),
   ]);
+  const categoryVariance = chartsQueries.buildCategoryVariance(plans, varianceWindow);
   const datasetId = datasets[0]?.id ?? null;
 
   logger.info({ orgId, isDemo: true, filtered: hasFilters(filters) }, 'Dashboard charts served');
 
   res.json({
-    data: { ...chartData, orgName: 'Sunrise Cafe', isDemo: true, demoState: 'seed_only', datasetId, hasMarginSignal },
+    data: { ...chartData, orgName: 'Sunrise Cafe', isDemo: true, demoState: 'seed_only', datasetId, hasMarginSignal, categoryVariance },
   });
 });
 

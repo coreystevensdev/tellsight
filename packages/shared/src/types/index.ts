@@ -27,6 +27,7 @@ export type {
   MonthlyComparisonPoint,
   YoyComparisonPoint,
   DatasetDateRange,
+  CategoryVarianceItem,
   ChartData,
   ChartFilters,
 } from './charts.js';

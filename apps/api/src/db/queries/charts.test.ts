@@ -24,7 +24,7 @@ vi.mock('../../lib/db.js', () => ({
   },
 }));
 
-const { getChartData } = await import('./charts.js');
+const { getChartData, getCategoryVarianceWindow, buildCategoryVariance } = await import('./charts.js');
 
 function aggRow(overrides: {
   bucket: string;
@@ -296,5 +296,135 @@ describe('getChartData', () => {
 
       expect(result.yoyComparison).toEqual([]);
     });
+  });
+});
+
+describe('getCategoryVarianceWindow', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // This mock ignores WHERE clause contents entirely, so it can't exercise
+  // the "exclude the current month" SQL itself, only the function's own
+  // parsing of what comes back. The month-exclusion rule needs a real
+  // Postgres instance to verify, same as chartFilters.integration.test.ts.
+  function setupWindowMocks(monthResult: unknown[], expenseResult: unknown[]) {
+    let callCount = 0;
+    mockSelect.mockImplementation(() => {
+      callCount++;
+      return chainable(callCount === 1 ? monthResult : expenseResult);
+    });
+  }
+
+  it('formats the resolved month and sums expenses by category', async () => {
+    setupWindowMocks(
+      [{ month: '2026-10' }],
+      [
+        { category: 'Rent', total: '1200.00' },
+        { category: 'Payroll', total: '3400.50' },
+      ],
+    );
+
+    const result = await getCategoryVarianceWindow(1);
+
+    expect(result?.monthLabel).toBe('Oct 2026');
+    expect(result?.actualByCategory.get('Rent')).toBe(1200);
+    expect(result?.actualByCategory.get('Payroll')).toBe(3400.5);
+  });
+
+  it('returns null without a second query when no target month resolves', async () => {
+    setupWindowMocks([{ month: null }], []);
+
+    const result = await getCategoryVarianceWindow(1);
+
+    expect(result).toBeNull();
+    expect(mockSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it('rounds summed expenses to the cent', async () => {
+    setupWindowMocks([{ month: '2026-09' }], [{ category: 'Supplies', total: '20.004' }]);
+
+    const result = await getCategoryVarianceWindow(1);
+
+    expect(result?.actualByCategory.get('Supplies')).toBe(20);
+  });
+});
+
+describe('buildCategoryVariance', () => {
+  it('returns an empty array when the window is null, regardless of plans', () => {
+    const result = buildCategoryVariance([{ category: 'Rent', plannedMonthly: 1000 }], null);
+
+    expect(result).toEqual([]);
+  });
+
+  it('returns an empty array when there are no plans', () => {
+    const window = { monthLabel: 'Oct 2026', actualByCategory: new Map([['Rent', 500]]) };
+
+    expect(buildCategoryVariance([], window)).toEqual([]);
+  });
+
+  it('synthesizes a zero actual for a planned category with no matching spend', () => {
+    const window = { monthLabel: 'Oct 2026', actualByCategory: new Map<string, number>() };
+
+    const result = buildCategoryVariance([{ category: 'Rent', plannedMonthly: 2400 }], window);
+
+    expect(result).toEqual([{
+      category: 'Rent',
+      plannedMonthly: 2400,
+      actualMonthly: 0,
+      variance: -2400,
+      variancePercent: -100,
+      monthLabel: 'Oct 2026',
+      direction: 'under',
+    }]);
+  });
+
+  it('omits a category that has spend but no plan', () => {
+    const window = {
+      monthLabel: 'Oct 2026',
+      actualByCategory: new Map([['Rent', 500], ['Marketing', 900]]),
+    };
+
+    const result = buildCategoryVariance([{ category: 'Rent', plannedMonthly: 500 }], window);
+
+    expect(result.map((r) => r.category)).toEqual(['Rent']);
+  });
+
+  it('flags over plan once variance passes the 5% band', () => {
+    const window = { monthLabel: 'Oct 2026', actualByCategory: new Map([['Rent', 1200]]) };
+
+    const result = buildCategoryVariance([{ category: 'Rent', plannedMonthly: 1000 }], window);
+
+    expect(result[0]?.direction).toBe('over');
+    expect(result[0]?.variance).toBe(200);
+  });
+
+  it('flags under plan once variance passes the 5% band', () => {
+    const window = { monthLabel: 'Oct 2026', actualByCategory: new Map([['Rent', 800]]) };
+
+    const result = buildCategoryVariance([{ category: 'Rent', plannedMonthly: 1000 }], window);
+
+    expect(result[0]?.direction).toBe('under');
+  });
+
+  it('treats anything inside the 5% band as on plan', () => {
+    const window = { monthLabel: 'Oct 2026', actualByCategory: new Map([['Rent', 1030]]) };
+
+    const result = buildCategoryVariance([{ category: 'Rent', plannedMonthly: 1000 }], window);
+
+    expect(result[0]?.direction).toBe('on_plan');
+  });
+
+  it('cannot register over for a zero-planned category, matching computeCategoryVariance\'s guard', () => {
+    // categoryMetrics.ts forces variancePercent to 0 rather than dividing by
+    // zero, so the 5% band always reads on_plan here no matter the spend.
+    // Replicated rather than fixed: the chart and the digest text it feeds
+    // read from the same rule, and changing it is out of scope for this chart.
+    const window = { monthLabel: 'Oct 2026', actualByCategory: new Map([['Swag', 50]]) };
+
+    const result = buildCategoryVariance([{ category: 'Swag', plannedMonthly: 0 }], window);
+
+    expect(result[0]?.direction).toBe('on_plan');
+    expect(result[0]?.variance).toBe(50);
   });
 });

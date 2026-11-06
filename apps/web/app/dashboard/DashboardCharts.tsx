@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Filter } from 'lucide-react';
 import type { ChartData } from 'shared/types';
 
+import { CategoryVarianceChart } from './charts/CategoryVarianceChart';
 import { ChartSkeleton } from './charts/ChartSkeleton';
 import { ExpenseChart } from './charts/ExpenseChart';
 import { ExpenseTrendChart } from './charts/ExpenseTrendChart';
@@ -202,6 +203,13 @@ export function DashboardCharts({
                   monthlyComparison={data.monthlyComparison}
                   expenseBreakdown={data.expenseBreakdown}
                 />
+              </LazyChart>
+            </div>
+          )}
+          {data.categoryVariance && data.categoryVariance.length > 0 && (
+            <div className="mt-4 md:mt-6">
+              <LazyChart skeletonVariant="bar">
+                <CategoryVarianceChart data={data.categoryVariance} />
               </LazyChart>
             </div>
           )}

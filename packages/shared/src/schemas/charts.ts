@@ -35,6 +35,22 @@ export const yoyComparisonPointSchema = z.object({
   priorYearLabel: z.string(),
 });
 
+// monthLabel rides on every item rather than once at the top level, matching
+// CategoryVarianceDetails (api categoryMetrics.ts) which this mirrors on the
+// chart side. direction is its own field rather than derived from the sign of
+// variance at render time: for spend, over plan is bad, the opposite of the
+// bridge chart's profit deltas, so a sign check alone would paint an
+// overspend green.
+export const categoryVarianceItemSchema = z.object({
+  category: z.string(),
+  plannedMonthly: z.number(),
+  actualMonthly: z.number(),
+  variance: z.number(),
+  variancePercent: z.number(),
+  monthLabel: z.string(),
+  direction: z.enum(['over', 'under', 'on_plan']),
+});
+
 export const chartDataSchema = z.object({
   revenueTrend: z.array(revenueTrendPointSchema),
   expenseBreakdown: z.array(expenseBreakdownItemSchema),
@@ -58,4 +74,11 @@ export const chartDataSchema = z.object({
   // server-side from the same constant the eligibility gate uses, so the
   // browser never carries a second copy of the rule.
   digestPausesAt: z.string().nullable().optional(),
+  // Plan vs actual for the latest complete calendar month, pinned server-side
+  // independent of the dashboard's date filter (plannedMonthly is a monthly
+  // figure; the filter is not). Optional only so this schema stays a
+  // type-only contract the five existing ChartData fixtures don't have to
+  // touch; the route always sends the field, empty array when there are no
+  // plans.
+  categoryVariance: z.array(categoryVarianceItemSchema).optional(),
 });

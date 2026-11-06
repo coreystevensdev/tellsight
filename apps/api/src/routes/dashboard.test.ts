@@ -18,17 +18,31 @@ const mockGetLatestSummary = vi.fn();
 const mockGetActiveDatasetId = vi.fn();
 const mockGetRowCount = vi.fn();
 const mockGetHasMarginSignal = vi.fn();
+const mockGetCategoryVarianceWindow = vi.fn();
+const mockListCategoryPlans = vi.fn();
 
 const mockFindCallerContext = vi.fn();
 
-vi.mock('../db/queries/index.js', () => ({
-  chartsQueries: { getChartData: mockGetChartData, getHasMarginSignal: mockGetHasMarginSignal },
-  datasetsQueries: { getUserOrgDemoState: mockGetUserOrgDemoState, getDatasetsByOrg: mockGetDatasetsByOrg },
-  orgsQueries: { getSeedOrgId: mockGetSeedOrgId, findOrgById: mockFindOrgById, getActiveDatasetId: mockGetActiveDatasetId },
-  aiSummariesQueries: { getCachedSummary: mockGetCachedSummary, getLatestSummary: mockGetLatestSummary },
-  dataRowsQueries: { getRowCount: mockGetRowCount },
-  userOrgsQueries: { findCallerContext: mockFindCallerContext },
-}));
+// buildCategoryVariance comes from the real module rather than a mock: it's
+// pure (no db.js import touches it), so route tests can assert the actual
+// merged categoryVariance instead of a canned stand-in.
+vi.mock('../db/queries/index.js', async () => {
+  const { buildCategoryVariance } = await import('../db/queries/charts.js');
+  return {
+    chartsQueries: {
+      getChartData: mockGetChartData,
+      getHasMarginSignal: mockGetHasMarginSignal,
+      getCategoryVarianceWindow: mockGetCategoryVarianceWindow,
+      buildCategoryVariance,
+    },
+    datasetsQueries: { getUserOrgDemoState: mockGetUserOrgDemoState, getDatasetsByOrg: mockGetDatasetsByOrg },
+    orgsQueries: { getSeedOrgId: mockGetSeedOrgId, findOrgById: mockFindOrgById, getActiveDatasetId: mockGetActiveDatasetId },
+    aiSummariesQueries: { getCachedSummary: mockGetCachedSummary, getLatestSummary: mockGetLatestSummary },
+    dataRowsQueries: { getRowCount: mockGetRowCount },
+    userOrgsQueries: { findCallerContext: mockFindCallerContext },
+    categoryPlansQueries: { listCategoryPlans: mockListCategoryPlans },
+  };
+});
 
 vi.mock('../services/analytics/trackEvent.js', () => ({
   trackEvent: mockTrackEvent,
@@ -110,6 +124,8 @@ beforeEach(() => {
   mockGetActiveDatasetId.mockResolvedValue(null);
   mockGetRowCount.mockResolvedValue(144);
   mockGetHasMarginSignal.mockResolvedValue(false);
+  mockGetCategoryVarianceWindow.mockResolvedValue(null);
+  mockListCategoryPlans.mockResolvedValue([]);
   mockFindCallerContext.mockResolvedValue({ role: 'owner', isPlatformAdmin: false });
   // withRlsContext executes the callback with a mock tx, query mocks intercept regardless
   mockWithRlsContext.mockImplementation(async (_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({ _tag: 'tx' }));
@@ -390,6 +406,64 @@ describe('dataset query param', () => {
 
     expect(res.status).toBe(200);
     expect(body.data.datasetId).toBe(2);
+  });
+});
+
+describe('categoryVariance', () => {
+  it('merges plans and the resolved window for an authenticated request, on the same tx', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce({ sub: '42', org_id: 10, role: 'owner', isAdmin: false });
+    mockFindOrgById.mockResolvedValueOnce({ id: 10, name: 'Acme Corp', slug: 'acme' });
+    mockGetUserOrgDemoState.mockResolvedValueOnce('user_only');
+    mockListCategoryPlans.mockResolvedValueOnce([{ category: 'Rent', plannedMonthly: 1000 }]);
+    mockGetCategoryVarianceWindow.mockResolvedValueOnce({
+      monthLabel: 'Oct 2026',
+      actualByCategory: new Map([['Rent', 1200]]),
+    });
+
+    const res = await fetch(`${baseUrl}/dashboard/charts`, {
+      headers: { Cookie: 'access_token=valid-jwt' },
+    });
+    const body = await res.json() as { data: { categoryVariance: unknown[] } };
+
+    expect(body.data.categoryVariance).toEqual([{
+      category: 'Rent',
+      plannedMonthly: 1000,
+      actualMonthly: 1200,
+      variance: 200,
+      variancePercent: 20,
+      monthLabel: 'Oct 2026',
+      direction: 'over',
+    }]);
+    expect(mockListCategoryPlans).toHaveBeenCalledWith(10, expect.anything());
+    expect(mockGetCategoryVarianceWindow).toHaveBeenCalledWith(10, expect.anything(), 1);
+  });
+
+  // dbAdmin and the seed org id, not the default client: current_setting has
+  // no session var outside withRlsContext, so org_id = NULL would silently
+  // match zero rows instead of erroring.
+  it('fetches plans and the variance window through dbAdmin with the seed org id for anonymous requests', async () => {
+    const res = await fetch(`${baseUrl}/dashboard/charts`);
+
+    expect(res.status).toBe(200);
+    expect(mockListCategoryPlans).toHaveBeenCalledWith(99, expect.objectContaining({ _tag: 'dbAdmin' }));
+    expect(mockGetCategoryVarianceWindow).toHaveBeenCalledWith(99, expect.objectContaining({ _tag: 'dbAdmin' }));
+  });
+
+  it('is an empty array for an org with no plans', async () => {
+    const res = await fetch(`${baseUrl}/dashboard/charts`);
+    const body = await res.json() as { data: { categoryVariance: unknown[] } };
+
+    expect(body.data.categoryVariance).toEqual([]);
+  });
+
+  it('is an empty array when plans exist but no complete month has data', async () => {
+    mockListCategoryPlans.mockResolvedValueOnce([{ category: 'Rent', plannedMonthly: 1000 }]);
+    mockGetCategoryVarianceWindow.mockResolvedValueOnce(null);
+
+    const res = await fetch(`${baseUrl}/dashboard/charts`);
+    const body = await res.json() as { data: { categoryVariance: unknown[] } };
+
+    expect(body.data.categoryVariance).toEqual([]);
   });
 });
 

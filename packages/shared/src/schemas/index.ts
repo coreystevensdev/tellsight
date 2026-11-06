@@ -32,6 +32,7 @@ export {
   expenseBreakdownItemSchema,
   yoyComparisonPointSchema,
   datasetDateRangeSchema,
+  categoryVarianceItemSchema,
   chartDataSchema,
 } from './charts.js';
 

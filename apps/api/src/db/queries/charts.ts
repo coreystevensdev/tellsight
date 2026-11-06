@@ -1,5 +1,5 @@
 import { eq, and, sql, gte, lte, type SQL } from 'drizzle-orm';
-import type { ChartData, ChartFilters, Granularity } from 'shared/types';
+import type { CategoryPlan, CategoryVarianceItem, ChartData, ChartFilters, Granularity } from 'shared/types';
 import { db, type DbTransaction } from '../../lib/db.js';
 import { dataRows } from '../schema.js';
 
@@ -213,6 +213,100 @@ export async function getChartData(
     : [];
 
   return { revenueTrend, expenseBreakdown, expenseTrend, monthlyComparison, yoyComparison, availableCategories, dateRange };
+}
+
+export interface CategoryVarianceWindow {
+  monthLabel: string;
+  actualByCategory: Map<string, number>;
+}
+
+/**
+ * Resolves the latest calendar month with any data, excluding the current
+ * month, then sums that month's expenses by category. This is
+ * computeCategoryVariance's month rule (categoryMetrics.ts:32-59) run again
+ * as SQL: that function only ever sees DataRow[] inside the curation
+ * pipeline and nothing persists its result for this route to read, and
+ * expenseBreakdown above can't substitute because it sums whatever range the
+ * dashboard filter covers, not one pinned month.
+ *
+ * Takes no plans: which categories matter is a join the caller does once
+ * both this and the plans fetch resolve, so the two queries don't have to
+ * wait on each other.
+ */
+export async function getCategoryVarianceWindow(
+  orgId: number,
+  client: typeof db | DbTransaction = db,
+  datasetId?: number,
+  now: Date = new Date(),
+): Promise<CategoryVarianceWindow | null> {
+  const scope = scopeConditions(orgId, datasetId);
+  const currentMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+
+  const [monthRow] = await client
+    .select({
+      month: sql<string | null>`to_char(max(date_trunc('month', ${dataRows.date})), 'YYYY-MM')`,
+    })
+    .from(dataRows)
+    .where(
+      and(...scope, sql`to_char(date_trunc('month', ${dataRows.date}), 'YYYY-MM') <> ${currentMonth}`),
+    );
+
+  const targetMonth = monthRow?.month ?? null;
+  if (!targetMonth) return null;
+
+  const expenseRows = await client
+    .select({
+      category: dataRows.category,
+      total: sql<string>`sum(${dataRows.amount})`,
+    })
+    .from(dataRows)
+    .where(
+      and(
+        ...scope,
+        eq(dataRows.parentCategory, 'Expenses'),
+        sql`to_char(date_trunc('month', ${dataRows.date}), 'YYYY-MM') = ${targetMonth}`,
+      ),
+    )
+    .groupBy(dataRows.category);
+
+  return {
+    monthLabel: bucketLabel(targetMonth, 'monthly'),
+    actualByCategory: new Map(expenseRows.map((r) => [r.category, round2(parseFloat(r.total))])),
+  };
+}
+
+/**
+ * Combines plans with a resolved window into chart rows. Iterates plans, not
+ * actualByCategory: a planned category with no spend this month still gets a
+ * row (actualMonthly 0, the same "you planned it and nothing went out"
+ * finding categoryMetrics.ts makes), and a category with no plan is left out
+ * rather than shown as a zero budget. Same 5% on-plan band and same
+ * zero-plan guard as computeCategoryVariance, so the chart and the digest
+ * text it feeds never disagree about which categories are over or under.
+ */
+export function buildCategoryVariance(
+  plans: CategoryPlan[],
+  window: CategoryVarianceWindow | null,
+): CategoryVarianceItem[] {
+  if (!window) return [];
+
+  return plans.map((plan) => {
+    const actualMonthly = window.actualByCategory.get(plan.category) ?? 0;
+    const variance = round2(actualMonthly - plan.plannedMonthly);
+    const variancePercent = plan.plannedMonthly === 0 ? 0 : (variance / plan.plannedMonthly) * 100;
+    const direction: CategoryVarianceItem['direction'] =
+      Math.abs(variancePercent) < 5 ? 'on_plan' : variance > 0 ? 'over' : 'under';
+
+    return {
+      category: plan.category,
+      plannedMonthly: plan.plannedMonthly,
+      actualMonthly,
+      variance,
+      variancePercent: Math.round(variancePercent * 10) / 10,
+      monthLabel: window.monthLabel,
+      direction,
+    };
+  });
 }
 
 /**
