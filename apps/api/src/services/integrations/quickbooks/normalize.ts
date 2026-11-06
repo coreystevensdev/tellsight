@@ -160,13 +160,6 @@ export function normalizeTransaction(
   }
 
   if (txnType === 'Payment' && isAlreadyRecorded(tx)) return [];
-  // Deposit's per-line check below only ever reads line.LinkedTxn, but a
-  // deposit can carry the link on the transaction root instead (the shape
-  // every other type on this path defends against). A root link means the
-  // whole deposit is already recorded, same as isAlreadyRecorded does for
-  // Payment above; the per-line filter still runs for everything else a
-  // root-unlinked deposit mixes in.
-  if (txnType === 'Deposit' && linksToIncomeType(tx.LinkedTxn)) return [];
 
   const realLines = (tx.Line ?? []).filter(carriesItsOwnAmount);
 
@@ -175,7 +168,10 @@ export function normalizeTransaction(
   // a loan or owner contribution, with no record anywhere else). Dropping
   // only the linked lines, rather than the whole transaction the way
   // Payment does above, is what keeps a $5,000 owner loan swept into the
-  // same deposit as a $500 payment from disappearing along with it.
+  // same deposit as a $500 payment from disappearing along with it. A root
+  // link (checked below, only once no real line is left) is a different
+  // question: an unlinked line is new money no matter what the root claims,
+  // so a root link can never suppress a deposit that still has one.
   const lines =
     txnType === 'Deposit'
       ? realLines.filter((line) => !linksToIncomeType(line.LinkedTxn))
@@ -190,6 +186,14 @@ export function normalizeTransaction(
     // whatever they link to; that is different from never having a line to
     // begin with, and falling back to TotalAmt here would double-count it.
     if (txnType === 'Deposit' && realLines.length > 0) return [];
+
+    // A lineless deposit, or one with nothing but an aggregate line, can
+    // still carry the link on the transaction root instead of a line. Real
+    // Intuit payloads were never observed doing this, every sample puts the
+    // link on Line, but checking the root only here, after confirming there
+    // is no real line left to report, is what keeps this from suppressing
+    // a deposit that still has unlinked money in it.
+    if (txnType === 'Deposit' && linksToIncomeType(tx.LinkedTxn)) return [];
 
     // No line items (a Payment), or nothing left after dropping aggregates
     // (an invoice whose only line is its subtotal): one synthetic row off

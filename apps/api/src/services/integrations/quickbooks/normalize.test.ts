@@ -790,12 +790,15 @@ describe('LinkedTxn settlement, DW-231', () => {
     expect(rows[0]!.sourceId).toBe('dep-mixed-2');
   });
 
-  // Before this rework, isAlreadyRecorded read root plus every line for
-  // both Payment and Deposit. The per-line fix above only ever reads
-  // line.LinkedTxn, which silently dropped the root check for Deposit.
-  // Real Intuit payloads put the link on Line, not the root, so this
-  // guards a shape that has not been observed rather than one that has.
-  it('a root-linked deposit still suppresses even when its one line is unlinked', () => {
+  // A root link cannot suppress a deposit that still has an unlinked line:
+  // that line is new money by definition, and nothing else recorded it.
+  // An earlier version of this fix checked the root up front, before the
+  // per-line filter ran, and suppressed this shape entirely; it took this
+  // same $5,000 Owner Loan line from a real row to nothing, a regression
+  // only caught because a later review measured it against the pre-rework
+  // baseline. The root check only matters once no real line is left, see
+  // the two tests below this one.
+  it('a root-linked deposit still reports an unlinked line, the root alone cannot suppress it', () => {
     const unappliedPayment = makePayment({ Id: 'pay-root-linked', TotalAmt: 500 });
     const deposit: QbTransaction = {
       Id: 'dep-root-linked',
@@ -812,7 +815,45 @@ describe('LinkedTxn settlement, DW-231', () => {
       ],
     };
 
-    expect(normalizeTransaction(deposit, 'Deposit')).toEqual([]);
+    const rows = normalizeTransaction(deposit, 'Deposit');
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.amount).toBe('500');
+    expect(rows[0]!.parentCategory).toBe('Income');
+    expect(rows[0]!.category).toBe('Owner Loan');
+  });
+
+  it('a root-linked deposit mixing a linked line with an unlinked one still reports the unlinked line', () => {
+    // The same regression from the other direction: a deposit that is both
+    // root-linked and has a per-line linked/unlinked mix. The per-line
+    // filter already drops the linked line; the root link must not also
+    // wipe out the unlinked one.
+    const sweptPayment = makePayment({ Id: 'pay-swept-root', TotalAmt: 500 });
+    const deposit: QbTransaction = {
+      Id: 'dep-root-mixed',
+      TxnDate: '2026-04-14',
+      TotalAmt: 5500,
+      LinkedTxn: [{ TxnId: sweptPayment.Id, TxnType: 'Payment' }],
+      Line: [
+        {
+          Id: '1',
+          Amount: 500,
+          LinkedTxn: [{ TxnId: sweptPayment.Id, TxnType: 'Payment' }],
+        },
+        {
+          Id: '2',
+          Amount: 5000,
+          DetailType: 'DepositLineDetail',
+          DepositLineDetail: { AccountRef: { value: '2', name: 'Owner Loan' } },
+        },
+      ],
+    };
+
+    const rows = normalizeTransaction(deposit, 'Deposit');
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.amount).toBe('5000');
+    expect(rows[0]!.category).toBe('Owner Loan');
   });
 
   it('a root-linked deposit with no lines at all still suppresses', () => {
@@ -822,6 +863,22 @@ describe('LinkedTxn settlement, DW-231', () => {
       TxnDate: '2026-04-14',
       TotalAmt: 500,
       LinkedTxn: [{ TxnId: unappliedPayment.Id, TxnType: 'Payment' }],
+    };
+
+    expect(normalizeTransaction(deposit, 'Deposit')).toEqual([]);
+  });
+
+  it('a root-linked deposit with nothing but an aggregate line still suppresses', () => {
+    // The second shape that reaches the TotalAmt fallback: a real Line
+    // array that carries no reportable amount once SubTotal/DescriptionOnly
+    // lines are dropped, same as the lineless case just above.
+    const unappliedPayment = makePayment({ Id: 'pay-root-linked-3', TotalAmt: 500 });
+    const deposit: QbTransaction = {
+      Id: 'dep-root-linked-3',
+      TxnDate: '2026-04-14',
+      TotalAmt: 500,
+      LinkedTxn: [{ TxnId: unappliedPayment.Id, TxnType: 'Payment' }],
+      Line: [{ Amount: 500, DetailType: 'SubTotalLineDetail' }],
     };
 
     expect(normalizeTransaction(deposit, 'Deposit')).toEqual([]);
