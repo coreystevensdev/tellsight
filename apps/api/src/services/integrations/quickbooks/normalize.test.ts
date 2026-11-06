@@ -165,9 +165,9 @@ describe('normalizeTransaction', () => {
     const rows = normalizeTransaction(tx, 'Purchase');
 
     expect(rows).toHaveLength(3);
-    expect(rows[0]!.sourceId).toBe('tx-1-l1');
-    expect(rows[1]!.sourceId).toBe('tx-1-l2');
-    expect(rows[2]!.sourceId).toBe('tx-1-l3');
+    expect(rows[0]!.sourceId).toBe('Purchase-tx-1-l1');
+    expect(rows[1]!.sourceId).toBe('Purchase-tx-1-l2');
+    expect(rows[2]!.sourceId).toBe('Purchase-tx-1-l3');
     expect(rows[0]!.category).toBe('Office Supplies');
     expect(rows[1]!.category).toBe('Shipping');
     expect(rows[2]!.category).toBe('Tax');
@@ -188,7 +188,7 @@ describe('normalizeTransaction', () => {
     });
 
     const rows = normalizeTransaction(tx, 'Purchase');
-    expect(rows[0]!.sourceId).toBe('tx-1-i0');
+    expect(rows[0]!.sourceId).toBe('Purchase-tx-1-i0');
   });
 
   it('normalizes amount to positive (abs value)', () => {
@@ -280,7 +280,7 @@ describe('normalizeTransaction', () => {
     const rows = normalizeTransaction(tx, 'Payment');
 
     expect(rows).toHaveLength(1);
-    expect(rows[0]!.sourceId).toBe('tx-payment-0');
+    expect(rows[0]!.sourceId).toBe('Payment-tx-payment-0');
     expect(rows[0]!.amount).toBe('500');
     expect(rows[0]!.category).toBe('Uncategorized');
     expect(rows[0]!.parentCategory).toBe('Income');
@@ -443,7 +443,23 @@ describe('aggregate lines', () => {
     const ids = rows.map((r) => r.sourceId);
 
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).toEqual(['130-1', '130-2', '130-3']);
+    expect(ids).toEqual(['Invoice-130-1', 'Invoice-130-2', 'Invoice-130-3']);
+  });
+
+  // DW-237: QuickBooks allocates Id per entity type, so an Invoice and a
+  // Purchase can both be "501" in the same realm. Before txnType joined the
+  // key, both produced the same sourceId and the second upsert against
+  // (org_id, source_id) silently overwrote the first.
+  it('gives an Invoice and a Purchase with the same Id different sourceIds', () => {
+    const invoiceLine = makeInvoice({ Id: '501', Line: [{ Id: '1', Amount: 100 }] });
+    const purchaseLine = makePurchase({ Id: '501', Line: [{ Id: '1', Amount: 50 }] });
+
+    const [invoiceRow] = normalizeTransaction(invoiceLine, 'Invoice');
+    const [purchaseRow] = normalizeTransaction(purchaseLine, 'Purchase');
+
+    expect(invoiceRow!.sourceId).not.toBe(purchaseRow!.sourceId);
+    expect(invoiceRow!.sourceId).toBe('Invoice-501-1');
+    expect(purchaseRow!.sourceId).toBe('Purchase-501-1');
   });
 
   it('drops a DescriptionOnly line, which carries text rather than money', () => {
@@ -490,7 +506,7 @@ describe('aggregate lines', () => {
     const rows = normalizeTransaction(tx, 'Invoice');
     expect(rows).toHaveLength(1);
     expect(rows[0]!.amount).toBe('75');
-    expect(rows[0]!.sourceId).toBe('42-0');
+    expect(rows[0]!.sourceId).toBe('Invoice-42-0');
     expect(rows[0]!.category).toBe('Uncategorized');
   });
 });
@@ -787,7 +803,7 @@ describe('LinkedTxn settlement, DW-231', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]!.amount).toBe('5000');
     expect(rows[0]!.category).toBe('Owner Loan');
-    expect(rows[0]!.sourceId).toBe('dep-mixed-2');
+    expect(rows[0]!.sourceId).toBe('Deposit-dep-mixed-2');
   });
 
   // A root link cannot suppress a deposit that still has an unlinked line:

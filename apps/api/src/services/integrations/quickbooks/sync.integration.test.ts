@@ -3,8 +3,9 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 
 import { dbAdmin } from '../../../lib/db.js';
 import { orgs, datasets, dataRows } from '../../../db/schema.js';
+import { normalizeTransaction } from './normalize.js';
 import { upsertRows } from './sync.js';
-import type { NormalizedQbRow, QbTransactionType } from './types.js';
+import type { NormalizedQbRow, QbTransaction, QbTransactionType } from './types.js';
 
 // upsertRows never deleted anything until this change, so a transaction
 // that used to produce rows and now produces fewer (or none) left the old
@@ -21,9 +22,17 @@ let orgId: number;
 let datasetId: number;
 
 function row(
-  overrides: Partial<NormalizedQbRow> & { sourceId: string; txnType?: QbTransactionType },
+  overrides: Partial<NormalizedQbRow> & {
+    sourceId: string;
+    qbId: string;
+    txnType?: QbTransactionType;
+  },
 ): NormalizedQbRow {
-  const { txnType = 'Payment', ...rest } = overrides;
+  // qbId is spelled out rather than sliced back off sourceId. It used to be
+  // derived, which quietly turned a realistic key like 'Invoice-501-1' into
+  // qb_id 'Invoice-501' and would have made a reconciliation assertion pass
+  // for the wrong reason.
+  const { txnType = 'Payment', qbId, ...rest } = overrides;
   return {
     sourceType: 'quickbooks',
     date: new Date('2026-04-10'),
@@ -32,10 +41,7 @@ function row(
     parentCategory: 'Income',
     label: null,
     metadata: {
-      // sourceId is `${qbId}-${lineId}` and the qb_id fixtures below (e.g.
-      // 'txn-shrink') contain hyphens themselves, so this has to split on
-      // the last '-', not the first.
-      qb_id: rest.sourceId.slice(0, rest.sourceId.lastIndexOf('-')),
+      qb_id: qbId,
       txnType,
       docNumber: null,
       memo: null,
@@ -80,8 +86,8 @@ describe('upsertRows reconciliation against real Postgres', () => {
     // not), and txn-a's remainder is now fully applied, so the normalizer
     // produces no rows for it this time.
     await dbAdmin.insert(dataRows).values([
-      { orgId, datasetId, ...row({ sourceId: 'txn-a-0' }) },
-      { orgId, datasetId, ...row({ sourceId: 'txn-b-0' }) },
+      { orgId, datasetId, ...row({ sourceId: 'txn-a-0', qbId: 'txn-a' }) },
+      { orgId, datasetId, ...row({ sourceId: 'txn-b-0', qbId: 'txn-b' }) },
     ]);
 
     const result = await upsertRows(orgId, datasetId, 'Payment', ['txn-a'], []);
@@ -97,8 +103,8 @@ describe('upsertRows reconciliation against real Postgres', () => {
     // $600 remainder) gets re-fetched after a $200 second payment, and now
     // normalizes to one row instead of two.
     await dbAdmin.insert(dataRows).values([
-      { orgId, datasetId, ...row({ sourceId: 'txn-shrink-0' }) },
-      { orgId, datasetId, ...row({ sourceId: 'txn-shrink-1' }) },
+      { orgId, datasetId, ...row({ sourceId: 'txn-shrink-0', qbId: 'txn-shrink' }) },
+      { orgId, datasetId, ...row({ sourceId: 'txn-shrink-1', qbId: 'txn-shrink' }) },
     ]);
 
     const result = await upsertRows(
@@ -106,7 +112,7 @@ describe('upsertRows reconciliation against real Postgres', () => {
       datasetId,
       'Payment',
       ['txn-shrink'],
-      [row({ sourceId: 'txn-shrink-0', amount: '400.00' })],
+      [row({ sourceId: 'txn-shrink-0', qbId: 'txn-shrink', amount: '400.00' })],
     );
 
     expect(result).toEqual({ upserted: 1, reconciled: 1 });
@@ -143,7 +149,7 @@ describe('upsertRows reconciliation against real Postgres', () => {
     await dbAdmin.insert(dataRows).values({
       orgId,
       datasetId,
-      ...row({ sourceId: 'txn-untouched-0' }),
+      ...row({ sourceId: 'txn-untouched-0', qbId: 'txn-untouched' }),
     });
 
     const result = await upsertRows(
@@ -151,7 +157,7 @@ describe('upsertRows reconciliation against real Postgres', () => {
       datasetId,
       'Payment',
       ['txn-new'],
-      [row({ sourceId: 'txn-new-0' })],
+      [row({ sourceId: 'txn-new-0', qbId: 'txn-new' })],
     );
 
     expect(result).toEqual({ upserted: 1, reconciled: 0 });
@@ -165,9 +171,9 @@ describe('upsertRows reconciliation against real Postgres', () => {
   // Invoice's row.
   it('never deletes a different entity type that happens to share the same qb_id', async () => {
     await dbAdmin.insert(dataRows).values([
-      { orgId, datasetId, ...row({ sourceId: '501-1', txnType: 'Invoice' }) },
-      { orgId, datasetId, ...row({ sourceId: '501-2', txnType: 'Invoice' }) },
-      { orgId, datasetId, ...row({ sourceId: '999-1', txnType: 'Invoice' }) },
+      { orgId, datasetId, ...row({ sourceId: '501-1', qbId: '501', txnType: 'Invoice' }) },
+      { orgId, datasetId, ...row({ sourceId: '501-2', qbId: '501', txnType: 'Invoice' }) },
+      { orgId, datasetId, ...row({ sourceId: '999-1', qbId: '999', txnType: 'Invoice' }) },
     ]);
 
     // A Purchase batch that happens to fetch an id of '501' and produces no
@@ -178,5 +184,96 @@ describe('upsertRows reconciliation against real Postgres', () => {
     expect(result.reconciled).toBe(0);
     expect(await sourceIdsFor('501')).toEqual(expect.arrayContaining(['501-1', '501-2']));
     expect(await sourceIdsFor('999')).toEqual(['999-1']);
+  });
+});
+
+// DW-237: source_id carried no entity type, so if QuickBooks allocates Id per
+// type then an Invoice and a Purchase sharing one Id both produced "501-1" and
+// the second upsert overwrote the first through the (org_id, source_id) unique
+// index. The unit test asserts the two strings now differ; this one is here
+// because a string comparison cannot show that the index accepts both rows.
+describe('quickbooks source_id collisions across entity types', () => {
+  it('keeps an Invoice and a Purchase that share an Id as two rows', async () => {
+    const sharedId = '501';
+    const invoice: QbTransaction = {
+      Id: sharedId,
+      TxnDate: '2026-04-12',
+      DocNumber: 'INV-501',
+      Line: [
+        {
+          Id: '1',
+          Amount: 300,
+          DetailType: 'SalesItemLineDetail',
+          SalesItemLineDetail: { ItemRef: { value: 'item-1', name: 'Consulting' } },
+        },
+      ],
+    };
+    const purchase: QbTransaction = {
+      Id: sharedId,
+      TxnDate: '2026-04-13',
+      DocNumber: 'P-501',
+      VendorRef: { value: '9', name: 'Acme Supplies' },
+      Line: [
+        {
+          Id: '1',
+          Amount: 80,
+          DetailType: 'AccountBasedExpenseLineDetail',
+          AccountBasedExpenseLineDetail: {
+            AccountRef: { value: 'acc-1', name: 'Office Supplies' },
+          },
+        },
+      ],
+    };
+
+    const invoiceRows = normalizeTransaction(invoice, 'Invoice');
+    const purchaseRows = normalizeTransaction(purchase, 'Purchase');
+
+    await upsertRows(orgId, datasetId, 'Invoice', [sharedId], invoiceRows);
+    await upsertRows(orgId, datasetId, 'Purchase', [sharedId], purchaseRows);
+
+    // Both survive, and the amounts prove which row is which: before the fix
+    // the second write replaced the first and only one amount remained.
+    const stored = await dbAdmin.query.dataRows.findMany({
+      where: and(eq(dataRows.orgId, orgId), eq(dataRows.datasetId, datasetId)),
+    });
+    const collided = stored
+      .filter((r) => (r.metadata as { qb_id?: string } | null)?.qb_id === sharedId)
+      .map((r) => ({ sourceId: r.sourceId, amount: r.amount, parentCategory: r.parentCategory }))
+      .sort((a, b) => a.sourceId!.localeCompare(b.sourceId!));
+
+    expect(collided).toEqual([
+      { sourceId: 'Invoice-501-1', amount: '300.00', parentCategory: 'Income' },
+      { sourceId: 'Purchase-501-1', amount: '80.00', parentCategory: 'Expenses' },
+    ]);
+  });
+
+  it('reconciles one entity type without touching the other type sharing its Id', async () => {
+    // The reconciliation delete is scoped by txnType for exactly this reason:
+    // keyed on qb_id alone, re-syncing the Purchase would delete the Invoice.
+    const sharedId = '777';
+    const invoiceRows = normalizeTransaction(
+      {
+        Id: sharedId,
+        TxnDate: '2026-05-01',
+        Line: [{ Id: '1', Amount: 50, DetailType: 'SalesItemLineDetail' }],
+      },
+      'Invoice',
+    );
+    const purchaseRows = normalizeTransaction(
+      {
+        Id: sharedId,
+        TxnDate: '2026-05-02',
+        Line: [{ Id: '1', Amount: 20, DetailType: 'AccountBasedExpenseLineDetail' }],
+      },
+      'Purchase',
+    );
+    await upsertRows(orgId, datasetId, 'Invoice', [sharedId], invoiceRows);
+    await upsertRows(orgId, datasetId, 'Purchase', [sharedId], purchaseRows);
+
+    // Re-sync the Purchase alone, now producing nothing for it.
+    const result = await upsertRows(orgId, datasetId, 'Purchase', [sharedId], []);
+
+    expect(result).toEqual({ upserted: 0, reconciled: 1 });
+    expect(await sourceIdsFor(sharedId)).toEqual(['Invoice-777-1']);
   });
 });

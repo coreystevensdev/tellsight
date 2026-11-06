@@ -105,7 +105,10 @@ function uncategorizedRow(
 ): NormalizedQbRow {
   return {
     sourceType: 'quickbooks',
-    sourceId: `${tx.Id}-0`,
+    // DW-237: QuickBooks allocates Id per entity type, so an Invoice and a
+    // Purchase can share one Id. txnType in the key is what keeps them from
+    // upserting over each other on (org_id, source_id).
+    sourceId: `${txnType}-${tx.Id}-0`,
     date: new Date(tx.TxnDate),
     amount: String(amount),
     // A refund's category and its parent are one decision, so the helper owns
@@ -224,7 +227,9 @@ export function normalizeTransaction(
 
     return {
       sourceType: 'quickbooks',
-      sourceId: `${tx.Id}-${lineId}`,
+      // DW-237: same reasoning as the synthetic row above, txnType first so
+      // Invoice 501 line 1 and Purchase 501 line 1 can't produce one string.
+      sourceId: `${txnType}-${tx.Id}-${lineId}`,
       date,
       amount: String(Math.abs(line.Amount)),
       category,
