@@ -43,6 +43,21 @@ interface BridgeResult {
 // describing one window instead of two.
 const MAX_NAMED_CATEGORIES = 6;
 
+// A real category can already be named Other, a common catch-all in a chart
+// of accounts. Merging the overflow into it instead of adding a second entry
+// keeps the bridge from showing two bars sharing one label with different
+// values.
+function foldOverflowIntoOther(sorted: ExpenseBreakdownItem[]): ExpenseBreakdownItem[] {
+  const named = sorted.slice(0, MAX_NAMED_CATEGORIES);
+  const overflowTotal = sorted.slice(MAX_NAMED_CATEGORIES).reduce((sum, e) => sum + e.total, 0);
+
+  const otherIndex = named.findIndex((c) => c.category.toLowerCase() === 'other');
+  if (otherIndex >= 0) {
+    return named.map((c, i) => (i === otherIndex ? { ...c, total: c.total + overflowTotal } : c));
+  }
+  return [...named, { category: 'Other', total: overflowTotal }];
+}
+
 export function buildBridge(
   monthlyComparison: MonthlyComparisonPoint[],
   expenseBreakdown: ExpenseBreakdownItem[],
@@ -53,16 +68,16 @@ export function buildBridge(
   // expenseBreakdown arrives sorted descending from charts.ts, but sorting
   // again here is one line and means Other always folds in the smallest
   // categories even if a caller (or a future server change) hands this
-  // function unsorted data.
-  const sorted = [...expenseBreakdown].sort((a, b) => b.total - a.total);
+  // function unsorted data. Tied totals break on category name: charts.ts
+  // orders its aggregation by bucket alone with no secondary key on
+  // category (charts.ts:109), and its own sort has the same gap
+  // (charts.ts:173), so a tie at the boundary would otherwise flip which
+  // category is named depending on what order Postgres happens to return.
+  const sorted = [...expenseBreakdown].sort(
+    (a, b) => b.total - a.total || a.category.localeCompare(b.category),
+  );
   const categories = sorted.length > MAX_NAMED_CATEGORIES
-    ? [
-        ...sorted.slice(0, MAX_NAMED_CATEGORIES),
-        {
-          category: 'Other',
-          total: sorted.slice(MAX_NAMED_CATEGORIES).reduce((sum, e) => sum + e.total, 0),
-        },
-      ]
+    ? foldOverflowIntoOther(sorted)
     : sorted;
 
   const steps: BridgeStep[] = [

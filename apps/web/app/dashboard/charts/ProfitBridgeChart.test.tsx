@@ -66,6 +66,24 @@ describe('buildBridge', () => {
     expect(result.closes).toBe(false);
   });
 
+  it('does not close on exactly one cent of drift', () => {
+    const oneCentOff = buildBridge(
+      [{ month: 'Jan 2026', revenue: 100, expenses: 40, profit: 60 }],
+      [{ category: 'Rent', total: 40.01 }],
+    );
+
+    expect(oneCentOff.closes).toBe(false);
+  });
+
+  it('closes through a sub-cent drift, since both sides are sums of already cent-rounded numbers', () => {
+    const subCentOff = buildBridge(
+      [{ month: 'Jan 2026', revenue: 100, expenses: 40, profit: 60 }],
+      [{ category: 'Rent', total: 40.001 }],
+    );
+
+    expect(subCentOff.closes).toBe(true);
+  });
+
   it('builds a two-bar bridge when there are no expense categories, profit equal to revenue', () => {
     const result = buildBridge(
       [{ month: 'Jan 2026', revenue: 4000, expenses: 0, profit: 4000 }],
@@ -107,6 +125,76 @@ describe('buildBridge', () => {
     ]);
     expect(result.steps.find((s) => s.label === 'Other')?.delta).toBe(-500);
     expect(result.closes).toBe(true);
+  });
+
+  it('merges overflow into a real "Other" category instead of adding a second bar with the same label', () => {
+    const withRealOther = [
+      { category: 'A', total: 5000 },
+      { category: 'B', total: 4000 },
+      { category: 'C', total: 3000 },
+      { category: 'D', total: 2000 },
+      { category: 'E', total: 1500 },
+      { category: 'Other', total: 1200 },
+      { category: 'F', total: 700 },
+      { category: 'G', total: 300 },
+    ];
+    const result = buildBridge(
+      [{ month: 'Jan 2026', revenue: 20000, expenses: 17700, profit: 2300 }],
+      withRealOther,
+    );
+
+    const otherSteps = result.steps.filter((s) => s.label === 'Other');
+    expect(otherSteps).toHaveLength(1);
+    expect(otherSteps[0]?.delta).toBe(-2200);
+    expect(result.closes).toBe(true);
+  });
+
+  it('matches an existing Other category case-insensitively and keeps its original casing', () => {
+    const withLoudOther = [
+      { category: 'A', total: 5000 },
+      { category: 'B', total: 4000 },
+      { category: 'C', total: 3000 },
+      { category: 'D', total: 2000 },
+      { category: 'E', total: 1500 },
+      { category: 'OTHER', total: 1200 },
+      { category: 'F', total: 700 },
+      { category: 'G', total: 300 },
+    ];
+    const result = buildBridge(
+      [{ month: 'Jan 2026', revenue: 20000, expenses: 17700, profit: 2300 }],
+      withLoudOther,
+    );
+
+    const matches = result.steps.filter((s) => s.label.toLowerCase() === 'other');
+    expect(matches).toHaveLength(1);
+    expect(matches[0]?.label).toBe('OTHER');
+    expect(matches[0]?.delta).toBe(-2200);
+  });
+
+  it('breaks a tie at the sixth/seventh boundary by category name, regardless of input order', () => {
+    const base = [
+      { category: 'A', total: 5000 },
+      { category: 'B', total: 4000 },
+      { category: 'C', total: 3000 },
+      { category: 'D', total: 2000 },
+      { category: 'E', total: 1500 },
+    ];
+    const tiedPoint = [{ month: 'Jan 2026', revenue: 17500, expenses: 17500, profit: 0 }];
+
+    const tiedAFirst = buildBridge(tiedPoint, [
+      ...base,
+      { category: 'Tied-A', total: 1000 },
+      { category: 'Tied-B', total: 1000 },
+    ]);
+    const tiedBFirst = buildBridge(tiedPoint, [
+      ...base,
+      { category: 'Tied-B', total: 1000 },
+      { category: 'Tied-A', total: 1000 },
+    ]);
+
+    expect(tiedAFirst.steps.map((s) => s.label)).toEqual(tiedBFirst.steps.map((s) => s.label));
+    expect(tiedAFirst.steps.find((s) => s.label === 'Tied-A')).toBeDefined();
+    expect(tiedAFirst.steps.find((s) => s.label === 'Tied-B')).toBeUndefined();
   });
 
   it('sorts categories itself, so Other still folds in the smallest ones when the caller does not sort', () => {
