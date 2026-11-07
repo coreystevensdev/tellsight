@@ -2,6 +2,7 @@ import { eq, and, between, inArray, asc, count, sql } from 'drizzle-orm';
 import { db, type DbTransaction } from '../../lib/db.js';
 import { dataRows } from '../schema.js';
 import type { MonthlyBucketMap } from '../../services/curation/computation.js';
+import { financialEffect } from '../../services/curation/computationPrimitives.js';
 
 const BATCH_SIZE = 1_000;
 
@@ -164,10 +165,11 @@ export async function getMonthlyBucketsByDataset(
     const amt = parseFloat(r.total);
     if (!Number.isFinite(amt)) continue;
     const bucket = buckets.get(r.bucket) ?? { revenue: 0, expenses: 0 };
-    if (r.parentCategory === 'Income') {
-      bucket.revenue += amt;
-    } else if (r.parentCategory === 'Expenses') {
-      bucket.expenses += amt;
+    const effect = financialEffect(r);
+    if (effect?.side === 'Income') {
+      bucket.revenue += effect.sign * amt;
+    } else if (effect?.side === 'Expenses') {
+      bucket.expenses += effect.sign * amt;
     }
     buckets.set(r.bucket, bucket);
   }

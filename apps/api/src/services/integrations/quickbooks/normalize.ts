@@ -12,21 +12,15 @@ const EXPENSE_TYPES = new Set<QbTransactionType>([
   'BillPayment',
 ]);
 
-// DW-235: a VendorCredit reduces what the business owes a vendor, so recording
-// it as a positive expense inflated Expenses by twice its amount, the mirror of
-// the refund bug above. It is not Income either: revenueMetrics.ts and
-// financialMetrics.ts both filter on 'Income' and label the result revenue, so
-// that turns a vendor return into revenue growth. So it falls through to
-// 'Other' and is now genuinely excluded everywhere, which groupByCategory used
-// to prevent.
-//
-// What this does not do: apply the reduction. Expenses stay overstated by one
-// times the credit rather than two, because an excluded row cannot subtract.
-// Getting that exact needs a contra-entry representation (a signed amount with
-// a field saying what the sign means, or a fourth parent category that nets
-// rather than being dropped), and a signed amount would have to be reconciled
-// with the abs() in charts.ts and the Math.abs here. That is design work, and
-// it is the open half of DW-235.
+// DW-235: a VendorCredit reduces what the business owes a vendor. As a positive
+// expense it inflated Expenses by twice its amount, and as 'Other' it was
+// excluded, which removed half the error and left expenses overstated by the
+// credit itself, since a dropped row cannot subtract. It is 'ExpensesContra'
+// now: the expense side, reducing it. Not Income, which revenueMetrics.ts and
+// financialMetrics.ts would report as revenue growth, and not a negative
+// amount, because inside 'Expenses' a negative already means "as the bank
+// exported it" rather than "a reduction".
+const CONTRA_TYPES = new Set<QbTransactionType>(['VendorCredit']);
 
 // CreditMemo and RefundReceipt hand money back to a customer. Same rule
 // Square uses for its refunds (square/normalize.ts): never a negative sale,
@@ -40,12 +34,24 @@ const REFUND_TYPES = new Set<QbTransactionType>(['CreditMemo', 'RefundReceipt'])
 
 const INCOME_TYPES = new Set<QbTransactionType>(['Invoice', 'Payment', 'SalesReceipt', 'Deposit']);
 
-function getParentCategory(
+export type QbParentCategory = 'Income' | 'Expenses' | 'ExpensesContra' | 'Other';
+
+// The part of the decision a line is not needed for. Both classification paths
+// go through it, so adding a type here cannot classify it on the line path and
+// miss it on the synthetic one, which is the drift VendorCredit would have hit:
+// a vendor credit with no line items would have stayed an ordinary expense.
+function parentCategoryByType(
   txnType: QbTransactionType,
-  line: QbLine,
-): 'Income' | 'Expenses' | 'Other' {
+): Exclude<QbParentCategory, 'Other'> | null {
+  if (CONTRA_TYPES.has(txnType)) return 'ExpensesContra';
   if (EXPENSE_TYPES.has(txnType) || REFUND_TYPES.has(txnType)) return 'Expenses';
   if (INCOME_TYPES.has(txnType)) return 'Income';
+  return null;
+}
+
+function getParentCategory(txnType: QbTransactionType, line: QbLine): QbParentCategory {
+  const byType = parentCategoryByType(txnType);
+  if (byType) return byType;
 
   if (txnType === 'JournalEntry') {
     const posting = line.JournalEntryLineDetail?.PostingType;
@@ -106,7 +112,7 @@ function uncategorizedRow(
   tx: QbTransaction,
   txnType: QbTransactionType,
   amount: number,
-  parentCategory: 'Income' | 'Expenses' | 'Other',
+  parentCategory: QbParentCategory,
 ): NormalizedQbRow {
   return {
     sourceType: 'quickbooks',
@@ -211,11 +217,10 @@ export function normalizeTransaction(
         tx,
         txnType,
         Math.abs(tx.TotalAmt ?? 0),
-        EXPENSE_TYPES.has(txnType) || REFUND_TYPES.has(txnType)
-          ? 'Expenses'
-          : INCOME_TYPES.has(txnType)
-            ? 'Income'
-            : 'Other',
+        // 'Other' rather than getParentCategory's JournalEntry branch: with no
+        // line there is no PostingType to read, so the direction is unknown and
+        // guessing a side is worse than staying out of both.
+        parentCategoryByType(txnType) ?? 'Other',
       ),
     ];
   }

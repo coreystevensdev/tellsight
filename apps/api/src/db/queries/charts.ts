@@ -1,6 +1,11 @@
-import { eq, and, sql, gte, lte, type SQL } from 'drizzle-orm';
+import { eq, and, inArray, sql, gte, lte, type SQL } from 'drizzle-orm';
 import type { CategoryPlan, CategoryVarianceItem, ChartData, ChartFilters, Granularity } from 'shared/types';
 import { db, type DbTransaction } from '../../lib/db.js';
+import { financialEffect } from '../../services/curation/computationPrimitives.js';
+
+// Both affect the expense side, so both have to pass a filter that selects it.
+// The sign is applied after aggregation, never in the predicate.
+const EXPENSE_SIDE = ['Expenses', 'ExpensesContra'];
 import { dataRows } from '../schema.js';
 
 // The slice of ChartData this query produces; the route wraps it with the org
@@ -124,13 +129,13 @@ export async function getChartData(
     const catRows = await client
       .selectDistinct({ category: dataRows.category })
       .from(dataRows)
-      .where(and(...scope, eq(dataRows.parentCategory, 'Expenses')))
+      .where(and(...scope, inArray(dataRows.parentCategory, EXPENSE_SIDE)))
       .orderBy(dataRows.category);
     availableCategories = catRows.map((r) => r.category);
   } else {
     const catSet = new Set<string>();
     for (const row of aggRows) {
-      if (row.parentCategory === 'Expenses') catSet.add(row.category);
+      if (financialEffect(row)?.side === 'Expenses') catSet.add(row.category);
     }
     availableCategories = [...catSet].sort();
   }
@@ -148,19 +153,22 @@ export async function getChartData(
     const amt = parseFloat(row.total);
     const key = row.bucket;
 
-    if (row.parentCategory === 'Income') {
-      revenueByBucket.set(key, (revenueByBucket.get(key) ?? 0) + amt);
+    const effect = financialEffect(row);
+    const signed = effect ? effect.sign * amt : amt;
+
+    if (effect?.side === 'Income') {
+      revenueByBucket.set(key, (revenueByBucket.get(key) ?? 0) + signed);
 
       const year = String(Number(row.year));
       const monthIdx = Number(row.monthIdx);
       if (!revenueByYearMonth.has(year)) revenueByYearMonth.set(year, new Map());
-      revenueByYearMonth.get(year)!.set(monthIdx, (revenueByYearMonth.get(year)!.get(monthIdx) ?? 0) + amt);
-    } else if (row.parentCategory === 'Expenses') {
+      revenueByYearMonth.get(year)!.set(monthIdx, (revenueByYearMonth.get(year)!.get(monthIdx) ?? 0) + signed);
+    } else if (effect?.side === 'Expenses') {
       if (activeCategories && !activeCategories.has(row.category)) continue;
-      expenseTotals.set(row.category, (expenseTotals.get(row.category) ?? 0) + amt);
+      expenseTotals.set(row.category, (expenseTotals.get(row.category) ?? 0) + signed);
 
       if (!expenseByBucketCategory.has(key)) expenseByBucketCategory.set(key, new Map());
-      expenseByBucketCategory.get(key)!.set(row.category, (expenseByBucketCategory.get(key)!.get(row.category) ?? 0) + amt);
+      expenseByBucketCategory.get(key)!.set(row.category, (expenseByBucketCategory.get(key)!.get(row.category) ?? 0) + signed);
     }
   }
 
@@ -259,7 +267,7 @@ export async function getCategoryVarianceWindow(
     .where(
       and(
         ...scope,
-        eq(dataRows.parentCategory, 'Expenses'),
+        inArray(dataRows.parentCategory, EXPENSE_SIDE),
         sql`to_char(date_trunc('month', ${dataRows.date}), 'YYYY-MM') < ${currentMonth}`,
       ),
     );
@@ -274,16 +282,25 @@ export async function getCategoryVarianceWindow(
   // export carrying negative expense rows alongside that column is real
   // input, not a hypothetical, and raw sum() would flip the comparison's
   // sign entirely rather than just its magnitude.
+  //
+  // The CASE then puts back the one negative that is a reduction rather than a
+  // sign convention. abs() alone would have turned a vendor credit into spend,
+  // which is the opposite of what it does to the bill it offsets.
   const expenseRows = await client
     .select({
       category: dataRows.category,
-      total: sql<string>`sum(abs(${dataRows.amount}))`,
+      total: sql<string>`sum(
+        CASE WHEN ${dataRows.parentCategory} = 'ExpensesContra'
+             THEN -abs(${dataRows.amount})
+             ELSE abs(${dataRows.amount})
+        END
+      )`,
     })
     .from(dataRows)
     .where(
       and(
         ...scope,
-        eq(dataRows.parentCategory, 'Expenses'),
+        inArray(dataRows.parentCategory, EXPENSE_SIDE),
         sql`to_char(date_trunc('month', ${dataRows.date}), 'YYYY-MM') = ${targetMonth}`,
       ),
     )
@@ -361,10 +378,12 @@ export async function getHasMarginSignal(
   for (const r of rows) {
     const amt = parseFloat(r.total);
     if (!Number.isFinite(amt)) continue;
-    if (r.parentCategory === 'Income') {
-      revenueByMonth.set(r.bucket, (revenueByMonth.get(r.bucket) ?? 0) + amt);
-    } else if (r.parentCategory === 'Expenses') {
-      expenseByMonth.set(r.bucket, (expenseByMonth.get(r.bucket) ?? 0) + amt);
+    const rEffect = financialEffect(r);
+    const rSigned = rEffect ? rEffect.sign * amt : amt;
+    if (rEffect?.side === 'Income') {
+      revenueByMonth.set(r.bucket, (revenueByMonth.get(r.bucket) ?? 0) + rSigned);
+    } else if (rEffect?.side === 'Expenses') {
+      expenseByMonth.set(r.bucket, (expenseByMonth.get(r.bucket) ?? 0) + rSigned);
     }
   }
 

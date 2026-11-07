@@ -130,6 +130,56 @@ describe('computeStats', () => {
     expect(stats.find((s) => s.statType === StatType.Total && s.category === 'Sales' && s.details.scope === 'category')?.value).toBe(1000);
   });
 
+  // Contra entries. A vendor credit carries a positive amount under
+  // 'ExpensesContra' and must reduce the expense side rather than add to it.
+  // The pair of assertions in each case is the point: the credit moves the
+  // number down, and a negative amount that is NOT a contra entry still counts
+  // as spend, because that is a bank export storing its own sign.
+  describe('contra entries', () => {
+    const base = { orgId: 1, datasetId: 1, sourceType: 'quickbooks' as const, label: null, metadata: null, createdAt: new Date() };
+    const bill = { ...base, id: 1, category: 'Office Supplies', parentCategory: 'Expenses', date: new Date('2026-03-10'), amount: '500.00' };
+    const credit = { ...base, id: 2, category: 'Office Supplies', parentCategory: 'ExpensesContra', date: new Date('2026-03-12'), amount: '50.00' };
+
+    it('reduces the category total instead of adding to it', () => {
+      const totals = computeStats([bill, credit]).filter((s) => s.statType === StatType.Total);
+
+      expect(totals.find((t) => t.category === 'Office Supplies' && t.details.scope === 'category')?.value).toBe(450);
+      expect(totals.find((t) => t.category === null)?.value).toBe(450);
+    });
+
+    it('reduces the monthly expense bucket', () => {
+      const buckets = bucketRowsByMonth([bill, credit]);
+
+      expect(buckets.get('2026-03')).toEqual({ revenue: 0, expenses: 450 });
+    });
+
+    it('reduces plan-versus-actual spend, while a bank-export negative still counts', () => {
+      const plans = [{ category: 'Office Supplies', plannedMonthly: 600 }];
+      const refund = { ...base, id: 3, category: 'Office Supplies', parentCategory: 'Expenses', date: new Date('2026-03-14'), amount: '-100.00' };
+
+      // 500 spent, 100 more spent but exported negative, 50 credited back.
+      const stats = computeStats([bill, refund, credit], { categoryPlans: plans });
+      const variance = stats.find((s) => s.statType === StatType.CategoryVariance);
+
+      expect(variance?.details.actualMonthly).toBe(550);
+      expect(variance?.details.direction).toBe('under');
+    });
+
+    it('is not treated as a non-financial row, which would drop it entirely', () => {
+      // The failure this guards: isExplicitlyNonFinancial excluding the value,
+      // which would leave the bill at 500 rather than reducing it.
+      const totals = computeStats([bill, credit]).filter((s) => s.statType === StatType.Total);
+      expect(totals.find((t) => t.category === 'Office Supplies' && t.details.scope === 'category')?.value).not.toBe(500);
+    });
+
+    it('leaves an unknown parent category excluded, so a typo cannot add to a total', () => {
+      const typo = { ...credit, id: 4, parentCategory: 'ExpenseContra' };
+      const totals = computeStats([bill, typo]).filter((s) => s.statType === StatType.Total);
+
+      expect(totals.find((t) => t.category === 'Office Supplies' && t.details.scope === 'category')?.value).toBe(500);
+    });
+  });
+
   it('produces overall total', () => {
     const stats = computeStats(fixture.multiCategory);
     const overallTotal = stats.find(

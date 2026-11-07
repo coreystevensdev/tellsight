@@ -380,20 +380,34 @@ describe('refund sign', () => {
     expect(expenseRows[0]!.amount).toBe('300');
   });
 
-  // DW-235: a vendor credit reduces what is owed, so 'Expenses' counted it
-  // twice. The three wrong answers this pins against, in order of how quietly
-  // they would pass:
-  //   'Income'   the literal mirror, which makes a vendor return read as
-  //              revenue growth in revenueMetrics and financialMetrics
-  //   'Expenses' the old behavior, overstating by twice the credit
-  //   'Refunds'  via REFUND_TYPES, which keeps parentCategory at 'Expenses' so
-  //              a parent-only assertion still passes while every vendor
-  //              credit is relabeled into the customer-refund line
-  // The category assertion is what catches that third one, so keep it.
-  it('classifies VendorCredit as Other, keeping its own account category', () => {
+  // DW-235: a vendor credit reduces what is owed. The four wrong answers this
+  // pins against, in order of how quietly each would pass:
+  //   'Expenses'       the original, counting a reduction as spend
+  //   'Other'          the interim, excluded so it could not subtract either
+  //   'Income'         the literal mirror, read as revenue growth by
+  //                    revenueMetrics and financialMetrics
+  //   'Refunds'        via REFUND_TYPES, which leaves parentCategory on the
+  //                    expense side so a parent-only assertion still passes
+  //                    while relabeling every credit into the customer-refund
+  //                    line
+  // The category assertion is what catches that last one, so keep it.
+  it('classifies VendorCredit as ExpensesContra, keeping its own account category', () => {
     const [row] = normalizeTransaction(makePurchase({ Id: 'vc-1' }), 'VendorCredit');
-    expect(row!.parentCategory).toBe('Other');
+    expect(row!.parentCategory).toBe('ExpensesContra');
     expect(row!.category).toBe('Office Supplies');
+  });
+
+  // The synthetic path classified inline and would have missed the change, so a
+  // credit QuickBooks sent with no line items would have stayed an ordinary
+  // expense. Both paths go through parentCategoryByType now.
+  it('classifies a VendorCredit with no line items the same way', () => {
+    const rows = normalizeTransaction(
+      makePurchase({ Id: 'vc-2', TotalAmt: 75, Line: [] }),
+      'VendorCredit',
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.parentCategory).toBe('ExpensesContra');
+    expect(rows[0]!.amount).toBe('75');
   });
 });
 

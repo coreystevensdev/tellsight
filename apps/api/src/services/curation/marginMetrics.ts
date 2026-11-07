@@ -1,4 +1,4 @@
-import { monthKey, parseAmount, type DataRow } from './computationPrimitives.js';
+import { financialEffect, monthKey, parseAmount, type DataRow } from './computationPrimitives.js';
 import type { MarginTrendStat } from './types.js';
 import { StatType } from './types.js';
 
@@ -12,7 +12,7 @@ export function marginTrendMonths(
   for (const row of rows) {
     const amount = parseAmount(row.amount);
     if (amount === null) continue;
-    if (row.parentCategory === 'Income' || row.parentCategory === 'Expenses') {
+    if (financialEffect(row) !== null) {
       months.add(monthKey(row.date));
     }
   }
@@ -33,10 +33,11 @@ export function computeMarginTrend(rows: DataRow[]): MarginTrendStat[] {
     if (amount === null) continue;
 
     const key = monthKey(row.date);
-    if (row.parentCategory === 'Income') {
-      revenueByMonth.set(key, (revenueByMonth.get(key) ?? 0) + amount);
-    } else if (row.parentCategory === 'Expenses') {
-      expenseByMonth.set(key, (expenseByMonth.get(key) ?? 0) + amount);
+    const effect = financialEffect(row);
+    if (effect?.side === 'Income') {
+      revenueByMonth.set(key, (revenueByMonth.get(key) ?? 0) + effect.sign * amount);
+    } else if (effect?.side === 'Expenses') {
+      expenseByMonth.set(key, (expenseByMonth.get(key) ?? 0) + effect.sign * amount);
     }
   }
 

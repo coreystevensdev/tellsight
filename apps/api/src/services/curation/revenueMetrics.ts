@@ -1,6 +1,6 @@
 import { mean } from 'simple-statistics';
 
-import { MONTH_NAMES, parseAmount, type DataRow } from './computationPrimitives.js';
+import { financialEffect, MONTH_NAMES, parseAmount, type DataRow } from './computationPrimitives.js';
 import type { ComputedStat } from './types.js';
 import { StatType } from './types.js';
 
@@ -8,7 +8,8 @@ function groupRevenueByYearMonth(rows: DataRow[]): Map<number, Map<number, numbe
   const revenueByYearMonth = new Map<number, Map<number, number>>();
 
   for (const row of rows) {
-    if (row.parentCategory !== 'Income') continue;
+    const effect = financialEffect(row);
+    if (effect?.side !== 'Income') continue;
     const amount = parseAmount(row.amount);
     if (amount === null) continue;
 
@@ -16,7 +17,7 @@ function groupRevenueByYearMonth(rows: DataRow[]): Map<number, Map<number, numbe
     const month = row.date.getUTCMonth();
     if (!revenueByYearMonth.has(year)) revenueByYearMonth.set(year, new Map());
     const yearMonths = revenueByYearMonth.get(year)!;
-    yearMonths.set(month, (yearMonths.get(month) ?? 0) + amount);
+    yearMonths.set(month, (yearMonths.get(month) ?? 0) + effect.sign * amount);
   }
 
   return revenueByYearMonth;

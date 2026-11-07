@@ -7,7 +7,7 @@ import type {
   RunwayStat,
 } from './types.js';
 import { StatType } from './types.js';
-import { monthKey, parseAmount, type DataRow } from './computationPrimitives.js';
+import { financialEffect, monthKey, parseAmount, type DataRow } from './computationPrimitives.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -93,12 +93,13 @@ export function latestMonthlyRevenue(rows: DataRow[]): number {
   const revenueByMonth = new Map<string, number>();
 
   for (const row of rows) {
-    if (row.parentCategory !== 'Income') continue;
+    const effect = financialEffect(row);
+    if (effect?.side !== 'Income') continue;
     const amt = parseAmount(row.amount);
     if (amt === null) continue;
 
     const key = monthKey(row.date);
-    revenueByMonth.set(key, (revenueByMonth.get(key) ?? 0) + amt);
+    revenueByMonth.set(key, (revenueByMonth.get(key) ?? 0) + effect.sign * amt);
   }
 
   if (revenueByMonth.size === 0) return 0;

@@ -1,6 +1,6 @@
 import { max, mean, median, min, sum } from 'simple-statistics';
 
-import type { CategoryGroup } from './categoryMetrics.js';
+import { netAmounts, type CategoryGroup } from './categoryMetrics.js';
 import type { ComputedStat } from './types.js';
 import { StatType } from './types.js';
 
@@ -14,7 +14,7 @@ export function computeTotals(
     stats.push({
       statType: StatType.Total,
       category,
-      value: sum(group.amounts),
+      value: sum(netAmounts(group)),
       sampleSize: group.amounts.length,
       details: { scope: 'category', count: group.amounts.length },
     });
@@ -71,24 +71,29 @@ export function computeCategoryBreakdowns(
 ): ComputedStat[] {
   const stats: ComputedStat[] = [];
 
+  // Shares are computed over net activity, so a contra entry reduces both this
+  // denominator and its own category's numerator. Taking absolute values of the
+  // nets rather than of each row keeps a credit from inflating the very share it
+  // is meant to shrink, and keeps the percentages summing to 100.
+  const netByCategory = new Map(
+    [...groups].map(([category, group]) => [category, Math.abs(sum(netAmounts(group)))]),
+  );
   let totalAbsolute = 0;
-  for (const group of groups.values()) {
-    totalAbsolute += group.amounts.reduce((total, amount) => total + Math.abs(amount), 0);
-  }
+  for (const categoryNet of netByCategory.values()) totalAbsolute += categoryNet;
 
   if (totalAbsolute === 0) return stats;
 
   for (const [category, group] of groups) {
-    const categoryAbsolute = group.amounts.reduce(
-      (total, amount) => total + Math.abs(amount),
-      0,
-    );
+    const categoryAbsolute = netByCategory.get(category)!;
+    // A category that nets to nothing has no share to report, and dividing on
+    // would emit a 0% breakdown that reads as a finding.
+    if (categoryAbsolute === 0) continue;
     const percentage = (categoryAbsolute / totalAbsolute) * 100;
 
     stats.push({
       statType: StatType.CategoryBreakdown,
       category,
-      value: sum(group.amounts),
+      value: sum(netAmounts(group)),
       sampleSize: group.amounts.length,
       details: {
         percentage,

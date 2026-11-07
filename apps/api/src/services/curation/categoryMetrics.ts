@@ -1,12 +1,31 @@
 import type { CategoryPlan } from 'shared/types';
 
-import { isExplicitlyNonFinancial, monthKey, parseAmount, type DataRow } from './computationPrimitives.js';
+import {
+  financialEffect,
+  isExplicitlyNonFinancial,
+  monthKey,
+  parseAmount,
+  type DataRow,
+} from './computationPrimitives.js';
 import type { CategoryVarianceStat } from './types.js';
 import { StatType } from './types.js';
 
 export interface CategoryGroup {
   amounts: number[];
   timeSeries: [number, number][];
+  // Index-aligned with amounts, the way timeSeries already is: -1 where the row
+  // was a contra entry, +1 otherwise. Kept as a third array rather than folded
+  // into amounts so every consumer that has not been taught about contra
+  // entries reads exactly what it read before, which is the property that lets
+  // them be taught one at a time.
+  signs: (1 | -1)[];
+}
+
+// The contribution each row makes to its category's net, contra entries
+// subtracting. A negative amount that is not a contra entry stays negative:
+// that is a bank export storing its own sign (normalizer.ts), not a reduction.
+export function netAmounts(group: CategoryGroup): number[] {
+  return group.amounts.map((amount, index) => (group.signs[index] ?? 1) * amount);
 }
 
 export function groupByCategory(rows: DataRow[]): Map<string, CategoryGroup> {
@@ -27,12 +46,13 @@ export function groupByCategory(rows: DataRow[]): Map<string, CategoryGroup> {
 
     let group = groups.get(row.category);
     if (!group) {
-      group = { amounts: [], timeSeries: [] };
+      group = { amounts: [], timeSeries: [], signs: [] };
       groups.set(row.category, group);
     }
 
     group.amounts.push(amount);
     group.timeSeries.push([row.date.getTime(), amount]);
+    group.signs.push(financialEffect(row)?.sign ?? 1);
   }
 
   return groups;
@@ -86,12 +106,15 @@ export function computeCategoryVariance(
     let actualMonthly = 0;
     let transactionCount = 0;
     if (group) {
-      for (const [timestamp, amount] of group.timeSeries) {
+      // abs() because the plan the owner typed is nonnegative and a bank export
+      // can store an expense as a negative; the sign then reinstates a contra
+      // entry's reduction, which abs() would otherwise have turned into spend.
+      group.timeSeries.forEach(([timestamp, amount], index) => {
         if (monthKey(new Date(timestamp)) === targetMonth) {
-          actualMonthly += Math.abs(amount);
+          actualMonthly += (group.signs[index] ?? 1) * Math.abs(amount);
           transactionCount++;
         }
-      }
+      });
     }
 
     const variance = actualMonthly - plan.plannedMonthly;

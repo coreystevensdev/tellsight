@@ -79,7 +79,7 @@ export interface NormalizedQbRow {
   date: Date;
   amount: string;
   category: string;
-  parentCategory: 'Income' | 'Expenses' | 'Other';
+  parentCategory: 'Income' | 'Expenses' | 'ExpensesContra' | 'Other';
   label: string | null;
   metadata: {
     qb_id: string;

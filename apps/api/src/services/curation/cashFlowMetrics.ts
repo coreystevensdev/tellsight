@@ -2,7 +2,7 @@ import { mean, median } from 'simple-statistics';
 
 import type { CashFlowStat } from './types.js';
 import { StatType } from './types.js';
-import { monthKey, parseAmount, type DataRow } from './computationPrimitives.js';
+import { financialEffect, monthKey, parseAmount, type DataRow } from './computationPrimitives.js';
 
 /**
  * Monthly revenue/expenses, keyed by YYYY-MM. The privacy-preserving shape
@@ -28,10 +28,11 @@ export function bucketRowsByMonth(rows: DataRow[]): MonthlyBucketMap {
 
     const key = monthKey(row.date);
     const bucket = buckets.get(key) ?? { revenue: 0, expenses: 0 };
-    if (row.parentCategory === 'Income') {
-      bucket.revenue += amt;
-    } else if (row.parentCategory === 'Expenses') {
-      bucket.expenses += amt;
+    const effect = financialEffect(row);
+    if (effect?.side === 'Income') {
+      bucket.revenue += effect.sign * amt;
+    } else if (effect?.side === 'Expenses') {
+      bucket.expenses += effect.sign * amt;
     }
     buckets.set(key, bucket);
   }

@@ -1,7 +1,7 @@
 import type { IdentifiedStat } from './types.js';
 import { StatType } from './types.js';
 import { computeCashFlow, marginTrendMonths, monthKey, MONTH_NAMES } from './computation.js';
-import { isFinancialRow } from './computationPrimitives.js';
+import { financialEffect, isFinancialRow } from './computationPrimitives.js';
 
 // Narrower than shared/types' DataRow (drops metadata/orgId/etc), matching
 // what the filters below actually read. The index signature is required,
@@ -40,7 +40,7 @@ export function resolveSourceRows(rows: DataRow[], stat: IdentifiedStat): DataRo
     case StatType.YearOverYear: {
       const { month, currentYearLabel, priorYearLabel } = stat.details;
       return rows.filter((r) => {
-        if (r.parentCategory !== 'Income') return false;
+        if (financialEffect(r)?.side !== 'Income') return false;
         if (MONTH_NAMES[r.date.getUTCMonth()] !== month) return false;
         const year = String(r.date.getUTCFullYear());
         return year === currentYearLabel || year === priorYearLabel;
@@ -50,7 +50,7 @@ export function resolveSourceRows(rows: DataRow[], stat: IdentifiedStat): DataRo
     case StatType.SeasonalProjection: {
       const basisMonths = new Set(stat.details.basisMonths);
       return rows.filter((r) => {
-        if (r.parentCategory !== 'Income') return false;
+        if (financialEffect(r)?.side !== 'Income') return false;
         return basisMonths.has(`${MONTH_NAMES[r.date.getUTCMonth()]} ${r.date.getUTCFullYear()}`);
       });
     }
