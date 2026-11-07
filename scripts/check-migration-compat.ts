@@ -90,6 +90,14 @@ const ACKNOWLEDGED = new Map<string, Acknowledgement>([
     },
   ],
   [
+    '0046_square-refund-category-plural.sql',
+    {
+      hits: ['DATA WRITE'],
+      reason:
+        "renames category from 'Refund' to 'Refunds' on square rows only, so Square matches the string QuickBooks and Shopify already write. A rolled-back reader is unaffected: nothing in any deployed version matches on this literal, category is display and grouping text rather than a key, and every consumer groups by whatever value the row carries. The worst a rollback does is resume writing the singular for new refunds, which is the split this migration closed rather than a new fault",
+    },
+  ],
+  [
     '0045_add-entity-type-to-quickbooks-source-id.sql',
     {
       hits: ['DATA WRITE'],

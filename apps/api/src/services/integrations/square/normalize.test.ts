@@ -113,6 +113,11 @@ describe('normalizeOrders', () => {
     expect(rows).toHaveLength(2);
     const refund = rows.find((r) => r.metadata.resourceType === 'refund')!;
     expect(refund.parentCategory).toBe('Expenses');
+    // DW-236: the label was never asserted here, which is how Square drifted to
+    // the singular while the other two connectors wrote 'Refunds'. The
+    // behaviour was verified against a live sandbox and the behaviour was right;
+    // nothing had ever looked at the string.
+    expect(refund.category).toBe('Refunds');
     expect(refund.amount).toBe('4.50');
     expect(refund.sourceId).toBe('ref_1');
     expect(refund.date.toISOString()).toBe('2026-03-05T09:00:00.000Z');

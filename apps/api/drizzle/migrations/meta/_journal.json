@@ -323,6 +323,13 @@
       "when": 1783728000000,
       "tag": "0045_add-entity-type-to-quickbooks-source-id",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1783814400000,
+      "tag": "0046_square-refund-category-plural",
+      "breakpoints": true
     }
   ]
 }

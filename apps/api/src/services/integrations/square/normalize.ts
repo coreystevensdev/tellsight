@@ -148,7 +148,12 @@ export function normalizeOrders(orders: SquareOrder[]): NormalizedSquareRow[] {
           Number.isNaN(refundedAt.getTime()) ? date : refundedAt,
           // A refund is recorded as a positive expense, never a negative sale.
           refundAmount.startsWith('-') ? refundAmount.slice(1) : refundAmount,
-          'Refund',
+          // DW-236: plural, matching quickbooks/normalize.ts and
+          // shopify/normalize.ts. This read 'Refund' and was the only connector
+          // out of step, so an org with both gave two refund lines in one
+          // category breakdown, which production had. Migration 0046 renames
+          // the rows already synced.
+          'Refunds',
           'Expenses',
           refund.reason?.trim() || null,
           refund.amount_money!.currency,
