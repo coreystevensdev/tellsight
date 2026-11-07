@@ -14,9 +14,13 @@ const SEED_USER_EMAIL = 'demo@tellsight.local';
 import * as schema from './schema.js';
 import { buildSeedRows, SEED_DATASET_NAME } from './seedData.js';
 
-const dbUrl = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
+// DW-240, same removal as migrate.ts. This one did fail honestly: seeding as
+// app_user is refused by the RLS policy on datasets and the surrounding
+// transaction takes the org insert back with it. A fallback whose only outcome
+// is a confusing error is not worth keeping either.
+const dbUrl = process.env.DATABASE_ADMIN_URL;
 if (!dbUrl) {
-  console.error('DATABASE_ADMIN_URL (or DATABASE_URL) is required for seeding');
+  console.error('DATABASE_ADMIN_URL is required for seeding');
   process.exit(1);
 }
 
@@ -45,9 +49,11 @@ async function ensureSeedOwner(tx: SeedTx, orgId: number) {
     .onConflictDoNothing({ target: schema.users.email })
     .returning();
 
-  const owner = inserted ?? await tx.query.users.findFirst({
-    where: eq(schema.users.email, SEED_USER_EMAIL),
-  });
+  const owner =
+    inserted ??
+    (await tx.query.users.findFirst({
+      where: eq(schema.users.email, SEED_USER_EMAIL),
+    }));
   if (!owner) throw new Error('Seed owner vanished between upsert and lookup');
 
   await tx
@@ -68,10 +74,7 @@ async function seed() {
 
     if (existing) {
       const seedDataset = await tx.query.datasets.findFirst({
-        where: and(
-          eq(schema.datasets.orgId, existing.id),
-          eq(schema.datasets.isSeedData, true),
-        ),
+        where: and(eq(schema.datasets.orgId, existing.id), eq(schema.datasets.isSeedData, true)),
       });
       if (seedDataset) {
         // Per-resource, not all-or-nothing: the owner arrived after the data did,
@@ -90,10 +93,13 @@ async function seed() {
       .returning();
 
     // If upsert returned nothing, the org already existed, look it up
-    const fallbackOrg = org ?? await tx.query.orgs.findFirst({
-      where: eq(schema.orgs.slug, SEED_ORG.slug),
-    });
-    if (!fallbackOrg) throw new Error(`Seed org "${SEED_ORG.slug}" vanished between upsert and lookup`);
+    const fallbackOrg =
+      org ??
+      (await tx.query.orgs.findFirst({
+        where: eq(schema.orgs.slug, SEED_ORG.slug),
+      }));
+    if (!fallbackOrg)
+      throw new Error(`Seed org "${SEED_ORG.slug}" vanished between upsert and lookup`);
     const orgId = fallbackOrg.id;
 
     const [dataset] = await tx
@@ -111,9 +117,9 @@ async function seed() {
     await ensureSeedOwner(tx, orgId);
 
     const rows = buildSeedRows();
-    await tx.insert(schema.dataRows).values(
-      rows.map((r) => ({ ...r, orgId, datasetId: dataset.id })),
-    );
+    await tx
+      .insert(schema.dataRows)
+      .values(rows.map((r) => ({ ...r, orgId, datasetId: dataset.id })));
 
     console.info(`Seeded "${SEED_ORG.name}" org (id=${orgId}) with ${rows.length} data rows`);
 
@@ -217,7 +223,9 @@ async function seed() {
           isSeed: true,
         });
 
-        console.info(`Seed AI summary generated (${content.length} chars, ${message.usage.output_tokens} tokens)`);
+        console.info(
+          `Seed AI summary generated (${content.length} chars, ${message.usage.output_tokens} tokens)`,
+        );
       } catch (err) {
         // Leaving the org with no summary at all contradicts the promise above.
         // A dud key, a network blip or a rate limit should degrade to the canned

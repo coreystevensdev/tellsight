@@ -8,9 +8,15 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
-const dbUrl = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
+// DW-240: no fallback to DATABASE_URL. That connects as app_user, which has
+// rolbypassrls = f, and data_rows, datasets and user_orgs carry RLS policies
+// keyed to app.current_org_id, which this script never sets. Measured: a data
+// migration's UPDATE matches zero rows and raises nothing, so drizzle records it
+// applied and it never runs again. Schema-only migrations are unaffected, which
+// is why the fallback survived this long.
+const dbUrl = process.env.DATABASE_ADMIN_URL;
 if (!dbUrl) {
-  console.error('DATABASE_ADMIN_URL (or DATABASE_URL) is required for migrations');
+  console.error('DATABASE_ADMIN_URL is required for migrations');
   process.exit(1);
 }
 
