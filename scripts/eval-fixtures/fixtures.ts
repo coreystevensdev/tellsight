@@ -145,7 +145,8 @@ export function cashCrunch(): ComputedStat[] {
     {
       statType: 'cash_forecast',
       category: null,
-      value: -3000,
+      // the last projectedBalance, which is what computeCashForecast returns
+      value: -6000,
       // netsFromBuckets defaults to a 12-month basis window
       // (cashFlowMetrics.ts:132), a year of history behind the regression.
       sampleSize: 12,
@@ -153,17 +154,14 @@ export function cashCrunch(): ComputedStat[] {
         startingBalance: 24000,
         asOfDate: '2026-01-01',
         method: 'linear_regression',
-        slope: -9000,
-        intercept: 24000,
-        // 12 months, matching sampleSize's length. Doesn't reach the
-        // prompt (formatStatBody's CashForecast case, assembly.ts:117, never
-        // reads these) or the citable set (validator.ts excludes slope and
-        // intercept on purpose), so populating them is score-neutral.
-        // Regression on these 12 values gives slope -1465/intercept 2474,
-        // not the stated -9000/24000: a pre-existing gap, deferred rather
-        // than fixed here, alongside hasValidDiscriminatorFields's missing
-        // CashForecast case, the reason this went unnoticed in the first
-        // place.
+        // DW-234: these were -9000 and 24000, which no regression over the
+        // basis produced. The values below are exactly linear, so
+        // linearRegression returns -1000 and 3000 exactly rather than to a
+        // tolerance, and fixture-arithmetic.test.ts now re-derives every
+        // number here from them.
+        slope: -1000,
+        intercept: 3000,
+        // 12 months, matching sampleSize's length.
         basisMonths: [
           '2025-01',
           '2025-02',
@@ -178,13 +176,15 @@ export function cashCrunch(): ComputedStat[] {
           '2025-11',
           '2025-12',
         ],
-        basisValues: [
-          3000, 1500, 0, -2000, -4000, -5500, -7000, -8500, -9500, -10500, -11500, -13000,
-        ],
+        basisValues: [3000, 2000, 1000, 0, -1000, -2000, -3000, -4000, -5000, -6000, -7000, -8000],
+        // nextMonthKey('2025-12', 1..3), which the old values missed by six
+        // months. projectedNet is round(slope * t + intercept) at t = 12, 13,
+        // 14, so the burn accelerates, which is what a negative slope means.
+        // The old fixture held it flat at -9000 while claiming that slope.
         projectedMonths: [
-          { month: '2026-07', projectedNet: -9000, projectedBalance: 15000 },
-          { month: '2026-08', projectedNet: -9000, projectedBalance: 6000 },
-          { month: '2026-09', projectedNet: -9000, projectedBalance: -3000 },
+          { month: '2026-01', projectedNet: -9000, projectedBalance: 15000 },
+          { month: '2026-02', projectedNet: -10000, projectedBalance: 5000 },
+          { month: '2026-03', projectedNet: -11000, projectedBalance: -6000 },
         ],
         crossesZeroAtMonth: 3,
         confidence: 'high',

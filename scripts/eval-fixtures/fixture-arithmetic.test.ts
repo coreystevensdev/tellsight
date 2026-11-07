@@ -18,6 +18,30 @@ import type { ComputedStat } from '../../apps/api/src/services/curation/types.js
 // These assert the relationships the compute functions guarantee. They are cheap
 // and they run in CI, unlike the eval itself.
 
+// Ordinary least squares, the same fit simple-statistics' linearRegression
+// performs. Written out rather than imported: scripts/ has no package.json so
+// that dependency does not resolve here, and a check is worth more when it does
+// not share an implementation with the thing it checks.
+function leastSquares(ys: number[]): { slope: number; intercept: number } {
+  const n = ys.length;
+  const sumX = ys.reduce((total, _y, x) => total + x, 0);
+  const sumY = ys.reduce((total, y) => total + y, 0);
+  const sumXY = ys.reduce((total, y, x) => total + x * y, 0);
+  const sumXX = ys.reduce((total, _y, x) => total + x * x, 0);
+  const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+  return { slope, intercept: (sumY - slope * sumX) / n };
+}
+
+// Mirrors cashForecastMetrics.ts's own nextMonthKey. Duplicated rather than
+// imported because that one is private, and a check that imported the thing it
+// is checking would pass on a shared mistake.
+function nextMonthKey(yyyymm: string, delta: number): string {
+  const [year, month] = yyyymm.split('-').map(Number);
+  const monthIdx = month! - 1 + delta;
+  const yearAdd = Math.floor(monthIdx / 12);
+  return `${year! + yearAdd}-${String((((monthIdx % 12) + 12) % 12) + 1).padStart(2, '0')}`;
+}
+
 function statsOf(id: string): ComputedStat[] {
   const fixture = FIXTURES.find((f) => f.id === id);
   if (!fixture) throw new Error(`no fixture ${id}`);
@@ -97,6 +121,45 @@ describe('fixture stats are reachable by the production computations', () => {
 
     const firstNegative = d.projectedMonths.findIndex((m) => m.projectedBalance < 0);
     expect(d.crossesZeroAtMonth).toBe(firstNegative === -1 ? null : firstNegative + 1);
+    expect(stat.value).toBe(d.projectedMonths.at(-1)!.projectedBalance);
+  });
+
+  // DW-234. computeCashForecast fits linearRegression over the basis, then
+  // projects three months at t = n, n+1, n+2 and runs the balance forward. Every
+  // number in details follows from basisValues and startingBalance, so all of it
+  // is re-derived rather than spot-checked. The fixture claimed slope -9000 and
+  // intercept 24000 where its own basis regressed to -1465 and 2474, held
+  // projectedNet flat at -9000 while claiming a slope, and started its projected
+  // months six months after the basis ended. None of it reaches the prompt or the
+  // citable set, so the eval scored it 1.00 regardless, which is exactly why the
+  // arithmetic needs asserting somewhere cheap.
+  it.each(of('cash_forecast'))('cash_forecast re-derives from its own basis', (stat) => {
+    const d = stat.details as {
+      startingBalance: number; slope: number; intercept: number; method: string;
+      basisMonths: string[]; basisValues: number[];
+      projectedMonths: { month: string; projectedNet: number; projectedBalance: number }[];
+      crossesZeroAtMonth: number | null;
+    };
+
+    expect(d.basisValues.length).toBe(d.basisMonths.length);
+    expect(stat.sampleSize).toBe(d.basisMonths.length);
+
+    const fit = leastSquares(d.basisValues);
+    expect(d.slope).toBeCloseTo(fit.slope, 6);
+    expect(d.intercept).toBeCloseTo(fit.intercept, 6);
+
+    const n = d.basisMonths.length;
+    let running = d.startingBalance;
+    d.projectedMonths.forEach((pm, index) => {
+      const t = n + index;
+      expect(pm.projectedNet).toBe(Math.round(d.slope * t + d.intercept));
+      running = Math.round(running + pm.projectedNet);
+      expect(pm.projectedBalance).toBe(running);
+      expect(pm.month).toBe(nextMonthKey(d.basisMonths[n - 1]!, index + 1));
+    });
+
+    const crossIdx = d.projectedMonths.findIndex((pm) => pm.projectedBalance < 0);
+    expect(d.crossesZeroAtMonth).toBe(crossIdx === -1 ? null : crossIdx + 1);
     expect(stat.value).toBe(d.projectedMonths.at(-1)!.projectedBalance);
   });
 
