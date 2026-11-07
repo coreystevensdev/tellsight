@@ -412,7 +412,19 @@ jobs:
 
   docker-smoke:
     name: Docker Smoke Test
-    needs: e2e
+    # DW-238: a sibling of e2e, not its dependent. This read `needs: e2e`, and
+    # nothing in the job wanted it: smoke-test.sh brings up its own stack
+    # (scripts/smoke-test.sh:42 does `docker compose up -d --build`), jobs share
+    # no state across runners, and there is no concurrency group rationing them.
+    # What the dependency did buy was a withdrawal. e2e's `npx playwright
+    # install-deps` carries a deliberate 10-minute bound, that bound was hit on
+    # two of four runs on 2026-11-05 and 06, and each time this job reported
+    # `skipped` rather than running, so a Docker regression would have gone
+    # unnoticed because an apt mirror was slow.
+    #
+    # test-count still needs e2e and should: the badge it asserts sums the
+    # playwright count, so it genuinely cannot total without that job.
+    needs: seed-validation
     runs-on: ubuntu-24.04
     timeout-minutes: 15
 
