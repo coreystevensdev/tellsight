@@ -380,18 +380,19 @@ describe('refund sign', () => {
     expect(expenseRows[0]!.amount).toBe('300');
   });
 
-  // VendorCredit stays in Expenses under its own account category. Moving it
-  // to Income, the mirror of the fix above, would count a vendor return as
-  // revenue and corrupt the revenue-specific stats keyed on parentCategory
-  // === 'Income' (see the comment beside it in normalize.ts). The category
-  // assertion guards a quieter version of the same mistake: routing
-  // VendorCredit into REFUND_TYPES instead of EXPENSE_TYPES leaves
-  // parentCategory at 'Expenses', so a parentCategory-only check would still
-  // pass, while silently relabeling every vendor credit 'Refunds' and
-  // merging it into the customer-refund line.
-  it('leaves VendorCredit in Expenses under its own category, not folded into Refunds', () => {
+  // DW-235: a vendor credit reduces what is owed, so 'Expenses' counted it
+  // twice. The three wrong answers this pins against, in order of how quietly
+  // they would pass:
+  //   'Income'   the literal mirror, which makes a vendor return read as
+  //              revenue growth in revenueMetrics and financialMetrics
+  //   'Expenses' the old behavior, overstating by twice the credit
+  //   'Refunds'  via REFUND_TYPES, which keeps parentCategory at 'Expenses' so
+  //              a parent-only assertion still passes while every vendor
+  //              credit is relabeled into the customer-refund line
+  // The category assertion is what catches that third one, so keep it.
+  it('classifies VendorCredit as Other, keeping its own account category', () => {
     const [row] = normalizeTransaction(makePurchase({ Id: 'vc-1' }), 'VendorCredit');
-    expect(row!.parentCategory).toBe('Expenses');
+    expect(row!.parentCategory).toBe('Other');
     expect(row!.category).toBe('Office Supplies');
   });
 });

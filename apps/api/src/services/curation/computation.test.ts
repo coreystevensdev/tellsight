@@ -98,6 +98,38 @@ describe('computeStats', () => {
     expect(marketingTotal?.value).toBe(2350);
   });
 
+  // DW-232. The inventory numbers are the real ones measured on production
+  // before the fix: 26 Shopify product rows, $547,724.80, one category holding
+  // $503,734.60. computeTotals reported them as category totals beside real
+  // revenue while every chart ignored them.
+  it('keeps a classified non-P&L row out of category totals', () => {
+    const base = { orgId: 1, datasetId: 1, sourceType: 'shopify' as const, date: new Date('2026-01-01'), label: null, metadata: null, createdAt: new Date() };
+    const stats = computeStats([
+      { ...base, id: 1, category: 'Sales', parentCategory: 'Income', amount: '1000.00' },
+      { ...base, id: 2, category: 'Sales', parentCategory: 'Income', amount: '1200.00' },
+      // a product row: inventory value on hand, not a sale
+      { ...base, id: 3, category: 'snowboard', parentCategory: 'Other', amount: '503734.60' },
+    ]);
+    const totals = stats.filter((s) => s.statType === StatType.Total);
+
+    expect(totals.find((t) => t.category === 'snowboard')).toBeUndefined();
+    expect(totals.find((t) => t.category === 'Sales' && t.details.scope === 'category')?.value).toBe(2200);
+    expect(totals.find((t) => t.category === null)?.value).toBe(2200);
+  });
+
+  // The counterpart, and why the filter tests parentCategory != null rather
+  // than allowlisting Income/Expenses. A CSV with no parent_category column and
+  // no negative amounts produces all-null rows, and csvAdapter.ts warns that
+  // such an upload "won't appear in your charts", not that it yields nothing.
+  // Every fixture above is this shape.
+  it('still totals unclassified rows, which is what a bare CSV produces', () => {
+    const stats = computeStats([
+      { id: 1, orgId: 1, datasetId: 1, sourceType: 'csv' as const, category: 'Sales', parentCategory: null, date: new Date('2026-01-01'), amount: '400.00', label: null, metadata: null, createdAt: new Date() },
+      { id: 2, orgId: 1, datasetId: 1, sourceType: 'csv' as const, category: 'Sales', parentCategory: null, date: new Date('2026-02-01'), amount: '600.00', label: null, metadata: null, createdAt: new Date() },
+    ]);
+    expect(stats.find((s) => s.statType === StatType.Total && s.category === 'Sales' && s.details.scope === 'category')?.value).toBe(1000);
+  });
+
   it('produces overall total', () => {
     const stats = computeStats(fixture.multiCategory);
     const overallTotal = stats.find(

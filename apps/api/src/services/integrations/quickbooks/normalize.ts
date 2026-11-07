@@ -10,18 +10,23 @@ const EXPENSE_TYPES = new Set<QbTransactionType>([
   'Purchase',
   'Bill',
   'BillPayment',
-  // Reduces what we owe a vendor, so it overstates Expenses the same way a
-  // refund overstated Income below. The mirror fix, moving it to Income,
-  // would count a vendor return as revenue and corrupt latestMonthlyRevenue,
-  // computeYearOverYear, and computeSeasonalProjection. 'Other' would dodge
-  // that and would even clear the margin and cash-flow side of this same
-  // overstatement, both filter by parentCategory, but groupByCategory does
-  // not, so computeTotals, computeCategoryBreakdowns, and the category-plan
-  // variance would still count it exactly as they do today. That trades this
-  // defect for a smaller one rather than removing it, so Expenses stays;
-  // the overstatement itself is a known, separate defect.
-  'VendorCredit',
 ]);
+
+// DW-235: a VendorCredit reduces what the business owes a vendor, so recording
+// it as a positive expense inflated Expenses by twice its amount, the mirror of
+// the refund bug above. It is not Income either: revenueMetrics.ts and
+// financialMetrics.ts both filter on 'Income' and label the result revenue, so
+// that turns a vendor return into revenue growth. So it falls through to
+// 'Other' and is now genuinely excluded everywhere, which groupByCategory used
+// to prevent.
+//
+// What this does not do: apply the reduction. Expenses stay overstated by one
+// times the credit rather than two, because an excluded row cannot subtract.
+// Getting that exact needs a contra-entry representation (a signed amount with
+// a field saying what the sign means, or a fourth parent category that nets
+// rather than being dropped), and a signed amount would have to be reconciled
+// with the abs() in charts.ts and the Math.abs here. That is design work, and
+// it is the open half of DW-235.
 
 // CreditMemo and RefundReceipt hand money back to a customer. Same rule
 // Square uses for its refunds (square/normalize.ts): never a negative sale,

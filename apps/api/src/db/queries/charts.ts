@@ -247,13 +247,21 @@ export async function getCategoryVarianceWindow(
   // month win and reports every category wildly under plan against data that
   // hasn't happened yet. categoryMetrics.ts's completeMonths filter had the
   // same gap, fixed there too.
+  // Expenses only, matching the actuals below. Without it any row can win the
+  // max() and name a month the actuals query then finds nothing in, so every
+  // planned category reads 100% under plan. A Shopify product row is dated
+  // syncedAt and carries inventory value, which is exactly such a row.
   const [monthRow] = await client
     .select({
       month: sql<string | null>`to_char(max(date_trunc('month', ${dataRows.date})), 'YYYY-MM')`,
     })
     .from(dataRows)
     .where(
-      and(...scope, sql`to_char(date_trunc('month', ${dataRows.date}), 'YYYY-MM') < ${currentMonth}`),
+      and(
+        ...scope,
+        eq(dataRows.parentCategory, 'Expenses'),
+        sql`to_char(date_trunc('month', ${dataRows.date}), 'YYYY-MM') < ${currentMonth}`,
+      ),
     );
 
   const targetMonth = monthRow?.month ?? null;

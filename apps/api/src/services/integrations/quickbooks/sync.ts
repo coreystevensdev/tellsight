@@ -18,10 +18,15 @@ import { ConnectionNotFoundError } from './errors.js';
 import { normalizeTransactions } from './normalize.js';
 import type { NormalizedQbRow, QbTransaction, QbTransactionType } from './types.js';
 
-// Estimate is deliberately absent: it is a quote, not a transaction, and
-// groupByCategory has no parentCategory filter, so its amount would land in
-// the same category bucket (and the overall total) as real sales under the
-// same item name.
+// Estimate is deliberately absent: it is a quote, not a transaction, so there
+// is no accounting basis on which it belongs in a revenue or expense view at
+// all. It used to be a sharper problem than that, because groupByCategory had
+// no parentCategory filter and an Estimate's amount landed in the same bucket
+// as real sales under the same item name. That filter exists now (DW-232), so
+// Transfer and VendorCredit can stay in this list and be classified 'Other'
+// rather than dropped, which keeps their rows available if the product ever
+// wants to show cash movement or vendor returns on their own terms. An
+// Estimate has no such future use.
 const ENTITY_TYPES: QbTransactionType[] = [
   'Purchase',
   'Bill',

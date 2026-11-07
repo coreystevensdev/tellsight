@@ -30,7 +30,7 @@ import {
 } from './descriptiveMetrics.js';
 import { computeTrends, detectAnomalies } from './statisticalAnalysis.js';
 
-export { MONTH_NAMES, monthKey } from './computationPrimitives.js';
+export { MONTH_NAMES, monthKey, isFinancialRow, isExplicitlyNonFinancial } from './computationPrimitives.js';
 export {
   breakEvenConfidence,
   bucketRowsByMonth,

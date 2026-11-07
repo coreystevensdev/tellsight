@@ -47,6 +47,12 @@ beforeAll(async () => {
       // anything later win max(); this one row, left in, would make the
       // target month March instead of January.
       { category: 'Rent', parentCategory: 'Expenses', date: new Date('2026-03-05'), amount: '500.00' },
+      // DW-232: a Shopify product row, carrying inventory value rather than
+      // spend and dated syncedAt. February is complete once "now" is March, so
+      // before the month query filtered on Expenses this row won max() and
+      // named a month the actuals query found no expenses in, reporting Rent as
+      // 100% under plan.
+      { category: 'snowboard', parentCategory: 'Other', date: new Date('2026-02-11'), amount: '503734.60' },
     ],
     dbAdmin,
   );
@@ -77,5 +83,17 @@ describe('getCategoryVarianceWindow against real Postgres', () => {
     const window = await getCategoryVarianceWindow(orgId, dbAdmin, datasetId, new Date('2026-03-20'));
 
     expect(window?.monthLabel).toBe('Jan 2026');
+  });
+
+  it('does not let a non-expense row choose the month', async () => {
+    // The snowboard row is February, later than January and complete as of
+    // March. If anything but Expenses can win max(), the window is Feb 2026,
+    // which holds no expense rows, so actualByCategory comes back empty and
+    // every planned category reads as fully unspent.
+    const window = await getCategoryVarianceWindow(orgId, dbAdmin, datasetId, new Date('2026-03-20'));
+
+    expect(window?.monthLabel).toBe('Jan 2026');
+    expect(window?.actualByCategory.get('Rent')).toBe(1700);
+    expect(window?.actualByCategory.has('snowboard')).toBe(false);
   });
 });

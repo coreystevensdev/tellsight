@@ -1,6 +1,7 @@
 import type { IdentifiedStat } from './types.js';
 import { StatType } from './types.js';
 import { computeCashFlow, marginTrendMonths, monthKey, MONTH_NAMES } from './computation.js';
+import { isFinancialRow } from './computationPrimitives.js';
 
 // Narrower than shared/types' DataRow (drops metadata/orgId/etc), matching
 // what the filters below actually read. The index signature is required,
@@ -15,15 +16,6 @@ interface DataRow {
   amount: string;
   label: string | null;
   [key: string]: unknown;
-}
-
-// Only Income/Expenses rows ever feed a cash-flow or margin-trend number
-// (bucketRowsByMonth/marginTrendMonths both ignore every other
-// parentCategory), so a row from an unrelated category sharing a window
-// month is never "evidence" for that stat, even though its date falls
-// inside the window.
-function isFinancialRow(row: DataRow): boolean {
-  return row.parentCategory === 'Income' || row.parentCategory === 'Expenses';
 }
 
 // Maps a resolved stat instance back to the rows that mathematically

@@ -1,6 +1,6 @@
 import type { CategoryPlan } from 'shared/types';
 
-import { monthKey, parseAmount, type DataRow } from './computationPrimitives.js';
+import { isExplicitlyNonFinancial, monthKey, parseAmount, type DataRow } from './computationPrimitives.js';
 import type { CategoryVarianceStat } from './types.js';
 import { StatType } from './types.js';
 
@@ -13,6 +13,15 @@ export function groupByCategory(rows: DataRow[]): Map<string, CategoryGroup> {
   const groups = new Map<string, CategoryGroup>();
 
   for (const row of rows) {
+    // DW-232: every other consumer of these rows drops a classified non-P&L
+    // figure and this one did not, so a balance-sheet number was summed into a
+    // category total. Measured on production before the fix: 26 Shopify product
+    // rows carrying $547,724.80 of inventory value, which computeTotals
+    // reported as category totals beside real revenue while every chart ignored
+    // them. computeCategoryBreakdowns and computeCategoryVariance read these
+    // same groups, so all three were wrong together.
+    if (isExplicitlyNonFinancial(row)) continue;
+
     const amount = parseAmount(row.amount);
     if (amount === null) continue;
 
