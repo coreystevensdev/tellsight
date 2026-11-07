@@ -31,8 +31,14 @@ function runWithoutAdminUrl(script: string) {
   });
 }
 
+// Each case spawns `npx tsx`, measured at 3.3 to 4.1 seconds unloaded, against
+// vitest's 5000ms default. So these only ever passed by about a second, and
+// failed the first time the full suite was busy. The 60s on spawnSync bounds the
+// child and said nothing about the test's own budget, which is the gap.
+const SPAWN_BUDGET_MS = 30_000;
+
 describe('migration and seed scripts require the admin database URL', () => {
-  it('migrate.ts refuses to run on DATABASE_URL alone', () => {
+  it('migrate.ts refuses to run on DATABASE_URL alone', { timeout: SPAWN_BUDGET_MS }, () => {
     const result = runWithoutAdminUrl('migrate.ts');
 
     expect(result.stderr).toContain('DATABASE_ADMIN_URL is required for migrations');
@@ -41,7 +47,7 @@ describe('migration and seed scripts require the admin database URL', () => {
     expect(result.stdout).not.toContain('Running database migrations');
   });
 
-  it('seed.ts refuses to run on DATABASE_URL alone', () => {
+  it('seed.ts refuses to run on DATABASE_URL alone', { timeout: SPAWN_BUDGET_MS }, () => {
     const result = runWithoutAdminUrl('seed.ts');
 
     expect(result.stderr).toContain('DATABASE_ADMIN_URL is required for seeding');
