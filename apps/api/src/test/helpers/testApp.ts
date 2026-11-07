@@ -35,8 +35,18 @@ export async function createTestApp(setup: AppSetup, opts: { beforeParsers?: App
 
   app.use(errorHandler);
 
+  // Bind the same address the caller fetches. listen(0) alone binds the
+  // wildcard (address() reports "::"), which can succeed while another process
+  // already holds 127.0.0.1 on that exact port, and then every request in the
+  // test reaches that process instead. On a developer machine running MCP
+  // servers over Streamable HTTP, those answer a plain GET with
+  // 406 "Not Acceptable: Client must accept text/event-stream", which is how
+  // DW-241 showed up: rateLimiter's dashboard tests asserting 200 and reading
+  // 406, all retries failing together because the port is chosen once in
+  // beforeAll, and never reproducing on CI, which runs nothing else. Bound to
+  // loopback, a taken port fails the bind outright instead.
   const server = await new Promise<http.Server>((resolve) => {
-    const s = app.listen(0, () => resolve(s));
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
   });
 
   const port = (server.address() as AddressInfo).port;
