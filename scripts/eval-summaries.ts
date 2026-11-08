@@ -191,6 +191,7 @@ async function scoreFixture(
       const legal = scoreLegalPosture(summary);
       samples.push({
         faithfulness,
+        unsupported: faith.unsupported,
         completeness,
         legalPass: legal.pass,
         legalViolations: legal.violations,

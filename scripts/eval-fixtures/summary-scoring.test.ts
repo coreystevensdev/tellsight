@@ -110,6 +110,7 @@ describe('sample summaries', () => {
     const samples: SampleScore[] = [
       {
         faithfulness: 1,
+        unsupported: [{ claim: 'a ceiling is coming', reason: 'speculative' }],
         completeness: 0.5,
         legalPass: true,
         legalViolations: [],
@@ -119,6 +120,13 @@ describe('sample summaries', () => {
       },
       {
         faithfulness: 0.5,
+        // The repeated claim carries a different reason, which is the case a
+        // Set cannot collapse: dedupe is keyed on the claim, and Map keeps the
+        // last value, so this sample's reason is the one that survives.
+        unsupported: [
+          { claim: 'a ceiling is coming', reason: 'not derivable' },
+          { claim: 'growth came from existing capacity' },
+        ],
         completeness: 1,
         legalPass: false,
         legalViolations: ['imperative', 'imperative'],
@@ -131,7 +139,14 @@ describe('sample summaries', () => {
     expect(summarizeFixtureSamples({ id: 'cash', label: 'Cash' }, samples)).toEqual({
       id: 'cash',
       label: 'Cash',
-      faithfulness: { mean: 0.75, min: 0.5 },
+      faithfulness: {
+        mean: 0.75,
+        min: 0.5,
+        unsupported: [
+          { claim: 'a ceiling is coming', reason: 'not derivable' },
+          { claim: 'growth came from existing capacity' },
+        ],
+      },
       completeness: { mean: 0.75, min: 0.5 },
       legalPosture: { pass: false, violations: ['imperative'] },
       insight: { misses: 1, examples: ['compare the two periods'], missed: ['missing action'] },

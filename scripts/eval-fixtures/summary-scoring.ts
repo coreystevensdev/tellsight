@@ -44,6 +44,10 @@ const insightSchema = z.object({
 
 export interface SampleScore {
   faithfulness: number;
+  // DW-244: the claims the judge deducted for. Carried rather than printed and
+  // dropped, because the score says a sample was bad and only these say why,
+  // and a run's console output does not outlive the run.
+  unsupported: { claim: string; reason?: string }[];
   completeness: number;
   legalPass: boolean;
   legalViolations: string[];
@@ -55,7 +59,11 @@ export interface SampleScore {
 export interface FixtureScore {
   id: string;
   label: string;
-  faithfulness: { mean: number; min: number };
+  faithfulness: {
+    mean: number;
+    min: number;
+    unsupported: { claim: string; reason?: string }[];
+  };
   completeness: { mean: number; min: number };
   legalPosture: { pass: boolean; violations: string[] };
   insight: { misses: number; examples: string[]; missed: string[] };
@@ -187,7 +195,22 @@ export function summarizeFixtureSamples(
   return {
     id: fixture.id,
     label: fixture.label,
-    faithfulness: { mean: mean(faithfulness), min: Math.min(...faithfulness) },
+    faithfulness: {
+      mean: mean(faithfulness),
+      min: Math.min(...faithfulness),
+      // Deduped on the claim, the way insight.examples dedupes its strings. A
+      // Set is no use on objects, and Map keeps the last value for a repeated
+      // key, so where samples gave different reasons for the same claim the
+      // latest sample's reason is the one kept. Any of them is representative
+      // and the order is deterministic, which is the property that matters.
+      unsupported: [
+        ...new Map(
+          samples
+            .flatMap((sample) => sample.unsupported)
+            .map((entry) => [entry.claim, entry] as const),
+        ).values(),
+      ],
+    },
     completeness: { mean: mean(completeness), min: Math.min(...completeness) },
     legalPosture: {
       pass: samples.every((sample) => sample.legalPass),
