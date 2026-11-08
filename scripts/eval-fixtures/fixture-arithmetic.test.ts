@@ -18,6 +18,14 @@ import type { ComputedStat } from '../../apps/api/src/services/curation/types.js
 // These assert the relationships the compute functions guarantee. They are cheap
 // and they run in CI, unlike the eval itself.
 
+// simple-statistics' median: mean of the two middle values at even length.
+// Written out for the same reason leastSquares below is.
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+}
+
 // Ordinary least squares, the same fit simple-statistics' linearRegression
 // performs. Written out rather than imported: scripts/ has no package.json so
 // that dependency does not resolve here, and a check is worth more when it does
@@ -161,6 +169,39 @@ describe('fixture stats are reachable by the production computations', () => {
     const crossIdx = d.projectedMonths.findIndex((pm) => pm.projectedBalance < 0);
     expect(d.crossesZeroAtMonth).toBe(crossIdx === -1 ? null : crossIdx + 1);
     expect(stat.value).toBe(d.projectedMonths.at(-1)!.projectedBalance);
+  });
+
+  // buildCashFlowStat derives every one of these from recentMonths
+  // (cashFlowMetrics.ts:52-69), so none of them is independently assertable: a
+  // cash_flow stat whose series does not produce its own monthlyNet is a stat
+  // the producer could not have emitted. This fixture carried `recentMonths: []`
+  // with a monthlyNet of 9000 beside it, which is that exact shape.
+  it.each(of('cash_flow'))('cash_flow derives its figures from its own months', (stat) => {
+    const d = stat.details as {
+      monthlyNet: number; trailingMonths: number; direction: string; monthsBurning: number;
+      recentMonths: { month: string; revenue: number; expenses: number; net: number }[];
+    };
+
+    // An empty series is the specific defect this guards, and every assertion
+    // below passes vacuously on one, so it is checked first.
+    expect(d.recentMonths.length).toBe(d.trailingMonths);
+    expect(stat.sampleSize).toBe(d.trailingMonths);
+
+    for (const m of d.recentMonths) {
+      expect(m.net).toBe(m.revenue - m.expenses);
+      // A zero-revenue month makes buildCashFlowStat return no stat at all.
+      expect(m.revenue).toBeGreaterThan(0);
+    }
+
+    const nets = d.recentMonths.map((m) => m.net);
+    expect(d.monthlyNet).toBeCloseTo(median(nets), 6);
+    expect(stat.value).toBeCloseTo(d.monthlyNet, 6);
+    expect(d.monthsBurning).toBe(nets.filter((n) => n < 0).length);
+    expect(d.direction).toBe(d.monthlyNet < 0 ? 'burning' : 'surplus');
+
+    const months = d.recentMonths.map((m) => m.month);
+    expect(months).toEqual([...months].sort());
+    expect(new Set(months).size).toBe(months.length);
   });
 
   it.each(of('seasonal_projection'))('seasonal_projection reports the amount it projected', (stat) => {

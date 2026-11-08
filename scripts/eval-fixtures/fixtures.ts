@@ -83,7 +83,37 @@ export function healthyGrowth(): ComputedStat[] {
         trailingMonths: 6,
         direction: 'surplus',
         monthsBurning: 0,
-        recentMonths: [],
+        // This was `[]`, which buildCashFlowStat cannot emit: it builds
+        // recentMonths from the bucket window and derives monthlyNet,
+        // monthsBurning and direction from it, returning no stat at all if any
+        // month has zero revenue (cashFlowMetrics.ts:52-69). So the four fields
+        // above were claims with nothing behind them.
+        //
+        // Revenue tracks the trend stat's endpoints, 40000 at 2025-07 to 50000
+        // at 2025-12, because those two are rendered into the prompt and a
+        // series disagreeing with them would hand the model a contradiction.
+        // Nets are chosen so their median is exactly 9000.
+        //
+        // What is not cross-checked, deliberately: expenses grow 15.2% here
+        // against margin_trend's 12%, and the opening margin is 17.5% against
+        // its priorMarginPercent of 19. margin_trend measures eight months a
+        // side and this window is six, so they describe different periods and
+        // forcing them to agree would invent a coherence the producer does not
+        // guarantee. The end margin does land on 24%, matching
+        // recentMarginPercent, which is a happy accident rather than a
+        // constraint.
+        //
+        // None of this reaches the prompt: assembly.ts:102 renders direction,
+        // monthlyNet, trailingMonths and monthsBurning only. This is a fixture
+        // repair in the DW-234 sense, not a fix for DW-243's score.
+        recentMonths: [
+          { month: '2025-07', revenue: 40000, expenses: 33000, net: 7000 },
+          { month: '2025-08', revenue: 42000, expenses: 34000, net: 8000 },
+          { month: '2025-09', revenue: 44000, expenses: 35200, net: 8800 },
+          { month: '2025-10', revenue: 46000, expenses: 36800, net: 9200 },
+          { month: '2025-11', revenue: 48000, expenses: 37500, net: 10500 },
+          { month: '2025-12', revenue: 50000, expenses: 38000, net: 12000 },
+        ],
       },
     },
   ];
@@ -115,7 +145,28 @@ export function cashCrunch(): ComputedStat[] {
         trailingMonths: 6,
         direction: 'burning',
         monthsBurning: 6,
-        recentMonths: [],
+        // Was `[]`, same impossible shape as healthy-growth's: buildCashFlowStat
+        // derives the four fields above from this series and cannot emit it
+        // empty. Nets median to exactly -10000, all six are negative to match
+        // monthsBurning, and the last month's revenue is break_even's rendered
+        // currentMonthlyRevenue of 40000. 24000 / 10000 also reproduces the
+        // runway stat's 2.4 months.
+        //
+        // Known and left alone: cash_forecast's basisValues for 2025-07 to
+        // 2025-12 are -3000 to -8000, which median to -5500 rather than the
+        // -10000 here, so the two stats disagree about the same six months.
+        // Neither basisValues nor this series reaches the prompt, and the
+        // alternative was changing monthlyNet, which feeds runway's 2.4 and
+        // would contradict this fixture's own label. Filed as its own entry
+        // rather than redesigned here.
+        recentMonths: [
+          { month: '2025-07', revenue: 44000, expenses: 51000, net: -7000 },
+          { month: '2025-08', revenue: 43000, expenses: 51000, net: -8000 },
+          { month: '2025-09', revenue: 42000, expenses: 51500, net: -9500 },
+          { month: '2025-10', revenue: 41000, expenses: 51500, net: -10500 },
+          { month: '2025-11', revenue: 40000, expenses: 52000, net: -12000 },
+          { month: '2025-12', revenue: 40000, expenses: 53000, net: -13000 },
+        ],
       },
     },
     {
