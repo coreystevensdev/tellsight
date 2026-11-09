@@ -795,3 +795,86 @@ describe('assemblePrompt', () => {
     });
   });
 });
+
+describe('assemblePrompt, cash flow monthly series', () => {
+  // The whole v2.3 renderer could be deleted with 3,088 api tests and 171 eval
+  // tests still green, and the seed prompt byte-identical, because the seed
+  // produces no cash_flow stat at all. The v2.3 assertions that existed all
+  // checked metadata.promptVersion, which is the label rather than the content.
+  // sampleSize is separable from the series only because the eval fixtures once
+  // carried a monthlyNet of 9000 beside `recentMonths: []`, which is the shape
+  // the empty-series branch below exists for.
+  const cashFlow = (
+    months: { month: string; revenue: number; expenses: number; net: number }[],
+    sampleSize = months.length,
+  ): ScoredInsight => ({
+    stat: {
+      statType: StatType.CashFlow,
+      category: null,
+      value: 7000,
+      sampleSize,
+      details: {
+        monthlyNet: 7000,
+        trailingMonths: months.length,
+        direction: 'surplus',
+        monthsBurning: months.filter((m) => m.net < 0).length,
+        recentMonths: months,
+      },
+    },
+    score: 0.9,
+    breakdown: { novelty: 0.9, actionability: 0.9, specificity: 0.9 },
+  });
+
+  const threeMonths = [
+    { month: '2026-04', revenue: 40000, expenses: 33000, net: 7000 },
+    { month: '2026-05', revenue: 44000, expenses: 36000, net: 8000 },
+    { month: '2026-06', revenue: 48000, expenses: 39000, net: 9000 },
+  ];
+
+  it('renders every month with all three figures at the default version', async () => {
+    const { assemblePrompt } = await import('./assembly.js');
+    const { user, metadata } = assemblePrompt([cashFlow(threeMonths)], 1);
+
+    expect(metadata.promptVersion).toBe('v2.3');
+    expect(user).toContain('by month');
+    for (const m of threeMonths) {
+      expect(user, `${m.month} must carry revenue, expenses and net`).toContain(
+        `${m.month} rev $${m.revenue.toLocaleString('en-US')} exp $${m.expenses.toLocaleString('en-US')} net +$${m.net.toLocaleString('en-US')}`,
+      );
+    }
+  });
+
+  it('renders a negative month with the sign, not as a magnitude', async () => {
+    const { assemblePrompt } = await import('./assembly.js');
+    // cash_flow's sample-size floor is 3 (sampleSizeFloors.ts:45), so a
+    // one-month fixture is suppressed before it reaches a renderer.
+    const burning = [
+      { month: '2026-04', revenue: 40000, expenses: 50000, net: -10000 },
+      { month: '2026-05', revenue: 41000, expenses: 44000, net: -3000 },
+      { month: '2026-06', revenue: 42000, expenses: 40000, net: 2000 },
+    ];
+    const { user } = assemblePrompt([cashFlow(burning)], 1);
+
+    expect(user).toContain('2026-04 rev $40,000 exp $50,000 net -$10,000');
+    expect(user).toContain('2026-06 rev $42,000 exp $40,000 net +$2,000');
+  });
+
+  it('omits the series on a version outside the gate', async () => {
+    const { assemblePrompt } = await import('./assembly.js');
+    // v2.2 rendered revenue alone and was deleted for measuring worse. An older
+    // arm has to produce the prompt it originally produced, so the gate is a
+    // version set rather than an unconditional append.
+    const { user } = assemblePrompt([cashFlow(threeMonths)], 1, 'v2.1');
+
+    expect(user).not.toContain('by month');
+    expect(user).toContain('Cash Flow: surplus');
+  });
+
+  it('omits the series when the producer emitted no months', async () => {
+    const { assemblePrompt } = await import('./assembly.js');
+    const { user } = assemblePrompt([cashFlow([], 3)], 1);
+
+    expect(user).not.toContain('by month');
+    expect(user).toContain('Cash Flow: surplus');
+  });
+});
