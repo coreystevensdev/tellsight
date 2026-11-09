@@ -24,6 +24,14 @@ export const usdSigned = (n: number) => `${n >= 0 ? '+' : '-'}$${usd.format(Math
 // the negative case. Matches the editorial posture of the owner framing.
 export const usdMinus = (n: number) => (n >= 0 ? `$${usd.format(n)}` : `-$${usd.format(Math.abs(n))}`);
 
+// Minus outside the symbol, with the digit grouping each site already used.
+// DW-246 only needed the sign handled: these sites could not render a negative
+// before a contra entry existed. Routing them through usdMinus would also have
+// added thousands separators, turning every trend line's `$1000 -> $2000` into
+// `$1,000 -> $2,000` for every org, which is a prompt change nobody measured.
+const signedCents = (n: number) => `${n < 0 ? '-' : ''}$${Math.abs(n).toFixed(2)}`;
+const signedWhole = (n: number) => `${n < 0 ? '-' : ''}$${Math.abs(n).toFixed(0)}`;
+
 interface SplitTemplate {
   system: string;
   user: string;
@@ -91,19 +99,22 @@ function formatStatBody(insight: ScoredInsight, promptVersion: string): string {
 
   switch (stat.statType) {
     case StatType.Total:
-      return `- [${category}] Total: $${usd.format(stat.value)} (${stat.details.count} transactions, relevance: ${score.toFixed(2)})`;
+      return `- [${category}] Total: ${usdMinus(stat.value)} (${stat.details.count} transactions, relevance: ${score.toFixed(2)})`;
     case StatType.Average:
-      return `- [${category}] Average: $${stat.value.toFixed(2)}, median: $${stat.details.median.toFixed(2)} (relevance: ${score.toFixed(2)})`;
+      return `- [${category}] Average: ${signedCents(stat.value)}, median: ${signedCents(stat.details.median)} (relevance: ${score.toFixed(2)})`;
     case StatType.Trend: {
       const dir = stat.details.growthPercent >= 0 ? 'up' : 'down';
-      return `- [${category}] Trend (${stat.details.firstPeriod} to ${stat.details.lastPeriod}): ${dir} ${Math.abs(stat.details.growthPercent).toFixed(1)}% over ${stat.details.dataPoints} months ($${stat.details.firstValue.toFixed(0)} -> $${stat.details.lastValue.toFixed(0)}, relevance: ${score.toFixed(2)})`;
+      return `- [${category}] Trend (${stat.details.firstPeriod} to ${stat.details.lastPeriod}): ${dir} ${Math.abs(stat.details.growthPercent).toFixed(1)}% over ${stat.details.dataPoints} months (${signedWhole(stat.details.firstValue)} -> ${signedWhole(stat.details.lastValue)}, relevance: ${score.toFixed(2)})`;
     }
     case StatType.Anomaly: {
       const dir = stat.details.direction;
-      return `- [${category}] Anomaly (${stat.details.period}): $${stat.value.toFixed(2)} is ${dir} normal (z-score: ${stat.details.zScore.toFixed(2)}, expected range: $${stat.details.iqrBounds.lower.toFixed(0)}-$${stat.details.iqrBounds.upper.toFixed(0)}, relevance: ${score.toFixed(2)})`;
+      return `- [${category}] Anomaly (${stat.details.period}): ${signedCents(stat.value)} is ${dir} normal (z-score: ${stat.details.zScore.toFixed(2)}, expected range: ${signedWhole(stat.details.iqrBounds.lower)} to ${signedWhole(stat.details.iqrBounds.upper)}, relevance: ${score.toFixed(2)})`;
     }
+    // DW-246: usdMinus and "to" rather than `$X-$Y`. A contra entry can put a
+    // negative at either end now, and `$-3000-$500` cannot be read reliably by
+    // a model or a person.
     case StatType.CategoryBreakdown:
-      return `- [${category}] Breakdown: ${stat.details.percentage.toFixed(1)}% of total ($${usd.format(stat.details.absoluteTotal)}, ${stat.details.transactionCount} transactions, range: $${stat.details.min.toFixed(0)}-$${stat.details.max.toFixed(0)}, relevance: ${score.toFixed(2)})`;
+      return `- [${category}] Breakdown: ${stat.details.percentage.toFixed(1)}% of total ($${usd.format(stat.details.absoluteTotal)}, ${stat.details.transactionCount} transactions, range: ${signedWhole(stat.details.min)} to ${signedWhole(stat.details.max)}, relevance: ${score.toFixed(2)})`;
     case StatType.YearOverYear:
       return `- [${category}] Year-over-Year (${stat.details.month}): $${usd.format(stat.details.currentRevenue)} in ${stat.details.currentYearLabel} vs $${usd.format(stat.details.priorRevenue)} in ${stat.details.priorYearLabel} (${stat.details.changePercent >= 0 ? '+' : ''}${stat.details.changePercent.toFixed(1)}%, relevance: ${score.toFixed(2)})`;
     case StatType.MarginTrend: {

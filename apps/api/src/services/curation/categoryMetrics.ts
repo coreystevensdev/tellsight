@@ -13,19 +13,12 @@ import { StatType } from './types.js';
 export interface CategoryGroup {
   amounts: number[];
   timeSeries: [number, number][];
-  // Index-aligned with amounts, the way timeSeries already is: -1 where the row
-  // was a contra entry, +1 otherwise. Kept as a third array rather than folded
-  // into amounts so every consumer that has not been taught about contra
-  // entries reads exactly what it read before, which is the property that lets
-  // them be taught one at a time.
+  // Index-aligned with amounts: -1 where the row was a contra entry, +1
+  // otherwise. amounts and timeSeries already carry the sign applied, so this
+  // exists only for computeCategoryVariance, which has to take abs() for the
+  // bank-export convention and then put a contra entry's reduction back. Any
+  // other use is a sign the caller is re-deriving something already done.
   signs: (1 | -1)[];
-}
-
-// The contribution each row makes to its category's net, contra entries
-// subtracting. A negative amount that is not a contra entry stays negative:
-// that is a bank export storing its own sign (normalizer.ts), not a reduction.
-export function netAmounts(group: CategoryGroup): number[] {
-  return group.amounts.map((amount, index) => (group.signs[index] ?? 1) * amount);
 }
 
 export function groupByCategory(rows: DataRow[]): Map<string, CategoryGroup> {
@@ -50,9 +43,19 @@ export function groupByCategory(rows: DataRow[]): Map<string, CategoryGroup> {
       groups.set(row.category, group);
     }
 
-    group.amounts.push(amount);
-    group.timeSeries.push([row.date.getTime(), amount]);
-    group.signs.push(financialEffect(row)?.sign ?? 1);
+    // DW-246: the netted value goes in, not the raw one. The first version kept
+    // these raw and put the sign in `signs` for consumers to apply, which left
+    // trend, anomaly, average and the breakdown's min/max reading a vendor
+    // credit as a large expense: ten $500 bills plus a $3,000 credit rendered
+    // as "Trend up 600.0% ($500 -> $3500)" on a month whose real spend was
+    // minus $2,500. Correctness cannot depend on a consumer remembering a
+    // parallel array, because not remembering is what an untaught consumer
+    // does. A value that is already right when read plainly is the only shape
+    // that fails safe.
+    const sign = financialEffect(row)?.sign ?? 1;
+    group.amounts.push(sign * amount);
+    group.timeSeries.push([row.date.getTime(), sign * amount]);
+    group.signs.push(sign);
   }
 
   return groups;

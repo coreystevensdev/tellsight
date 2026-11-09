@@ -172,6 +172,43 @@ describe('computeStats', () => {
       expect(totals.find((t) => t.category === 'Office Supplies' && t.details.scope === 'category')?.value).not.toBe(500);
     });
 
+    // DW-246. The first contra implementation kept amounts raw and put the sign
+    // in a parallel array, so trend, anomaly, average and the breakdown's
+    // min/max read a vendor credit as a large expense. Reproduced end to end:
+    // ten $500 bills plus a $3,000 credit rendered as "Trend up 600.0%
+    // ($500 -> $3500)" on a month whose real spend was minus $2,500.
+    //
+    // Asserting through computeStats rather than on groupByCategory, because the
+    // defect was consumers of the group, not the group itself.
+    it('nets a contra entry in every stat derived from the group, not just the totals', () => {
+      const bills = Array.from({ length: 10 }, (_, m) => ({
+        ...base, id: m + 1, category: 'Office Supplies', parentCategory: 'Expenses',
+        date: new Date(Date.UTC(2026, m, 15)), amount: '500.00',
+      }));
+      const credit = {
+        ...base, id: 99, category: 'Office Supplies', parentCategory: 'ExpensesContra',
+        date: new Date(Date.UTC(2026, 9, 20)), amount: '3000.00',
+      };
+      const stats = computeStats([...bills, credit]);
+      const pick = (t: StatType) => stats.find((s) => s.statType === t && s.category === 'Office Supplies');
+
+      // October spent 500 and got 3000 back, so its net is -2500, not +3500.
+      const trend = pick(StatType.Trend)!.details as { lastValue: number; growthPercent: number };
+      expect(trend.lastValue).toBe(-2500);
+      expect(trend.growthPercent).toBeLessThan(0);
+
+      // 10 * 500 - 3000 = 2000 over 11 rows.
+      expect(pick(StatType.Average)!.value).toBeCloseTo(2000 / 11, 6);
+
+      // The credit is the minimum, not the maximum.
+      const breakdown = pick(StatType.CategoryBreakdown)!.details as { min: number; max: number };
+      expect(breakdown.min).toBe(-3000);
+      expect(breakdown.max).toBe(500);
+
+      // And the total, which was already correct, still agrees with all of them.
+      expect(pick(StatType.Total)?.value).toBe(2000);
+    });
+
     it('leaves an unknown parent category excluded, so a typo cannot add to a total', () => {
       const typo = { ...credit, id: 4, parentCategory: 'ExpenseContra' };
       const totals = computeStats([bill, typo]).filter((s) => s.statType === StatType.Total);

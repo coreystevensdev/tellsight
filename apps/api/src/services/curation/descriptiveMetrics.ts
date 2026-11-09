@@ -1,6 +1,6 @@
 import { max, mean, median, min, sum } from 'simple-statistics';
 
-import { netAmounts, type CategoryGroup } from './categoryMetrics.js';
+import type { CategoryGroup } from './categoryMetrics.js';
 import type { ComputedStat } from './types.js';
 import { StatType } from './types.js';
 
@@ -14,7 +14,7 @@ export function computeTotals(
     stats.push({
       statType: StatType.Total,
       category,
-      value: sum(netAmounts(group)),
+      value: sum(group.amounts),
       sampleSize: group.amounts.length,
       details: { scope: 'category', count: group.amounts.length },
     });
@@ -76,7 +76,7 @@ export function computeCategoryBreakdowns(
   // nets rather than of each row keeps a credit from inflating the very share it
   // is meant to shrink, and keeps the percentages summing to 100.
   const netByCategory = new Map(
-    [...groups].map(([category, group]) => [category, Math.abs(sum(netAmounts(group)))]),
+    [...groups].map(([category, group]) => [category, Math.abs(sum(group.amounts))]),
   );
   let totalAbsolute = 0;
   for (const categoryNet of netByCategory.values()) totalAbsolute += categoryNet;
@@ -93,7 +93,7 @@ export function computeCategoryBreakdowns(
     stats.push({
       statType: StatType.CategoryBreakdown,
       category,
-      value: sum(netAmounts(group)),
+      value: sum(group.amounts),
       sampleSize: group.amounts.length,
       details: {
         percentage,

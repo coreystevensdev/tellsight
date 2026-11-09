@@ -22,7 +22,6 @@ import { computeMarginTrend } from './marginMetrics.js';
 import {
   computeCategoryVariance,
   groupByCategory,
-  netAmounts,
 } from './categoryMetrics.js';
 import {
   computeAverages,
@@ -75,7 +74,7 @@ export function computeStats(
   // the same way each category's do.
   const allAmounts: number[] = [];
   for (const group of groups.values()) {
-    allAmounts.push(...netAmounts(group));
+    allAmounts.push(...group.amounts);
   }
 
   if (allAmounts.length === 0) return [];
