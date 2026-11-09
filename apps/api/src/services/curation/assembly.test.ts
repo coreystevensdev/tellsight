@@ -1040,3 +1040,77 @@ describe('assemblePrompt, the renderers nothing was pinning', () => {
     expect(user).toContain('spent $500, on plan by 0.0%');
   });
 });
+
+describe('assemblePrompt, trend percentages that are not percentages', () => {
+  const trend = (firstValue: number, lastValue: number): ScoredInsight => ({
+    stat: {
+      statType: StatType.Trend,
+      category: 'Office Supplies',
+      value: lastValue,
+      sampleSize: 11,
+      details: {
+        slope: (lastValue - firstValue) / 9,
+        intercept: firstValue,
+        growthPercent: firstValue !== 0 ? ((lastValue - firstValue) / Math.abs(firstValue)) * 100 : 0,
+        dataPoints: 10,
+        firstValue,
+        lastValue,
+        firstPeriod: '2026-01',
+        lastPeriod: '2026-10',
+      },
+    },
+    score: 0.79,
+    breakdown: { novelty: 0.8, actionability: 0.8, specificity: 0.8 },
+  });
+
+  async function render(insight: ScoredInsight): Promise<string> {
+    const { assemblePrompt } = await import('./assembly.js');
+    return assemblePrompt([insight], 1).user;
+  }
+
+  it('omits the percentage when the endpoints straddle zero', async () => {
+    // (-2500 - 500) / 500 is -600%, and "down 600.0%" is not a thing spending
+    // can do: it cannot fall more than 100% and still be spending.
+    const user = await render(trend(500, -2500));
+
+    expect(user).toContain(
+      '[Office Supplies] Trend (2026-01 to 2026-10): $500 -> -$2500 over 10 months, down across zero so no percentage applies',
+    );
+    expect(user).not.toContain('600.0%');
+    expect(user).not.toContain('%,');
+  });
+
+  it('omits it in the other direction too, a credit year turning into spending', async () => {
+    const user = await render(trend(-2500, 500));
+
+    expect(user).toContain('-$2500 -> $500 over 10 months, up across zero so no percentage applies');
+    expect(user).not.toContain('120.0%');
+  });
+
+  it('omits it when the base is zero, where the producer reports 0% regardless', async () => {
+    // growthPercent is 0 by statisticalAnalysis.ts's own guard, so the old
+    // renderer said "up 0.0%" for a category that fell $2,500.
+    const user = await render(trend(0, -2500));
+
+    expect(user).toContain('$0 -> -$2500 over 10 months, down from zero so no percentage applies');
+    expect(user).not.toContain('0.0%');
+  });
+
+  it('still reports a real -100% when the trend ends at zero', async () => {
+    // $600 to $0 is a well-defined fall of 100%, not a sign change, so this is
+    // the boundary the fix must not swallow.
+    const user = await render(trend(600, 0));
+
+    expect(user).toContain(
+      '[Office Supplies] Trend (2026-01 to 2026-10): down 100.0% over 10 months ($600 -> $0',
+    );
+  });
+
+  it('leaves an ordinary same-sign trend exactly as it was', async () => {
+    const user = await render(trend(600, 400));
+
+    expect(user).toContain(
+      '[Office Supplies] Trend (2026-01 to 2026-10): down 33.3% over 10 months ($600 -> $400',
+    );
+  });
+});

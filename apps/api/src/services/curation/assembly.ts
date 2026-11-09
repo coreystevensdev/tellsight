@@ -103,8 +103,27 @@ function formatStatBody(insight: ScoredInsight, promptVersion: string): string {
     case StatType.Average:
       return `- [${category}] Average: ${signedCents(stat.value)}, median: ${signedCents(stat.details.median)} (relevance: ${score.toFixed(2)})`;
     case StatType.Trend: {
-      const dir = stat.details.growthPercent >= 0 ? 'up' : 'down';
-      return `- [${category}] Trend (${stat.details.firstPeriod} to ${stat.details.lastPeriod}): ${dir} ${Math.abs(stat.details.growthPercent).toFixed(1)}% over ${stat.details.dataPoints} months (${signedWhole(stat.details.firstValue)} -> ${signedWhole(stat.details.lastValue)}, relevance: ${score.toFixed(2)})`;
+      const { firstValue, lastValue, growthPercent, dataPoints } = stat.details;
+      // From the values, not from growthPercent's sign. They agree whenever a
+      // percentage is reported, and where one is not they do not: a trend
+      // starting at zero carries growthPercent 0 by the producer's own guard
+      // (statisticalAnalysis.ts:46), which would read as "up" for a category
+      // that fell all year.
+      const dir = lastValue >= firstValue ? 'up' : 'down';
+      const span = `over ${dataPoints} months`;
+      const ends = `${signedWhole(firstValue)} -> ${signedWhole(lastValue)}`;
+      // A percent change needs a non-zero base and two endpoints on the same
+      // side of zero. Netting contra entries made a negative endpoint reachable
+      // and the result was "down 600.0%", which is exactly
+      // (-2500 - 500) / 500 and still not a sentence an owner can act on, since
+      // spending cannot fall more than 100% and remain spending. $500 -> $0 is
+      // left alone: that is a real -100%. DW-247.
+      const crossesZero = (firstValue > 0 && lastValue < 0) || (firstValue < 0 && lastValue > 0);
+      if (firstValue === 0 || crossesZero) {
+        const why = firstValue === 0 ? 'from zero' : 'across zero';
+        return `- [${category}] Trend (${stat.details.firstPeriod} to ${stat.details.lastPeriod}): ${ends} ${span}, ${dir} ${why} so no percentage applies (relevance: ${score.toFixed(2)})`;
+      }
+      return `- [${category}] Trend (${stat.details.firstPeriod} to ${stat.details.lastPeriod}): ${dir} ${Math.abs(growthPercent).toFixed(1)}% ${span} (${ends}, relevance: ${score.toFixed(2)})`;
     }
     case StatType.Anomaly: {
       const dir = stat.details.direction;
