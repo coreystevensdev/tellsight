@@ -69,9 +69,11 @@ export interface FixtureScore {
   // plausibly independent of the score, and these are not.
   capRefused: number;
   capRefusedCostsUsd: number[];
-  // Per scored sample, index-aligned with nothing else, kept so the cost/score
-  // correlation can be computed from a stored scorecard rather than re-run.
-  sampleCostsUsd: number[];
+  // One row per scored sample. A single structure rather than parallel arrays
+  // because the first version recorded cost per sample and the scores only as a
+  // mean, which left the cost/score correlation that DW-251 exists to expose
+  // still uncomputable from a stored scorecard.
+  sampleScores: { costUsd: number; faithfulness: number; completeness: number }[];
   // Same split as AgentFixtureScore, for the same reason and on the arm whose
   // floors decide the exit code. DW-250.
   unmeasured: number;
@@ -228,7 +230,11 @@ export function summarizeFixtureSamples(
     errored: counts.errored,
     capRefused: counts.capRefused ?? 0,
     capRefusedCostsUsd: counts.capRefusedCostsUsd ?? [],
-    sampleCostsUsd: samples.map((sample) => sample.costUsd),
+    sampleScores: samples.map((sample) => ({
+      costUsd: sample.costUsd,
+      faithfulness: sample.faithfulness,
+      completeness: sample.completeness,
+    })),
     faithfulness: {
       mean: mean(faithfulness),
       min: Math.min(...faithfulness),

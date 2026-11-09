@@ -420,7 +420,8 @@ async function main(): Promise<void> {
   // sample that survived.
   for (const r of results) {
     if (r.capRefused === 0) continue;
-    const maxScored = r.sampleCostsUsd.length ? Math.max(...r.sampleCostsUsd) : 0;
+    const costs = r.sampleScores.map((x) => x.costUsd);
+    const maxScored = costs.length ? Math.max(...costs) : 0;
     const refused = r.capRefusedCostsUsd;
     const allDearer = refused.every((c) => c > maxScored);
     console.log(

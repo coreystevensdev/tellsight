@@ -135,7 +135,7 @@ describe('sample summaries', () => {
     // Both refusals cost more than the one sample that survived, which is the
     // comparison the run prints and the reason the exclusion is not neutral.
     expect(Math.min(...score.capRefusedCostsUsd)).toBeGreaterThan(
-      Math.max(...score.sampleCostsUsd),
+      Math.max(...score.sampleScores.map((x) => x.costUsd)),
     );
   });
 
@@ -158,8 +158,13 @@ describe('sample summaries', () => {
 
     // Index-aligned with the samples, so a stored scorecard is enough to check
     // whether cost tracks score without re-running the eval.
-    expect(score.sampleCostsUsd).toEqual([0.004, 0.011]);
-    expect(score.sampleCostsUsd).toHaveLength(score.sampledCount);
+    // Cost and score in the same row, which is what makes the correlation
+    // computable from a stored scorecard instead of needing another paid run.
+    expect(score.sampleScores).toEqual([
+      { costUsd: 0.004, faithfulness: 1, completeness: 1 },
+      { costUsd: 0.011, faithfulness: 0.75, completeness: 1 },
+    ]);
+    expect(score.sampleScores).toHaveLength(score.sampledCount);
   });
 
   it('carries the shed and errored counts onto the score', () => {
@@ -225,7 +230,10 @@ describe('sample summaries', () => {
       errored: 0,
       capRefused: 0,
       capRefusedCostsUsd: [],
-      sampleCostsUsd: [0.004, 0.009],
+      sampleScores: [
+        { costUsd: 0.004, faithfulness: 1, completeness: 0.5 },
+        { costUsd: 0.009, faithfulness: 0.5, completeness: 1 },
+      ],
       faithfulness: {
         mean: 0.75,
         min: 0.5,
