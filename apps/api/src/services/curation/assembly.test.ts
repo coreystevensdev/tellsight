@@ -878,3 +878,165 @@ describe('assemblePrompt, cash flow monthly series', () => {
     expect(user).toContain('Cash Flow: surplus');
   });
 });
+
+describe('assemblePrompt, the renderers nothing was pinning', () => {
+  // A mutation sweep over all 13 stat renderers, corrupting each label and
+  // running every test file that reaches assemblePrompt, found 6 that nothing
+  // observed: these. DW-249 had guessed 10 from the seed snapshot's blind list,
+  // which answers "what does the seed produce", a different question.
+  const insight = (stat: ScoredInsight['stat'], score = 0.9): ScoredInsight => ({
+    stat,
+    score,
+    breakdown: { novelty: score, actionability: score, specificity: score },
+  });
+
+  async function render(stat: ScoredInsight['stat']): Promise<string> {
+    const { assemblePrompt } = await import('./assembly.js');
+    return assemblePrompt([insight(stat)], 1).user;
+  }
+
+  it('average renders value and median to the cent', async () => {
+    // signedCents, not usd: usd is maximumFractionDigits 0, which silently
+    // turned $181.82 into $182 when DW-246 first routed this through usdMinus.
+    const user = await render({
+      statType: StatType.Average,
+      category: 'Office Supplies',
+      value: 181.818,
+      sampleSize: 11,
+      details: { scope: 'category', median: 500 },
+    });
+    expect(user).toContain('[Office Supplies] Average: $181.82, median: $500.00');
+  });
+
+  it('average keeps the sign outside the symbol when a credit nets it negative', async () => {
+    const user = await render({
+      statType: StatType.Average,
+      category: 'Office Supplies',
+      value: -181.818,
+      sampleSize: 11,
+      details: { scope: 'category', median: -500 },
+    });
+    expect(user).toContain('Average: -$181.82, median: -$500.00');
+  });
+
+  it('breakdown renders the range with " to ", not a hyphen', async () => {
+    // $500-$3000 becomes $-3000-$500 once a bound can be negative, which is
+    // why the separator changed with DW-246.
+    const user = await render({
+      statType: StatType.CategoryBreakdown,
+      category: 'Office Supplies',
+      value: 2000,
+      sampleSize: 11,
+      details: { percentage: 100, absoluteTotal: 8000, transactionCount: 11, min: -3000, max: 500 },
+    });
+    expect(user).toContain(
+      '[Office Supplies] Breakdown: 100.0% of total ($8,000, 11 transactions, range: -$3000 to $500',
+    );
+  });
+
+  it('year-over-year names both years rather than just the delta', async () => {
+    const user = await render({
+      statType: StatType.YearOverYear,
+      category: 'Revenue',
+      value: 12000,
+      sampleSize: 2,
+      details: {
+        currentRevenue: 50000,
+        priorRevenue: 38000,
+        currentYearLabel: '2026',
+        priorYearLabel: '2025',
+        changePercent: 31.58,
+        month: '2026-03',
+      },
+    });
+    expect(user).toContain(
+      '[Revenue] Year-over-Year (2026-03): $50,000 in 2026 vs $38,000 in 2025 (+31.6%',
+    );
+  });
+
+  it('margin trend signs both growth figures', async () => {
+    // Expenses falling while revenue rises is the case where an unsigned
+    // expense figure reads as the opposite of what happened.
+    const user = await render({
+      statType: StatType.MarginTrend,
+      category: null,
+      value: 17.1,
+      sampleSize: 6,
+      details: {
+        // Off the .x5 rounding boundary on purpose: 10.95.toFixed(1) is "10.9",
+        // because 10.95 is not exactly representable. That is real behavior and
+        // not what this test is about.
+        recentMarginPercent: 28.1,
+        priorMarginPercent: 11.04,
+        direction: 'expanding',
+        revenueGrowthPercent: 37.0,
+        expenseGrowthPercent: -10.6,
+      },
+    });
+    expect(user).toContain(
+      '[Overall] Margin Trend: expanding, recent 28.1% vs prior 11.0% (revenue +37.0%, expenses -10.6%',
+    );
+  });
+
+  it('seasonal projection names the basis months it was built from', async () => {
+    // basisMonths is the same calendar month across years, not a consecutive
+    // series (revenueMetrics.ts loops years for one fixed month). Pinned with
+    // two different years so a future consecutive-series reading fails here.
+    const user = await render({
+      statType: StatType.SeasonalProjection,
+      category: 'Revenue',
+      value: 46000,
+      sampleSize: 2,
+      details: {
+        projectedMonth: '2026-07',
+        projectedAmount: 46000,
+        basisMonths: ['2025-07', '2024-07'],
+        basisValues: [44000, 48000],
+        confidence: 'moderate',
+      },
+    });
+    expect(user).toContain(
+      '[Revenue] Seasonal Projection: 2026-07 estimated at $46,000 based on 2025-07, 2024-07 (confidence: moderate',
+    );
+  });
+
+  it('plan vs actual says over, under or on plan, and never a bare percentage', async () => {
+    const over = await render({
+      statType: StatType.CategoryVariance,
+      category: 'Marketing',
+      value: 105,
+      sampleSize: 6,
+      details: {
+        plannedMonthly: 500,
+        actualMonthly: 605,
+        variance: 105,
+        variancePercent: 21,
+        monthLabel: '2026-10',
+        direction: 'over',
+      },
+    });
+    expect(over).toContain(
+      '[Marketing] Plan vs actual (2026-10): planned $500, spent $605, over plan by 21.0%',
+    );
+  });
+
+  it('plan vs actual reads "on plan" for the on_plan direction', async () => {
+    // direction is a three-way union and the renderer maps it through a nested
+    // ternary, so the third branch is the one a two-case test would miss.
+    const user = await render({
+      statType: StatType.CategoryVariance,
+      category: 'Marketing',
+      value: 0,
+      sampleSize: 6,
+      details: {
+        plannedMonthly: 500,
+        actualMonthly: 500,
+        variance: 0,
+        variancePercent: 0,
+        monthLabel: '2026-10',
+        direction: 'on_plan',
+      },
+    });
+    expect(user).toContain('spent $500, on plan by 0.0%');
+  });
+});
