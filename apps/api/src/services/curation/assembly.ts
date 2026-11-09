@@ -131,8 +131,10 @@ function formatStatBody(insight: ScoredInsight, promptVersion: string): string {
       // month. validator.ts:109-113 has accepted these figures as citable
       // since its first commit, so nothing there needs widening.
       //
-      // Revenue only: it answers the month-level questions the eval judge was
-      // deducting for, and leaves expenses and net to a second decision.
+      // All three figures per month, not revenue alone. Revenue alone shipped as
+      // v2.2 and measured worse than no series at all, because the model could
+      // see revenue climbing and inferred the surplus trend it had not been
+      // given. See the note on MONTHLY_CASH_FLOW_VERSIONS above.
       if (!MONTHLY_CASH_FLOW_VERSIONS.has(promptVersion) || stat.details.recentMonths.length === 0) {
         return head;
       }
