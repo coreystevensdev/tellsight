@@ -106,6 +106,29 @@ describe('judge scoring', () => {
 });
 
 describe('sample summaries', () => {
+  it('carries the shed and errored counts onto the score', () => {
+    // The gate reads these off FixtureScore, so a count that does not propagate
+    // leaves the arm ungated exactly as it was before DW-250.
+    const sample: SampleScore = {
+      faithfulness: 1,
+      unsupported: [],
+      completeness: 1,
+      legalPass: true,
+      legalViolations: [],
+      insightPass: true,
+      qualifyingInsight: 'x',
+      insightShortfall: [],
+    };
+    const score = summarizeFixtureSamples({ id: 'cash', label: 'Cash' }, [sample], {
+      unmeasured: 7,
+      errored: 2,
+    });
+
+    expect(score.unmeasured).toBe(7);
+    expect(score.errored).toBe(2);
+    expect(score.sampledCount).toBe(1);
+  });
+
   it('aggregates fixture scores and deduplicates diagnostic text', () => {
     const samples: SampleScore[] = [
       {
@@ -139,6 +162,8 @@ describe('sample summaries', () => {
     expect(summarizeFixtureSamples({ id: 'cash', label: 'Cash' }, samples)).toEqual({
       id: 'cash',
       label: 'Cash',
+      unmeasured: 0,
+      errored: 0,
       faithfulness: {
         mean: 0.75,
         min: 0.5,

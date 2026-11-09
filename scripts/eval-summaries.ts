@@ -196,6 +196,10 @@ async function scoreFixture(
   const groundTruth = extractGroundTruth(user);
 
   const samples: SampleScore[] = [];
+  // DW-250: this arm's floors decide the exit code, so a shed sample has to be
+  // distinguishable from a bad one here even more than on the agent arm.
+  let unmeasured = 0;
+  let errored = 0;
   for (let i = 0; i < SAMPLES; i++) {
     try {
       const summary = await provider.generate({ system, user });
@@ -223,18 +227,26 @@ async function scoreFixture(
         `  ${fixture.id} sample ${i + 1}/${SAMPLES}: faith ${faithfulness.toFixed(2)}, comp ${completeness.toFixed(2)}, legal ${legal.pass ? 'pass' : 'FAIL'}, insight ${insight.pass ? 'pass' : 'FAIL'}`,
       );
     } catch (err) {
-      console.error(`  ${fixture.id} sample ${i + 1}/${SAMPLES} failed: ${err instanceof Error ? err.message : err}`);
+      const shed = (err as { code?: string } | null)?.code === 'CIRCUIT_OPEN';
+      if (shed) unmeasured++;
+      else errored++;
+      console.error(
+        `  ${fixture.id} sample ${i + 1}/${SAMPLES} ${shed ? 'shed, never reached the API' : 'failed'}: ` +
+          `${err instanceof Error ? err.message : err}`,
+      );
     }
   }
 
   // One bad sample shouldn't discard the fixture's other, already-scored samples.
   // Bail before Math.min() on an empty array (which is Infinity, not a real score).
   if (samples.length === 0) {
-    throw new Error(`${fixture.id}: all ${SAMPLES} samples failed`);
+    throw new Error(
+      `${fixture.id}: 0 of ${SAMPLES} samples measured (${unmeasured} shed, ${errored} errored)`,
+    );
   }
 
   return {
-    score: summarizeFixtureSamples(fixture, samples),
+    score: summarizeFixtureSamples(fixture, samples, { unmeasured, errored }),
     promptVersion: metadata.promptVersion,
   };
 }
@@ -384,6 +396,16 @@ async function main(): Promise<void> {
 
   const breaches: string[] = [];
   for (const r of results) {
+    // DW-250: shedding is correlated, so the survivors are whatever ran before
+    // the breaker tripped rather than a random subset of 36. A mean over those
+    // is not a noisier measurement of the same thing, so it is not graded.
+    if (r.unmeasured > 0) {
+      breaches.push(
+        `${r.id}: inconclusive, ${r.unmeasured} of ${SAMPLES} samples shed before reaching the API ` +
+          `(scored ${r.sampledCount}, errored ${r.errored})`,
+      );
+      continue;
+    }
     if (r.faithfulness.mean < FLOORS.faithfulness) {
       breaches.push(
         `${r.id}: faithfulness ${r.faithfulness.mean.toFixed(2)} < ${FLOORS.faithfulness}`,

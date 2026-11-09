@@ -59,6 +59,10 @@ export interface SampleScore {
 export interface FixtureScore {
   id: string;
   label: string;
+  // Same split as AgentFixtureScore, for the same reason and on the arm whose
+  // floors decide the exit code. DW-250.
+  unmeasured: number;
+  errored: number;
   faithfulness: {
     mean: number;
     min: number;
@@ -195,12 +199,15 @@ export function mean(values: number[]): number {
 export function summarizeFixtureSamples(
   fixture: { id: string; label: string },
   samples: SampleScore[],
+  counts: { unmeasured: number; errored: number } = { unmeasured: 0, errored: 0 },
 ): FixtureScore {
   const faithfulness = samples.map((sample) => sample.faithfulness);
   const completeness = samples.map((sample) => sample.completeness);
   return {
     id: fixture.id,
     label: fixture.label,
+    unmeasured: counts.unmeasured,
+    errored: counts.errored,
     faithfulness: {
       mean: mean(faithfulness),
       min: Math.min(...faithfulness),
