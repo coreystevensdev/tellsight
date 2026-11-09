@@ -26,6 +26,7 @@ import { fileURLToPath } from 'node:url';
 import { rankInsights } from '../apps/api/src/services/curation/scoring.js';
 import { assemblePrompt } from '../apps/api/src/services/curation/assembly.js';
 import { FIXTURES, FROZEN_NOW } from './eval-fixtures/fixtures.js';
+import { agentGate } from './eval-fixtures/agent-gate.js';
 import { insightGate, INSIGHT_MISS_CEILING } from './eval-fixtures/insight-gate.js';
 import { scoreLegalPosture } from './eval-fixtures/legal-posture.js';
 import type { GenerateProvider } from './eval-fixtures/parse-judge.js';
@@ -123,6 +124,12 @@ async function scoreAgentFixture(
   const groundTruth = extractGroundTruth(user, AGENT_SUMMARIES_START);
 
   const samples: AgentSample[] = [];
+  // A breaker trip sheds every subsequent sample, and samples run back to back,
+  // so the 30s cooldown never closes. Whatever survives is therefore whatever
+  // ran before the trip, not a random subset, which is why a partial arm under
+  // shedding is inconclusive rather than a smaller measurement (DW-242).
+  let unmeasured = 0;
+  let errored = 0;
   for (let i = 0; i < SAMPLES; i++) {
     try {
       const proposals = await generateProposals(scored, 1, undefined, FROZEN_NOW);
@@ -155,15 +162,28 @@ async function scoreAgentFixture(
         `  ${fixture.id} agent sample ${i + 1}/${SAMPLES}: ${proposals.length} proposal(s), faith ${faithfulness.toFixed(2)}, comp ${completeness.toFixed(2)}, legal ${legal.pass ? 'pass' : 'FAIL'}`,
       );
     } catch (err) {
-      console.error(`  ${fixture.id} agent sample ${i + 1}/${SAMPLES} failed: ${err instanceof Error ? err.message : err}`);
+      // Matched on the code rather than the message, which is user-facing copy
+      // ("Service temporarily unavailable, please retry shortly.") and free to
+      // change. CircuitOpenError sets CIRCUIT_OPEN at circuitBreaker.ts:107.
+      const shed = (err as { code?: string } | null)?.code === 'CIRCUIT_OPEN';
+      if (shed) unmeasured++;
+      else errored++;
+      console.error(
+        `  ${fixture.id} agent sample ${i + 1}/${SAMPLES} ${shed ? 'shed, never reached the API' : 'failed'}: ` +
+          `${err instanceof Error ? err.message : err}`,
+      );
     }
   }
 
   if (samples.length === 0) {
-    throw new Error(`${fixture.id}: all ${SAMPLES} agent samples failed`);
+    // Distinguished in the message because the two need different responses:
+    // shed means re-run when the upstream is healthy, failed means investigate.
+    throw new Error(
+      `${fixture.id}: 0 of ${SAMPLES} agent samples measured (${unmeasured} shed, ${errored} errored)`,
+    );
   }
 
-  return summarizeAgentSamples(fixture, samples);
+  return summarizeAgentSamples(fixture, samples, { unmeasured, errored });
 }
 
 async function scoreFixture(
@@ -276,12 +296,18 @@ async function main(): Promise<void> {
   // on v2.0 is the exact gap this arm closes, so skipping has to be deliberate.
   // EVAL_AGENT=0 opts out when only the dashboard arm is being iterated on.
   const agentResults: AgentFixtureScore[] = [];
-  if (process.env.EVAL_AGENT !== '0') {
+  const failedAgentFixtureIds: string[] = [];
+  const agentArmRan = process.env.EVAL_AGENT !== '0';
+  if (agentArmRan) {
     console.log(`\nAgent arm (v1-agent, record_proposal tool) x ${SAMPLES} samples...`);
     for (const fixture of selected) {
       try {
         agentResults.push(await scoreAgentFixture(judgeProvider, fixture));
       } catch (err) {
+        // Recorded, not just logged. A fixture that dies leaves no entry in
+        // agentResults, so a floor applied to that array cannot see it either:
+        // the absence is the thing that has to be caught (DW-242).
+        failedAgentFixtureIds.push(fixture.id);
         console.error(`  ${fixture.id} agent arm failed: ${err instanceof Error ? err.message : err}`);
       }
     }
@@ -348,6 +374,7 @@ async function main(): Promise<void> {
     fixtures: results,
     aggregate,
     failedFixtureIds,
+    failedAgentFixtureIds,
   };
   mkdirSync(dirname(SCORECARD_PATH), { recursive: true });
   writeFileSync(SCORECARD_PATH, JSON.stringify(scorecard, null, 2) + '\n');
@@ -370,6 +397,15 @@ async function main(): Promise<void> {
     if (!r.legalPosture.pass) {
       breaches.push(`${r.id}: legal posture failed (${r.legalPosture.violations.join('; ')})`);
     }
+  }
+
+  // DW-242. Extracted so it has its own tests: a gate shipped ungated is the
+  // defect this closes, and the dashboard floors above are still inline only
+  // because they predate the entry.
+  const agent = agentGate(agentResults, failedAgentFixtureIds, selected.length, SAMPLES, FLOORS);
+  if (agentArmRan) {
+    breaches.push(...agent.breaches);
+    for (const line of agent.ungraded) console.log(`  ${line}`);
   }
 
   const fr22 = insightGate(results);

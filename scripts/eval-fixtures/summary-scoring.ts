@@ -81,6 +81,12 @@ export interface AgentSample {
 export interface AgentFixtureScore {
   id: string;
   label: string;
+  // Shed samples never reached the API, so they are absent rather than bad.
+  // Keeping them separate from a dropped sample is the whole of DW-242: an arm
+  // that measured nothing printed the same PASS as an arm that measured
+  // everything, because both ended with a short `samples` array.
+  unmeasured: number;
+  errored: number;
   faithfulness: { mean: number; min: number } | null;
   completeness: { mean: number; min: number } | null;
   legalPosture: { pass: boolean; violations: string[] };
@@ -236,6 +242,7 @@ export function summarizeFixtureSamples(
 export function summarizeAgentSamples(
   fixture: { id: string; label: string },
   samples: AgentSample[],
+  counts: { unmeasured: number; errored: number } = { unmeasured: 0, errored: 0 },
 ): AgentFixtureScore {
   // Silence is a legitimate agent result, not zero-quality prose. Only samples
   // that emitted a proposal contribute to the prose metrics.
@@ -245,6 +252,8 @@ export function summarizeAgentSamples(
   return {
     id: fixture.id,
     label: fixture.label,
+    unmeasured: counts.unmeasured,
+    errored: counts.errored,
     faithfulness: faithfulness.length
       ? { mean: mean(faithfulness), min: Math.min(...faithfulness) }
       : null,
