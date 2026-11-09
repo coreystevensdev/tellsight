@@ -152,20 +152,23 @@ export function cashCrunch(): ComputedStat[] {
         // currentMonthlyRevenue of 40000. 24000 / 10000 also reproduces the
         // runway stat's 2.4 months.
         //
-        // Known and left alone: cash_forecast's basisValues for 2025-07 to
-        // 2025-12 are -3000 to -8000, which median to -5500 rather than the
-        // -10000 here, so the two stats disagree about the same six months.
-        // Neither basisValues nor this series reaches the prompt, and the
-        // alternative was changing monthlyNet, which feeds runway's 2.4 and
-        // would contradict this fixture's own label. Filed as its own entry
-        // rather than redesigned here.
+        // DW-245: this series and cash_forecast's basisValues describe the same
+        // six months, so they now hold the same values. They did not, and the
+        // reason for leaving it alone was that neither reached the prompt. v2.3
+        // renders this one, which put a forecast of -9000 for January directly
+        // beside a December actual of -13000: a regression claiming accelerating
+        // burn, projecting less burn than the month it continues from.
+        //
+        // These six are the trailing six of basisValues, exactly linear at
+        // -1000/mo so leastSquares returns slope and intercept as integers, and
+        // they still median to -10000 so runway's 24000 / 10000 = 2.4 holds.
         recentMonths: [
-          { month: '2025-07', revenue: 44000, expenses: 51000, net: -7000 },
-          { month: '2025-08', revenue: 43000, expenses: 51000, net: -8000 },
+          { month: '2025-07', revenue: 44000, expenses: 51500, net: -7500 },
+          { month: '2025-08', revenue: 43000, expenses: 51500, net: -8500 },
           { month: '2025-09', revenue: 42000, expenses: 51500, net: -9500 },
           { month: '2025-10', revenue: 41000, expenses: 51500, net: -10500 },
-          { month: '2025-11', revenue: 40000, expenses: 52000, net: -12000 },
-          { month: '2025-12', revenue: 40000, expenses: 53000, net: -13000 },
+          { month: '2025-11', revenue: 40000, expenses: 51500, net: -11500 },
+          { month: '2025-12', revenue: 40000, expenses: 52500, net: -12500 },
         ],
       },
     },
@@ -197,7 +200,7 @@ export function cashCrunch(): ComputedStat[] {
       statType: 'cash_forecast',
       category: null,
       // the last projectedBalance, which is what computeCashForecast returns
-      value: -6000,
+      value: -19500,
       // netsFromBuckets defaults to a 12-month basis window
       // (cashFlowMetrics.ts:132), a year of history behind the regression.
       sampleSize: 12,
@@ -211,7 +214,7 @@ export function cashCrunch(): ComputedStat[] {
         // tolerance, and fixture-arithmetic.test.ts now re-derives every
         // number here from them.
         slope: -1000,
-        intercept: 3000,
+        intercept: -1500,
         // 12 months, matching sampleSize's length.
         basisMonths: [
           '2025-01',
@@ -227,17 +230,21 @@ export function cashCrunch(): ComputedStat[] {
           '2025-11',
           '2025-12',
         ],
-        basisValues: [3000, 2000, 1000, 0, -1000, -2000, -3000, -4000, -5000, -6000, -7000, -8000],
+        // The trailing six are cash_flow's recentMonths nets (DW-245). Still
+        // exactly linear, so leastSquares returns -1000 and -1500 exactly.
+        basisValues: [
+          -1500, -2500, -3500, -4500, -5500, -6500, -7500, -8500, -9500, -10500, -11500, -12500,
+        ],
         // nextMonthKey('2025-12', 1..3), which the old values missed by six
         // months. projectedNet is round(slope * t + intercept) at t = 12, 13,
         // 14, so the burn accelerates, which is what a negative slope means.
         // The old fixture held it flat at -9000 while claiming that slope.
         projectedMonths: [
-          { month: '2026-01', projectedNet: -9000, projectedBalance: 15000 },
-          { month: '2026-02', projectedNet: -10000, projectedBalance: 5000 },
-          { month: '2026-03', projectedNet: -11000, projectedBalance: -6000 },
+          { month: '2026-01', projectedNet: -13500, projectedBalance: 10500 },
+          { month: '2026-02', projectedNet: -14500, projectedBalance: -4000 },
+          { month: '2026-03', projectedNet: -15500, projectedBalance: -19500 },
         ],
-        crossesZeroAtMonth: 3,
+        crossesZeroAtMonth: 2,
         confidence: 'high',
       },
     },
