@@ -168,7 +168,7 @@ describe('assemblePrompt', () => {
     expect(result.metadata.statTypes).toEqual(['anomaly', 'trend', 'total']);
     expect(result.metadata.categoryCount).toBe(2);
     expect(result.metadata.insightCount).toBe(3);
-    expect(result.metadata.promptVersion).toBe('v2.1');
+    expect(result.metadata.promptVersion).toBe('v2.3');
     expect(result.metadata.generatedAt).toBeTruthy();
     expect(result.metadata.scoringWeights).toEqual({
       novelty: 0.9,
@@ -410,10 +410,10 @@ describe('assemblePrompt', () => {
     expect(result.user).toContain('balance crosses zero around month 3');
   });
 
-  it('defaults to v2.1 prompt version', async () => {
+  it('defaults to v2.3 prompt version', async () => {
     const { assemblePrompt } = await import('./assembly.js');
     const result = assemblePrompt([fixtureInsights[0]!], 1);
-    expect(result.metadata.promptVersion).toBe('v2.1');
+    expect(result.metadata.promptVersion).toBe('v2.3');
   });
 
   it('interpolates a passed priorContext into {{priorContext}}', async () => {
@@ -785,7 +785,7 @@ describe('assemblePrompt', () => {
         categoryCount: 2,
         insightCount: 3,
         scoringWeights: { novelty: 0.4, actionability: 0.4, specificity: 0.2 },
-        promptVersion: 'v2.1',
+        promptVersion: 'v2.3',
         generatedAt: '2026-10-01T00:00:00.000Z',
       };
 
