@@ -637,3 +637,53 @@ describe('citeTagCapture malformed tag shapes', () => {
     expect(matches[0]![1]).toBeUndefined();
   });
 });
+
+describe('validateSummary, negative stat values', () => {
+  const trend = (first: number, last: number): ComputedStat => ({
+    statType: StatType.Trend,
+    category: 'Office Supplies',
+    value: last,
+    sampleSize: 11,
+    details: {
+      slope: (last - first) / 9,
+      intercept: first,
+      growthPercent: ((last - first) / Math.abs(first)) * 100,
+      dataPoints: 10,
+      firstValue: first,
+      lastValue: last,
+      firstPeriod: '2026-01',
+      lastPeriod: '2026-10',
+    },
+  });
+
+  it('accepts a quoted magnitude when the stat value is negative', () => {
+    // The prompt renders -$2,500 and the model quotes $2,500 back. CURRENCY_RE
+    // never captures the sign, so an unstripped -2500 in the allowed set would
+    // read a correct citation as a fabrication.
+    const res = validateSummary('Office Supplies ended at $2,500 after the credit.', [
+      trend(500, -2500),
+    ]);
+    expect(res.unmatchedNumbers).toEqual([]);
+    expect(res.status).toBe('clean');
+  });
+
+  it('accepts magnitudes for every stat type a contra entry can turn negative', () => {
+    const negatives: ComputedStat[] = [
+      trend(500, -2500),
+      {
+        statType: StatType.CategoryBreakdown,
+        category: 'Office Supplies',
+        value: -2000,
+        sampleSize: 11,
+        details: { percentage: 100, absoluteTotal: 8000, transactionCount: 11, min: -3000, max: 500 },
+      },
+      { statType: StatType.Average, category: 'Office Supplies', value: -181.82, sampleSize: 11,
+        details: { median: -500, scope: 'category' } },
+    ];
+    const res = validateSummary(
+      'Office Supplies swung to $2,500 out, averaging $181.82 against a $3,000 credit.',
+      negatives,
+    );
+    expect(res.unmatchedNumbers).toEqual([]);
+  });
+});

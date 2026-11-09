@@ -53,7 +53,12 @@ function contextSnippet(text: string, index: number, radius = 40): string {
 }
 
 function classifyStatNumbers(stat: ComputedStat, sets: AllowedSets): void {
-  const addC = (n: number) => sets.currency.push(n);
+  // CURRENCY_RE starts matching at `$`, so a parsed candidate is never negative:
+  // a signed entry here can never match one, and the correct citation it should
+  // have covered reads as a fabrication instead. DW-246 made Total, Average,
+  // Trend, Anomaly and CategoryBreakdown values negative-capable for the first
+  // time, and 4 of ~20 call sites had remembered to strip the sign themselves.
+  const addC = (n: number) => sets.currency.push(Math.abs(n));
   const addP = (n: number) => sets.percent.push(n);
 
   switch (stat.statType) {
@@ -105,11 +110,11 @@ function classifyStatNumbers(stat: ComputedStat, sets: AllowedSets): void {
       return;
     case StatType.CashFlow:
       // prose strips the sign, "$4k/mo" not "-$4k/mo"
-      addC(Math.abs(stat.details.monthlyNet));
+      addC(stat.details.monthlyNet);
       for (const m of stat.details.recentMonths) {
         addC(m.revenue);
         addC(m.expenses);
-        addC(Math.abs(m.net));
+        addC(m.net);
       }
       return;
     case StatType.Runway:
@@ -118,7 +123,7 @@ function classifyStatNumbers(stat: ComputedStat, sets: AllowedSets): void {
       // scanner is out of scope for this story; runway-months fabrications are
       // an acknowledged coverage gap.
       addC(stat.details.cashOnHand);
-      addC(Math.abs(stat.details.monthlyNet));
+      addC(stat.details.monthlyNet);
       return;
     case StatType.BreakEven:
       // breakEvenRevenue, monthlyFixedCosts, currentMonthlyRevenue: the three
@@ -132,17 +137,11 @@ function classifyStatNumbers(stat: ComputedStat, sets: AllowedSets): void {
       return;
     case StatType.CashForecast:
       // startingBalance and each projected balance anchor the chart's prose
-      // rendering. projectedNet values cover prose like "burning about $10k/mo
-      // going forward", strip sign matching CashFlow's pattern.
+      // rendering. projectedNet covers prose like "burning about $10k/mo".'
       addC(stat.details.startingBalance);
       for (const pm of stat.details.projectedMonths) {
-        // Push magnitudes only, matches CashFlow's pattern at line 100. The
-        // CURRENCY_RE at line 26 starts matching at `$`, stripping any leading
-        // `-`, so parsed candidates are always non-negative. Pushing the signed
-        // balance directly would be dead (it can never match a parsed token)
-        // and would pollute the derived-sum set in buildAllowedSets.
-        addC(Math.abs(pm.projectedBalance));
-        addC(Math.abs(pm.projectedNet));
+        addC(pm.projectedBalance);
+        addC(pm.projectedNet);
       }
       // Deliberately NOT pushed: slope, intercept (regression coefficients the
       // LLM should not quote, a fabricated slope is a real hallucination).
