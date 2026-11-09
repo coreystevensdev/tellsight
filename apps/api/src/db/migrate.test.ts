@@ -35,7 +35,14 @@ function runWithoutAdminUrl(script: string) {
 // vitest's 5000ms default. So these only ever passed by about a second, and
 // failed the first time the full suite was busy. The 60s on spawnSync bounds the
 // child and said nothing about the test's own budget, which is the gap.
-const SPAWN_BUDGET_MS = 30_000;
+// Each case spawns tsx, which compiles the script under test before it can
+// refuse to run, so the cost is a cold TypeScript compile and not a database
+// call. Measured on this machine at 16s for the pair warm and 37s cold, and the
+// spawnSync kill timeout above is 60s, so a per-test budget under that was
+// failing intermittently whenever the suite ran under load. Matched to the kill
+// timeout: a spawn that outlives it is a hang, which is the thing worth failing
+// on, rather than a slow host.
+const SPAWN_BUDGET_MS = 60_000;
 
 describe('migration and seed scripts require the admin database URL', () => {
   it('migrate.ts refuses to run on DATABASE_URL alone', { timeout: SPAWN_BUDGET_MS }, () => {
