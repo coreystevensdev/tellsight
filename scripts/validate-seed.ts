@@ -178,7 +178,34 @@ function validate() {
     process.exit(1);
   }
 
+  // promptHash below covers only the renderers the seed actually exercises, and
+  // the seed produces 3 of 13 stat types. So a change to any other renderer in
+  // assembly.ts leaves the hash untouched, and "Seed Data Validation PASS" is
+  // easily read as "the prompt is verified". Naming the gap here keeps it a
+  // recorded fact: a new StatType fails this until someone decides whether the
+  // seed should produce it or it belongs on the list.
+  const UNCOVERED_BY_PROMPT_HASH = new Set([
+    'total', 'average', 'category_breakdown', 'year_over_year', 'seasonal_projection',
+    'cash_flow', 'runway', 'break_even', 'cash_forecast', 'category_variance',
+  ]);
+  const uncovered = [...ALL_STAT_TYPES].filter((t) => !presentTypes.has(t)).sort();
+  const declared = [...UNCOVERED_BY_PROMPT_HASH].sort();
+  if (uncovered.join(',') !== declared.join(',')) {
+    console.error(
+      `FAIL: the set of stat types the prompt hash cannot see has changed.\n` +
+        `  now uncovered: [${uncovered.join(', ')}]\n` +
+        `  declared:      [${declared.join(', ')}]\n` +
+        `  Either make the seed produce the new type, or add it to UNCOVERED_BY_PROMPT_HASH ` +
+        `and cover its renderer with a test in assembly.test.ts.`,
+    );
+    process.exit(1);
+  }
+
   console.log(`\nPASS (guards): ${validTypes.length} distinct stat types: [${validTypes.join(', ')}]`);
+  console.log(
+    `PASS (coverage): promptHash covers ${validTypes.length} of ${ALL_STAT_TYPES.size} stat types; ` +
+      `blind to [${uncovered.join(', ')}]`,
+  );
 
   // phase 2: anomaly-specific assertions. Tracks the seed fixture through scoring
   //, December revenue spike + October payroll drive the anomalies; 12 months of
