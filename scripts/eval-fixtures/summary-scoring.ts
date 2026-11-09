@@ -43,6 +43,12 @@ const insightSchema = z.object({
 });
 
 export interface SampleScore {
+  // What this sample cost, generation plus both judge calls. Recorded because
+  // the cost cap refuses the most expensive samples and cost tracks output
+  // length, so the exclusion is correlated with what the eval measures. Pairing
+  // the two is what makes that correlation checkable instead of asserted
+  // (DW-251).
+  costUsd: number;
   faithfulness: number;
   // DW-244: the claims the judge deducted for. Carried rather than printed and
   // dropped, because the score says a sample was bad and only these say why,
@@ -59,6 +65,13 @@ export interface SampleScore {
 export interface FixtureScore {
   id: string;
   label: string;
+  // Samples the cost cap refused, kept apart from `errored`: those are
+  // plausibly independent of the score, and these are not.
+  capRefused: number;
+  capRefusedCostsUsd: number[];
+  // Per scored sample, index-aligned with nothing else, kept so the cost/score
+  // correlation can be computed from a stored scorecard rather than re-run.
+  sampleCostsUsd: number[];
   // Same split as AgentFixtureScore, for the same reason and on the arm whose
   // floors decide the exit code. DW-250.
   unmeasured: number;
@@ -199,7 +212,12 @@ export function mean(values: number[]): number {
 export function summarizeFixtureSamples(
   fixture: { id: string; label: string },
   samples: SampleScore[],
-  counts: { unmeasured: number; errored: number } = { unmeasured: 0, errored: 0 },
+  counts: {
+    unmeasured: number;
+    errored: number;
+    capRefused?: number;
+    capRefusedCostsUsd?: number[];
+  } = { unmeasured: 0, errored: 0 },
 ): FixtureScore {
   const faithfulness = samples.map((sample) => sample.faithfulness);
   const completeness = samples.map((sample) => sample.completeness);
@@ -208,6 +226,9 @@ export function summarizeFixtureSamples(
     label: fixture.label,
     unmeasured: counts.unmeasured,
     errored: counts.errored,
+    capRefused: counts.capRefused ?? 0,
+    capRefusedCostsUsd: counts.capRefusedCostsUsd ?? [],
+    sampleCostsUsd: samples.map((sample) => sample.costUsd),
     faithfulness: {
       mean: mean(faithfulness),
       min: Math.min(...faithfulness),

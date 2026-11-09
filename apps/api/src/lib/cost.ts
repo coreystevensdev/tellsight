@@ -82,9 +82,22 @@ function windowFor(model: string): number[] {
 export const ADAPT_AFTER_CONSECUTIVE_REFUSALS = 10;
 const consecutiveRefusals = new Map<string, number>();
 
+// Cumulative, unlike the rolling window above, which is capped at HISTORY_CAP
+// and so cannot answer "what has this process spent". The eval harness diffs it
+// around each sample to record cost beside that sample's score, because the cap
+// refuses the longest generations and that exclusion is not independent of what
+// the eval measures (DW-251). In-process only, so it resets with the process and
+// is not a billing figure.
+const spend = new Map<string, number>();
+
+export function spentOn(model: string): number {
+  return spend.get(model) ?? 0;
+}
+
 export function recordCost(cost: number, model: string): void {
   if (!Number.isFinite(cost) || cost < 0) return;
   consecutiveRefusals.set(model, 0);
+  spend.set(model, (spend.get(model) ?? 0) + cost);
   const w = windowFor(model);
   w.push(cost);
   if (w.length > HISTORY_CAP) w.shift();
@@ -147,4 +160,5 @@ export function exceedsBudget(current: number, model: string): BudgetCheck {
 export function resetHistoryForTests(): void {
   history.clear();
   consecutiveRefusals.clear();
+  spend.clear();
 }

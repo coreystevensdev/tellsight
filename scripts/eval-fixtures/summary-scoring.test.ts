@@ -106,10 +106,67 @@ describe('judge scoring', () => {
 });
 
 describe('sample summaries', () => {
+  it('keeps a cost-cap refusal apart from an error, with what it cost', () => {
+    // A shed or errored sample is plausibly independent of the score. A cap
+    // refusal is not: the cap refuses the priciest calls and cost tracks output
+    // length, so these are the longest summaries being dropped. Bucketing them
+    // as errors would hide that. DW-251.
+    const sample: SampleScore = {
+      costUsd: 0.005,
+      faithfulness: 1,
+      unsupported: [],
+      completeness: 1,
+      legalPass: true,
+      legalViolations: [],
+      insightPass: true,
+      qualifyingInsight: 'x',
+      insightShortfall: [],
+    };
+    const score = summarizeFixtureSamples({ id: 'cash', label: 'Cash' }, [sample], {
+      unmeasured: 0,
+      errored: 1,
+      capRefused: 2,
+      capRefusedCostsUsd: [0.0168, 0.0159],
+    });
+
+    expect(score.capRefused).toBe(2);
+    expect(score.capRefusedCostsUsd).toEqual([0.0168, 0.0159]);
+    expect(score.errored).toBe(1);
+    // Both refusals cost more than the one sample that survived, which is the
+    // comparison the run prints and the reason the exclusion is not neutral.
+    expect(Math.min(...score.capRefusedCostsUsd)).toBeGreaterThan(
+      Math.max(...score.sampleCostsUsd),
+    );
+  });
+
+  it('pairs each scored sample with what it cost', () => {
+    const mk = (costUsd: number, faithfulness: number): SampleScore => ({
+      costUsd,
+      faithfulness,
+      unsupported: [],
+      completeness: 1,
+      legalPass: true,
+      legalViolations: [],
+      insightPass: true,
+      qualifyingInsight: 'x',
+      insightShortfall: [],
+    });
+    const score = summarizeFixtureSamples({ id: 'cash', label: 'Cash' }, [
+      mk(0.004, 1),
+      mk(0.011, 0.75),
+    ]);
+
+    // Index-aligned with the samples, so a stored scorecard is enough to check
+    // whether cost tracks score without re-running the eval.
+    expect(score.sampleCostsUsd).toEqual([0.004, 0.011]);
+    expect(score.sampleCostsUsd).toHaveLength(score.sampledCount);
+  });
+
   it('carries the shed and errored counts onto the score', () => {
     // The gate reads these off FixtureScore, so a count that does not propagate
     // leaves the arm ungated exactly as it was before DW-250.
     const sample: SampleScore = {
+      costUsd: 0.005,
       faithfulness: 1,
       unsupported: [],
       completeness: 1,
@@ -132,6 +189,7 @@ describe('sample summaries', () => {
   it('aggregates fixture scores and deduplicates diagnostic text', () => {
     const samples: SampleScore[] = [
       {
+        costUsd: 0.004,
         faithfulness: 1,
         unsupported: [{ claim: 'a ceiling is coming', reason: 'speculative' }],
         completeness: 0.5,
@@ -142,6 +200,7 @@ describe('sample summaries', () => {
         insightShortfall: [],
       },
       {
+        costUsd: 0.009,
         faithfulness: 0.5,
         // The repeated claim carries a different reason, which is the case a
         // Set cannot collapse: dedupe is keyed on the claim, and Map keeps the
@@ -164,6 +223,9 @@ describe('sample summaries', () => {
       label: 'Cash',
       unmeasured: 0,
       errored: 0,
+      capRefused: 0,
+      capRefusedCostsUsd: [],
+      sampleCostsUsd: [0.004, 0.009],
       faithfulness: {
         mean: 0.75,
         min: 0.5,

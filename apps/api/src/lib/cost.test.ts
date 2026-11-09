@@ -14,6 +14,7 @@ import {
   recordCost,
   recordRefusedCost,
   resetHistoryForTests,
+  spentOn,
 } from './cost.js';
 
 describe('computeCost', () => {
@@ -243,5 +244,49 @@ describe('per-model windows', () => {
     // The interleaving that defeated the shared counter: with per-model runs
     // the judge's streak survives the subject's passes.
     expect(recordRefusedCost(0.2, JUDGE)).toBe(true);
+  });
+});
+
+describe('spentOn', () => {
+  beforeEach(() => resetHistoryForTests());
+
+  it('accumulates past the rolling window, which the median cannot', () => {
+    // The point of a separate counter: `history` is capped, so medianCost
+    // forgets. A caller asking what a process has spent needs the total.
+    for (let i = 0; i < 60; i++) recordCost(0.01, 'claude-sonnet-5');
+
+    expect(spentOn('claude-sonnet-5')).toBeCloseTo(0.6, 6);
+  });
+
+  it('keeps models apart', () => {
+    recordCost(0.02, 'claude-sonnet-5');
+    recordCost(0.005, 'claude-opus-5');
+
+    expect(spentOn('claude-sonnet-5')).toBeCloseTo(0.02, 6);
+    expect(spentOn('claude-opus-5')).toBeCloseTo(0.005, 6);
+  });
+
+  it('is zero for a model that has spent nothing, not undefined', () => {
+    // The eval diffs this around every sample, so an undefined would make the
+    // first sample's cost NaN and quietly poison the figure it records.
+    expect(spentOn('claude-haiku-4-5')).toBe(0);
+  });
+
+  it('ignores the costs recordCost itself rejects', () => {
+    recordCost(Number.NaN, 'claude-sonnet-5');
+    recordCost(-1, 'claude-sonnet-5');
+    recordCost(0.01, 'claude-sonnet-5');
+
+    expect(spentOn('claude-sonnet-5')).toBeCloseTo(0.01, 6);
+  });
+
+  it('a refused cost is not spend, because the gate threw before recording it', () => {
+    // recordRefusedCost is the refusal path and deliberately does not add to
+    // spend: the request was refused, so nothing was generated for it. The real
+    // money on a cap refusal was already spent upstream and is reported by the
+    // error, not by this counter.
+    recordRefusedCost(0.5, 'claude-sonnet-5');
+
+    expect(spentOn('claude-sonnet-5')).toBe(0);
   });
 });

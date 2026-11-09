@@ -200,7 +200,15 @@ async function scoreFixture(
   // distinguishable from a bad one here even more than on the agent arm.
   let unmeasured = 0;
   let errored = 0;
+  // DW-251: a third category. The cap refuses the priciest samples, cost tracks
+  // output length, so unlike a shed or errored sample this exclusion is
+  // correlated with the thing being scored.
+  let capRefused = 0;
+  const capRefusedCostsUsd: number[] = [];
+  const { spentOn } = await import('../apps/api/src/lib/cost.js');
+  const spent = () => spentOn(SUBJECT_MODEL) + spentOn(JUDGE_MODEL);
   for (let i = 0; i < SAMPLES; i++) {
+    const spentBefore = spent();
     try {
       const summary = await provider.generate({ system, user });
       const [faith, completeness, insight] = await Promise.all([
@@ -214,6 +222,7 @@ async function scoreFixture(
       }
       const legal = scoreLegalPosture(summary);
       samples.push({
+        costUsd: Number((spent() - spentBefore).toFixed(6)),
         faithfulness,
         unsupported: faith.unsupported,
         completeness,
@@ -227,11 +236,20 @@ async function scoreFixture(
         `  ${fixture.id} sample ${i + 1}/${SAMPLES}: faith ${faithfulness.toFixed(2)}, comp ${completeness.toFixed(2)}, legal ${legal.pass ? 'pass' : 'FAIL'}, insight ${insight.pass ? 'pass' : 'FAIL'}`,
       );
     } catch (err) {
-      const shed = (err as { code?: string } | null)?.code === 'CIRCUIT_OPEN';
-      if (shed) unmeasured++;
-      else errored++;
+      const code = (err as { code?: string } | null)?.code;
+      let why = 'failed';
+      if (code === 'CIRCUIT_OPEN') {
+        unmeasured++;
+        why = 'shed, never reached the API';
+      } else if (code === 'COST_BUDGET_EXCEEDED') {
+        capRefused++;
+        capRefusedCostsUsd.push((err as { observedUsd?: number }).observedUsd ?? 0);
+        why = 'refused by the cost cap, so an expensive sample is missing from the mean';
+      } else {
+        errored++;
+      }
       console.error(
-        `  ${fixture.id} sample ${i + 1}/${SAMPLES} ${shed ? 'shed, never reached the API' : 'failed'}: ` +
+        `  ${fixture.id} sample ${i + 1}/${SAMPLES} ${why}: ` +
           `${err instanceof Error ? err.message : err}`,
       );
     }
@@ -241,12 +259,13 @@ async function scoreFixture(
   // Bail before Math.min() on an empty array (which is Infinity, not a real score).
   if (samples.length === 0) {
     throw new Error(
-      `${fixture.id}: 0 of ${SAMPLES} samples measured (${unmeasured} shed, ${errored} errored)`,
+      `${fixture.id}: 0 of ${SAMPLES} samples measured ` +
+        `(${unmeasured} shed, ${errored} errored, ${capRefused} refused by the cost cap)`,
     );
   }
 
   return {
-    score: summarizeFixtureSamples(fixture, samples, { unmeasured, errored }),
+    score: summarizeFixtureSamples(fixture, samples, { unmeasured, errored, capRefused, capRefusedCostsUsd }),
     promptVersion: metadata.promptVersion,
   };
 }
@@ -393,6 +412,26 @@ async function main(): Promise<void> {
   console.log(`\nWrote ${SCORECARD_PATH}`);
 
   printScorecardTable(results);
+
+  // DW-251. Printed rather than gated: the cap is a production guard doing its
+  // job, and a refusal is not a failure. What it is, though, is a sample
+  // missing from the mean for a reason that tracks output length, so the one
+  // number worth seeing is whether the refused samples cost more than every
+  // sample that survived.
+  for (const r of results) {
+    if (r.capRefused === 0) continue;
+    const maxScored = r.sampleCostsUsd.length ? Math.max(...r.sampleCostsUsd) : 0;
+    const refused = r.capRefusedCostsUsd;
+    const allDearer = refused.every((c) => c > maxScored);
+    console.log(
+      `  ${r.id}: cost cap refused ${r.capRefused} sample(s) at ` +
+        `${refused.map((c) => `$${c.toFixed(4)}`).join(', ')}, against a scored max of ` +
+        `$${maxScored.toFixed(4)}` +
+        (allDearer
+          ? '. Every refused sample cost more than every scored one, so the mean is over a cheaper, shorter subset.'
+          : '. Not uniformly dearer than the scored samples.'),
+    );
+  }
 
   const breaches: string[] = [];
   for (const r of results) {
