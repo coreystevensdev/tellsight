@@ -71,7 +71,27 @@ function getTemplate(version: string): SplitTemplate {
   return tpl;
 }
 
-function formatStatBody(insight: ScoredInsight): string {
+// How much of cash flow's monthly series each prompt version renders. Gated by
+// version so an arm pinned to an older one produces byte-identical prompts to
+// the ones already measured, which is the only way the comparison means
+// anything.
+//
+// v2.2 rendered revenue alone and measured worse than v2.1, not better: 36
+// samples a side put faithfulness at 0.8660 against 0.8636, inside the noise,
+// while total deductions went 32 to 40. The targeted class shrank (6 to 4) and
+// a larger one grew (13 to 20), all of it the model inferring a monthly surplus
+// trend it had not been given: "surplus is likely growing each month rather
+// than holding flat". Showing revenue per month while withholding expenses and
+// net is itself a prompt, and the model answered it. v2.3 exists to test
+// whether the whole series behaves differently; validator.ts:109-113 has
+// accepted all three figures as citable since its first commit, so there was
+// never a reason to withhold two of them.
+const MONTHLY_CASH_FLOW: Record<string, 'revenue' | 'full'> = {
+  'v2.2': 'revenue',
+  'v2.3': 'full',
+};
+
+function formatStatBody(insight: ScoredInsight, promptVersion: string): string {
   const { stat, score } = insight;
   const category = stat.category ?? 'Overall';
 
@@ -98,8 +118,36 @@ function formatStatBody(insight: ScoredInsight): string {
     }
     case StatType.SeasonalProjection:
       return `- [${category}] Seasonal Projection: ${stat.details.projectedMonth} estimated at $${usd.format(stat.details.projectedAmount)} based on ${stat.details.basisMonths.join(', ')} (confidence: ${stat.details.confidence}, relevance: ${score.toFixed(2)})`;
-    case StatType.CashFlow:
-      return `- [Overall] Cash Flow: ${stat.details.direction}, net ${usdSigned(stat.details.monthlyNet)}/mo over ${stat.details.trailingMonths} months (${stat.details.monthsBurning} burning, relevance: ${score.toFixed(2)})`;
+    case StatType.CashFlow: {
+      const head = `- [Overall] Cash Flow: ${stat.details.direction}, net ${usdSigned(stat.details.monthlyNet)}/mo over ${stat.details.trailingMonths} months (${stat.details.monthsBurning} burning, relevance: ${score.toFixed(2)})`;
+      // recentMonths is populated on every stat the producer emits
+      // (cashFlowMetrics.ts:52-56) and was discarded here, so the model got a
+      // trend's endpoints and no way to tell a steady climb from one good
+      // month. validator.ts:109-113 has accepted these figures as citable
+      // since its first commit, so nothing there needs widening.
+      //
+      // Revenue only: it answers the month-level questions the eval judge was
+      // deducting for, and leaves expenses and net to a second decision.
+      const shape = MONTHLY_CASH_FLOW[promptVersion];
+      if (!shape || stat.details.recentMonths.length === 0) {
+        return head;
+      }
+      // usd for the gross figures and usdSigned for net, matching the stated
+      // convention above: direction at a glance where the reader expects it.
+      const months = stat.details.recentMonths
+        .map((m) =>
+          shape === 'revenue'
+            ? `${m.month} $${usd.format(m.revenue)}`
+            : `${m.month} rev $${usd.format(m.revenue)} exp $${usd.format(m.expenses)} net ${usdSigned(m.net)}`,
+        )
+        .join(', ');
+      // One line, because formatStat appends the [cite: id] marker to whatever
+      // this returns and v2.1-system.md rule 12 tells the model that each stat
+      // line *ends with* that marker. A two-line body put the marker on the
+      // monthly figures and left the cash-flow line without one, which both
+      // breaks the stated contract and points the citation at the wrong claim.
+      return `${head}; ${shape === 'revenue' ? 'monthly revenue' : 'by month'} ${months}`;
+    }
     case StatType.Runway: {
       const cash = `$${usd.format(stat.details.cashOnHand)}`;
       const asOf = stat.details.cashAsOfDate.slice(0, 10); // YYYY-MM-DD
@@ -131,8 +179,8 @@ function formatStatBody(insight: ScoredInsight): string {
 // v1.6-system.md rule 12. Every stat line carries one, regardless of which
 // prompt template renders it (digest and alert templates get the suffix too,
 // see validator.ts Tier 2b for the defense-in-depth this implies).
-function formatStat(insight: ScoredInsight, datasetId: number): string {
-  return `${formatStatBody(insight)} [cite: ${statInstanceId(insight.stat, datasetId)}]`;
+function formatStat(insight: ScoredInsight, datasetId: number, promptVersion: string): string {
+  return `${formatStatBody(insight, promptVersion)} [cite: ${statInstanceId(insight.stat, datasetId)}]`;
 }
 
 const TEAM_SIZE_LABELS: Record<string, string> = {
@@ -295,7 +343,7 @@ export function assemblePrompt(
     };
   }
 
-  const statSummaries = survivors.map((i) => formatStat(i, datasetId)).join('\n');
+  const statSummaries = survivors.map((i) => formatStat(i, datasetId, promptVersion)).join('\n');
   const statTypes = [...new Set(survivors.map((i) => i.stat.statType))];
   const allowedStatTypes = [...statTypes].sort().join(', ');
   const categories = new Set(survivors.map((i) => i.stat.category).filter(Boolean));
