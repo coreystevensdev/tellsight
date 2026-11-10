@@ -414,23 +414,55 @@ async function main(): Promise<void> {
   printScorecardTable(results);
 
   // DW-251. Printed rather than gated: the cap is a production guard doing its
-  // job, and a refusal is not a failure. What it is, though, is a sample
-  // missing from the mean for a reason that tracks output length, so the one
-  // number worth seeing is whether the refused samples cost more than every
-  // sample that survived.
+  // job, and a refusal is not a failure. What it is, though, is a sample missing
+  // from the mean for a reason that tracks output length.
+  //
+  // What this deliberately does NOT do is compare the refused figure against a
+  // scored sample's cost. The first version did, and they are different units:
+  // CostBudgetExceededError carries one request's cost, while costUsd is a
+  // generation plus both judge calls. Every refusal therefore looked about three
+  // times cheaper than every scored sample by construction, and it printed
+  // "not uniformly dearer" as though that meant something.
   for (const r of results) {
     if (r.capRefused === 0) continue;
-    const costs = r.sampleScores.map((x) => x.costUsd);
-    const maxScored = costs.length ? Math.max(...costs) : 0;
-    const refused = r.capRefusedCostsUsd;
-    const allDearer = refused.every((c) => c > maxScored);
     console.log(
-      `  ${r.id}: cost cap refused ${r.capRefused} sample(s) at ` +
-        `${refused.map((c) => `$${c.toFixed(4)}`).join(', ')}, against a scored max of ` +
-        `$${maxScored.toFixed(4)}` +
-        (allDearer
-          ? '. Every refused sample cost more than every scored one, so the mean is over a cheaper, shorter subset.'
-          : '. Not uniformly dearer than the scored samples.'),
+      `  ${r.id}: cost cap refused ${r.capRefused} of ${SAMPLES} sample(s), on single calls costing ` +
+        `${r.capRefusedCostsUsd.map((c) => `$${c.toFixed(4)}`).join(', ')}. Each exceeded its model's ` +
+        `rolling median by the cap multiplier, so these are among the longest outputs in the run and ` +
+        `are absent from the mean below. Their sample totals are unknown: the sample died at that call.`,
+    );
+  }
+
+  // The pairing DW-251 exists for, reported with its interval because at this
+  // sample size a coefficient alone is not a finding: n=32 on 2026-11-09 gave
+  // r=-0.200 with a 95% interval from -0.513 to +0.159.
+  for (const r of results) {
+    const rows = r.sampleScores;
+    if (rows.length < 8) continue;
+    const c = rows.map((x) => x.costUsd);
+    const y = rows.map((x) => x.faithfulness);
+    const n = rows.length;
+    const mc = c.reduce((a, b) => a + b, 0) / n;
+    const my = y.reduce((a, b) => a + b, 0) / n;
+    const sc = Math.sqrt(c.reduce((a, x) => a + (x - mc) ** 2, 0));
+    const sy = Math.sqrt(y.reduce((a, x) => a + (x - my) ** 2, 0));
+    if (sc === 0 || sy === 0) {
+      console.log(`  ${r.id}: cost/faithfulness correlation undefined, one of them has no variance`);
+      continue;
+    }
+    const corr = c.reduce((a, x, i) => a + (x - mc) * (y[i]! - my), 0) / (sc * sy);
+    // Fisher z, which is what makes the interval honest about n.
+    const z = 0.5 * Math.log((1 + corr) / (1 - corr));
+    const se = 1 / Math.sqrt(n - 3);
+    const lo = Math.tanh(z - 1.96 * se);
+    const hi = Math.tanh(z + 1.96 * se);
+    const sign = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(3)}`;
+    console.log(
+      `  ${r.id}: r(cost, faithfulness) = ${sign(corr)} over ${n} samples, ` +
+        `95% CI ${sign(lo)} to ${sign(hi)}` +
+        (lo > 0 || hi < 0
+          ? '. Excludes zero, so cost and score do move together here.'
+          : '. Includes zero, so no correlation is detectable at this sample size.'),
     );
   }
 
