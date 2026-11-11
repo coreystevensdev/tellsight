@@ -39,7 +39,7 @@ beforeAll(async () => {
   app.use(express.json());
   app.use(alertTrackingRouter);
   server = await new Promise<http.Server>((resolve) => {
-    const s = app.listen(0, () => resolve(s));
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
   });
   const port = (server.address() as AddressInfo).port;
   baseUrl = `http://127.0.0.1:${port}`;

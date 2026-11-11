@@ -47,7 +47,7 @@ beforeAll(async () => {
   app.use(express.json());
 
   server = await new Promise<http.Server>((resolve) => {
-    const s = app.listen(0, () => resolve(s));
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
   });
   const port = (server.address() as AddressInfo).port;
   baseUrl = `http://127.0.0.1:${port}`;
@@ -110,7 +110,7 @@ describe('POST /webhooks/resend', () => {
       app.use(unconfigured);
 
       const local = await new Promise<http.Server>((resolve) => {
-        const srv = app.listen(0, () => resolve(srv));
+        const srv = app.listen(0, '127.0.0.1', () => resolve(srv));
       });
       const port = (local.address() as AddressInfo).port;
 
