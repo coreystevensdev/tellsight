@@ -70,7 +70,7 @@ export function DashboardInsights({
   }, [datasetId]);
 
   const closeTransparency = useCallback(() => setTransparencyOpen(false), []);
-  const handleMetadataReady = useCallback(
+  const receiveMetadata = useCallback(
     (nextMetadata: TransparencyMetadata | null) => setMetadata(nextMetadata),
     [],
   );
@@ -85,7 +85,7 @@ export function DashboardInsights({
       tier={tier}
       onToggleTransparency={toggleTransparency}
       transparencyOpen={transparencyOpen}
-      onMetadataReady={handleMetadataReady}
+      onMetadataReady={receiveMetadata}
       onStreamComplete={onStreamComplete}
       onShare={sharing.generatePng}
       onShareDownload={sharing.downloadPng}

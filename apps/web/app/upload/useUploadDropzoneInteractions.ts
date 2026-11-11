@@ -25,7 +25,7 @@ export function useUploadDropzoneInteractions(
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCountRef = useRef(0);
 
-  const handleDragEnter = useCallback(
+  const beginDrag = useCallback(
     (event: DragEvent) => {
       event.preventDefault();
       event.stopPropagation();
@@ -35,12 +35,12 @@ export function useUploadDropzoneInteractions(
     [setState],
   );
 
-  const handleDragOver = useCallback((event: DragEvent) => {
+  const keepDragActive = useCallback((event: DragEvent) => {
     event.preventDefault();
     event.stopPropagation();
   }, []);
 
-  const handleDragLeave = useCallback(
+  const endDrag = useCallback(
     (event: DragEvent) => {
       event.preventDefault();
       event.stopPropagation();
@@ -53,7 +53,7 @@ export function useUploadDropzoneInteractions(
     [setState],
   );
 
-  const handleDrop = useCallback(
+  const acceptDroppedFiles = useCallback(
     (event: DragEvent) => {
       event.preventDefault();
       event.stopPropagation();
@@ -63,7 +63,7 @@ export function useUploadDropzoneInteractions(
     [onFileSelect],
   );
 
-  const handleInputChange = useCallback(
+  const acceptPickedFiles = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       onFileSelect(event.target.files?.[0]);
       event.target.value = '';
@@ -72,7 +72,7 @@ export function useUploadDropzoneInteractions(
   );
 
   const openFilePicker = useCallback(() => fileInputRef.current?.click(), []);
-  const handleKeyDown = useCallback(
+  const openPickerOnEnter = useCallback(
     (event: KeyboardEvent) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
@@ -84,12 +84,12 @@ export function useUploadDropzoneInteractions(
 
   return {
     fileInputRef,
-    handleDragEnter,
-    handleDragOver,
-    handleDragLeave,
-    handleDrop,
-    handleInputChange,
-    handleKeyDown,
+    beginDrag,
+    keepDragActive,
+    endDrag,
+    acceptDroppedFiles,
+    acceptPickedFiles,
+    openPickerOnEnter,
     openFilePicker,
   };
 }

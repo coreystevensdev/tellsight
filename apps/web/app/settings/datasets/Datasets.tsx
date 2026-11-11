@@ -58,14 +58,14 @@ export default function Datasets() {
   }, [load]);
 
   useEffect(() => {
-    const handleVisibility = () => {
+    const reloadWhenVisible = () => {
       if (document.visibilityState === 'visible') load();
     };
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
+    document.addEventListener('visibilitychange', reloadWhenVisible);
+    return () => document.removeEventListener('visibilitychange', reloadWhenVisible);
   }, [load]);
 
-  async function handleActivate(id: number) {
+  async function activateDataset(id: number) {
     try {
       await apiClient(`/datasets/manage/${id}/activate`, { method: 'POST' });
       setDatasets((prev) => prev.map((ds) => ({ ...ds, isActive: ds.id === id })));
@@ -74,7 +74,7 @@ export default function Datasets() {
     }
   }
 
-  async function handleRenameSubmit(ds: DatasetItem) {
+  async function renameDataset(ds: DatasetItem) {
     const state = cardStates[ds.id];
     const trimmed = state?.draftName.trim();
     if (!trimmed || trimmed === ds.name) {
@@ -100,7 +100,7 @@ export default function Datasets() {
     }
   }
 
-  async function handleDeleteStart(id: number) {
+  async function startDelete(id: number) {
     patchCard(id, { loadingDetail: true, deleting: true });
     try {
       const { data } = await apiClient<DatasetDetail>(`/datasets/manage/${id}`);
@@ -111,7 +111,7 @@ export default function Datasets() {
     }
   }
 
-  async function handleDeleteConfirm(id: number) {
+  async function confirmDelete(id: number) {
     patchCard(id, { saving: true });
     try {
       await apiClient(`/datasets/manage/${id}`, { method: 'DELETE' });
@@ -194,13 +194,13 @@ export default function Datasets() {
                   key={ds.id}
                   dataset={ds}
                   state={state}
-                  onActivate={() => handleActivate(ds.id)}
+                  onActivate={() => activateDataset(ds.id)}
                   onRenameStart={() => patchCard(ds.id, { renaming: true, draftName: ds.name })}
                   onRenameChange={(v) => patchCard(ds.id, { draftName: v })}
-                  onRenameSubmit={() => handleRenameSubmit(ds)}
+                  onRenameSubmit={() => renameDataset(ds)}
                   onRenameCancel={() => patchCard(ds.id, { renaming: false, draftName: ds.name })}
-                  onDeleteStart={() => handleDeleteStart(ds.id)}
-                  onDeleteConfirm={() => handleDeleteConfirm(ds.id)}
+                  onDeleteStart={() => startDelete(ds.id)}
+                  onDeleteConfirm={() => confirmDelete(ds.id)}
                   onDeleteCancel={() => patchCard(ds.id, { deleting: false, deleteDetail: null })}
                 />
               );

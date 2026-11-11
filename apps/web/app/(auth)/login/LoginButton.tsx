@@ -12,7 +12,7 @@ export default function LoginButton({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleSignIn() {
+  async function startGoogleSignIn() {
     setLoading(true);
     setError(null);
 
@@ -37,7 +37,7 @@ export default function LoginButton({
   return (
     <div className="space-y-4">
       <button
-        onClick={handleSignIn}
+        onClick={startGoogleSignIn}
         disabled={loading}
         className="flex w-full items-center justify-center gap-3 rounded-md border border-border bg-card px-4 py-3 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
       >

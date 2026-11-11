@@ -94,10 +94,6 @@ export function CashBalanceStaleBanner({
     }
   }
 
-  function handleDismiss() {
-    dismissBanner();
-  }
-
   return (
     <div
       role="status"
@@ -169,7 +165,7 @@ export function CashBalanceStaleBanner({
         )}
         <button
           type="button"
-          onClick={handleDismiss}
+          onClick={dismissBanner}
           aria-label="Dismiss banner"
           className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
         >

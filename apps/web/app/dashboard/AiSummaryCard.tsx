@@ -121,7 +121,7 @@ export function AiSummaryCard({
 
   const displayText = hasCached ? stripDisplayTags(cachedContent ?? '') : text;
 
-  const handleRefreshInsights = () => {
+  const refreshInsights = () => {
     trackClientEvent(ANALYTICS_EVENTS.AI_SUMMARY_REQUESTED, { reason: 'stale_refresh' });
     setRefreshing(true);
   };
@@ -195,7 +195,7 @@ export function AiSummaryCard({
             summary it was meant to update. The anonymous path reads the RSC
             cache and has nothing to refresh anyway. */}
         {isStale && hasAuth && (
-          <StaleSummaryBanner onRefresh={handleRefreshInsights} disabled={datasetId === null} />
+          <StaleSummaryBanner onRefresh={refreshInsights} disabled={datasetId === null} />
         )}
         <h3 className="mb-4 font-serif text-lg font-medium text-card-foreground">Analysis</h3>
         {wasTruncated ? (

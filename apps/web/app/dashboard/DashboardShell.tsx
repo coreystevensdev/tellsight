@@ -93,12 +93,12 @@ export function DashboardShell({
     setOrgName(data.orgName);
   }, [data.orgName, setOrgName]);
 
-  const handleUploadClick = useCallback(() => {
+  const goToUpload = useCallback(() => {
     router.push('/upload');
   }, [router]);
 
   const [aiDone, setAiDone] = useState(false);
-  const handleStreamComplete = useCallback(() => setAiDone(true), []);
+  const markAiDone = useCallback(() => setAiDone(true), []);
 
   const captureRef = useRef<HTMLDivElement>(null);
   const sharing = useDashboardSharing(captureRef, data.datasetId);
@@ -159,7 +159,7 @@ export function DashboardShell({
           </p>
         </div>
       ) : (
-        <DemoModeBanner demoState={data.demoState} onUploadClick={handleUploadClick} />
+        <DemoModeBanner demoState={data.demoState} onUploadClick={goToUpload} />
       )}
 
       {isLoading && hasAnyData && !hasData ? (
@@ -233,7 +233,7 @@ export function DashboardShell({
             askBoxRef={askBoxRef}
             businessType={businessType}
             teamSize={teamSize}
-            onStreamComplete={handleStreamComplete}
+            onStreamComplete={markAiDone}
           />
 
           {hasAnyData && hasBalance && (

@@ -11,7 +11,7 @@ export function BillingContent({ demoBilling = false }: { demoBilling?: boolean 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleCheckout = useCallback(async () => {
+  const startCheckout = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -29,7 +29,7 @@ export function BillingContent({ demoBilling = false }: { demoBilling?: boolean 
     }
   }, []);
 
-  const handlePortal = useCallback(async () => {
+  const openBillingPortal = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -119,7 +119,7 @@ export function BillingContent({ demoBilling = false }: { demoBilling?: boolean 
             </ul>
           </div>
           <button
-            onClick={handleCheckout}
+            onClick={startCheckout}
             disabled={loading}
             className="w-full rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -128,7 +128,7 @@ export function BillingContent({ demoBilling = false }: { demoBilling?: boolean 
         </div>
       ) : (
         <button
-          onClick={handlePortal}
+          onClick={openBillingPortal}
           disabled={loading}
           className="w-full rounded-lg border border-border bg-muted px-4 py-3 font-medium text-foreground transition-colors hover:bg-muted/80 disabled:cursor-not-allowed disabled:opacity-50"
         >

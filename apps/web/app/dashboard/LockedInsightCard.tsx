@@ -73,13 +73,13 @@ export function LockedInsightCard({
     }
   }
 
-  function handleBlur() {
+  function formatOnBlur() {
     if (parsed !== null && inputMask === 'currency') {
       setRaw(formatCurrency(parsed));
     }
   }
 
-  function handleFocus() {
+  function unformatOnFocus() {
     if (parsed !== null) {
       setRaw(String(parsed));
     }
@@ -122,8 +122,8 @@ export function LockedInsightCard({
               setRaw(sanitizeInput(e.target.value));
               if (error) setError(null);
             }}
-            onBlur={handleBlur}
-            onFocus={handleFocus}
+            onBlur={formatOnBlur}
+            onFocus={unformatOnFocus}
             className={cn(
               'flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm',
               'focus:outline-none focus:ring-2 focus:ring-primary/40',

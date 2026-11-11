@@ -48,7 +48,7 @@ export function FilterBar({
 
   const selectedPresetLabel = DATE_PRESETS.find((p) => p.value === filters.datePreset)?.label;
 
-  const handleDateChange = (value: string | null) => {
+  const changeDateRange = (value: string | null) => {
     if (value) {
       trackClientEvent(ANALYTICS_EVENTS.CHART_FILTERED, { filterType: 'date_range', value });
     }
@@ -65,19 +65,19 @@ export function FilterBar({
     onFilterChange({ ...filters, [key]: event.target.value || null });
   };
 
-  const handleCategoryChange = (value: string | null) => {
+  const changeCategory = (value: string | null) => {
     if (value) {
       trackClientEvent(ANALYTICS_EVENTS.CHART_FILTERED, { filterType: 'category', value });
     }
     onFilterChange({ ...filters, category: value });
   };
 
-  const handleGranularityChange = (value: Granularity) => {
+  const changeGranularity = (value: Granularity) => {
     trackClientEvent(ANALYTICS_EVENTS.CHART_FILTERED, { filterType: 'granularity', value });
     onFilterChange({ ...filters, granularity: value });
   };
 
-  const handleReset = () => {
+  const resetFilters = () => {
     onFilterChange(EMPTY_FILTERS);
   };
 
@@ -99,7 +99,7 @@ export function FilterBar({
               type="button"
               role="radio"
               aria-checked={filters.granularity === g}
-              onClick={() => handleGranularityChange(g)}
+              onClick={() => changeGranularity(g)}
               disabled={disabled}
               className={`px-3 py-1.5 text-xs font-medium capitalize transition-colors first:rounded-l-md last:rounded-r-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 ${
                 filters.granularity === g
@@ -122,7 +122,7 @@ export function FilterBar({
             icon={Calendar}
             value={filters.datePreset}
             options={dateOptions}
-            onChange={handleDateChange}
+            onChange={changeDateRange}
             disabled={disabled}
           />
 
@@ -160,7 +160,7 @@ export function FilterBar({
             icon={Tag}
             value={filters.category}
             options={categoryOptions}
-            onChange={handleCategoryChange}
+            onChange={changeCategory}
             disabled={disabled}
           />
         </div>
@@ -170,16 +170,16 @@ export function FilterBar({
             <div className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
 
             {filters.datePreset && selectedPresetLabel && (
-              <FilterBadge label={selectedPresetLabel} onDismiss={() => handleDateChange(null)} />
+              <FilterBadge label={selectedPresetLabel} onDismiss={() => changeDateRange(null)} />
             )}
 
             {filters.category && (
-              <FilterBadge label={filters.category} onDismiss={() => handleCategoryChange(null)} />
+              <FilterBadge label={filters.category} onDismiss={() => changeCategory(null)} />
             )}
 
             <button
               type="button"
-              onClick={handleReset}
+              onClick={resetFilters}
               aria-label="Clear all filters"
               className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >

@@ -35,7 +35,7 @@ export default function InviteAccept({ token }: { token: string }) {
     validate();
   }, [token]);
 
-  async function handleJoin() {
+  async function joinOrg() {
     setJoining(true);
 
     try {
@@ -84,7 +84,7 @@ export default function InviteAccept({ token }: { token: string }) {
       </div>
 
       <button
-        onClick={handleJoin}
+        onClick={joinOrg}
         disabled={joining}
         className="flex w-full items-center justify-center gap-3 rounded-md border border-border bg-card px-4 py-3 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
       >

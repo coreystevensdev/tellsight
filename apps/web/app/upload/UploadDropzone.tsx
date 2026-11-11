@@ -15,12 +15,12 @@ export function UploadDropzone() {
 
   const {
     fileInputRef,
-    handleDragEnter,
-    handleDragOver,
-    handleDragLeave,
-    handleDrop,
-    handleInputChange,
-    handleKeyDown,
+    beginDrag,
+    keepDragActive,
+    endDrag,
+    acceptDroppedFiles,
+    acceptPickedFiles,
+    openPickerOnEnter,
     openFilePicker,
   } = useUploadDropzoneInteractions(upload.selectFile, upload.setState);
 
@@ -53,7 +53,7 @@ export function UploadDropzone() {
         ref={fileInputRef}
         type="file"
         accept=".csv"
-        onChange={handleInputChange}
+        onChange={acceptPickedFiles}
         className="sr-only"
         aria-hidden="true"
         tabIndex={-1}
@@ -66,11 +66,11 @@ export function UploadDropzone() {
         // label-content-name-mismatch (WCAG 2.5.3 Label in Name). Content also
         // carries the 10MB limit, which the old label hid from a screen reader.
         onClick={openFilePicker}
-        onKeyDown={handleKeyDown}
-        onDragEnter={handleDragEnter}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
+        onKeyDown={openPickerOnEnter}
+        onDragEnter={beginDrag}
+        onDragOver={keepDragActive}
+        onDragLeave={endDrag}
+        onDrop={acceptDroppedFiles}
         className={cn(
           'relative flex min-h-[240px] cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
           upload.state === 'default' && 'border-border hover:border-muted-foreground/50 hover:bg-muted/50',

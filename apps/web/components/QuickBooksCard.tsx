@@ -55,12 +55,12 @@ export function QuickBooksCard() {
     void fetchStatus();
   }, [fetchStatus]);
 
-  const handleRetry = useCallback(() => {
+  const retrySync = useCallback(() => {
     setView('loading');
     void fetchStatus();
   }, [fetchStatus]);
 
-  const handleConnect = useCallback(async () => {
+  const connectQuickBooks = useCallback(async () => {
     setConnecting(true);
     try {
       const res = await apiClient<{ authUrl: string }>('/integrations/quickbooks/connect', {
@@ -95,7 +95,7 @@ export function QuickBooksCard() {
         </p>
         <button
           type="button"
-          onClick={handleRetry}
+          onClick={retrySync}
           className="mt-4 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
         >
           Retry
@@ -191,7 +191,7 @@ export function QuickBooksCard() {
       <div className="mt-auto pt-5">
         <button
           type="button"
-          onClick={handleConnect}
+          onClick={connectQuickBooks}
           disabled={connecting}
           className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
         >
