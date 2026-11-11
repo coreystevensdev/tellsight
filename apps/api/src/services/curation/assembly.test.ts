@@ -1114,3 +1114,75 @@ describe('assemblePrompt, trend percentages that are not percentages', () => {
     );
   });
 });
+
+describe('assemblePrompt, the minus goes outside the dollar sign everywhere', () => {
+  // DW-246 moved Total off a bare `$${usd.format(x)}` because "$-8,000" cannot be
+  // read reliably by a model or a person, and left eleven sibling sites on the old
+  // form. An adversarial pass found them still reachable. usdMinus wraps usd.format,
+  // so output is identical for non-negative input, which the seed snapshot
+  // confirms by still matching byte for byte.
+  const insight = (stat: ScoredInsight['stat']): ScoredInsight => ({
+    stat,
+    score: 0.9,
+    breakdown: { novelty: 0.9, actionability: 0.9, specificity: 0.9 },
+  });
+
+  async function body(stat: ScoredInsight['stat']): Promise<string> {
+    const { assemblePrompt } = await import('./assembly.js');
+    return assemblePrompt([insight(stat)], 1).user;
+  }
+
+  it('never emits the $-N form on any renderer that can go negative', async () => {
+    const stats: ScoredInsight['stat'][] = [
+      {
+        statType: StatType.YearOverYear,
+        category: 'Revenue',
+        value: 1,
+        sampleSize: 2,
+        details: { currentRevenue: -8000, priorRevenue: 40000, currentYearLabel: '2026', priorYearLabel: '2025', changePercent: -120, month: '2026-05' },
+      },
+      {
+        statType: StatType.CategoryVariance,
+        category: 'Office',
+        value: 1,
+        sampleSize: 6,
+        details: { plannedMonthly: 500, actualMonthly: -2500, variance: -3000, variancePercent: -600, monthLabel: '2026-10', direction: 'under' },
+      },
+      {
+        statType: StatType.CashFlow,
+        category: null,
+        value: -2000,
+        sampleSize: 3,
+        details: {
+          monthlyNet: -2000,
+          trailingMonths: 3,
+          direction: 'burning',
+          monthsBurning: 3,
+          recentMonths: [
+            { month: '2026-05', revenue: -8000, expenses: -6000, net: -2000 },
+            { month: '2026-06', revenue: 5000, expenses: 6000, net: -1000 },
+            { month: '2026-07', revenue: 5000, expenses: 6000, net: -1000 },
+          ],
+        },
+      },
+    ];
+
+    for (const stat of stats) {
+      const user = await body(stat);
+      expect(user, `${stat.statType} must not render $-N`).not.toMatch(/\$-[\d]/);
+      expect(user).toMatch(/-\$[\d]/);
+    }
+  });
+
+  it('leaves a positive figure exactly as it was, grouping included', async () => {
+    const user = await body({
+      statType: StatType.YearOverYear,
+      category: 'Revenue',
+      value: 1,
+      sampleSize: 2,
+      details: { currentRevenue: 50000, priorRevenue: 38000, currentYearLabel: '2026', priorYearLabel: '2025', changePercent: 31.6, month: '2026-03' },
+    });
+
+    expect(user).toContain('$50,000 in 2026 vs $38,000 in 2025');
+  });
+});

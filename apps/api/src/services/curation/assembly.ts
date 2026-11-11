@@ -133,15 +133,15 @@ function formatStatBody(insight: ScoredInsight, promptVersion: string): string {
     // negative at either end now, and `$-3000-$500` cannot be read reliably by
     // a model or a person.
     case StatType.CategoryBreakdown:
-      return `- [${category}] Breakdown: ${stat.details.percentage.toFixed(1)}% of total ($${usd.format(stat.details.absoluteTotal)}, ${stat.details.transactionCount} transactions, range: ${signedWhole(stat.details.min)} to ${signedWhole(stat.details.max)}, relevance: ${score.toFixed(2)})`;
+      return `- [${category}] Breakdown: ${stat.details.percentage.toFixed(1)}% of total (${usdMinus(stat.details.absoluteTotal)}, ${stat.details.transactionCount} transactions, range: ${signedWhole(stat.details.min)} to ${signedWhole(stat.details.max)}, relevance: ${score.toFixed(2)})`;
     case StatType.YearOverYear:
-      return `- [${category}] Year-over-Year (${stat.details.month}): $${usd.format(stat.details.currentRevenue)} in ${stat.details.currentYearLabel} vs $${usd.format(stat.details.priorRevenue)} in ${stat.details.priorYearLabel} (${stat.details.changePercent >= 0 ? '+' : ''}${stat.details.changePercent.toFixed(1)}%, relevance: ${score.toFixed(2)})`;
+      return `- [${category}] Year-over-Year (${stat.details.month}): ${usdMinus(stat.details.currentRevenue)} in ${stat.details.currentYearLabel} vs ${usdMinus(stat.details.priorRevenue)} in ${stat.details.priorYearLabel} (${stat.details.changePercent >= 0 ? '+' : ''}${stat.details.changePercent.toFixed(1)}%, relevance: ${score.toFixed(2)})`;
     case StatType.MarginTrend: {
       const dir = stat.details.direction;
       return `- [Overall] Margin Trend: ${dir}, recent ${stat.details.recentMarginPercent.toFixed(1)}% vs prior ${stat.details.priorMarginPercent.toFixed(1)}% (revenue ${stat.details.revenueGrowthPercent >= 0 ? '+' : ''}${stat.details.revenueGrowthPercent.toFixed(1)}%, expenses ${stat.details.expenseGrowthPercent >= 0 ? '+' : ''}${stat.details.expenseGrowthPercent.toFixed(1)}%, relevance: ${score.toFixed(2)})`;
     }
     case StatType.SeasonalProjection:
-      return `- [${category}] Seasonal Projection: ${stat.details.projectedMonth} estimated at $${usd.format(stat.details.projectedAmount)} based on ${stat.details.basisMonths.join(', ')} (confidence: ${stat.details.confidence}, relevance: ${score.toFixed(2)})`;
+      return `- [${category}] Seasonal Projection: ${stat.details.projectedMonth} estimated at ${usdMinus(stat.details.projectedAmount)} based on ${stat.details.basisMonths.join(', ')} (confidence: ${stat.details.confidence}, relevance: ${score.toFixed(2)})`;
     case StatType.CashFlow: {
       const head = `- [Overall] Cash Flow: ${stat.details.direction}, net ${usdSigned(stat.details.monthlyNet)}/mo over ${stat.details.trailingMonths} months (${stat.details.monthsBurning} burning, relevance: ${score.toFixed(2)})`;
       // recentMonths is populated on every stat the producer emits
@@ -162,7 +162,7 @@ function formatStatBody(insight: ScoredInsight, promptVersion: string): string {
       const months = stat.details.recentMonths
         .map(
           (m) =>
-            `${m.month} rev $${usd.format(m.revenue)} exp $${usd.format(m.expenses)} net ${usdSigned(m.net)}`,
+            `${m.month} rev ${usdMinus(m.revenue)} exp ${usdMinus(m.expenses)} net ${usdSigned(m.net)}`,
         )
         .join(', ');
       // One line, because formatStat appends the [cite: id] marker to whatever
@@ -173,18 +173,18 @@ function formatStatBody(insight: ScoredInsight, promptVersion: string): string {
       return `${head}; by month ${months}`;
     }
     case StatType.Runway: {
-      const cash = `$${usd.format(stat.details.cashOnHand)}`;
+      const cash = `${usdMinus(stat.details.cashOnHand)}`;
       const asOf = stat.details.cashAsOfDate.slice(0, 10); // YYYY-MM-DD
       return `- [Overall] Runway: ${stat.details.runwayMonths.toFixed(1)} months, net ${usdSigned(stat.details.monthlyNet)}/mo, cash ${cash} as of ${asOf} (confidence: ${stat.details.confidence}, relevance: ${score.toFixed(2)})`;
     }
     case StatType.BreakEven: {
-      const be = `$${usd.format(stat.details.breakEvenRevenue)}`;
-      const cur = `$${usd.format(stat.details.currentMonthlyRevenue)}`;
+      const be = `${usdMinus(stat.details.breakEvenRevenue)}`;
+      const cur = `${usdMinus(stat.details.currentMonthlyRevenue)}`;
       return `- [Overall] Break-Even: ${be}/mo at ${stat.details.marginPercent.toFixed(1)}% margin, current revenue ${cur}/mo, gap ${usdMinus(stat.details.gap)} (confidence: ${stat.details.confidence}, relevance: ${score.toFixed(2)})`;
     }
     case StatType.CategoryVariance: {
       const word = stat.details.direction === 'over' ? 'over' : stat.details.direction === 'under' ? 'under' : 'on';
-      return `- [${category}] Plan vs actual (${stat.details.monthLabel}): planned $${usd.format(stat.details.plannedMonthly)}, spent $${usd.format(stat.details.actualMonthly)}, ${word} plan by ${Math.abs(stat.details.variancePercent).toFixed(1)}% (relevance: ${score.toFixed(2)})`;
+      return `- [${category}] Plan vs actual (${stat.details.monthLabel}): planned ${usdMinus(stat.details.plannedMonthly)}, spent ${usdMinus(stat.details.actualMonthly)}, ${word} plan by ${Math.abs(stat.details.variancePercent).toFixed(1)}% (relevance: ${score.toFixed(2)})`;
     }
 
     case StatType.CashForecast: {
