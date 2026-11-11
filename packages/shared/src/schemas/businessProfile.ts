@@ -40,8 +40,7 @@ export const businessProfileSchema = z.object({
   revenueRange: z.enum(REVENUE_RANGES),
   teamSize: z.enum(TEAM_SIZES),
   topConcern: z.enum(TOP_CONCERNS),
-  // Financial baseline fields (Story 8.2+). All optional so existing rows deserialize.
-  // cashOnHand / cashAsOfDate / businessStartedDate land in 8.2; monthlyFixedCosts in 8.3.
+  // Financial baseline fields, all optional so existing rows deserialize.
   cashOnHand: z.number().positive().max(999_999_999).optional(),
   cashAsOfDate: z.string().datetime().optional(),
   businessStartedDate: z.string().date().optional(),

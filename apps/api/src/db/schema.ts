@@ -754,7 +754,7 @@ export const alertRuleKindEnum = pgEnum('alert_rule_kind', [
 ]);
 
 // First soft-delete precedent in this schema: deletedAt keeps the row (and its
-// FK) resolvable for the Story 10.2 fire ledger after an owner removes a rule.
+// FK) resolvable for the alert fire ledger after an owner removes a rule.
 // createdByUserId is set-null, not cascade like org_invites.created_by, a rule
 // is an org asset that should keep firing after its creator leaves the org.
 export const alertRules = pgTable(

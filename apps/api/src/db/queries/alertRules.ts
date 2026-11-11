@@ -153,7 +153,7 @@ export async function unmuteViaToken(
   return row ?? null;
 }
 
-// Cross-org read for the Story 10.2 evaluator sweep. No default client, this
+// Cross-org read for the alert evaluator sweep. No default client, this
 // always runs outside any single tenant's RLS context, one worker pass
 // covers every org at once. Excludes muted rules, an evaluator has no reason
 // to re-check a rule the owner just silenced.

@@ -43,7 +43,7 @@ export interface CitationResponse extends StatDetailResponse {
   datasetId: number;
 }
 
-// Row-level evidence behind a stat instance (Story 12.4). Excludes
+// Row-level evidence behind a stat instance. Excludes
 // orgId/datasetId/sourceType/metadata/createdAt, the audit drawer only
 // needs enough to show the owner which transactions produced the number.
 export type SourceRow = Pick<DataRow, 'id' | 'date' | 'category' | 'parentCategory' | 'amount' | 'label'>;

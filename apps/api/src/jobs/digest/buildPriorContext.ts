@@ -1,6 +1,6 @@
 import type { ComputedStat } from '../../services/curation/types.js';
 
-// Exported so Story 11.4's milestone detector shares these boundaries instead of re-hardcoding them.
+// Exported so the milestone detector shares these boundaries instead of re-hardcoding them.
 export const SIGNIFICANT_RUNWAY_DELTA_MONTHS = 0.2; // runwayMonths change ≥ this is worth narrating
 export const SIGNIFICANT_MARGIN_DELTA_PP = 0.5; // recentMarginPercent change ≥ this is worth narrating
 export const SIGNIFICANT_BURN_DELTA_PERCENT = 5; // relative change vs prior monthlyNet, ≥ this is worth narrating

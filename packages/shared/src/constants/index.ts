@@ -165,7 +165,7 @@ export type AnalyticsEventName =
   (typeof ANALYTICS_EVENTS)[keyof typeof ANALYTICS_EVENTS];
 
 // Inline chart-reference token emitted by the LLM to bind a paragraph to a
-// chart, see Story 8.5. Centralized here so every consumer (validator,
+// chart. Centralized here so every consumer (validator,
 // stream hook, post-stream parser, shared-link strip, OG metadata strip)
 // sees the same definition. If the token shape ever changes, this is the
 // only file that needs to know.
@@ -190,7 +190,7 @@ export function stripAllStatTags(text: string): string {
   return text.replace(statTagGlobal(), '');
 }
 
-// Per-stat-instance citation token (Story 12.2), a different mechanism from
+// Per-stat-instance citation token, a different mechanism from
 // <stat id="statType"/> above: many per paragraph, keyed by statInstanceId
 // (colon-delimited, so the id capture allows anything but a closing quote).
 // The id attribute itself is optional too: an LLM that emits a bare

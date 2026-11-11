@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-// Per Epic 9 decision A (Pro-only) and decision C (user-scoped). Cadence enum
+// Pro-only and user-scoped, both deliberate. Cadence enum
 // matches the digest_preferences.cadence CHECK constraint. The shared schema
 // is the single source of truth: the frontend form imports it for client-side
 // validation, the backend route imports it for body parsing.

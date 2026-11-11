@@ -229,8 +229,8 @@ adminRouter.patch('/stat-corrections/:orgId/:id', async (req: Request, res: Resp
 
 const agentTierSchema = z.object({ enabled: z.boolean() });
 
-// Manual toggle, per the Epic 18 retro decision: no Stripe-driven Agent-tier
-// checkout at beta, so this is the only write path for subscriptions.agent_enabled.
+// Manual toggle rather than Stripe-driven: there is no Agent-tier checkout at
+// beta, so this is the only write path for subscriptions.agent_enabled.
 // Platform-admin only via roleGuard('admin') at the router mount (protected.ts),
 // same as every other route in this file -- no additional guard needed here.
 adminRouter.patch('/orgs/:orgId/agent-tier', async (req: Request, res: Response) => {

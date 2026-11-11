@@ -83,7 +83,7 @@ export async function getRowCount(
 /**
  * Earliest/latest row date for a dataset, aggregated in SQL so callers never
  * see the underlying rows. Backs the alerts on-upload trigger's >=30-day
- * history gate (Story 10.2): a partial-month upload shouldn't fire a
+ * history gate: a partial-month upload shouldn't fire a
  * runway/burn alert off a thin sample.
  */
 export async function getDateRange(
