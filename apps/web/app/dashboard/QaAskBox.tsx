@@ -121,7 +121,7 @@ export function QaAskBox({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [askFromChart]);
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+  function submitOnEnter(e: React.KeyboardEvent<HTMLInputElement>) {
     // isComposing is true while an IME candidate (CJK input) is still being
     // confirmed -- treating that Enter as submit fires the question mid-composition.
     if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
@@ -130,7 +130,7 @@ export function QaAskBox({
     }
   }
 
-  function handleUpgrade() {
+  function goToBilling() {
     router.push('/billing');
   }
 
@@ -184,7 +184,7 @@ export function QaAskBox({
           disabled={!hasAuth || isAsking}
           maxLength={500}
           onChange={(e) => setQuestion(e.target.value)}
-          onKeyDown={handleKeyDown}
+          onKeyDown={submitOnEnter}
           className={cn(
             'min-h-11 flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm',
             'focus:outline-none focus:ring-2 focus:ring-primary/40',
@@ -216,7 +216,7 @@ export function QaAskBox({
 
       {status === 'locked' && (
         <div className="mt-4">
-          <UpgradeCta variant="inline" onUpgrade={handleUpgrade} />
+          <UpgradeCta variant="inline" onUpgrade={goToBilling} />
         </div>
       )}
 

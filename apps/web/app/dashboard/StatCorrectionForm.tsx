@@ -33,7 +33,7 @@ export function StatCorrectionForm({ datasetId, statId }: StatCorrectionFormProp
 
   const existing = corrections.filter((c) => c.statInstanceId === statId);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function saveCorrection(e: React.FormEvent) {
     e.preventDefault();
     if (!note.trim()) return;
 
@@ -65,7 +65,7 @@ export function StatCorrectionForm({ datasetId, statId }: StatCorrectionFormProp
         </ul>
       )}
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+      <form onSubmit={saveCorrection} className="flex flex-col gap-2">
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}

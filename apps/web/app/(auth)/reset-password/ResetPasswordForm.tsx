@@ -12,7 +12,7 @@ export default function ResetPasswordForm({ token }: { token?: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function resetPassword(e: React.FormEvent) {
     e.preventDefault();
     if (!token) {
       setError('This reset link is missing its token');
@@ -54,7 +54,7 @@ export default function ResetPasswordForm({ token }: { token?: string }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3">
+    <form onSubmit={resetPassword} className="space-y-3">
       <div>
         <label htmlFor="password" className="sr-only">New password</label>
         <input

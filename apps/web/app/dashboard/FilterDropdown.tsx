@@ -37,13 +37,13 @@ export function FilterDropdown({
   useEffect(() => {
     if (!open) return;
 
-    function handleClick(event: MouseEvent) {
+    function closeOnOutsideClick(event: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setOpen(false);
       }
     }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    return () => document.removeEventListener('mousedown', closeOnOutsideClick);
   }, [open]);
 
   useEffect(() => {
@@ -52,7 +52,7 @@ export function FilterDropdown({
     if (item) (item as HTMLElement).scrollIntoView({ block: 'nearest' });
   }, [open, focusIndex]);
 
-  const handleKeyDown = useCallback(
+  const navigateByKey = useCallback(
     (event: KeyboardEvent) => {
       if (disabled) return;
 
@@ -104,7 +104,7 @@ export function FilterDropdown({
     [disabled, open, focusIndex, options, value, onChange],
   );
 
-  const handleSelect = (option: FilterOption, index: number) => {
+  const chooseOption = (option: FilterOption, index: number) => {
     setFocusIndex(index);
     onChange(index === 0 ? null : option.value);
     setOpen(false);
@@ -124,7 +124,7 @@ export function FilterDropdown({
             return !wasOpen;
           });
         }}
-        onKeyDown={handleKeyDown}
+        onKeyDown={navigateByKey}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-activedescendant={open && focusIndex >= 0 ? `${uid}-opt-${focusIndex}` : undefined}
@@ -157,7 +157,7 @@ export function FilterDropdown({
                 id={`${uid}-opt-${index}`}
                 role="option"
                 aria-selected={isSelected}
-                onClick={() => handleSelect(option, index)}
+                onClick={() => chooseOption(option, index)}
                 onMouseEnter={() => setFocusIndex(index)}
                 className={`cursor-pointer px-3 py-2 text-sm ${
                   isFocused ? 'bg-accent text-accent-foreground' : 'text-card-foreground'

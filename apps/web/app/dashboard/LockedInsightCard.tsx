@@ -57,7 +57,7 @@ export function LockedInsightCard({
   const parsed = parseMaskedInput(raw);
   const valid = parsed !== null && parsed > 0 && parsed <= inputMax;
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function submitValue(e: React.FormEvent) {
     e.preventDefault();
     if (!valid || submitting) return;
 
@@ -104,7 +104,7 @@ export function LockedInsightCard({
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="mt-4">
+      <form onSubmit={submitValue} className="mt-4">
         <label htmlFor={inputId} className="block text-sm font-medium text-foreground">
           {inputLabel}
         </label>

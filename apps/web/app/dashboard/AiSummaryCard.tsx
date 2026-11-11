@@ -139,7 +139,7 @@ export function AiSummaryCard({
   const retryPending = status === 'connecting' && text === '';
 
   const router = useRouter();
-  const handleUpgrade = () => {
+  const goToBilling = () => {
     trackClientEvent(ANALYTICS_EVENTS.SUBSCRIPTION_UPGRADE_INTENDED);
     router.push('/billing');
   };
@@ -199,7 +199,7 @@ export function AiSummaryCard({
         )}
         <h3 className="mb-4 font-serif text-lg font-medium text-card-foreground">Analysis</h3>
         {wasTruncated ? (
-          <FreePreviewOverlay previewText={stripDisplayTags(preview)} onUpgrade={handleUpgrade} />
+          <FreePreviewOverlay previewText={stripDisplayTags(preview)} onUpgrade={goToBilling} />
         ) : (
           <>
             <SummaryText
@@ -230,7 +230,7 @@ export function AiSummaryCard({
         role="region"
         aria-label="AI business summary"
       >
-        <FreePreviewOverlay previewText={text} onUpgrade={handleUpgrade} />
+        <FreePreviewOverlay previewText={text} onUpgrade={goToBilling} />
       </div>
     );
   }

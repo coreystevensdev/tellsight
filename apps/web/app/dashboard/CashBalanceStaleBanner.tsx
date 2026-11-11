@@ -77,7 +77,7 @@ export function CashBalanceStaleBanner({
   const valid = Number.isFinite(parsed) && parsed > 0;
   const urgent = age > 90;
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function updateCashBalance(e: React.FormEvent) {
     e.preventDefault();
     if (!valid || submitting) return;
 
@@ -126,7 +126,7 @@ export function CashBalanceStaleBanner({
         </p>
 
         {inlineOpen && (
-          <form onSubmit={handleSubmit} className="mt-3 flex gap-2">
+          <form onSubmit={updateCashBalance} className="mt-3 flex gap-2">
             <input
               type="text"
               inputMode="decimal"

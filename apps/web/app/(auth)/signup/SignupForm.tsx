@@ -14,7 +14,7 @@ export default function SignupForm({ redirectPath, inviteToken }: { redirectPath
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function signUp(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
@@ -41,7 +41,7 @@ export default function SignupForm({ redirectPath, inviteToken }: { redirectPath
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3">
+    <form onSubmit={signUp} className="space-y-3">
       <div>
         <label htmlFor="name" className="sr-only">Name</label>
         <input

@@ -74,11 +74,11 @@ export function TransparencyPanel({ metadata, isOpen, onClose, className }: Tran
   // escape key closes
   useEffect(() => {
     if (!isOpen) return;
-    function handleKey(e: KeyboardEvent) {
+    function closeOnEscape(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
     }
-    document.addEventListener('keydown', handleKey);
-    return () => document.removeEventListener('keydown', handleKey);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
   }, [isOpen, onClose]);
 
   if (!isOpen || !metadata) return null;

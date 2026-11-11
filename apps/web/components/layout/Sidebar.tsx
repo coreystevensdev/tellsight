@@ -165,7 +165,7 @@ export function Sidebar() {
 
     first?.focus();
 
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const trapFocus = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { close(); return; }
       if (e.key !== 'Tab' || !first || !last) return;
 
@@ -178,11 +178,11 @@ export function Sidebar() {
       }
     };
 
-    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keydown', trapFocus);
     document.body.style.overflow = 'hidden';
 
     return () => {
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keydown', trapFocus);
       document.body.style.overflow = '';
       previouslyFocused?.focus();
     };

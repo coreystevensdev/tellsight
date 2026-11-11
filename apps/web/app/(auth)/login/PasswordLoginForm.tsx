@@ -13,7 +13,7 @@ export default function PasswordLoginForm({ redirectPath }: { redirectPath: stri
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function signIn(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
@@ -40,7 +40,7 @@ export default function PasswordLoginForm({ redirectPath }: { redirectPath: stri
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3">
+    <form onSubmit={signIn} className="space-y-3">
       <div>
         <label htmlFor="email" className="sr-only">Email</label>
         <input

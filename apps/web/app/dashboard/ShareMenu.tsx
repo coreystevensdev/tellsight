@@ -65,7 +65,7 @@ export function ShareMenu({
     }
   }, [open]);
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+  const closeOnEscape = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       setOpen(false);
       triggerRef.current?.focus();
@@ -91,7 +91,7 @@ export function ShareMenu({
         <div
           ref={panelRef}
           className="absolute right-0 top-full z-50 mt-1 w-48 rounded-md border border-border bg-card shadow-md animate-in fade-in-0 zoom-in-95 motion-reduce:duration-0"
-          onKeyDown={handleKeyDown}
+          onKeyDown={closeOnEscape}
         >
           <ShareOptions
             status={status}

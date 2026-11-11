@@ -68,7 +68,7 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
   const config = STEP_CONFIG[step];
   const isLast = stepIdx === STEPS.length - 1;
 
-  async function handleSelect(value: string) {
+  async function answerStep(value: string) {
     const next = { ...answers, [step]: value };
     setAnswers(next);
 
@@ -118,7 +118,7 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
               key={opt}
               type="button"
               disabled={saving}
-              onClick={() => handleSelect(opt)}
+              onClick={() => answerStep(opt)}
               className="rounded-lg border border-border px-4 py-3 text-left text-sm font-medium text-foreground transition-colors hover:border-primary/30 hover:bg-accent disabled:opacity-50"
             >
               {config.labels[opt] ?? opt}

@@ -47,25 +47,25 @@ export function ShareOptions({
 
   useEffect(() => () => clearTimeout(feedbackTimer.current), []);
 
-  const handleDownload = useCallback(async () => {
+  const downloadImage = useCallback(async () => {
     await onGenerate();
     onDownload();
     showFeedback('downloaded');
   }, [onGenerate, onDownload, showFeedback]);
 
-  const handleCopy = useCallback(async () => {
+  const copyImage = useCallback(async () => {
     await onGenerate();
     await onCopy();
     showFeedback('copied');
   }, [onGenerate, onCopy, showFeedback]);
 
-  const handleCopyLink = useCallback(async () => {
+  const copyLink = useCallback(async () => {
     if (!onCopyLink) return;
     await onCopyLink();
     showFeedback('linked');
   }, [onCopyLink, showFeedback]);
 
-  const handleExportPdf = useCallback(async () => {
+  const exportPdf = useCallback(async () => {
     if (!onExportPdf) return;
     await onExportPdf();
     showFeedback('pdf');
@@ -143,7 +143,7 @@ export function ShareOptions({
         <button
           type="button"
           className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-          onClick={handleCopyLink}
+          onClick={copyLink}
           disabled={isLinking}
           aria-label="Copy link"
         >
@@ -158,7 +158,7 @@ export function ShareOptions({
       <button
         type="button"
         className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-        onClick={handleDownload}
+        onClick={downloadImage}
         disabled={isGenerating}
         aria-label="Download PNG"
       >
@@ -172,7 +172,7 @@ export function ShareOptions({
       <button
         type="button"
         className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-        onClick={handleCopy}
+        onClick={copyImage}
         disabled={isGenerating}
         aria-label="Copy to clipboard"
       >
@@ -189,7 +189,7 @@ export function ShareOptions({
           <button
             type="button"
             className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-            onClick={handleExportPdf}
+            onClick={exportPdf}
             disabled={pdfStatus === 'generating'}
             aria-label="Download PDF report"
           >

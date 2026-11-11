@@ -85,7 +85,7 @@ export default function Invites() {
     }
   }
 
-  async function handleCopy() {
+  async function copyInviteUrl() {
     if (!invite) return;
 
     try {
@@ -159,7 +159,7 @@ export default function Invites() {
               onClick={(e) => (e.target as HTMLInputElement).select()}
             />
             <button
-              onClick={handleCopy}
+              onClick={copyInviteUrl}
               className="shrink-0 rounded-md border border-border bg-background px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted"
             >
               {copied ? 'Copied!' : 'Copy'}

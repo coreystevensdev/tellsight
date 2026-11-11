@@ -11,7 +11,7 @@ export default function ForgotPasswordForm() {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function requestReset(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
@@ -51,7 +51,7 @@ export default function ForgotPasswordForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3">
+    <form onSubmit={requestReset} className="space-y-3">
       <div>
         <label htmlFor="email" className="sr-only">Email</label>
         <input
