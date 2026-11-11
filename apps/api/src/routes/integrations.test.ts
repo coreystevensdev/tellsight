@@ -87,8 +87,19 @@ vi.mock('../lib/redis.js', () => ({
   },
 }));
 
+const NONCE = 'test-nonce-abc123';
 const seedFlow = (provider: string, state: string, orgId: number, userId: number) =>
-  oauthStore.set(`oauth:state:${provider}:${state}`, JSON.stringify({ orgId, userId }));
+  oauthStore.set(
+    `oauth:state:${provider}:${state}`,
+    JSON.stringify({ orgId, userId, nonce: NONCE }),
+  );
+// The callback reads one cookie, the nonce proving this browser started the
+// flow. Every provider's is present because a test only exercises one.
+const nonceCookies = () => ({
+  quickbooks_oauth_nonce: NONCE,
+  shopify_oauth_nonce: NONCE,
+  square_oauth_nonce: NONCE,
+});
 vi.mock('../config.js', () => ({
   env: {
     APP_URL: 'http://localhost:3000',
@@ -195,7 +206,7 @@ vi.mock('../middleware/roleGuard.js', () => ({
 function createMockReq(overrides: Partial<MockReq> = {}): MockReq {
   return {
     user: { sub: '1', org_id: 10, role: 'owner', isAdmin: false },
-    cookies: {},
+    cookies: nonceCookies(),
     query: {},
     ...overrides,
   };
@@ -243,9 +254,12 @@ describe('integrations routes', () => {
       });
       // The binding, not a cookie: the org is recorded against the state the
       // provider will echo back, so the callback cannot be aimed elsewhere.
-      expect(oauthStore.get('oauth:state:quickbooks:random-state-123')).toBe(
-        JSON.stringify({ orgId: 10, userId: 1 }),
-      );
+      const stored = JSON.parse(oauthStore.get('oauth:state:quickbooks:random-state-123')!);
+      expect(stored.orgId).toBe(10);
+      expect(stored.userId).toBe(1);
+      // The nonce is what ties the flow to this browser, and it has to reach it.
+      expect(stored.nonce).toMatch(/^[0-9a-f]{32}$/);
+      expect(res._cookies?.quickbooks_oauth_nonce?.value).toBe(stored.nonce);
     });
 
     it('returns 409 if already connected', async () => {
@@ -394,7 +408,7 @@ describe('integrations routes', () => {
       seedFlow('quickbooks', 'valid-state', 10, 1);
       const req = createMockReq({
         query: { code: 'auth-code', realmId: 'realm789', state: 'valid-state' },
-        cookies: {},
+        cookies: nonceCookies(),
       });
       const res = createMockRes();
       await handler(req, res, vi.fn());
@@ -419,7 +433,7 @@ describe('integrations routes', () => {
       seedFlow('quickbooks', 'correct-state', 10, 1);
       const req = createMockReq({
         query: { code: 'auth-code', realmId: 'realm789', state: 'wrong-state' },
-        cookies: {},
+        cookies: nonceCookies(),
       });
       const res = createMockRes();
       await handler(req, res, vi.fn());
@@ -448,7 +462,7 @@ describe('integrations routes', () => {
 
       const req = createMockReq({
         query: { code: 'auth-code', realmId: 'realm789', state: 'some-state' },
-        cookies: {},
+        cookies: nonceCookies(),
       });
       const res = createMockRes();
       await handler(req, res, vi.fn());
@@ -464,7 +478,7 @@ describe('integrations routes', () => {
 
       const req = createMockReq({
         query: { code: 'bad-code', realmId: 'realm789', state: 'valid-state' },
-        cookies: {},
+        cookies: nonceCookies(),
       });
       const res = createMockRes();
       await handler(req, res, vi.fn());
@@ -494,9 +508,12 @@ describe('integrations routes', () => {
       });
       // The binding, not a cookie: the org is recorded against the state the
       // provider will echo back, so the callback cannot be aimed elsewhere.
-      expect(oauthStore.get('oauth:state:shopify:random-state-123')).toBe(
-        JSON.stringify({ orgId: 10, userId: 1 }),
-      );
+      const stored = JSON.parse(oauthStore.get('oauth:state:shopify:random-state-123')!);
+      expect(stored.orgId).toBe(10);
+      expect(stored.userId).toBe(1);
+      // The nonce is what ties the flow to this browser, and it has to reach it.
+      expect(stored.nonce).toMatch(/^[0-9a-f]{32}$/);
+      expect(res._cookies?.shopify_oauth_nonce?.value).toBe(stored.nonce);
     });
 
     it('rejects a malformed shop domain before ever calling generateAuthUrl', async () => {
@@ -658,7 +675,7 @@ describe('integrations routes', () => {
       seedFlow('shopify', 'valid-state', 10, 1);
       const req = createMockReq({
         query: validQuery(),
-        cookies: {},
+        cookies: nonceCookies(),
       });
       const res = createMockRes();
       await handler(req, res, vi.fn());
@@ -707,7 +724,7 @@ describe('integrations routes', () => {
       seedFlow('shopify', 'valid-state', 10, 1);
       const req = createMockReq({
         query: validQuery(),
-        cookies: {},
+        cookies: nonceCookies(),
       });
       const res = createMockRes();
       await handler(req, res, vi.fn());
@@ -727,7 +744,7 @@ describe('integrations routes', () => {
       seedFlow('shopify', 'correct-state', 10, 1);
       const req = createMockReq({
         query: validQuery({ state: 'wrong-state' }),
-        cookies: {},
+        cookies: nonceCookies(),
       });
       const res = createMockRes();
       await handler(req, res, vi.fn());
@@ -748,7 +765,7 @@ describe('integrations routes', () => {
       seedFlow('shopify', 'valid-state', 10, 1);
       const req = createMockReq({
         query: validQuery(),
-        cookies: {},
+        cookies: nonceCookies(),
       });
       const res = createMockRes();
       await handler(req, res, vi.fn());
@@ -767,7 +784,7 @@ describe('integrations routes', () => {
       seedFlow('shopify', 'valid-state', 10, 1);
       const req = createMockReq({
         query: validQuery(),
-        cookies: {},
+        cookies: nonceCookies(),
       });
       const res = createMockRes();
       await handler(req, res, vi.fn());
@@ -795,9 +812,12 @@ describe('integrations routes', () => {
       });
       // The binding, not a cookie: the org is recorded against the state the
       // provider will echo back, so the callback cannot be aimed elsewhere.
-      expect(oauthStore.get('oauth:state:square:square-state')).toBe(
-        JSON.stringify({ orgId: 10, userId: 1 }),
-      );
+      const stored = JSON.parse(oauthStore.get('oauth:state:square:square-state')!);
+      expect(stored.orgId).toBe(10);
+      expect(stored.userId).toBe(1);
+      // The nonce is what ties the flow to this browser, and it has to reach it.
+      expect(stored.nonce).toMatch(/^[0-9a-f]{32}$/);
+      expect(res._cookies?.square_oauth_nonce?.value).toBe(stored.nonce);
     });
 
     it('rejects a duplicate connection', async () => {
@@ -951,7 +971,7 @@ describe('integrations routes', () => {
       seedFlow('square', 'square-state', 10, 1);
       const req = createMockReq({
         query: { code: 'square-code', state: 'square-state' },
-        cookies: {},
+        cookies: nonceCookies(),
       });
       const res = createMockRes();
 
@@ -994,7 +1014,7 @@ describe('integrations routes', () => {
       seedFlow('square', 'square-state', 10, 1);
       const req = createMockReq({
         query: { code: 'square-code', state: 'square-state' },
-        cookies: {},
+        cookies: nonceCookies(),
       });
       const res = createMockRes();
 
@@ -1014,7 +1034,7 @@ describe('integrations routes', () => {
       seedFlow('square', 'square-state', 10, 1);
       const req = createMockReq({
         query: { code: 'square-code', state: 'wrong-state' },
-        cookies: {},
+        cookies: nonceCookies(),
       });
       const res = createMockRes();
 
@@ -1047,7 +1067,7 @@ describe('integrations routes', () => {
       // pin: nothing is exchanged and nothing is written.
       const req = createMockReq({
         query: { code: 'square-code', state: 'square-state' },
-        cookies: {},
+        cookies: nonceCookies(),
       });
       const res = createMockRes();
 
@@ -1063,7 +1083,7 @@ describe('integrations routes', () => {
       seedFlow('square', 'square-state', 10, 1);
       const req = createMockReq({
         query: { state: 'square-state' },
-        cookies: {},
+        cookies: nonceCookies(),
       });
       const res = createMockRes();
 
@@ -1081,7 +1101,7 @@ describe('integrations routes', () => {
       seedFlow('square', 'square-state', 10, 1);
       const req = createMockReq({
         query: { code: 'square-code', state: 'square-state' },
-        cookies: {},
+        cookies: nonceCookies(),
       });
       const res = createMockRes();
 
@@ -1107,7 +1127,7 @@ describe('integrations routes', () => {
       seedFlow('square', 'square-state', 10, 1);
       const req = createMockReq({
         query: { code: 'square-code', state: 'square-state' },
-        cookies: {},
+        cookies: nonceCookies(),
       });
       const res = createMockRes();
 
@@ -1118,6 +1138,93 @@ describe('integrations routes', () => {
       expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?square=error');
     });
   });
+
+  // The attack the nonce exists to stop, written out because the server-side
+  // binding alone looks sufficient and is not. An attacker authenticates as
+  // themselves, calls /connect to mint a binding pointing at their own org, and
+  // sends the victim the authUrl. The victim consents with their own books. The
+  // victim's browser carries the code to this callback, which resolves the
+  // attacker's binding. Without the nonce the victim's data lands in the
+  // attacker's org, and the victim's browser never held a nonce for that flow.
+  describe('OAuth callback flow binding', () => {
+    const attackerOrg = 77;
+
+    it('refuses a callback from a browser that never started the flow', async () => {
+      seedFlow('quickbooks', 'attacker-state', attackerOrg, 1);
+
+      const { integrationsCallbackRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/quickbooks/callback');
+      const req = createMockReq({
+        query: { code: 'victim-code', realmId: 'victim-realm', state: 'attacker-state' },
+        cookies: {},
+      });
+      const res = createMockRes();
+
+      await handler(req, res, vi.fn());
+
+      expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?qb=error');
+      // The code is never traded, so no victim token is ever created.
+      expect(mockExchangeCode).not.toHaveBeenCalled();
+      expect(mockUpsert).not.toHaveBeenCalled();
+    });
+
+    it('refuses a nonce that does not match the binding', async () => {
+      seedFlow('square', 'square-state', attackerOrg, 1);
+
+      const { integrationsCallbackRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/square/callback');
+      const req = createMockReq({
+        query: { code: 'victim-code', state: 'square-state' },
+        cookies: { square_oauth_nonce: 'not-the-nonce' },
+      });
+      const res = createMockRes();
+
+      await handler(req, res, vi.fn());
+
+      expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?square=error');
+      expect(mockSquareExchangeCode).not.toHaveBeenCalled();
+      expect(mockUpsert).not.toHaveBeenCalled();
+    });
+
+    it('clears the nonce cookie even when the check fails', async () => {
+      seedFlow('quickbooks', 'cleared-state', attackerOrg, 1);
+
+      const { integrationsCallbackRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/quickbooks/callback');
+      const req = createMockReq({
+        query: { code: 'c', realmId: 'r', state: 'cleared-state' },
+        cookies: {},
+      });
+      const res = createMockRes();
+
+      await handler(req, res, vi.fn());
+
+      expect(res._clearedCookies).toContain('quickbooks_oauth_nonce');
+    });
+
+    it('consumes the binding, so the nonce cannot be brute forced by retrying', async () => {
+      seedFlow('quickbooks', 'one-shot', attackerOrg, 1);
+
+      const { integrationsCallbackRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/quickbooks/callback');
+      const attempt = () =>
+        handler(
+          createMockReq({
+            query: { code: 'c', realmId: 'r', state: 'one-shot' },
+            cookies: { quickbooks_oauth_nonce: 'guess' },
+          }),
+          createMockRes(),
+          vi.fn(),
+        );
+
+      await attempt();
+      expect(oauthStore.get('oauth:state:quickbooks:one-shot')).toBeUndefined();
+      await attempt();
+
+      expect(mockExchangeCode).not.toHaveBeenCalled();
+    });
+  });
+
 });
 
 // Run the full middleware + handler chain for a route.

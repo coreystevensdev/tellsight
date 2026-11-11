@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
-// The OAuth flow binding lives in Redis now, keyed by the state Square echoes
-// back. Nothing about it belongs in the browser, so this route must use the
-// plain proxy helper: the cookie-forwarding one would hand a response cookie
-// straight through, which is how the org id used to reach the client.
+// Two things have to hold at once here. The nonce cookie must reach the
+// browser, or the callback's nonce check fails and no connection can ever
+// complete. And nothing identifying the org may travel with it, which is the
+// defect this flow had: the org id rode along in a sibling cookie and the
+// callback trusted it.
 
 vi.mock('@/lib/config', () => ({
   webEnv: { API_INTERNAL_URL: 'http://api:3001', JWT_SECRET: 'k'.repeat(32), NODE_ENV: 'test' },
@@ -31,18 +32,30 @@ function upstream(body: unknown, status = 200, cookies: string[] = []) {
 beforeEach(() => fetchMock.mockReset());
 
 describe('POST /api/integrations/square/connect', () => {
-  it('drops any cookie the upstream sets rather than forwarding it', async () => {
+  it('forwards the nonce cookie the callback checks', async () => {
     fetchMock.mockResolvedValue(
       upstream({ data: { authUrl: 'https://connect.squareupsandbox.com/oauth2/authorize?x=1' } }, 200, [
-        'square_oauth_state=abc123; Path=/; HttpOnly',
-        'square_oauth_org_id=3; Path=/; HttpOnly',
+        'square_oauth_nonce=abc123; Path=/; HttpOnly',
       ]),
     );
 
     const res = await POST(request());
 
-    expect(res.headers.getSetCookie()).toEqual([]);
-    expect(JSON.stringify(await res.json())).not.toContain('org_id');
+    expect(res.headers.getSetCookie()).toEqual(['square_oauth_nonce=abc123; Path=/; HttpOnly']);
+  });
+
+  it('carries nothing identifying the org back to the browser', async () => {
+    fetchMock.mockResolvedValue(
+      upstream({ data: { authUrl: 'https://example.test/auth' } }, 200, [
+        'square_oauth_nonce=abc123; Path=/; HttpOnly',
+      ]),
+    );
+
+    const res = await POST(request());
+    const seen = res.headers.getSetCookie().join(' ') + JSON.stringify(await res.json());
+
+    expect(seen).not.toMatch(/org[_-]?id/i);
+    expect(seen).not.toMatch(/user[_-]?id/i);
   });
 
   it('passes the caller cookies upstream and returns the authorize URL', async () => {

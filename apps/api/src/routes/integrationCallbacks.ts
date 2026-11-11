@@ -4,12 +4,17 @@ import { ANALYTICS_EVENTS, AUDIT_ACTIONS } from 'shared/constants';
 
 import { env } from '../config.js';
 import { integrationConnectionsQueries } from '../db/queries/index.js';
+import { clearCookie } from '../lib/cookies.js';
 import { dbAdmin } from '../lib/db.js';
 import { logger } from '../lib/logger.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
 import { audit } from '../services/audit/auditService.js';
 import { encrypt } from '../services/integrations/encryption.js';
-import { takeOAuthState } from '../services/integrations/oauthState.js';
+import {
+  nonceMatches,
+  oauthNonceCookie,
+  takeOAuthState,
+} from '../services/integrations/oauthState.js';
 import * as qbOAuth from '../services/integrations/quickbooks/oauth.js';
 import { registerDailySync } from '../services/integrations/scheduler.js';
 import { enqueueSyncJob } from '../services/integrations/worker.js';
@@ -28,6 +33,12 @@ import { enqueueSyncJob as enqueueSquareSyncJob } from '../services/integrations
 // back. It used to come from a cookie the browser could edit, and the comment
 // here claimed that cookie was signed when nothing signed it, so the write could
 // be aimed at any org id. Never read identity off req.cookies in these handlers.
+//
+// The nonce cookie is the one thing still read from the browser, and it is not
+// identity: it proves the browser finishing this flow is the one that started
+// it. Without that check the binding alone lets an attacker start a flow against
+// their own org and walk a victim through consent, landing the victim's books in
+// the attacker's org.
 export function registerIntegrationCallbacks(router: Router): void {
   router.get('/quickbooks/callback', async (req: Request, res: Response) => {
     const { code, realmId, state, error } = req.query as Record<string, string | undefined>;
@@ -45,6 +56,14 @@ export function registerIntegrationCallbacks(router: Router): void {
     const flow = await takeOAuthState('quickbooks', state);
     if (!flow) {
       logger.warn({ hasState: !!state }, 'QB OAuth state unknown, expired or already used');
+      res.redirect(`${dashboardUrl}?qb=error`);
+      return;
+    }
+
+    const nonceCookie = req.cookies?.[oauthNonceCookie('quickbooks')] as string | undefined;
+    clearCookie(res, oauthNonceCookie('quickbooks'));
+    if (!nonceMatches(nonceCookie, flow.nonce)) {
+      logger.warn({ hasNonce: !!nonceCookie }, 'quickbooks OAuth nonce missing or mismatched');
       res.redirect(`${dashboardUrl}?qb=error`);
       return;
     }
@@ -137,6 +156,14 @@ export function registerIntegrationCallbacks(router: Router): void {
       return;
     }
 
+    const nonceCookie = req.cookies?.[oauthNonceCookie('shopify')] as string | undefined;
+    clearCookie(res, oauthNonceCookie('shopify'));
+    if (!nonceMatches(nonceCookie, flow.nonce)) {
+      logger.warn({ hasNonce: !!nonceCookie }, 'shopify OAuth nonce missing or mismatched');
+      res.redirect(`${dashboardUrl}?shopify=error`);
+      return;
+    }
+
     if (!code) {
       logger.warn({}, 'Shopify OAuth callback missing code');
       res.redirect(`${dashboardUrl}?shopify=error`);
@@ -213,6 +240,14 @@ export function registerIntegrationCallbacks(router: Router): void {
     const flow = await takeOAuthState('square', state);
     if (!flow) {
       logger.warn({ hasState: !!state }, 'Square OAuth state unknown, expired or already used');
+      res.redirect(`${dashboardUrl}?square=error`);
+      return;
+    }
+
+    const nonceCookie = req.cookies?.[oauthNonceCookie('square')] as string | undefined;
+    clearCookie(res, oauthNonceCookie('square'));
+    if (!nonceMatches(nonceCookie, flow.nonce)) {
+      logger.warn({ hasNonce: !!nonceCookie }, 'square OAuth nonce missing or mismatched');
       res.redirect(`${dashboardUrl}?square=error`);
       return;
     }
