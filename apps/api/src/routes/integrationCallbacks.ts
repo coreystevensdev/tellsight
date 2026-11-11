@@ -81,12 +81,7 @@ export function registerIntegrationCallbacks(router: Router): void {
       const encryptedRefreshToken = encrypt(tokens.refreshToken);
       const accessTokenExpiresAt = new Date(Date.now() + tokens.expiresIn * 1000);
 
-      // The callback doesn't have auth context (browser redirect from Intuit).
-      // We encode orgId in a signed cookie set during /connect, or, simpler for now
-      // extract it from the state param. For MVP, we use a temp cookie set at /connect time.
       const { orgId, userId } = flow;
-
-
 
       const connection = await integrationConnectionsQueries.upsert(
         {
@@ -100,7 +95,6 @@ export function registerIntegrationCallbacks(router: Router): void {
         },
         dbAdmin,
       );
-
 
       await enqueueSyncJob(connection.id, 'initial');
       await registerDailySync(orgId, connection.id);
@@ -176,8 +170,6 @@ export function registerIntegrationCallbacks(router: Router): void {
 
       const { orgId, userId } = flow;
 
-
-
       // A standard offline Shopify access token doesn't expire and has no
       // refresh token (see oauth.ts), so both encrypted-token columns hold the
       // same value and the expiry is a far-future sentinel rather than a real
@@ -194,7 +186,6 @@ export function registerIntegrationCallbacks(router: Router): void {
         },
         dbAdmin,
       );
-
 
       await enqueueShopifySyncJob(connection.id, 'initial');
       await registerShopifyDailySync(orgId, connection.id);
@@ -261,7 +252,6 @@ export function registerIntegrationCallbacks(router: Router): void {
     try {
       const { orgId, userId } = flow;
 
-
       const tokens = await squareOAuth.exchangeCode(code);
 
       // Square hands back a real refresh token and a real deadline, so this row
@@ -278,7 +268,6 @@ export function registerIntegrationCallbacks(router: Router): void {
         },
         dbAdmin,
       );
-
 
       await enqueueSquareSyncJob(connection.id, 'initial');
       await registerSquareDailySync(orgId, connection.id);
