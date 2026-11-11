@@ -1,4 +1,4 @@
-import type { ParsedRow } from '../adapters/index.js';
+import type { ParsedRow } from '../adapters/interface.js';
 import { buildHeaderMap, detectDayFirst, parseDate, hasClassificationSignal, normalizeParentCategory } from './csvAdapter.js';
 
 /**

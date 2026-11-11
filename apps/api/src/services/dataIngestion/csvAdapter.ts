@@ -9,7 +9,7 @@ import type {
   ValidationResult,
   ColumnValidationError,
   ParsedRow,
-} from '../adapters/index.js';
+} from '../adapters/interface.js';
 import { detectDayFirst, isValidDate } from './csvDateParsing.js';
 
 const ALL_KNOWN_COLUMNS = [...CSV_REQUIRED_COLUMNS, ...CSV_OPTIONAL_COLUMNS];

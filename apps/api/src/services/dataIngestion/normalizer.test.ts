@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeRows } from './normalizer.js';
-import type { ParsedRow } from '../adapters/index.js';
+import type { ParsedRow } from '../adapters/interface.js';
 
 describe('normalizeRows', () => {
   const headers = ['date', 'amount', 'category', 'label', 'parent_category'];

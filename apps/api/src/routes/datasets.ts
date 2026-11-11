@@ -10,7 +10,7 @@ import { normalizeRows } from '../services/dataIngestion/normalizer.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
 import { auditAuth } from '../services/audit/auditService.js';
 import { logger } from '../lib/logger.js';
-import type { PreviewData, ParsedRow } from '../services/adapters/index.js';
+import type { PreviewData, ParsedRow } from '../services/adapters/interface.js';
 import { normalizeHeader } from '../services/dataIngestion/index.js';
 import { datasetsQueries, orgsQueries } from '../db/queries/index.js';
 import { withRlsContext } from '../lib/rls.js';

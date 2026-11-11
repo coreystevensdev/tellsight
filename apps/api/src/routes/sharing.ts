@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type { Response } from 'express';
 import { AUDIT_ACTIONS } from 'shared/constants';
 import { requireUser } from '../lib/requireUser.js';
-import { generateShareLink, getSharedInsight } from '../services/sharing/index.js';
+import { generateShareLink, getSharedInsight } from '../services/sharing/shareService.js';
 import { withRlsContext } from '../lib/rls.js';
 import { z } from 'zod';
 import { createShareSchema } from 'shared/schemas';
