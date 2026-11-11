@@ -1,3 +1,3 @@
-import { proxyPostWithCookies } from '@/lib/bff-proxy';
+import { proxyPost } from '@/lib/bff-proxy';
 
-export const POST = proxyPostWithCookies('/integrations/quickbooks/connect');
+export const POST = proxyPost('/integrations/quickbooks/connect');

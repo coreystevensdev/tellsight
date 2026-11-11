@@ -3,7 +3,6 @@ import type { Request, Response, Router } from 'express';
 import { ANALYTICS_EVENTS, AUDIT_ACTIONS } from 'shared/constants';
 
 import { integrationConnectionsQueries } from '../db/queries/index.js';
-import { sessionCookieOptions } from '../lib/cookies.js';
 import { logger } from '../lib/logger.js';
 import { requireUser } from '../lib/requireUser.js';
 import { withRlsContext } from '../lib/rls.js';
@@ -11,6 +10,7 @@ import { roleGuard } from '../middleware/roleGuard.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
 import { auditAuth } from '../services/audit/auditService.js';
 import { decrypt } from '../services/integrations/encryption.js';
+import { putOAuthState } from '../services/integrations/oauthState.js';
 import * as squareOAuth from '../services/integrations/square/oauth.js';
 import { removeDailySync as removeSquareDailySync } from '../services/integrations/square/scheduler.js';
 import { enqueueSyncJob as enqueueSquareSyncJob } from '../services/integrations/square/worker.js';
@@ -34,11 +34,10 @@ export function registerSquareIntegrationRoutes(router: Router): void {
     }
 
     const { authUrl, state } = squareOAuth.generateAuthUrl();
-    const cookieOpts = sessionCookieOptions(10 * 60);
-
-    res.cookie('square_oauth_state', state, cookieOpts);
-    res.cookie('square_oauth_org_id', String(orgId), cookieOpts);
-    res.cookie('square_oauth_user_id', user.sub, cookieOpts);
+    await putOAuthState('square', state, {
+      orgId,
+      userId: Number(user.sub),
+    });
 
     res.json({ data: { authUrl } });
   });

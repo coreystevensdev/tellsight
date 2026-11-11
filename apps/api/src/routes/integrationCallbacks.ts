@@ -9,6 +9,7 @@ import { logger } from '../lib/logger.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
 import { audit } from '../services/audit/auditService.js';
 import { encrypt } from '../services/integrations/encryption.js';
+import { takeOAuthState } from '../services/integrations/oauthState.js';
 import * as qbOAuth from '../services/integrations/quickbooks/oauth.js';
 import { registerDailySync } from '../services/integrations/scheduler.js';
 import { enqueueSyncJob } from '../services/integrations/worker.js';
@@ -20,10 +21,13 @@ import { registerDailySync as registerSquareDailySync } from '../services/integr
 import { enqueueSyncJob as enqueueSquareSyncJob } from '../services/integrations/square/worker.js';
 
 // Callback routes are public: the provider redirects the browser here with no
-// session, so RLS has no app.current_org_id to match and every write is refused.
-// The org comes from the signed cookie set during /connect, which is why these
-// pass dbAdmin with an explicit orgId, the same shape alertMute uses for its
-// token-authenticated write.
+// session, so RLS has no app.current_org_id to match and every write is refused,
+// which is why these pass dbAdmin with an explicit orgId.
+//
+// That orgId comes from takeOAuthState, keyed by the state the provider echoes
+// back. It used to come from a cookie the browser could edit, and the comment
+// here claimed that cookie was signed when nothing signed it, so the write could
+// be aimed at any org id. Never read identity off req.cookies in these handlers.
 export function registerIntegrationCallbacks(router: Router): void {
   router.get('/quickbooks/callback', async (req: Request, res: Response) => {
     const { code, realmId, state, error } = req.query as Record<string, string | undefined>;
@@ -35,14 +39,15 @@ export function registerIntegrationCallbacks(router: Router): void {
       return;
     }
 
-    const storedState = req.cookies?.qb_oauth_state;
-    if (!storedState || storedState !== state) {
-      logger.warn({ storedState: !!storedState, state: !!state }, 'QB OAuth state mismatch');
+    // The binding is the authorization check. state was minted by /connect against an
+    // authenticated session, so the org it resolves to is the org that started the flow.
+    // Reads are single-use, which also makes a replayed callback fail here.
+    const flow = await takeOAuthState('quickbooks', state);
+    if (!flow) {
+      logger.warn({ hasState: !!state }, 'QB OAuth state unknown, expired or already used');
       res.redirect(`${dashboardUrl}?qb=error`);
       return;
     }
-
-    res.clearCookie('qb_oauth_state', { path: '/' });
 
     if (!code || !realmId) {
       logger.warn({}, 'QB OAuth callback missing code or realmId');
@@ -60,16 +65,9 @@ export function registerIntegrationCallbacks(router: Router): void {
       // The callback doesn't have auth context (browser redirect from Intuit).
       // We encode orgId in a signed cookie set during /connect, or, simpler for now
       // extract it from the state param. For MVP, we use a temp cookie set at /connect time.
-      const orgIdCookie = req.cookies?.qb_oauth_org_id;
-      const userId = req.cookies?.qb_oauth_user_id;
+      const { orgId, userId } = flow;
 
-      if (!orgIdCookie || !userId) {
-        logger.error({}, 'QB OAuth callback missing org/user identity cookies');
-        res.redirect(`${dashboardUrl}?qb=error`);
-        return;
-      }
 
-      const orgId = Number(orgIdCookie);
 
       const connection = await integrationConnectionsQueries.upsert(
         {
@@ -84,20 +82,18 @@ export function registerIntegrationCallbacks(router: Router): void {
         dbAdmin,
       );
 
-      res.clearCookie('qb_oauth_org_id', { path: '/' });
-      res.clearCookie('qb_oauth_user_id', { path: '/' });
 
       await enqueueSyncJob(connection.id, 'initial');
       await registerDailySync(orgId, connection.id);
 
-      trackEvent(orgId, Number(userId), ANALYTICS_EVENTS.INTEGRATION_CONNECTED, {
+      trackEvent(orgId, userId, ANALYTICS_EVENTS.INTEGRATION_CONNECTED, {
         provider: 'quickbooks',
         realmId,
       });
 
       audit(req, {
         orgId,
-        userId: Number(userId),
+        userId,
         action: AUDIT_ACTIONS.INTEGRATION_CONNECTED,
         targetType: 'integration',
         targetId: 'quickbooks',
@@ -131,14 +127,15 @@ export function registerIntegrationCallbacks(router: Router): void {
       return;
     }
 
-    const storedState = req.cookies?.shopify_oauth_state;
-    if (!storedState || storedState !== state) {
-      logger.warn({ storedState: !!storedState, state: !!state }, 'Shopify OAuth state mismatch');
+    // The binding is the authorization check. state was minted by /connect against an
+    // authenticated session, so the org it resolves to is the org that started the flow.
+    // Reads are single-use, which also makes a replayed callback fail here.
+    const flow = await takeOAuthState('shopify', state);
+    if (!flow) {
+      logger.warn({ hasState: !!state }, 'Shopify OAuth state unknown, expired or already used');
       res.redirect(`${dashboardUrl}?shopify=error`);
       return;
     }
-
-    res.clearCookie('shopify_oauth_state', { path: '/' });
 
     if (!code) {
       logger.warn({}, 'Shopify OAuth callback missing code');
@@ -150,16 +147,9 @@ export function registerIntegrationCallbacks(router: Router): void {
       const tokens = await shopifyOAuth.exchangeCode(shop, code);
       const encryptedAccessToken = encrypt(tokens.accessToken);
 
-      const orgIdCookie = req.cookies?.shopify_oauth_org_id;
-      const userId = req.cookies?.shopify_oauth_user_id;
+      const { orgId, userId } = flow;
 
-      if (!orgIdCookie || !userId) {
-        logger.error({}, 'Shopify OAuth callback missing org/user identity cookies');
-        res.redirect(`${dashboardUrl}?shopify=error`);
-        return;
-      }
 
-      const orgId = Number(orgIdCookie);
 
       // A standard offline Shopify access token doesn't expire and has no
       // refresh token (see oauth.ts), so both encrypted-token columns hold the
@@ -178,20 +168,18 @@ export function registerIntegrationCallbacks(router: Router): void {
         dbAdmin,
       );
 
-      res.clearCookie('shopify_oauth_org_id', { path: '/' });
-      res.clearCookie('shopify_oauth_user_id', { path: '/' });
 
       await enqueueShopifySyncJob(connection.id, 'initial');
       await registerShopifyDailySync(orgId, connection.id);
 
-      trackEvent(orgId, Number(userId), ANALYTICS_EVENTS.INTEGRATION_CONNECTED, {
+      trackEvent(orgId, userId, ANALYTICS_EVENTS.INTEGRATION_CONNECTED, {
         provider: 'shopify',
         shop,
       });
 
       audit(req, {
         orgId,
-        userId: Number(userId),
+        userId,
         action: AUDIT_ACTIONS.INTEGRATION_CONNECTED,
         targetType: 'integration',
         targetId: 'shopify',
@@ -219,14 +207,15 @@ export function registerIntegrationCallbacks(router: Router): void {
       return;
     }
 
-    const storedState = req.cookies?.square_oauth_state;
-    if (!storedState || storedState !== state) {
-      logger.warn({ storedState: !!storedState, state: !!state }, 'Square OAuth state mismatch');
+    // The binding is the authorization check. state was minted by /connect against an
+    // authenticated session, so the org it resolves to is the org that started the flow.
+    // Reads are single-use, which also makes a replayed callback fail here.
+    const flow = await takeOAuthState('square', state);
+    if (!flow) {
+      logger.warn({ hasState: !!state }, 'Square OAuth state unknown, expired or already used');
       res.redirect(`${dashboardUrl}?square=error`);
       return;
     }
-
-    res.clearCookie('square_oauth_state', { path: '/' });
 
     if (!code) {
       logger.warn({}, 'Square OAuth callback missing code');
@@ -235,17 +224,10 @@ export function registerIntegrationCallbacks(router: Router): void {
     }
 
     try {
-      const orgIdCookie = req.cookies?.square_oauth_org_id;
-      const userId = req.cookies?.square_oauth_user_id;
+      const { orgId, userId } = flow;
 
-      if (!orgIdCookie || !userId) {
-        logger.error({}, 'Square OAuth callback missing org/user identity cookies');
-        res.redirect(`${dashboardUrl}?square=error`);
-        return;
-      }
 
       const tokens = await squareOAuth.exchangeCode(code);
-      const orgId = Number(orgIdCookie);
 
       // Square hands back a real refresh token and a real deadline, so this row
       // needs none of the sentinel values the Shopify one does.
@@ -262,20 +244,18 @@ export function registerIntegrationCallbacks(router: Router): void {
         dbAdmin,
       );
 
-      res.clearCookie('square_oauth_org_id', { path: '/' });
-      res.clearCookie('square_oauth_user_id', { path: '/' });
 
       await enqueueSquareSyncJob(connection.id, 'initial');
       await registerSquareDailySync(orgId, connection.id);
 
-      trackEvent(orgId, Number(userId), ANALYTICS_EVENTS.INTEGRATION_CONNECTED, {
+      trackEvent(orgId, userId, ANALYTICS_EVENTS.INTEGRATION_CONNECTED, {
         provider: 'square',
         merchantId: tokens.merchantId,
       });
 
       audit(req, {
         orgId,
-        userId: Number(userId),
+        userId,
         action: AUDIT_ACTIONS.INTEGRATION_CONNECTED,
         targetType: 'integration',
         targetId: 'square',

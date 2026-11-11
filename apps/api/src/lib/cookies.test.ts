@@ -7,8 +7,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // ships both session cookies over plaintext HTTP and drops the SameSite barrier
 // on an API authenticated entirely by cookie.
 //
-// The one incidental attribute assertion in the repo is on qb_oauth_state's
-// httpOnly, which is why flipping httpOnly does fail and these two did not.
+// Flipping httpOnly did fail, because one incidental assertion elsewhere
+// happened to cover it. That assertion is gone now, so the coverage below is
+// the only thing holding any of these three attributes.
 
 const env = { NODE_ENV: 'development', COOKIE_DOMAIN: undefined as string | undefined };
 vi.mock('../config.js', () => ({ env }));

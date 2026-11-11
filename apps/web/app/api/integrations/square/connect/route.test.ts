@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
-// Written because the mutation survived: swapping this route to the plain
-// proxyPost helper drops Set-Cookie, and the whole OAuth flow then fails at the
-// callback's state check with nothing in the logs pointing here.
+// The OAuth flow binding lives in Redis now, keyed by the state Square echoes
+// back. Nothing about it belongs in the browser, so this route must use the
+// plain proxy helper: the cookie-forwarding one would hand a response cookie
+// straight through, which is how the org id used to reach the client.
 
 vi.mock('@/lib/config', () => ({
   webEnv: { API_INTERNAL_URL: 'http://api:3001', JWT_SECRET: 'k'.repeat(32), NODE_ENV: 'test' },
@@ -30,24 +31,18 @@ function upstream(body: unknown, status = 200, cookies: string[] = []) {
 beforeEach(() => fetchMock.mockReset());
 
 describe('POST /api/integrations/square/connect', () => {
-  // The state cookie is the only thing standing between the callback and a
-  // forged redirect, because Square signs nothing. If it never reaches the
-  // browser, every connection attempt fails the state check.
-  it('forwards the OAuth cookies the callback will check', async () => {
+  it('drops any cookie the upstream sets rather than forwarding it', async () => {
     fetchMock.mockResolvedValue(
       upstream({ data: { authUrl: 'https://connect.squareupsandbox.com/oauth2/authorize?x=1' } }, 200, [
         'square_oauth_state=abc123; Path=/; HttpOnly',
         'square_oauth_org_id=3; Path=/; HttpOnly',
-        'square_oauth_user_id=5; Path=/; HttpOnly',
       ]),
     );
 
     const res = await POST(request());
-    const set = res.headers.getSetCookie();
 
-    expect(set).toHaveLength(3);
-    expect(set.join(' ')).toContain('square_oauth_state=abc123');
-    expect(set.join(' ')).toContain('square_oauth_org_id=3');
+    expect(res.headers.getSetCookie()).toEqual([]);
+    expect(JSON.stringify(await res.json())).not.toContain('org_id');
   });
 
   it('passes the caller cookies upstream and returns the authorize URL', async () => {

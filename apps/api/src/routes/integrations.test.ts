@@ -70,6 +70,25 @@ vi.mock('../lib/rls.js', () => ({
   withRlsContext: vi.fn((_orgId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({})),
 }));
 vi.mock('../lib/db.js', () => ({ dbAdmin: {}, db: {} }));
+
+// Backed by a real Map so the OAuth binding round trip is exercised: /connect
+// writes it and /callback reads it through the actual module. Stubbing
+// takeOAuthState instead would let the handlers pass while storing nothing,
+// which is the shape of the defect these tests now cover.
+const oauthStore = new Map<string, string>();
+vi.mock('../lib/redis.js', () => ({
+  redis: {
+    set: vi.fn(async (k: string, v: string) => {
+      oauthStore.set(k, v);
+      return 'OK';
+    }),
+    get: vi.fn(async (k: string) => oauthStore.get(k) ?? null),
+    del: vi.fn(async (k: string) => (oauthStore.delete(k) ? 1 : 0)),
+  },
+}));
+
+const seedFlow = (provider: string, state: string, orgId: number, userId: number) =>
+  oauthStore.set(`oauth:state:${provider}:${state}`, JSON.stringify({ orgId, userId }));
 vi.mock('../config.js', () => ({
   env: {
     APP_URL: 'http://localhost:3000',
@@ -200,11 +219,12 @@ function createMockRes(): MockRes {
 
 describe('integrations routes', () => {
   beforeEach(() => {
+  oauthStore.clear();
     vi.clearAllMocks();
   });
 
   describe('POST /quickbooks/connect', () => {
-    it('returns auth URL and sets state cookie', async () => {
+    it('returns an auth URL and binds the flow to the caller org server-side', async () => {
       mockGetByOrgAndProvider.mockResolvedValueOnce(null);
       mockGenerateAuthUrl.mockReturnValueOnce({
         authUrl: 'https://appcenter.intuit.com/connect/oauth2?foo=bar',
@@ -221,11 +241,11 @@ describe('integrations routes', () => {
       expect(res._json).toEqual({
         data: { authUrl: 'https://appcenter.intuit.com/connect/oauth2?foo=bar' },
       });
-      expect(res._cookies.qb_oauth_state).toBeDefined();
-      expect(res._cookies.qb_oauth_state?.value).toBe('random-state-123');
-      expect(res._cookies.qb_oauth_state?.opts.httpOnly).toBe(true);
-      expect(res._cookies.qb_oauth_org_id).toBeDefined();
-      expect(res._cookies.qb_oauth_user_id).toBeDefined();
+      // The binding, not a cookie: the org is recorded against the state the
+      // provider will echo back, so the callback cannot be aimed elsewhere.
+      expect(oauthStore.get('oauth:state:quickbooks:random-state-123')).toBe(
+        JSON.stringify({ orgId: 10, userId: 1 }),
+      );
     });
 
     it('returns 409 if already connected', async () => {
@@ -371,13 +391,10 @@ describe('integrations routes', () => {
       const { integrationsCallbackRouter } = await import('./integrations.js');
       const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/quickbooks/callback');
 
+      seedFlow('quickbooks', 'valid-state', 10, 1);
       const req = createMockReq({
         query: { code: 'auth-code', realmId: 'realm789', state: 'valid-state' },
-        cookies: {
-          qb_oauth_state: 'valid-state',
-          qb_oauth_org_id: '10',
-          qb_oauth_user_id: '1',
-        },
+        cookies: {},
       });
       const res = createMockRes();
       await handler(req, res, vi.fn());
@@ -399,9 +416,10 @@ describe('integrations routes', () => {
       const { integrationsCallbackRouter } = await import('./integrations.js');
       const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/quickbooks/callback');
 
+      seedFlow('quickbooks', 'correct-state', 10, 1);
       const req = createMockReq({
         query: { code: 'auth-code', realmId: 'realm789', state: 'wrong-state' },
-        cookies: { qb_oauth_state: 'correct-state' },
+        cookies: {},
       });
       const res = createMockRes();
       await handler(req, res, vi.fn());
@@ -414,6 +432,7 @@ describe('integrations routes', () => {
       const { integrationsCallbackRouter } = await import('./integrations.js');
       const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/quickbooks/callback');
 
+      seedFlow('quickbooks', 'valid-state', 10, 1);
       const req = createMockReq({
         query: { error: 'access_denied' },
       });
@@ -445,11 +464,7 @@ describe('integrations routes', () => {
 
       const req = createMockReq({
         query: { code: 'bad-code', realmId: 'realm789', state: 'valid-state' },
-        cookies: {
-          qb_oauth_state: 'valid-state',
-          qb_oauth_org_id: '10',
-          qb_oauth_user_id: '1',
-        },
+        cookies: {},
       });
       const res = createMockRes();
       await handler(req, res, vi.fn());
@@ -459,7 +474,7 @@ describe('integrations routes', () => {
   });
 
   describe('POST /shopify/connect', () => {
-    it('returns auth URL and sets state cookie for a valid shop domain', async () => {
+    it('binds the flow server-side for a valid shop domain', async () => {
       mockGetByOrgAndProvider.mockResolvedValueOnce(null);
       mockShopifyIsValidShopDomain.mockReturnValueOnce(true);
       mockShopifyGenerateAuthUrl.mockReturnValueOnce({
@@ -477,9 +492,11 @@ describe('integrations routes', () => {
       expect(res._json).toEqual({
         data: { authUrl: 'https://my-store.myshopify.com/admin/oauth/authorize?foo=bar' },
       });
-      expect(res._cookies.shopify_oauth_state?.value).toBe('random-state-123');
-      expect(res._cookies.shopify_oauth_org_id).toBeDefined();
-      expect(res._cookies.shopify_oauth_user_id).toBeDefined();
+      // The binding, not a cookie: the org is recorded against the state the
+      // provider will echo back, so the callback cannot be aimed elsewhere.
+      expect(oauthStore.get('oauth:state:shopify:random-state-123')).toBe(
+        JSON.stringify({ orgId: 10, userId: 1 }),
+      );
     });
 
     it('rejects a malformed shop domain before ever calling generateAuthUrl', async () => {
@@ -638,13 +655,10 @@ describe('integrations routes', () => {
       const { integrationsCallbackRouter } = await import('./integrations.js');
       const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/shopify/callback');
 
+      seedFlow('shopify', 'valid-state', 10, 1);
       const req = createMockReq({
         query: validQuery(),
-        cookies: {
-          shopify_oauth_state: 'valid-state',
-          shopify_oauth_org_id: '10',
-          shopify_oauth_user_id: '1',
-        },
+        cookies: {},
       });
       const res = createMockRes();
       await handler(req, res, vi.fn());
@@ -690,9 +704,10 @@ describe('integrations routes', () => {
       // the state check three lines further down produces the same error
       // redirect and the same uncalled exchangeCode, so deleting the HMAC call
       // site entirely left this passing.
+      seedFlow('shopify', 'valid-state', 10, 1);
       const req = createMockReq({
         query: validQuery(),
-        cookies: { shopify_oauth_state: 'valid-state' },
+        cookies: {},
       });
       const res = createMockRes();
       await handler(req, res, vi.fn());
@@ -709,9 +724,10 @@ describe('integrations routes', () => {
       const { integrationsCallbackRouter } = await import('./integrations.js');
       const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/shopify/callback');
 
+      seedFlow('shopify', 'correct-state', 10, 1);
       const req = createMockReq({
         query: validQuery({ state: 'wrong-state' }),
-        cookies: { shopify_oauth_state: 'correct-state' },
+        cookies: {},
       });
       const res = createMockRes();
       await handler(req, res, vi.fn());
@@ -729,9 +745,10 @@ describe('integrations routes', () => {
       const { integrationsCallbackRouter } = await import('./integrations.js');
       const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/shopify/callback');
 
+      seedFlow('shopify', 'valid-state', 10, 1);
       const req = createMockReq({
         query: validQuery(),
-        cookies: { shopify_oauth_state: 'valid-state' },
+        cookies: {},
       });
       const res = createMockRes();
       await handler(req, res, vi.fn());
@@ -747,13 +764,10 @@ describe('integrations routes', () => {
       const { integrationsCallbackRouter } = await import('./integrations.js');
       const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/shopify/callback');
 
+      seedFlow('shopify', 'valid-state', 10, 1);
       const req = createMockReq({
         query: validQuery(),
-        cookies: {
-          shopify_oauth_state: 'valid-state',
-          shopify_oauth_org_id: '10',
-          shopify_oauth_user_id: '1',
-        },
+        cookies: {},
       });
       const res = createMockRes();
       await handler(req, res, vi.fn());
@@ -763,7 +777,7 @@ describe('integrations routes', () => {
   });
 
   describe('Square integration', () => {
-    it('starts the connect flow and sets identity cookies', async () => {
+    it('starts the connect flow and binds org and user to the minted state', async () => {
       mockGetByOrgAndProvider.mockResolvedValueOnce(null);
       mockSquareGenerateAuthUrl.mockReturnValueOnce({
         authUrl: 'https://connect.squareup.com/oauth2/authorize?client_id=square-id',
@@ -779,9 +793,11 @@ describe('integrations routes', () => {
       expect(res._json).toEqual({
         data: { authUrl: 'https://connect.squareup.com/oauth2/authorize?client_id=square-id' },
       });
-      expect(res._cookies.square_oauth_state?.value).toBe('square-state');
-      expect(res._cookies.square_oauth_org_id?.value).toBe('10');
-      expect(res._cookies.square_oauth_user_id?.value).toBe('1');
+      // The binding, not a cookie: the org is recorded against the state the
+      // provider will echo back, so the callback cannot be aimed elsewhere.
+      expect(oauthStore.get('oauth:state:square:square-state')).toBe(
+        JSON.stringify({ orgId: 10, userId: 1 }),
+      );
     });
 
     it('rejects a duplicate connection', async () => {
@@ -906,6 +922,7 @@ describe('integrations routes', () => {
     it('requires an owner to disconnect Square', async () => {
       const { integrationsRouter } = await import('./integrations.js');
       const handler = getRouteHandler(integrationsRouter, 'DELETE', '/square');
+      seedFlow('square', 'square-state', 10, 1);
       const req = createMockReq({
         user: { sub: '2', org_id: 10, role: 'member', isAdmin: false },
       });
@@ -931,13 +948,10 @@ describe('integrations routes', () => {
 
       const { integrationsCallbackRouter } = await import('./integrations.js');
       const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/square/callback');
+      seedFlow('square', 'square-state', 10, 1);
       const req = createMockReq({
         query: { code: 'square-code', state: 'square-state' },
-        cookies: {
-          square_oauth_state: 'square-state',
-          square_oauth_org_id: '10',
-          square_oauth_user_id: '1',
-        },
+        cookies: {},
       });
       const res = createMockRes();
 
@@ -964,7 +978,7 @@ describe('integrations routes', () => {
       expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?square=connected');
     });
 
-    it('clears all OAuth cookies and tracks a successful connection', async () => {
+    it('consumes the binding and tracks a successful connection', async () => {
       mockSquareExchangeCode.mockResolvedValueOnce({
         accessToken: 'square-access',
         refreshToken: 'square-refresh',
@@ -977,23 +991,15 @@ describe('integrations routes', () => {
 
       const { integrationsCallbackRouter } = await import('./integrations.js');
       const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/square/callback');
+      seedFlow('square', 'square-state', 10, 1);
       const req = createMockReq({
         query: { code: 'square-code', state: 'square-state' },
-        cookies: {
-          square_oauth_state: 'square-state',
-          square_oauth_org_id: '10',
-          square_oauth_user_id: '1',
-        },
+        cookies: {},
       });
       const res = createMockRes();
 
       await handler(req, res, vi.fn());
 
-      expect(res._clearedCookies).toEqual([
-        'square_oauth_state',
-        'square_oauth_org_id',
-        'square_oauth_user_id',
-      ]);
       expect(mockTrackEvent).toHaveBeenCalledWith(
         10,
         1,
@@ -1005,16 +1011,16 @@ describe('integrations routes', () => {
     it('rejects a callback with mismatched state before token exchange', async () => {
       const { integrationsCallbackRouter } = await import('./integrations.js');
       const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/square/callback');
+      seedFlow('square', 'square-state', 10, 1);
       const req = createMockReq({
         query: { code: 'square-code', state: 'wrong-state' },
-        cookies: { square_oauth_state: 'square-state' },
+        cookies: {},
       });
       const res = createMockRes();
 
       await handler(req, res, vi.fn());
 
       expect(mockSquareExchangeCode).not.toHaveBeenCalled();
-      expect(res._clearedCookies).not.toContain('square_oauth_state');
       expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?square=error');
     });
 
@@ -1033,12 +1039,15 @@ describe('integrations routes', () => {
       expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?square=denied');
     });
 
-    it('redirects with error when identity cookies are missing', async () => {
+    it('redirects with error when the state resolves to no binding', async () => {
       const { integrationsCallbackRouter } = await import('./integrations.js');
       const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/square/callback');
+      // Deliberately unseeded. An unknown state is a forged or expired flow and
+      // must stop before the token exchange, which is what the assertions below
+      // pin: nothing is exchanged and nothing is written.
       const req = createMockReq({
         query: { code: 'square-code', state: 'square-state' },
-        cookies: { square_oauth_state: 'square-state' },
+        cookies: {},
       });
       const res = createMockRes();
 
@@ -1048,22 +1057,18 @@ describe('integrations routes', () => {
       expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?square=error');
     });
 
-    it('clears validated state and rejects a callback without a code', async () => {
+    it('consumes the state and rejects a callback without a code', async () => {
       const { integrationsCallbackRouter } = await import('./integrations.js');
       const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/square/callback');
+      seedFlow('square', 'square-state', 10, 1);
       const req = createMockReq({
         query: { state: 'square-state' },
-        cookies: {
-          square_oauth_state: 'square-state',
-          square_oauth_org_id: '10',
-          square_oauth_user_id: '1',
-        },
+        cookies: {},
       });
       const res = createMockRes();
 
       await handler(req, res, vi.fn());
 
-      expect(res._clearedCookies).toContain('square_oauth_state');
       expect(mockSquareExchangeCode).not.toHaveBeenCalled();
       expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?square=error');
     });
@@ -1073,13 +1078,10 @@ describe('integrations routes', () => {
 
       const { integrationsCallbackRouter } = await import('./integrations.js');
       const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/square/callback');
+      seedFlow('square', 'square-state', 10, 1);
       const req = createMockReq({
         query: { code: 'square-code', state: 'square-state' },
-        cookies: {
-          square_oauth_state: 'square-state',
-          square_oauth_org_id: '10',
-          square_oauth_user_id: '1',
-        },
+        cookies: {},
       });
       const res = createMockRes();
 
@@ -1102,13 +1104,10 @@ describe('integrations routes', () => {
 
       const { integrationsCallbackRouter } = await import('./integrations.js');
       const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/square/callback');
+      seedFlow('square', 'square-state', 10, 1);
       const req = createMockReq({
         query: { code: 'square-code', state: 'square-state' },
-        cookies: {
-          square_oauth_state: 'square-state',
-          square_oauth_org_id: '10',
-          square_oauth_user_id: '1',
-        },
+        cookies: {},
       });
       const res = createMockRes();
 

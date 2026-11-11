@@ -3,13 +3,13 @@ import type { Request, Response, Router } from 'express';
 import { ANALYTICS_EVENTS, AUDIT_ACTIONS } from 'shared/constants';
 
 import { integrationConnectionsQueries } from '../db/queries/index.js';
-import { sessionCookieOptions } from '../lib/cookies.js';
 import { logger } from '../lib/logger.js';
 import { requireUser } from '../lib/requireUser.js';
 import { withRlsContext } from '../lib/rls.js';
 import { roleGuard } from '../middleware/roleGuard.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
 import { auditAuth } from '../services/audit/auditService.js';
+import { putOAuthState } from '../services/integrations/oauthState.js';
 import * as qbOAuth from '../services/integrations/quickbooks/oauth.js';
 import { removeDailySync } from '../services/integrations/scheduler.js';
 import { enqueueSyncJob } from '../services/integrations/worker.js';
@@ -30,11 +30,10 @@ export function registerQuickBooksIntegrationRoutes(router: Router): void {
     }
 
     const { authUrl, state } = qbOAuth.generateAuthUrl();
-    const cookieOpts = sessionCookieOptions(10 * 60);
-
-    res.cookie('qb_oauth_state', state, cookieOpts);
-    res.cookie('qb_oauth_org_id', String(orgId), cookieOpts);
-    res.cookie('qb_oauth_user_id', user.sub, cookieOpts);
+    await putOAuthState('quickbooks', state, {
+      orgId,
+      userId: Number(user.sub),
+    });
 
     res.json({ data: { authUrl } });
   });
