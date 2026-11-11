@@ -1,11 +1,24 @@
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 
 import { buildSeedRows, SEED_DATASET_NAME } from './seedData.js';
 
 const monthKey = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 
 describe('buildSeedRows', () => {
-  afterEach(() => vi.useRealTimers());
+  // seedData.ts jitters every weekly row by plus or minus 10 percent from an
+  // unseeded Math.random, and the anomaly assertions below compare monthly
+  // totals against fixed ratios. The December spike sits close enough to its
+  // 1.4x threshold that an adverse draw crosses it: one observed failure read
+  // 25,422.64 against 25,560.57, a ratio of 1.392 (DW-254). Pinning random to
+  // 0.5 makes jitter exactly 1.0, so these assert the designed shape of the
+  // seed rather than the shape plus a draw. Production keeps its jitter, since
+  // identical weekly rows would read as synthetic in the demo charts.
+  beforeEach(() => vi.spyOn(Math, 'random').mockReturnValue(0.5));
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
 
   it('covers 12 months ending at the current one', () => {
     vi.useFakeTimers().setSystemTime(new Date('2026-09-16T00:00:00Z'));
