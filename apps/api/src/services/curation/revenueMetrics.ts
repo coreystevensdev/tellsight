@@ -37,7 +37,14 @@ export function computeYearOverYear(rows: DataRow[]): ComputedStat[] {
 
   for (const [month, current] of currentMap) {
     const prior = priorMap.get(month);
-    if (!prior || prior === 0) continue;
+    // prior <= 0, not just zero. Dividing by a signed negative inverts the
+    // result: revenue improving from -$8,000 to $40,000 rendered as "-600.0%"
+    // at the top relevance in the prompt. DW-247 fixed this class in
+    // computeTrends, which divides by Math.abs, and scoped its own location
+    // line to that producer only; this is the sibling it missed (DW-253).
+    // Skipping rather than reporting endpoints without a percentage, because
+    // unlike a trend the comparison is all this stat is.
+    if (!prior || prior <= 0) continue;
 
     const changePercent = ((current - prior) / prior) * 100;
     if (Math.abs(changePercent) < 3) continue;

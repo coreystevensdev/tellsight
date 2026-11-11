@@ -2531,3 +2531,78 @@ describe('computeCategoryVariance', () => {
     expect(rent?.details).toMatchObject({ monthLabel: '2026-04', actualMonthly: 2600 });
   });
 });
+
+describe('percentage changes with a non-positive divisor', () => {
+  // Both of these reached the assembled prompt, and the margin one reached the
+  // Show-Me-Math drawer as well. Found by an adversarial pass over the commits
+  // that shipped DW-246 and DW-247. DW-252 and DW-253.
+  let _pcId = 9000;
+  const pcRow = (parentCategory: 'Income' | 'Expenses', year: number, month: number, amount: string) => ({
+    id: _pcId++,
+    orgId: 1,
+    datasetId: 1,
+    sourceType: 'shopify' as const,
+    category: parentCategory === 'Income' ? 'Revenue' : 'Refunds',
+    parentCategory,
+    date: new Date(Date.UTC(year, month, 15)),
+    amount,
+    label: null,
+    metadata: null,
+    createdAt: new Date(),
+  });
+
+  it('emits no margin trend when there are no expense rows at all', () => {
+    // shopify/normalize.ts writes an Expenses row only for a refund, so a store
+    // with orders and no refunds has zero prior expense. That divided to NaN and
+    // rendered as "expenses NaN%".
+    const rows = Array.from({ length: 12 }, (_, m) => pcRow('Income', 2026, m, '5000.00'));
+
+    const margin = computeStats(rows).filter((s) => s.statType === StatType.MarginTrend);
+
+    expect(margin).toEqual([]);
+  });
+
+  it('emits no margin trend when prior expenses net negative', () => {
+    // expenseByMonth accumulates effect.sign * amount and ExpensesContra is -1,
+    // so a half-window whose refunds exceed its expenses nets negative. Dividing
+    // by it inverts the sign and reports a rise as a fall.
+    const rows = [
+      ...Array.from({ length: 12 }, (_, m) => pcRow('Income', 2026, m, '5000.00')),
+      pcRow('Expenses', 2026, 1, '-4000.00'),
+      pcRow('Expenses', 2026, 8, '3000.00'),
+    ];
+
+    const margin = computeStats(rows).filter((s) => s.statType === StatType.MarginTrend);
+
+    expect(margin).toEqual([]);
+  });
+
+  it('emits no year-over-year when the prior month nets negative', () => {
+    // Revenue improving from -8,000 to 40,000 reported as -600.0%, on the
+    // highest-relevance line in the prompt. computeTrends divides by
+    // Math.abs(firstValue); this producer divided by the signed prior.
+    const rows = [
+      ...Array.from({ length: 12 }, (_, m) => pcRow('Income', 2025, m, '4000.00')),
+      pcRow('Income', 2025, 5, '-12000.00'),
+      ...Array.from({ length: 12 }, (_, m) => pcRow('Income', 2026, m, '4000.00')),
+      pcRow('Income', 2026, 5, '36000.00'),
+    ];
+
+    const yoy = computeStats(rows).filter((s) => s.statType === StatType.YearOverYear);
+
+    expect(yoy.map((s) => (s.details as { month: string }).month)).not.toContain('Jun');
+  });
+
+  it('still emits year-over-year for an ordinary positive prior', () => {
+    // The guard must not swallow the case the stat exists for.
+    const rows = [
+      ...Array.from({ length: 12 }, (_, m) => pcRow('Income', 2025, m, '4000.00')),
+      ...Array.from({ length: 12 }, (_, m) => pcRow('Income', 2026, m, '6000.00')),
+    ];
+
+    const yoy = computeStats(rows).filter((s) => s.statType === StatType.YearOverYear);
+
+    expect(yoy.length).toBeGreaterThan(0);
+    expect((yoy[0]!.details as { changePercent: number }).changePercent).toBeCloseTo(50, 1);
+  });
+});

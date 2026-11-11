@@ -62,7 +62,16 @@ export function computeMarginTrend(rows: DataRow[]): MarginTrendStat[] {
     0,
   );
 
-  if (recentRevenue === 0 || priorRevenue === 0) return [];
+  // Every divisor below has to be positive for its percentage to mean anything.
+  // priorExpense was unguarded, so a Shopify store with orders and no refunds
+  // reached the prompt and the audit drawer as `expenses NaN%`: normalize.ts
+  // emits an Expenses row only for a refund, so no refunds means no prior
+  // expense at all (DW-252). A non-positive prior is the same problem one step
+  // on, because dividing by it inverts the sign and reports a rise as a fall,
+  // which is DW-247's class. Suppressing follows cashFlowMetrics.ts's rule that
+  // a data gap should never turn into AI commentary: no expense rows is an
+  // absence of cost data, not a 100% margin.
+  if (recentRevenue === 0 || priorRevenue <= 0 || priorExpense <= 0) return [];
 
   const recentMargin = ((recentRevenue - recentExpense) / recentRevenue) * 100;
   const priorMargin = ((priorRevenue - priorExpense) / priorRevenue) * 100;
