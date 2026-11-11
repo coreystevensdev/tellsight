@@ -15,7 +15,7 @@ vi.mock('../middleware/rateLimiter.js', () => ({
     mockRateLimitStatCorrectionTier1Factory(statInstanceId),
 }));
 
-vi.mock('../services/auth/tokenService.js', () => ({
+vi.mock('../services/auth/tokens.js', () => ({
   verifyAccessToken: mockVerifyAccessToken,
 }));
 

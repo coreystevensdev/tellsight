@@ -4,7 +4,7 @@ export {
   generateRefreshToken,
   createTokenPair,
   rotateRefreshToken,
-} from './tokenService.js';
+} from './tokens.js';
 
 export {
   generateOAuthState,
@@ -19,7 +19,7 @@ export {
   validateInviteToken,
   redeemInvite,
   getActiveInvitesForOrg,
-} from './inviteService.js';
+} from './invites.js';
 
 export {
   signUpWithPassword,
@@ -28,4 +28,4 @@ export {
   resetPassword,
 } from './passwordAuth.js';
 
-export { hashPassword, verifyPassword } from './passwordService.js';
+export { hashPassword, verifyPassword } from './passwordHashing.js';

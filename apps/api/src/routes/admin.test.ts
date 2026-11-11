@@ -21,7 +21,7 @@ const mockSetLogLevel = vi.fn().mockReturnValue('info');
 const mockUpdateAgentEnabled = vi.fn();
 const mockTrackEvent = vi.fn();
 
-vi.mock('../services/auth/tokenService.js', () => ({
+vi.mock('../services/auth/tokens.js', () => ({
   verifyAccessToken: mockVerifyAccessToken,
 }));
 

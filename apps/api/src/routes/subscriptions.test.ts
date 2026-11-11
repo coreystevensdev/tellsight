@@ -7,7 +7,7 @@ const mockGetSubscriptionByOrgId = vi.fn();
 const mockCreateCheckoutSession = vi.fn();
 const mockCreatePortalSession = vi.fn();
 
-vi.mock('../services/auth/tokenService.js', () => ({
+vi.mock('../services/auth/tokens.js', () => ({
   verifyAccessToken: mockVerifyAccessToken,
 }));
 

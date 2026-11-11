@@ -13,7 +13,7 @@ vi.mock('../services/audit/auditService.js', () => ({
   auditAuth: (...args: unknown[]) => mockAuditAuth(...args),
 }));
 
-vi.mock('../services/auth/tokenService.js', () => ({
+vi.mock('../services/auth/tokens.js', () => ({
   verifyAccessToken: mockVerifyAccessToken,
 }));
 

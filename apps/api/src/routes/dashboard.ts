@@ -3,7 +3,7 @@ import type { Request, Response } from 'express';
 import { AUTH, ANALYTICS_EVENTS } from 'shared/constants';
 import { chartFiltersSchema } from 'shared/schemas';
 import type { DemoModeState } from 'shared/types';
-import { verifyAccessToken } from '../services/auth/tokenService.js';
+import { verifyAccessToken } from '../services/auth/tokens.js';
 import { AuthenticationError } from '../lib/appError.js';
 import { aiSummariesQueries, categoryPlansQueries, chartsQueries, dataRowsQueries, datasetsQueries, orgsQueries, userOrgsQueries } from '../db/queries/index.js';
 import { dbAdmin } from '../lib/db.js';

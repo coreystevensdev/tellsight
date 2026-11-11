@@ -35,7 +35,7 @@ const mockFindCallerContext = vi.fn();
 vi.mock('../db/queries/userOrgs.js', () => ({ findCallerContext: mockFindCallerContext }));
 vi.mock('../lib/db.js', () => ({ dbAdmin: {} }));
 
-vi.mock('../services/auth/tokenService.js', () => ({
+vi.mock('../services/auth/tokens.js', () => ({
   verifyAccessToken: (...a: unknown[]) => mockVerify(...a),
 }));
 // errorHandler reports through Sentry, and sentryUserContext is mounted on the

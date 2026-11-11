@@ -17,7 +17,7 @@ vi.mock('../aiInterpretation/claudeClient.js', () => ({
   checkClaudeHealth: (...args: unknown[]) => mockCheckClaudeHealth(...args),
 }));
 
-const { getSystemHealth, formatUptime } = await import('./healthService.js');
+const { getSystemHealth, formatUptime } = await import('./systemHealth.js');
 
 beforeEach(() => vi.clearAllMocks());
 

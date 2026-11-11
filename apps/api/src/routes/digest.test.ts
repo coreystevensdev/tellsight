@@ -7,7 +7,7 @@ const mockWithUserRlsContext = vi.fn(
   async (_userId: number, _isAdmin: boolean, fn: (tx: unknown) => Promise<unknown>) => fn({}),
 );
 
-vi.mock('../services/auth/tokenService.js', () => ({
+vi.mock('../services/auth/tokens.js', () => ({
   verifyAccessToken: mockVerifyAccessToken,
 }));
 

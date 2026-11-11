@@ -1,8 +1,8 @@
-export { getOrgsWithStats, getUsers, getOrgDetail } from './adminService.js';
-export { getSystemHealth } from './healthService.js';
+export { getOrgsWithStats, getUsers, getOrgDetail } from './directory.js';
+export { getSystemHealth } from './systemHealth.js';
 export {
   getEmailComplianceMetrics,
   getAlertComplianceMetrics,
   type EmailComplianceMetrics,
   type AlertComplianceMetrics,
-} from './complianceService.js';
+} from './complianceMetrics.js';

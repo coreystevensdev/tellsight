@@ -19,7 +19,7 @@ vi.mock('../../lib/appError.js', async () => {
   return actual;
 });
 
-const { getOrgsWithStats, getUsers, getOrgDetail } = await import('./adminService.js');
+const { getOrgsWithStats, getUsers, getOrgDetail } = await import('./directory.js');
 
 beforeEach(() => vi.clearAllMocks());
 

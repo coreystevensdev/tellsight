@@ -6,11 +6,11 @@ const mockGenerateInvite = vi.fn();
 const mockValidateInviteToken = vi.fn();
 const mockGetActiveInvitesForOrg = vi.fn();
 
-vi.mock('../services/auth/tokenService.js', () => ({
+vi.mock('../services/auth/tokens.js', () => ({
   verifyAccessToken: mockVerifyAccessToken,
 }));
 
-vi.mock('../services/auth/inviteService.js', () => ({
+vi.mock('../services/auth/invites.js', () => ({
   generateInvite: mockGenerateInvite,
   validateInviteToken: mockValidateInviteToken,
   getActiveInvitesForOrg: mockGetActiveInvitesForOrg,

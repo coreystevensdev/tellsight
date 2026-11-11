@@ -7,9 +7,9 @@ import * as userOrgsQueries from '../../db/queries/userOrgs.js';
 import * as passwordResetTokensQueries from '../../db/queries/passwordResetTokens.js';
 import * as refreshTokensQueries from '../../db/queries/refreshTokens.js';
 import { dbAdmin } from '../../lib/db.js';
-import { validateInviteToken, redeemInvite } from './inviteService.js';
+import { validateInviteToken, redeemInvite } from './invites.js';
 import { createOwnerOrgForUser } from './orgOnboarding.js';
-import { hashPassword, verifyPassword } from './passwordService.js';
+import { hashPassword, verifyPassword } from './passwordHashing.js';
 import { PASSWORD_RESET } from 'shared/constants';
 
 function hashToken(raw: string): string {

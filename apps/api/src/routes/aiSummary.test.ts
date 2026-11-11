@@ -89,7 +89,7 @@ vi.mock('../middleware/rateLimiter.js', () => ({
   rateLimitDashboardCompute: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
-vi.mock('../services/auth/tokenService.js', () => ({
+vi.mock('../services/auth/tokens.js', () => ({
   verifyAccessToken: vi.fn(),
 }));
 

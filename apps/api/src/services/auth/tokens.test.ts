@@ -55,7 +55,7 @@ const {
   generateRefreshToken,
   createTokenPair,
   rotateRefreshToken,
-} = await import('./tokenService.js');
+} = await import('./tokens.js');
 
 describe('tokenService', () => {
   beforeEach(() => {

@@ -33,7 +33,7 @@ vi.mock('../../lib/logger.js', () => ({
 }));
 
 const { generateInvite, validateInviteToken, redeemInvite } = await import(
-  './inviteService.js'
+  './invites.js'
 );
 
 describe('inviteService', () => {

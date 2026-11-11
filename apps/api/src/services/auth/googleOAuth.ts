@@ -6,7 +6,7 @@ import { AuthenticationError, ExternalServiceError } from '../../lib/appError.js
 import * as usersQueries from '../../db/queries/users.js';
 import * as userOrgsQueries from '../../db/queries/userOrgs.js';
 import { dbAdmin } from '../../lib/db.js';
-import { validateInviteToken, redeemInvite } from './inviteService.js';
+import { validateInviteToken, redeemInvite } from './invites.js';
 import { createOwnerOrgForUser, resolvePrimaryMembership } from './orgOnboarding.js';
 import { AUTH } from 'shared/constants';
 

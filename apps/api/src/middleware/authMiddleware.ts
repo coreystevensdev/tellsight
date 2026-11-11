@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { AUTH } from 'shared/constants';
-import { verifyAccessToken } from '../services/auth/tokenService.js';
+import { verifyAccessToken } from '../services/auth/tokens.js';
 import { AuthenticationError } from '../lib/appError.js';
 
 export async function authMiddleware(req: Request, _res: Response, next: NextFunction) {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { getEmailComplianceMetrics, getAlertComplianceMetrics } from './complianceService.js';
+import { getEmailComplianceMetrics, getAlertComplianceMetrics } from './complianceMetrics.js';
 
 // Both functions are raw SQL against real tables, and complianceService.test.ts
 // mocks dbAdmin.execute and replaces the sql tag, so the statements themselves

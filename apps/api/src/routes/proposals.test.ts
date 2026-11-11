@@ -7,7 +7,7 @@ const mockResolveProposal = vi.fn();
 const mockAudit = vi.fn();
 const mockGetAgentEnabled = vi.fn();
 
-vi.mock('../services/auth/tokenService.js', () => ({
+vi.mock('../services/auth/tokens.js', () => ({
   verifyAccessToken: mockVerifyAccessToken,
 }));
 

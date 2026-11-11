@@ -40,7 +40,7 @@ vi.mock('../../db/queries/refreshTokens.js', () => ({
   revokeAllForUser: mockRevokeAllForUser,
 }));
 
-vi.mock('./inviteService.js', () => ({
+vi.mock('./invites.js', () => ({
   validateInviteToken: mockValidateInviteToken,
   redeemInvite: mockRedeemInvite,
 }));
@@ -52,7 +52,7 @@ vi.mock('./orgOnboarding.js', () => ({
   resolvePrimaryMembership: mockResolvePrimaryMembership,
 }));
 
-vi.mock('./passwordService.js', () => ({
+vi.mock('./passwordHashing.js', () => ({
   hashPassword: mockHashPassword,
   verifyPassword: mockVerifyPassword,
 }));

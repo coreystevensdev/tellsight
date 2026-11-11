@@ -21,7 +21,7 @@ vi.hoisted(() => {
 });
 
 const mockVerifyAccessToken = vi.fn();
-vi.mock('../services/auth/tokenService.js', () => ({
+vi.mock('../services/auth/tokens.js', () => ({
   verifyAccessToken: mockVerifyAccessToken,
 }));
 

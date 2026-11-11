@@ -14,7 +14,7 @@ vi.mock('drizzle-orm', () => ({
   }),
 }));
 
-const { getEmailComplianceMetrics, getAlertComplianceMetrics } = await import('./complianceService.js');
+const { getEmailComplianceMetrics, getAlertComplianceMetrics } = await import('./complianceMetrics.js');
 
 describe('getEmailComplianceMetrics', () => {
   beforeEach(() => vi.clearAllMocks());

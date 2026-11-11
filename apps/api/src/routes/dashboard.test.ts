@@ -8,7 +8,7 @@ const mockFindOrgById = vi.fn();
 const mockGetUserOrgDemoState = vi.fn();
 const mockTrackEvent = vi.fn();
 
-vi.mock('../services/auth/tokenService.js', () => ({
+vi.mock('../services/auth/tokens.js', () => ({
   verifyAccessToken: mockVerifyAccessToken,
 }));
 
