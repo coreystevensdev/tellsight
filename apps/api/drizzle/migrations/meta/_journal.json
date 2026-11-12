@@ -330,6 +330,13 @@
       "when": 1783814400000,
       "tag": "0046_square-refund-category-plural",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1783900800000,
+      "tag": "0047_add-rls-audit-logs",
+      "breakpoints": true
     }
   ]
 }
