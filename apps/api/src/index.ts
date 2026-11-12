@@ -67,6 +67,7 @@ import { logStripeKeyStatus } from './services/subscription/stripeHealth.js';
 import { logClaudeKeyStatus } from './services/aiInterpretation/claudeClient.js';
 import { redis } from './lib/redis.js';
 import { queryClient, adminClient } from './lib/db.js';
+import { assertRlsEnforced } from './lib/rlsPreflight.js';
 import { abortAll as abortAllStreams } from './lib/activeStreams.js';
 import { Sentry, setupExpressErrorHandler } from './lib/sentry.js';
 import { httpRequestDuration } from './lib/metrics.js';
@@ -150,6 +151,16 @@ async function start() {
     await redis.connect();
   } catch (err) {
     logger.error({ err }, 'Redis connect failed, shutting down');
+    process.exit(1);
+  }
+
+  // Every tenant boundary here is a database policy, and they all stop applying
+  // if DATABASE_URL names the migration role. Checked before any worker or the
+  // listener starts, because the failure is silent at query time.
+  try {
+    await assertRlsEnforced(env.NODE_ENV);
+  } catch (err) {
+    logger.error({ err }, 'RLS preflight failed, shutting down');
     process.exit(1);
   }
 
