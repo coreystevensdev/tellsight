@@ -3,6 +3,7 @@ import http from 'node:http';
 
 const mockConstructEvent = vi.fn();
 const mockHandleWebhookEvent = vi.fn();
+const mockLoggerWarn = vi.fn();
 
 vi.mock('../services/subscription/index.js', () => ({
   getStripe: () => ({ webhooks: { constructEvent: mockConstructEvent } }),
@@ -19,7 +20,7 @@ vi.mock('../config.js', () => ({
 vi.mock('../lib/logger.js', () => ({
   logger: {
     info: vi.fn(),
-    warn: vi.fn(),
+    warn: mockLoggerWarn,
     error: vi.fn(),
     child: vi.fn().mockReturnValue({
       info: vi.fn(),
@@ -130,5 +131,60 @@ const json = (await res.json()) as any;
 const json = (await res.json()) as any;
     expect(json.received).toBe(true);
     expect(mockHandleWebhookEvent).toHaveBeenCalledWith(fakeEvent);
+  });
+});
+
+// StripeSignatureVerificationError carries the raw body and the caller's
+// signature header as own properties (stripe/cjs/Error.js:232-233), and pino's
+// error serializer copies own enumerable props. Logging the object therefore
+// copied up to 100KB of unauthenticated caller input into the log on every
+// failed attempt, on a route with no auth and no rate limit in front of it.
+describe('stripe webhook signature failure logging', () => {
+  class SignatureError extends Error {
+    type = 'StripeSignatureVerificationError';
+    header = 't=1,v1=deadbeefsignature';
+    payload = '{"SECRET_RAW_BODY":"leaked"}';
+
+    constructor() {
+      super('no signatures found matching the expected signature for payload');
+    }
+  }
+
+  beforeEach(() => {
+    mockLoggerWarn.mockClear();
+  });
+
+  it('keeps the request body and signature header out of the log', async () => {
+    mockConstructEvent.mockImplementationOnce(() => {
+      throw new SignatureError();
+    });
+
+    const res = await fetch(`${baseUrl}/webhooks/stripe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'stripe-signature': 't=1,v1=deadbeefsignature' },
+      body: '{"SECRET_RAW_BODY":"leaked"}',
+    });
+
+    expect(res.status).toBe(400);
+
+    const logged = JSON.stringify(mockLoggerWarn.mock.calls);
+    expect(logged).not.toContain('SECRET_RAW_BODY');
+    expect(logged).not.toContain('deadbeefsignature');
+  });
+
+  // Dropping the whole error would make the log useless for telling a bad secret
+  // apart from a replayed timestamp, so the reason has to survive.
+  it('still records why verification failed', async () => {
+    mockConstructEvent.mockImplementationOnce(() => {
+      throw new SignatureError();
+    });
+
+    await fetch(`${baseUrl}/webhooks/stripe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'stripe-signature': 'sig' },
+      body: '{}',
+    });
+
+    expect(JSON.stringify(mockLoggerWarn.mock.calls)).toContain('no signatures found');
   });
 });
