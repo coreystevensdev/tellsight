@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { safeRedirect } from '@/lib/auth-utils';
 
 const inputClass =
   'w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary';
@@ -31,7 +32,7 @@ export default function PasswordLoginForm({ redirectPath }: { redirectPath: stri
         throw new Error(body.error?.message ?? 'Invalid email or password');
       }
 
-      const redirect = redirectPath.startsWith('/') && !redirectPath.startsWith('//') ? redirectPath : '/dashboard';
+      const redirect = safeRedirect(redirectPath);
       router.push(redirect);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not sign you in.');

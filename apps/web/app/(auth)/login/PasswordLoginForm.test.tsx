@@ -99,6 +99,8 @@ describe('PasswordLoginForm redirect guard', () => {
     ['a bare host', 'evil.example'],
     ['a javascript URL', 'javascript:alert(1)'],
     ['an empty string', ''],
+    ['a backslash standing in for the second slash', '/\\evil.example'],
+    ['a backslash followed by a real slash', '/\\/evil.example'],
   ])('refuses %s and sends the user to the dashboard', async (_label, path) => {
     fetchMock.mockResolvedValueOnce(ok());
 
