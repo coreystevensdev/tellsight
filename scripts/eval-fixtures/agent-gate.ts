@@ -13,6 +13,7 @@ interface AgentScore {
   faithfulness: { mean: number } | null;
   completeness: { mean: number } | null;
   legalPosture: { pass: boolean; violations: string[] };
+  plainLanguage: { pass: boolean; violations: string[] };
   unmeasured: number;
   errored: number;
   sampledCount: number;
@@ -79,7 +80,14 @@ export function agentGate(
       );
     }
     if (!r.legalPosture.pass) {
-      breaches.push(`agent/${r.id}: legal posture failed (${r.legalPosture.violations.join('; ')})`);
+      breaches.push(
+        `agent/${r.id}: legal posture failed (${r.legalPosture.violations.join('; ')})`,
+      );
+    }
+    if (!r.plainLanguage.pass) {
+      breaches.push(
+        `agent/${r.id}: plain language failed (${r.plainLanguage.violations.join('; ')})`,
+      );
     }
   }
 

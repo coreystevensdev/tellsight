@@ -29,6 +29,7 @@ import { FIXTURES, FROZEN_NOW } from './eval-fixtures/fixtures.js';
 import { agentGate } from './eval-fixtures/agent-gate.js';
 import { insightGate, INSIGHT_MISS_CEILING } from './eval-fixtures/insight-gate.js';
 import { scoreLegalPosture } from './eval-fixtures/legal-posture.js';
+import { scorePlainLanguage } from './eval-fixtures/plain-language.js';
 import type { GenerateProvider } from './eval-fixtures/parse-judge.js';
 import {
   AGENT_SUMMARIES_START,
@@ -48,7 +49,6 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCORECARD_PATH = resolve(__dirname, 'eval-fixtures', 'scorecard.json');
 const MARKER_PATH = resolve(__dirname, 'eval-fixtures', 'scorecard.zero-results.json');
-
 
 // 10 per fixture, 30 total. At 3 the gate was bad at both ends: a single miss is
 // 22% so it failed a healthy run 10.6% of the time, while catching a regression
@@ -86,14 +86,21 @@ const DEFAULT_PROMPT_VERSION = 'v1.6';
 const FLOORS = { faithfulness: 0.85, completeness: 0.8 };
 
 function printScorecardTable(rows: FixtureScore[]): void {
-  console.log('\n| Fixture | Faithfulness | Completeness | Legal posture | FR22 misses |');
-  console.log('|---|---|---|---|---|');
+  console.log(
+    '\n| Fixture | Faithfulness | Completeness | Legal posture | Plain language | FR22 misses |',
+  );
+  console.log('|---|---|---|---|---|---|');
   for (const r of rows) {
     const f = `${r.faithfulness.mean.toFixed(2)} (min ${r.faithfulness.min.toFixed(2)})`;
     const c = `${r.completeness.mean.toFixed(2)} (min ${r.completeness.min.toFixed(2)})`;
     const degraded = r.sampledCount < SAMPLES ? ` (n=${r.sampledCount}/${SAMPLES})` : '';
     const missed = `${r.insight.misses}/${r.sampledCount}`;
-    console.log(`| ${r.id}${degraded} | ${f} | ${c} | ${r.legalPosture.pass ? 'pass' : 'FAIL'} | ${missed} missed |`);
+    // The gate result and the ungated gloss rate in one cell: "pass" alone would
+    // read as rule 9 being met, and the second half of that rule is not.
+    const plain = `${r.plainLanguage.pass ? 'pass' : 'FAIL'} (${r.plainLanguage.unglossedSamples}/${r.sampledCount} unglossed)`;
+    console.log(
+      `| ${r.id}${degraded} | ${f} | ${c} | ${r.legalPosture.pass ? 'pass' : 'FAIL'} | ${plain} | ${missed} missed |`,
+    );
   }
 }
 
@@ -115,9 +122,8 @@ async function scoreAgentFixture(
   // Dynamic for the same reason the provider is: proposals.ts reaches claudeClient,
   // which builds the Anthropic client from config.ts and throws at load when the
   // key is unset. The import is cached, so the per-fixture cost is one lookup.
-  const { generateProposals, PROMPT_VERSION } = await import(
-    '../apps/api/src/services/curation/proposals.js'
-  );
+  const { generateProposals, PROMPT_VERSION } =
+    await import('../apps/api/src/services/curation/proposals.js');
 
   const scored = rankInsights(fixture.build());
   const { user } = assemblePrompt(scored, 1, PROMPT_VERSION, undefined, FROZEN_NOW);
@@ -137,7 +143,16 @@ async function scoreAgentFixture(
       // model to call the tool "or not at all when nothing is worth flagging",
       // so silence is a legitimate answer and its rate is the interesting number.
       if (proposals.length === 0) {
-        samples.push({ proposalCount: 0, faithfulness: null, completeness: null, legalPass: true, legalViolations: [] });
+        samples.push({
+          proposalCount: 0,
+          faithfulness: null,
+          completeness: null,
+          legalPass: true,
+          legalViolations: [],
+          plainPass: true,
+          plainViolations: [],
+          unglossed: [],
+        });
         console.log(`  ${fixture.id} agent sample ${i + 1}/${SAMPLES}: no proposals`);
         continue;
       }
@@ -151,15 +166,19 @@ async function scoreAgentFixture(
       ]);
       const faithfulness = faith.score;
       const legal = scoreLegalPosture(prose);
+      const plain = scorePlainLanguage(prose);
       samples.push({
         proposalCount: proposals.length,
         faithfulness,
         completeness,
         legalPass: legal.pass,
         legalViolations: legal.violations,
+        plainPass: plain.pass,
+        plainViolations: plain.violations,
+        unglossed: plain.unglossed,
       });
       console.log(
-        `  ${fixture.id} agent sample ${i + 1}/${SAMPLES}: ${proposals.length} proposal(s), faith ${faithfulness.toFixed(2)}, comp ${completeness.toFixed(2)}, legal ${legal.pass ? 'pass' : 'FAIL'}`,
+        `  ${fixture.id} agent sample ${i + 1}/${SAMPLES}: ${proposals.length} proposal(s), faith ${faithfulness.toFixed(2)}, comp ${completeness.toFixed(2)}, legal ${legal.pass ? 'pass' : 'FAIL'}, plain ${plain.pass ? 'pass' : 'FAIL'}`,
       );
     } catch (err) {
       // Matched on the code rather than the message, which is user-facing copy
@@ -192,7 +211,13 @@ async function scoreFixture(
   fixture: (typeof FIXTURES)[number],
 ): Promise<{ score: FixtureScore; promptVersion: string }> {
   const scored = rankInsights(fixture.build());
-  const { system, user, metadata } = assemblePrompt(scored, 1, PINNED_PROMPT_VERSION, undefined, FROZEN_NOW);
+  const { system, user, metadata } = assemblePrompt(
+    scored,
+    1,
+    PINNED_PROMPT_VERSION,
+    undefined,
+    FROZEN_NOW,
+  );
   const groundTruth = extractGroundTruth(user);
 
   const samples: SampleScore[] = [];
@@ -221,6 +246,7 @@ async function scoreFixture(
         console.log(`    unsupported: ${claim}${reason ? ` (${reason})` : ''}`);
       }
       const legal = scoreLegalPosture(summary);
+      const plain = scorePlainLanguage(summary);
       samples.push({
         costUsd: Number((spent() - spentBefore).toFixed(6)),
         faithfulness,
@@ -228,12 +254,15 @@ async function scoreFixture(
         completeness,
         legalPass: legal.pass,
         legalViolations: legal.violations,
+        plainPass: plain.pass,
+        plainViolations: plain.violations,
+        unglossed: plain.unglossed,
         insightPass: insight.pass,
         qualifyingInsight: insight.qualifying,
         insightShortfall: insight.shortfall,
       });
       console.log(
-        `  ${fixture.id} sample ${i + 1}/${SAMPLES}: faith ${faithfulness.toFixed(2)}, comp ${completeness.toFixed(2)}, legal ${legal.pass ? 'pass' : 'FAIL'}, insight ${insight.pass ? 'pass' : 'FAIL'}`,
+        `  ${fixture.id} sample ${i + 1}/${SAMPLES}: faith ${faithfulness.toFixed(2)}, comp ${completeness.toFixed(2)}, legal ${legal.pass ? 'pass' : 'FAIL'}, plain ${plain.pass ? 'pass' : 'FAIL'}, insight ${insight.pass ? 'pass' : 'FAIL'}`,
       );
     } catch (err) {
       const code = (err as { code?: string } | null)?.code;
@@ -265,7 +294,12 @@ async function scoreFixture(
   }
 
   return {
-    score: summarizeFixtureSamples(fixture, samples, { unmeasured, errored, capRefused, capRefusedCostsUsd }),
+    score: summarizeFixtureSamples(fixture, samples, {
+      unmeasured,
+      errored,
+      capRefused,
+      capRefusedCostsUsd,
+    }),
     promptVersion: metadata.promptVersion,
   };
 }
@@ -295,7 +329,8 @@ async function main(): Promise<void> {
   // The grader has to be the same in both arms. Subject and judge are selected
   // independently so a more lenient model cannot look like a better writer.
   // Both are printed and recorded so a scorecard says what produced and graded it.
-  const { generateWithModel } = await import('../apps/api/src/services/aiInterpretation/claudeClient.js');
+  const { generateWithModel } =
+    await import('../apps/api/src/services/aiInterpretation/claudeClient.js');
   const judgeProvider: GenerateProvider = {
     generate: (input: { system: string; user: string }) => generateWithModel(input, JUDGE_MODEL),
   };
@@ -309,12 +344,18 @@ async function main(): Promise<void> {
   let promptVersion = DEFAULT_PROMPT_VERSION;
   const selected = ONLY_FIXTURE ? FIXTURES.filter((f) => f.id === ONLY_FIXTURE) : FIXTURES;
   if (ONLY_FIXTURE && selected.length === 0) {
-    console.error(`No fixture named "${ONLY_FIXTURE}". Have: ${FIXTURES.map((f) => f.id).join(', ')}`);
+    console.error(
+      `No fixture named "${ONLY_FIXTURE}". Have: ${FIXTURES.map((f) => f.id).join(', ')}`,
+    );
     process.exit(1);
   }
   for (const fixture of selected) {
     try {
-      const { score, promptVersion: version } = await scoreFixture(provider, judgeProvider, fixture);
+      const { score, promptVersion: version } = await scoreFixture(
+        provider,
+        judgeProvider,
+        fixture,
+      );
       promptVersion = version;
       results.push(score);
     } catch (err) {
@@ -339,7 +380,9 @@ async function main(): Promise<void> {
         // agentResults, so a floor applied to that array cannot see it either:
         // the absence is the thing that has to be caught (DW-242).
         failedAgentFixtureIds.push(fixture.id);
-        console.error(`  ${fixture.id} agent arm failed: ${err instanceof Error ? err.message : err}`);
+        console.error(
+          `  ${fixture.id} agent arm failed: ${err instanceof Error ? err.message : err}`,
+        );
       }
     }
   }
@@ -349,7 +392,11 @@ async function main(): Promise<void> {
     mkdirSync(dirname(MARKER_PATH), { recursive: true });
     writeFileSync(
       MARKER_PATH,
-      JSON.stringify({ zeroResults: true, timestamp: new Date().toISOString(), failedFixtureIds }, null, 2) + '\n',
+      JSON.stringify(
+        { zeroResults: true, timestamp: new Date().toISOString(), failedFixtureIds },
+        null,
+        2,
+      ) + '\n',
     );
     process.exit(1);
   }
@@ -362,7 +409,9 @@ async function main(): Promise<void> {
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code !== 'ENOENT') {
-      console.error(`Failed to clear zero-results marker at ${MARKER_PATH}: ${err instanceof Error ? err.message : err}`);
+      console.error(
+        `Failed to clear zero-results marker at ${MARKER_PATH}: ${err instanceof Error ? err.message : err}`,
+      );
     }
   }
 
@@ -370,6 +419,12 @@ async function main(): Promise<void> {
     faithfulness: mean(results.map((r) => r.faithfulness.mean)),
     completeness: mean(results.map((r) => r.completeness.mean)),
     legalPosture: results.every((r) => r.legalPosture.pass),
+    plainLanguage: results.every((r) => r.plainLanguage.pass),
+    // Rule 9's second half, measured and not gated. A rising rate here is the
+    // model drifting away from explaining its own terms, which is worth seeing
+    // even though no healthy run has ever had this at zero.
+    unglossedSamples: results.reduce((n, r) => n + r.plainLanguage.unglossedSamples, 0),
+    unglossedTerms: [...new Set(results.flatMap((r) => r.plainLanguage.unglossedTerms))],
     // A rate, not a boolean, and with its denominator: 1 miss reads very
     // differently at 9 samples than at 36, and the scorecard is the only place a
     // later reader can recover which one this was.
@@ -389,6 +444,7 @@ async function main(): Promise<void> {
           promptVersion: 'v1-agent',
           fixtures: agentResults,
           legalPosture: agentResults.every((r) => r.legalPosture.pass),
+          plainLanguage: agentResults.every((r) => r.plainLanguage.pass),
           silentSamples: agentResults.reduce((n, r) => n + r.silentSamples, 0),
           totalSamples: agentResults.reduce((n, r) => n + r.sampledCount, 0),
         }
@@ -401,7 +457,8 @@ async function main(): Promise<void> {
     // provider default. Recorded here so the scores aren't read as if they were
     // fully deterministic. See story EVAL.1 Dev Agent Record (carry-forward to a
     // provider `generate(input, opts?)` overload).
-    judgeTemperature: 'provider default (temperature 0 requested in-prompt, not enforced at the API)',
+    judgeTemperature:
+      'provider default (temperature 0 requested in-prompt, not enforced at the API)',
     fixtures: results,
     aggregate,
     failedFixtureIds,
@@ -447,7 +504,9 @@ async function main(): Promise<void> {
     const sc = Math.sqrt(c.reduce((a, x) => a + (x - mc) ** 2, 0));
     const sy = Math.sqrt(y.reduce((a, x) => a + (x - my) ** 2, 0));
     if (sc === 0 || sy === 0) {
-      console.log(`  ${r.id}: cost/faithfulness correlation undefined, one of them has no variance`);
+      console.log(
+        `  ${r.id}: cost/faithfulness correlation undefined, one of them has no variance`,
+      );
       continue;
     }
     const corr = c.reduce((a, x, i) => a + (x - mc) * (y[i]! - my), 0) / (sc * sy);
@@ -491,6 +550,9 @@ async function main(): Promise<void> {
     if (!r.legalPosture.pass) {
       breaches.push(`${r.id}: legal posture failed (${r.legalPosture.violations.join('; ')})`);
     }
+    if (!r.plainLanguage.pass) {
+      breaches.push(`${r.id}: plain language failed (${r.plainLanguage.violations.join('; ')})`);
+    }
   }
 
   // DW-242. Extracted so it has its own tests: a gate shipped ungated is the
@@ -521,7 +583,9 @@ async function main(): Promise<void> {
   }
 
   if (failedFixtureIds.length > 0) {
-    console.error(`\nFAIL: ${failedFixtureIds.length} fixture(s) errored: ${failedFixtureIds.join(', ')}`);
+    console.error(
+      `\nFAIL: ${failedFixtureIds.length} fixture(s) errored: ${failedFixtureIds.join(', ')}`,
+    );
   }
 
   if (breaches.length > 0 || failedFixtureIds.length > 0) {

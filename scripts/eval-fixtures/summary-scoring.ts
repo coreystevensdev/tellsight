@@ -60,6 +60,11 @@ export interface SampleScore {
   insightPass: boolean;
   qualifyingInsight: string | null;
   insightShortfall: string[];
+  plainPass: boolean;
+  plainViolations: string[];
+  // Reported, never gated. See plain-language.ts for why the gloss half of
+  // prompt rule 9 is measured rather than enforced.
+  unglossed: string[];
 }
 
 export interface FixtureScore {
@@ -85,6 +90,15 @@ export interface FixtureScore {
   };
   completeness: { mean: number; min: number };
   legalPosture: { pass: boolean; violations: string[] };
+  // `pass` is the gate; `unglossed*` is a reported rate. Both carry the same
+  // empty-array caveat as legalPosture: every() on no samples is true, which is
+  // why `unmeasured` and `errored` are counted separately (DW-242).
+  plainLanguage: {
+    pass: boolean;
+    violations: string[];
+    unglossedSamples: number;
+    unglossedTerms: string[];
+  };
   insight: { misses: number; examples: string[]; missed: string[] };
   sampledCount: number;
 }
@@ -95,6 +109,9 @@ export interface AgentSample {
   completeness: number | null;
   legalPass: boolean;
   legalViolations: string[];
+  plainPass: boolean;
+  plainViolations: string[];
+  unglossed: string[];
 }
 
 export interface AgentFixtureScore {
@@ -109,6 +126,12 @@ export interface AgentFixtureScore {
   faithfulness: { mean: number; min: number } | null;
   completeness: { mean: number; min: number } | null;
   legalPosture: { pass: boolean; violations: string[] };
+  plainLanguage: {
+    pass: boolean;
+    violations: string[];
+    unglossedSamples: number;
+    unglossedTerms: string[];
+  };
   proposalsPerSample: number;
   silentSamples: number;
   sampledCount: number;
@@ -256,6 +279,12 @@ export function summarizeFixtureSamples(
       pass: samples.every((sample) => sample.legalPass),
       violations: [...new Set(samples.flatMap((sample) => sample.legalViolations))],
     },
+    plainLanguage: {
+      pass: samples.every((sample) => sample.plainPass),
+      violations: [...new Set(samples.flatMap((sample) => sample.plainViolations))],
+      unglossedSamples: samples.filter((sample) => sample.unglossed.length > 0).length,
+      unglossedTerms: [...new Set(samples.flatMap((sample) => sample.unglossed))],
+    },
     insight: {
       misses: samples.filter((sample) => !sample.insightPass).length,
       examples: [
@@ -297,6 +326,12 @@ export function summarizeAgentSamples(
     legalPosture: {
       pass: samples.every((sample) => sample.legalPass),
       violations: [...new Set(samples.flatMap((sample) => sample.legalViolations))],
+    },
+    plainLanguage: {
+      pass: samples.every((sample) => sample.plainPass),
+      violations: [...new Set(samples.flatMap((sample) => sample.plainViolations))],
+      unglossedSamples: samples.filter((sample) => sample.unglossed.length > 0).length,
+      unglossedTerms: [...new Set(samples.flatMap((sample) => sample.unglossed))],
     },
     proposalsPerSample: mean(samples.map((sample) => sample.proposalCount)),
     silentSamples: samples.filter((sample) => sample.proposalCount === 0).length,
