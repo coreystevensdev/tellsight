@@ -43,9 +43,13 @@ run() {
       # .env.ci points at the compose-internal db:5432, which does not resolve
       # from the host, so anything the caller set has to survive the sourcing.
       local caller_db=${DATABASE_URL:-} caller_admin=${DATABASE_ADMIN_URL:-}
+      local caller_redis=${REDIS_URL:-}
       set -a; . ../../.env.ci; set +a
       [ -n "$caller_db" ] && export DATABASE_URL="$caller_db"
       [ -n "$caller_admin" ] && export DATABASE_ADMIN_URL="$caller_admin"
+      # .env.ci points redis at the compose-internal host too, which does not
+      # resolve from a developer machine any more than db:5432 does.
+      [ -n "$caller_redis" ] && export REDIS_URL="$caller_redis"
     fi
     npx vitest run ${config:+-c "$config"} \
       --reporter=json --outputFile.json="$tmp/$name.json" >/dev/null 2>&1

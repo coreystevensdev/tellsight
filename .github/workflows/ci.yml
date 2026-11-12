@@ -164,6 +164,19 @@ jobs:
           --health-interval 3s
           --health-timeout 5s
           --health-retries 10
+      # oauthState.integration.test.ts is the only suite here that needs redis,
+      # and it needs a real one: it proves takeOAuthState is single use under a
+      # concurrent race, which an in-memory fake cannot express. REDIS_URL was
+      # already set on the test step; nothing was listening on it.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 3s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

@@ -59,9 +59,14 @@ export async function takeOAuthState(
 ): Promise<OAuthFlowBinding | null> {
   if (!state) return null;
 
+  // GETDEL, not GET then DEL. The two-command version leaves a window where two
+  // concurrent callbacks both read the binding before either deletes it, which a
+  // provider retry, a double-clicked redirect or a second tab all produce. An
+  // integration test against real redis returned the binding to both callers.
+  // Single use is what limits a nonce to one guess per flow, so the window is
+  // worth closing even though both winners resolve to the same org.
   const k = key(provider, state);
-  const raw = await redis.get(k);
-  await redis.del(k);
+  const raw = await redis.getdel(k);
   if (!raw) return null;
 
   try {

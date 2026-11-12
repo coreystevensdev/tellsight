@@ -11,7 +11,13 @@ const redis = {
   }),
   get: vi.fn(async (k: string) => store.get(k) ?? null),
   del: vi.fn(async (k: string) => (store.delete(k) ? 1 : 0)),
-};
+  // GETDEL is what takeOAuthState uses; the two-command GET+DEL it replaced
+  // was not atomic, see oauthState.integration.test.ts.
+  getdel: vi.fn(async (k: string) => {
+    const v = store.get(k) ?? null;
+    store.delete(k);
+    return v;
+  }),};
 vi.mock('../../lib/redis.js', () => ({ redis }));
 
 const { putOAuthState, takeOAuthState, nonceMatches, newOAuthNonce, oauthNonceCookie } =
@@ -49,10 +55,14 @@ describe('OAuth flow binding', () => {
     await expect(takeOAuthState('square', 'state-once')).resolves.toBeNull();
   });
 
-  it('deletes the key even when the state is unknown, so a probe leaves nothing behind', async () => {
+  it('reads and deletes in one command, so there is no window between them', async () => {
     await takeOAuthState('shopify', 'never-minted');
 
-    expect(redis.del).toHaveBeenCalledWith('oauth:state:shopify:never-minted');
+    // GETDEL rather than GET then DEL. The separate-command version let two
+    // concurrent callbacks both read the binding; proven against real redis in
+    // oauthState.integration.test.ts.
+    expect(redis.getdel).toHaveBeenCalledWith('oauth:state:shopify:never-minted');
+    expect(redis.del).not.toHaveBeenCalled();
   });
 
   it('a state minted for one provider does not resolve for another', async () => {

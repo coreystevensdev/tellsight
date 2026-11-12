@@ -84,7 +84,13 @@ vi.mock('../lib/redis.js', () => ({
     }),
     get: vi.fn(async (k: string) => oauthStore.get(k) ?? null),
     del: vi.fn(async (k: string) => (oauthStore.delete(k) ? 1 : 0)),
-  },
+    // GETDEL is what takeOAuthState uses; the two-command GET+DEL it replaced
+    // was not atomic, see oauthState.integration.test.ts.
+    getdel: vi.fn(async (k: string) => {
+      const v = oauthStore.get(k) ?? null;
+      oauthStore.delete(k);
+      return v;
+    }),  },
 }));
 
 const NONCE = 'test-nonce-abc123';
@@ -426,7 +432,7 @@ describe('integrations routes', () => {
       expect(mockTrackEvent).toHaveBeenCalled();
     });
 
-    it('redirects with error on state mismatch', async () => {
+    it('redirects with error when the state resolves to no binding', async () => {
       const { integrationsCallbackRouter } = await import('./integrations.js');
       const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/quickbooks/callback');
 
@@ -456,7 +462,7 @@ describe('integrations routes', () => {
       expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?qb=denied');
     });
 
-    it('redirects with error when missing state cookie', async () => {
+    it('redirects with error when the state is absent entirely', async () => {
       const { integrationsCallbackRouter } = await import('./integrations.js');
       const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/quickbooks/callback');
 
@@ -734,7 +740,7 @@ describe('integrations routes', () => {
       expect(mockShopifyExchangeCode).not.toHaveBeenCalled();
     });
 
-    it('redirects with error on state mismatch even when HMAC is valid', async () => {
+    it('redirects with error when the state resolves to no binding, even with a valid HMAC', async () => {
       mockShopifyIsValidShopDomain.mockReturnValue(true);
       mockShopifyVerifyHmac.mockReturnValueOnce(true);
 
@@ -753,7 +759,7 @@ describe('integrations routes', () => {
       expect(mockShopifyExchangeCode).not.toHaveBeenCalled();
     });
 
-    it('redirects with error when missing org/user identity cookies', async () => {
+    it('redirects with error when the binding is missing, so no org can be resolved', async () => {
       mockShopifyIsValidShopDomain.mockReturnValue(true);
       mockShopifyVerifyHmac.mockReturnValueOnce(true);
       mockShopifyExchangeCode.mockResolvedValueOnce({ accessToken: 'access-123', shop: 'my-store.myshopify.com' });
