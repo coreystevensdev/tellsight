@@ -17,6 +17,11 @@ const BASE_URLS = {
 } as const;
 
 const MAX_RESULTS = 1000;
+
+// The loop below breaks on a short page, so an endpoint that always answers with
+// a full one never terminates. Square's client already caps at 100 pages; this
+// matches it. 100 x 1000 rows is far past any real company's month of activity.
+export const MAX_PAGES = 100;
 const REQUEST_TIMEOUT_MS = 30_000;
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
@@ -34,6 +39,10 @@ export async function createQbClient(connectionId: number): Promise<QbClient> {
   if (!connection) throw new ConnectionNotFoundError(connectionId);
 
   const realmId = connection.providerTenantId;
+  // Encoded here rather than trusted from the callback: rows written before the
+  // callback validated the format are still in the table, and this value sits in
+  // the path of every request carrying the org's access token.
+  const realm = encodeURIComponent(realmId);
   const baseUrl = BASE_URLS[env.QUICKBOOKS_ENVIRONMENT ?? 'sandbox'];
 
   let accessToken = decrypt(connection.encryptedAccessToken);
@@ -100,6 +109,8 @@ export async function createQbClient(connectionId: number): Promise<QbClient> {
     async query(entityType: string, since?: Date): Promise<unknown[]> {
       const results: unknown[] = [];
       let startPosition = 1;
+      let pages = 0;
+      let truncated = false;
 
       while (true) {
         let sql = `SELECT * FROM ${entityType}`;
@@ -108,7 +119,7 @@ export async function createQbClient(connectionId: number): Promise<QbClient> {
         }
         sql += ` STARTPOSITION ${startPosition} MAXRESULTS ${MAX_RESULTS}`;
 
-        const url = `${baseUrl}/v3/company/${realmId}/query?query=${encodeURIComponent(sql)}`;
+        const url = `${baseUrl}/v3/company/${realm}/query?query=${encodeURIComponent(sql)}`;
         const res = await qbFetch(url);
         const data = (await res.json()) as { QueryResponse?: Record<string, unknown[]> };
 
@@ -116,15 +127,26 @@ export async function createQbClient(connectionId: number): Promise<QbClient> {
         results.push(...rows);
 
         if (rows.length < MAX_RESULTS) break;
+        pages += 1;
+        if (pages >= MAX_PAGES) {
+          truncated = true;
+          break;
+        }
         startPosition += MAX_RESULTS;
       }
 
+      if (truncated) {
+        logger.warn(
+          { connectionId, entityType, pages, count: results.length },
+          'QB query hit the page cap, results are incomplete',
+        );
+      }
       logger.info({ connectionId, entityType, count: results.length }, 'QB query complete');
       return results;
     },
 
     async getCompanyInfo(): Promise<{ companyName: string }> {
-      const url = `${baseUrl}/v3/company/${realmId}/companyinfo/${realmId}`;
+      const url = `${baseUrl}/v3/company/${realm}/companyinfo/${realm}`;
       const res = await qbFetch(url);
       const data = (await res.json()) as { CompanyInfo?: { CompanyName?: string } };
       return { companyName: data.CompanyInfo?.CompanyName ?? 'QuickBooks Company' };

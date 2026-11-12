@@ -432,6 +432,34 @@ describe('integrations routes', () => {
       expect(mockTrackEvent).toHaveBeenCalled();
     });
 
+    // realmId is persisted as providerTenantId and then sits in the path of every
+    // outbound Intuit call. api.ts encodes it, which covers rows already in the
+    // table, but a value that cannot reshape a URL should never be stored at all.
+    it.each([
+      ['a path separator', '1/companyinfo/1'],
+      ['a query separator', '1?x=y'],
+      ['a fragment', '1#frag'],
+      ['dot segments', '../../other'],
+      ['a percent escape', '1%2Fx'],
+      ['an empty string', ''],
+      ['something far too long', '9'.repeat(65)],
+    ])('rejects %s in realmId without exchanging the code', async (_label, realmId) => {
+      const { integrationsCallbackRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/quickbooks/callback');
+
+      seedFlow('quickbooks', 'valid-state', 10, 1);
+      const req = createMockReq({
+        query: { code: 'auth-code', realmId, state: 'valid-state' },
+        cookies: nonceCookies(),
+      });
+      const res = createMockRes();
+      await handler(req, res, vi.fn());
+
+      expect(res._redirectUrl).toBe('http://localhost:3000/dashboard?qb=error');
+      expect(mockExchangeCode).not.toHaveBeenCalled();
+      expect(mockUpsert).not.toHaveBeenCalled();
+    });
+
     it('redirects with error when the state resolves to no binding', async () => {
       const { integrationsCallbackRouter } = await import('./integrations.js');
       const handler = getRouteHandler(integrationsCallbackRouter, 'GET', '/quickbooks/callback');

@@ -249,3 +249,60 @@ describe('QB API client', () => {
     });
   });
 });
+
+// providerTenantId is whatever the OAuth callback handed over, and rows written
+// before the callback validated it are still in the table. It lands in the path
+// of every outbound Intuit call, so an unencoded value lets whoever connected
+// the account choose the endpoint, query string and fragment of a request that
+// carries that org's access token.
+describe('realmId cannot reshape the outbound URL', () => {
+  const HOSTILE = '1/companyinfo/1?x=';
+
+  it('percent-encodes the realm into the query URL', async () => {
+    mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection({ providerTenantId: HOSTILE }));
+    mockFetch.mockResolvedValueOnce(jsonResponse({ QueryResponse: { Purchase: [] } }));
+
+    const { createQbClient } = await import('./api.js');
+    const client = await createQbClient(1);
+    await client.query('Purchase');
+
+    const url = mockFetch.mock.calls[0]![0] as string;
+    expect(url).toContain('/v3/company/1%2Fcompanyinfo%2F1%3Fx%3D/query');
+    // The giveaway if the encoding is dropped: the path gains segments.
+    expect(new URL(url).pathname).toBe('/v3/company/1%2Fcompanyinfo%2F1%3Fx%3D/query');
+  });
+
+  it('percent-encodes the realm into the companyinfo URL', async () => {
+    mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection({ providerTenantId: HOSTILE }));
+    mockFetch.mockResolvedValueOnce(jsonResponse({ CompanyInfo: { CompanyName: 'X' } }));
+
+    const { createQbClient } = await import('./api.js');
+    const client = await createQbClient(1);
+    await client.getCompanyInfo();
+
+    const url = mockFetch.mock.calls[0]![0] as string;
+    expect(new URL(url).pathname).toBe(
+      '/v3/company/1%2Fcompanyinfo%2F1%3Fx%3D/companyinfo/1%2Fcompanyinfo%2F1%3Fx%3D',
+    );
+  });
+});
+
+// The loop breaks on a short page, so an endpoint that always answers with a
+// full one never terminates. Reachable because the realm decides which endpoint
+// gets asked.
+describe('query pagination is bounded', () => {
+  it('stops after the page cap instead of looping forever', async () => {
+    mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
+    const fullPage = Array.from({ length: 1000 }, (_, i) => ({ Id: String(i + 1) }));
+    mockFetch.mockImplementation(() =>
+      Promise.resolve(jsonResponse({ QueryResponse: { Purchase: fullPage } })),
+    );
+
+    const { createQbClient, MAX_PAGES } = await import('./api.js');
+    const client = await createQbClient(1);
+    const result = await client.query('Purchase');
+
+    expect(mockFetch).toHaveBeenCalledTimes(MAX_PAGES);
+    expect(result).toHaveLength(MAX_PAGES * 1000);
+  });
+});
