@@ -10,6 +10,7 @@ function score(over: Partial<Parameters<typeof agentGate>[0][number]> = {}) {
     faithfulness: { mean: 0.93 },
     completeness: { mean: 0.9 },
     legalPosture: { pass: true, violations: [] },
+    plainLanguage: { pass: true, violations: [] },
     unmeasured: 0,
     errored: 0,
     sampledCount: 10,
@@ -96,6 +97,24 @@ describe('agentGate', () => {
     expect(breaches[0]).toContain('inconclusive');
   });
 
+  it('reports a plain-language failure with its violations', () => {
+    const { breaches } = agentGate(
+      [
+        score({
+          id: 'cash-crunch',
+          plainLanguage: { pass: false, violations: ['off-vocabulary term: "EBITDA"'] },
+        }),
+      ],
+      [],
+      1,
+      10,
+      FLOORS,
+    );
+    expect(breaches).toEqual([
+      'agent/cash-crunch: plain language failed (off-vocabulary term: "EBITDA")',
+    ]);
+  });
+
   it('reports a legal-posture failure with its violations', () => {
     const { breaches } = agentGate(
       [score({ legalPosture: { pass: false, violations: ['you should refinance'] } })],
@@ -104,8 +123,6 @@ describe('agentGate', () => {
       10,
       FLOORS,
     );
-    expect(breaches).toEqual([
-      'agent/healthy-growth: legal posture failed (you should refinance)',
-    ]);
+    expect(breaches).toEqual(['agent/healthy-growth: legal posture failed (you should refinance)']);
   });
 });
