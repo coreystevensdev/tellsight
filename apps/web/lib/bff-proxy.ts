@@ -11,6 +11,56 @@ function upstreamErrorResponse() {
   );
 }
 
+// Every caller posts a small JSON control-plane payload. The one large body,
+// the CSV upload, streams past this file entirely (app/api/datasets/route.ts).
+export const MAX_BODY_BYTES = 256 * 1024;
+
+function payloadTooLargeResponse() {
+  return NextResponse.json(
+    { error: { code: 'PAYLOAD_TOO_LARGE', message: 'Request body is too large' } },
+    { status: 413 },
+  );
+}
+
+// A non-string return is the response to send instead of forwarding.
+async function readBody(request: NextRequest, tag: string): Promise<string | NextResponse> {
+  // Absent or garbage parses to 0 or NaN, neither of which trips this. The
+  // running count below is the real ceiling.
+  if (Number(request.headers.get('content-length')) > MAX_BODY_BYTES) {
+    return payloadTooLargeResponse();
+  }
+  if (!request.body) return '';
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_BODY_BYTES) {
+        await reader.cancel();
+        return payloadTooLargeResponse();
+      }
+      chunks.push(value);
+    }
+  } catch (err) {
+    // Client walked away mid-body, same 502 this path already answered.
+    console.warn(`${tag} could not read request body`, err);
+    return upstreamErrorResponse();
+  }
+
+  const joined = new Uint8Array(size);
+  let at = 0;
+  for (const chunk of chunks) {
+    joined.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return new TextDecoder().decode(joined);
+}
+
 export const NULL_BODY_STATUSES: ReadonlySet<number> = new Set([204, 205, 304]);
 
 // A 2xx status paired with an unreadable body is as broken as a null-body
@@ -97,12 +147,15 @@ export function proxyGet(upstreamPath: string) {
 
 export function proxyPost(upstreamPath: string) {
   return async (request: NextRequest) => {
+    const body = await readBody(request, '[bff-proxy:post]');
+    if (typeof body !== 'string') return body;
+
     let res: Response;
     try {
       res = await fetch(`${webEnv.API_INTERNAL_URL}${upstreamPath}`, {
         method: 'POST',
         headers: forwardedHeaders(request, { 'Content-Type': 'application/json' }),
-        body: await request.text(),
+        body,
         signal: upstreamSignal(request),
       });
     } catch (err) {
@@ -121,12 +174,15 @@ export function proxyPost(upstreamPath: string) {
 
 export function proxyPut(upstreamPath: string) {
   return async (request: NextRequest) => {
+    const body = await readBody(request, '[bff-proxy:put]');
+    if (typeof body !== 'string') return body;
+
     let res: Response;
     try {
       res = await fetch(`${webEnv.API_INTERNAL_URL}${upstreamPath}`, {
         method: 'PUT',
         headers: forwardedHeaders(request, { 'Content-Type': 'application/json' }),
-        body: await request.text(),
+        body,
         signal: upstreamSignal(request),
       });
     } catch (err) {
@@ -145,12 +201,15 @@ export function proxyPut(upstreamPath: string) {
 
 export function proxyPatch(upstreamPath: string) {
   return async (request: NextRequest) => {
+    const body = await readBody(request, '[bff-proxy:patch]');
+    if (typeof body !== 'string') return body;
+
     let res: Response;
     try {
       res = await fetch(`${webEnv.API_INTERNAL_URL}${upstreamPath}`, {
         method: 'PATCH',
         headers: forwardedHeaders(request, { 'Content-Type': 'application/json' }),
-        body: await request.text(),
+        body,
         signal: upstreamSignal(request),
       });
     } catch (err) {
@@ -193,12 +252,15 @@ export function proxyDelete(upstreamPath: string) {
 
 export function proxyPostWithCookies(upstreamPath: string) {
   return async (request: NextRequest) => {
+    const body = await readBody(request, '[bff-proxy:post-with-cookies]');
+    if (typeof body !== 'string') return body;
+
     let res: Response;
     try {
       res = await fetch(`${webEnv.API_INTERNAL_URL}${upstreamPath}`, {
         method: 'POST',
         headers: forwardedHeaders(request, { 'Content-Type': 'application/json' }),
-        body: await request.text(),
+        body,
         signal: upstreamSignal(request),
       });
     } catch (err) {

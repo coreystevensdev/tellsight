@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
-import { proxyGet, proxyPost, proxyPut, proxyPatch, proxyDelete, proxyPostWithCookies, upstreamSignal, UPSTREAM_TIMEOUT_MS, forwardedFor } from './bff-proxy';
+import { proxyGet, proxyPost, proxyPut, proxyPatch, proxyDelete, proxyPostWithCookies, upstreamSignal, UPSTREAM_TIMEOUT_MS, forwardedFor, MAX_BODY_BYTES } from './bff-proxy';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -322,3 +322,100 @@ describe('proxy helpers forward the caller address', () => {
     });
   });
 })
+
+// Every one of these buffered the whole body into a JS string with no ceiling,
+// and two of their callers (track/digest/click, track/alert/click) sit outside
+// the IP rate limiter on purpose, so one unauthenticated request could decide
+// how much memory the Next process allocated.
+const bodyHelpers = helpers.filter((h) => h.method !== 'GET' && h.method !== 'DELETE');
+
+describe.each(bodyHelpers)('$name body ceiling', ({ build, method }) => {
+  const url = 'http://localhost/api/whatever';
+
+  // An in-process NextRequest carries no content-length, so this one goes
+  // through the running count rather than the header fast path.
+  it('refuses an oversized body and never calls upstream', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    const res = await build()(new NextRequest(url, { method, body: 'x'.repeat(MAX_BODY_BYTES + 1) }));
+
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({
+      error: { code: 'PAYLOAD_TOO_LARGE', message: 'Request body is too large' },
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  // The header fast path, which the case above cannot reach. A real HTTP request
+  // declares its length, and rejecting on it means never reading the socket.
+  it('refuses on a declared content-length without reading the body', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const request = new NextRequest(url, {
+      method,
+      body: 'small',
+      headers: { 'content-length': String(MAX_BODY_BYTES + 1) },
+    });
+
+    const res = await build()(request);
+
+    expect(res.status).toBe(413);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(request.bodyUsed).toBe(false);
+  });
+
+  // The content-length check alone is not enough: a chunked request declares no
+  // length, so the bytes have to be counted as they arrive or the ceiling is
+  // trivially skipped by omitting the header.
+  it('counts streamed bytes when no content-length is declared', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const chunk = new TextEncoder().encode('y'.repeat(16 * 1024));
+    let sent = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent > MAX_BODY_BYTES) {
+          controller.close();
+          return;
+        }
+        sent += chunk.byteLength;
+        controller.enqueue(chunk);
+      },
+    });
+
+    const res = await build()(
+      // duplex is required for a stream body and is absent from Next's own
+      // RequestInit type, so the cast targets the constructor's parameter.
+      new NextRequest(url, {
+        method,
+        body,
+        duplex: 'half',
+      } as unknown as ConstructorParameters<typeof NextRequest>[1]),
+    );
+
+    expect(res.status).toBe(413);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('forwards a body under the ceiling byte for byte', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response('{"data":1}', { status: 200 }));
+
+    const res = await build()(new NextRequest(url, { method, body: '{"q":"hello"}' }));
+
+    expect(res.status).toBe(200);
+    expect(fetchSpy.mock.calls[0]![1]).toMatchObject({ body: '{"q":"hello"}' });
+  });
+
+  // request.text() returned '' for a bodyless POST and several callers rely on
+  // that, so the replacement has to keep doing it.
+  it('still forwards an empty body', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+
+    const res = await build()(new NextRequest(url, { method, body: '' }));
+
+    expect(res.status).toBe(200);
+    expect(fetchSpy.mock.calls[0]![1]).toMatchObject({ body: '' });
+  });
+});
