@@ -170,8 +170,13 @@ export interface AiUsageStats {
  * by the admin dashboard cost tile, caller scopes the window (default is
  * month-to-date via getMonthToDateAiUsage).
  *
- * `::text::integer` casts handle the JSONB→SQL-int conversion. `COALESCE`
- * yields 0 when the filter matches no rows (empty month, new deploy).
+ * `COALESCE` yields 0 when the filter matches no rows (empty month, new
+ * deploy). The jsonb_typeof guard is load-bearing, not defensive: metadata is
+ * caller-written (POST /analytics/events allowlists the event name and stores
+ * whatever metadata arrives), so one row with a non-numeric inputTokens used to
+ * raise 22P02 here and 500 the admin dashboard until someone deleted it. CASE
+ * is used rather than a WHERE clause because its evaluation order is defined,
+ * where an AND's operands can be reordered by the planner.
  */
 export async function getAiUsageStats(
   windowStart: Date,
@@ -179,8 +184,8 @@ export async function getAiUsageStats(
 ): Promise<AiUsageStats> {
   const [row] = await client
     .select({
-      inputTokens: sql<number>`COALESCE(SUM((${analyticsEvents.metadata}->>'inputTokens')::int), 0)::int`,
-      outputTokens: sql<number>`COALESCE(SUM((${analyticsEvents.metadata}->>'outputTokens')::int), 0)::int`,
+      inputTokens: sql<number>`COALESCE(SUM(CASE WHEN jsonb_typeof(${analyticsEvents.metadata}->'inputTokens') = 'number' THEN (${analyticsEvents.metadata}->>'inputTokens')::numeric END), 0)::int`,
+      outputTokens: sql<number>`COALESCE(SUM(CASE WHEN jsonb_typeof(${analyticsEvents.metadata}->'outputTokens') = 'number' THEN (${analyticsEvents.metadata}->>'outputTokens')::numeric END), 0)::int`,
       requestCount: count(),
     })
     .from(analyticsEvents)
