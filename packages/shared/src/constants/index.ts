@@ -164,6 +164,35 @@ export const ANALYTICS_EVENTS = {
 export type AnalyticsEventName =
   (typeof ANALYTICS_EVENTS)[keyof typeof ANALYTICS_EVENTS];
 
+// The browser can only post these. Everything else in ANALYTICS_EVENTS is
+// emitted server-side, and letting a client forge one meant it could write the
+// metadata that two admin aggregates then read: ai.summary_completed carried the
+// token counts behind the cost tile, alert.clicked the fireId behind the
+// compliance panel.
+//
+// Derived from the actual trackClientEvent call sites in apps/web, not chosen.
+// ai.summary_requested is here because the client genuinely emits it on a stale
+// refresh as well as the server; the two exploited names are not, because
+// nothing in the browser ever sends them.
+//
+// trackClientEvent's parameter is typed to this set, so a client call site using
+// anything else fails type-check rather than silently 400ing into the
+// swallowed catch in lib/analytics.ts.
+export const CLIENT_POSTABLE_EVENTS = [
+  ANALYTICS_EVENTS.AI_PREVIEW_VIEWED,
+  ANALYTICS_EVENTS.AI_SUMMARY_REQUESTED,
+  ANALYTICS_EVENTS.CHART_FILTERED,
+  ANALYTICS_EVENTS.DASHBOARD_VIEWED,
+  ANALYTICS_EVENTS.INSIGHT_CHART_OPENED,
+  ANALYTICS_EVENTS.INSIGHT_EXPORTED,
+  ANALYTICS_EVENTS.SHARE_LINK_CREATED,
+  ANALYTICS_EVENTS.SUBSCRIPTION_UPGRADE_INTENDED,
+  ANALYTICS_EVENTS.THEME_CHANGED,
+  ANALYTICS_EVENTS.TRANSPARENCY_PANEL_OPENED,
+] as const;
+
+export type ClientAnalyticsEventName = (typeof CLIENT_POSTABLE_EVENTS)[number];
+
 // Inline chart-reference token emitted by the LLM to bind a paragraph to a
 // chart. Centralized here so every consumer (validator,
 // stream hook, post-stream parser, shared-link strip, OG metadata strip)
