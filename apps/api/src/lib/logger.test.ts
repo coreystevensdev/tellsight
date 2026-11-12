@@ -1,3 +1,4 @@
+import pino from 'pino';
 import { describe, it, expect, afterEach, vi } from 'vitest';
 
 vi.hoisted(() => {
@@ -21,7 +22,7 @@ vi.hoisted(() => {
 
 // Real pino, not a mock. The admin route's tests mock this module, so nothing
 // there would notice if setLogLevel stopped moving the actual level.
-const { logger, isLogLevel, setLogLevel } = await import('./logger.js');
+const { logger, isLogLevel, setLogLevel, redactConfig } = await import('./logger.js');
 
 const original = logger.level;
 afterEach(() => {
@@ -81,3 +82,74 @@ describe('setLogLevel', () => {
     expect(pinned.isLevelEnabled('debug')).toBe(false);
   });
 });
+
+// pino-http gets no serializers of its own, so pino-std-serializers' defaults
+// apply and they assign the whole header bag: `_req.headers = req.headers`
+// (req.js) and `_res.headers = res.getHeaders()` (res.js). That puts the
+// session cookie, the bearer and the minted set-cookie pair in every request
+// log at info. These run the real redactConfig through real pino rather than
+// asserting its shape, so dropping a path fails the test.
+describe('redactConfig', () => {
+  // Only the half a given test passes in is read back, so both branches are
+  // typed as present rather than threading optionals through every assertion.
+  interface LogRecord {
+    req: { method?: string; url?: string; headers: Record<string, unknown> };
+    res: { headers: Record<string, unknown> };
+  }
+
+  function emit(record: Record<string, unknown>): LogRecord {
+    const written: string[] = [];
+    const log = pino(
+      { redact: redactConfig },
+      { write: (chunk: string) => void written.push(chunk) },
+    );
+    log.info(record);
+    return JSON.parse(written[0]!) as LogRecord;
+  }
+
+  it('censors the session cookie on the way in', () => {
+    const out = emit({ req: { headers: { cookie: 'access_token=A.B.C; refresh_token=R' } } });
+
+    expect(out.req.headers.cookie).toBe('[redacted]');
+    expect(serialized(out)).not.toContain('access_token');
+  });
+
+  it('censors the authorization header', () => {
+    const out = emit({ req: { headers: { authorization: 'Bearer secret-token' } } });
+
+    expect(out.req.headers.authorization).toBe('[redacted]');
+    expect(serialized(out)).not.toContain('secret-token');
+  });
+
+  // The response side matters as much as the request side: this is the only
+  // place the freshly minted pair appears, on every login and every refresh.
+  it('censors the minted set-cookie pair on the way out', () => {
+    const out = emit({
+      res: { headers: { 'set-cookie': ['access_token=NEW; HttpOnly', 'refresh_token=NEWR; HttpOnly'] } },
+    });
+
+    expect(out.res.headers['set-cookie']).toBe('[redacted]');
+    expect(serialized(out)).not.toContain('NEWR');
+  });
+
+  // Redacting rather than removing: the log still shows a cookie was present,
+  // and everything useful for debugging a request survives.
+  it('leaves the rest of the request intact', () => {
+    const out = emit({
+      req: {
+        method: 'POST',
+        url: '/datasets',
+        headers: { cookie: 'access_token=A', 'user-agent': 'curl/8', 'content-type': 'application/json' },
+      },
+    });
+
+    expect(out.req.method).toBe('POST');
+    expect(out.req.url).toBe('/datasets');
+    expect(out.req.headers['user-agent']).toBe('curl/8');
+    expect(out.req.headers['content-type']).toBe('application/json');
+  });
+});
+
+function serialized(out: unknown): string {
+  return JSON.stringify(out);
+}

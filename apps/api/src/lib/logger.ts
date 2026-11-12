@@ -6,8 +6,21 @@ export type LogLevel = (typeof LEVELS)[number];
 
 const defaultLevel: LogLevel = env.NODE_ENV === 'production' ? 'info' : 'debug';
 
+// pino-http gets no serializers, so pino-std-serializers' defaults copy the
+// whole header bag onto the record, session cookie and minted set-cookie pair
+// included. Censored rather than dropped so a log still shows it was there.
+export const redactConfig = {
+  paths: [
+    'req.headers.cookie',
+    'req.headers.authorization',
+    'res.headers["set-cookie"]',
+  ],
+  censor: '[redacted]',
+};
+
 export const logger = pino({
   level: env.LOG_LEVEL ?? defaultLevel,
+  redact: redactConfig,
   ...(env.NODE_ENV !== 'production' && {
     transport: {
       target: 'pino-pretty',
