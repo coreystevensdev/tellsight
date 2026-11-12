@@ -30,6 +30,7 @@ import { agentGate } from './eval-fixtures/agent-gate.js';
 import { insightGate, INSIGHT_MISS_CEILING } from './eval-fixtures/insight-gate.js';
 import { scoreLegalPosture } from './eval-fixtures/legal-posture.js';
 import { scorePlainLanguage } from './eval-fixtures/plain-language.js';
+import { warrantedRisks, scoreRiskCoverage } from './eval-fixtures/material-risk.js';
 import type { GenerateProvider } from './eval-fixtures/parse-judge.js';
 import {
   AGENT_SUMMARIES_START,
@@ -83,7 +84,15 @@ const DEFAULT_PROMPT_VERSION = 'v1.6';
 
 // Floors apply to the mean (the number that lands in the README). Legal posture
 // still has to hold on every sample: a banned imperative is a defect, not a rate.
-const FLOORS = { faithfulness: 0.85, completeness: 0.8 };
+//
+// riskCoverage is null, meaning measured and printed but not gated. completeness
+// 0.8 was set against a judge scoring how many answer-key stats a summary
+// covered; risk coverage asks whether the agent flagged a material risk the
+// prompt names by number, and reusing 0.8 would be borrowing a threshold from a
+// metric that measures something else. It gets a number once a run has measured
+// it. Revisit at the next agent-arm run; if this is still null after one, the
+// decision was never made rather than made deliberately.
+const FLOORS = { faithfulness: 0.85, completeness: 0.8, riskCoverage: null };
 
 function printScorecardTable(rows: FixtureScore[]): void {
   console.log(
@@ -111,7 +120,7 @@ function printScorecardTable(rows: FixtureScore[]): void {
 // build, the stat-id validator and the dedup gate are all the shipped ones, so a
 // proposal the production path would drop is dropped here too.
 //
-// Scores faithfulness, completeness and legal posture, which transfer directly.
+// Scores faithfulness, material-risk coverage, legal posture and plain language.
 // Deliberately NOT gated on INSIGHT_MISS_CEILING: FR22's ceiling was calibrated
 // against the dashboard summary, and whether it should also bind the agent is a
 // product decision, not something to assume by wiring it up.
@@ -125,9 +134,14 @@ async function scoreAgentFixture(
   const { generateProposals, PROMPT_VERSION } =
     await import('../apps/api/src/services/curation/proposals.js');
 
-  const scored = rankInsights(fixture.build());
+  const stats = fixture.build();
+  const scored = rankInsights(stats);
   const { user } = assemblePrompt(scored, 1, PROMPT_VERSION, undefined, FROZEN_NOW);
   const groundTruth = extractGroundTruth(user, AGENT_SUMMARIES_START);
+  // Off the raw stats, not the ranked ones: a risk the ranker dropped is still a
+  // risk the prompt names, and scoring against the survivors would let curation
+  // quietly shrink the denominator.
+  const risks = warrantedRisks(stats);
 
   const samples: AgentSample[] = [];
   // A breaker trip sheds every subsequent sample, and samples run back to back,
@@ -138,39 +152,63 @@ async function scoreAgentFixture(
   let errored = 0;
   for (let i = 0; i < SAMPLES; i++) {
     try {
-      const proposals = await generateProposals(scored, 1, undefined, FROZEN_NOW);
+      let toolCalls = 0;
+      const proposals = await generateProposals(
+        scored,
+        1,
+        undefined,
+        FROZEN_NOW,
+        undefined,
+        (n) => {
+          toolCalls = n;
+        },
+      );
       // Nothing to judge, but far from nothing to report: the prompt tells the
       // model to call the tool "or not at all when nothing is worth flagging",
       // so silence is a legitimate answer and its rate is the interesting number.
       if (proposals.length === 0) {
         samples.push({
           proposalCount: 0,
+          toolCalls,
           faithfulness: null,
-          completeness: null,
+          // 0 when this fixture warrants a risk the agent said nothing about,
+          // null when it warrants none. Silence is only free in the second case.
+          riskCoverage: scoreRiskCoverage(risks, []).score,
           legalPass: true,
           legalViolations: [],
           plainPass: true,
           plainViolations: [],
           unglossed: [],
         });
-        console.log(`  ${fixture.id} agent sample ${i + 1}/${SAMPLES}: no proposals`);
+        console.log(
+          `  ${fixture.id} agent sample ${i + 1}/${SAMPLES}: no proposals ` +
+            (toolCalls === 0 ? 'ABSTAINED' : `(${toolCalls} call(s), all dropped)`) +
+            (risks.length ? ` MISSED ${risks.map((r) => r.statType).join(', ')}` : ''),
+        );
         continue;
       }
 
       const prose = proposals
         .map((p) => [p.title, p.explanation, p.recommendation].filter(Boolean).join('\n'))
         .join('\n\n');
-      const [faith, completeness] = await Promise.all([
-        scoreFaithfulness(judgeProvider, groundTruth, prose),
-        scoreCompleteness(judgeProvider, fixture.answerKey, prose),
-      ]);
+      // One judge call, not two. The completeness judge used to run here against
+      // fixture.answerKey, which is the summary arm's contract: "top-K stat types
+      // the summary must cover". Proposals are targeted alerts, and the agent
+      // prompt calls a proposal that "just restates what a stat label already
+      // says" weak and tells the model to skip it, so grading this arm on stat
+      // coverage rewarded the behaviour the prompt forbids. It also sat at
+      // exactly 0.75 on all 36 samples of the last run, mean equal to min, which
+      // is what a structurally unreachable answer-key item looks like.
+      const faith = await scoreFaithfulness(judgeProvider, groundTruth, prose);
       const faithfulness = faith.score;
+      const coverage = scoreRiskCoverage(risks, proposals);
       const legal = scoreLegalPosture(prose);
       const plain = scorePlainLanguage(prose);
       samples.push({
         proposalCount: proposals.length,
+        toolCalls,
         faithfulness,
-        completeness,
+        riskCoverage: coverage.score,
         legalPass: legal.pass,
         legalViolations: legal.violations,
         plainPass: plain.pass,
@@ -178,7 +216,7 @@ async function scoreAgentFixture(
         unglossed: plain.unglossed,
       });
       console.log(
-        `  ${fixture.id} agent sample ${i + 1}/${SAMPLES}: ${proposals.length} proposal(s), faith ${faithfulness.toFixed(2)}, comp ${completeness.toFixed(2)}, legal ${legal.pass ? 'pass' : 'FAIL'}, plain ${plain.pass ? 'pass' : 'FAIL'}`,
+        `  ${fixture.id} agent sample ${i + 1}/${SAMPLES}: ${proposals.length} proposal(s), faith ${faithfulness.toFixed(2)}, risk ${coverage.score === null ? 'n/a' : coverage.score.toFixed(2)}, legal ${legal.pass ? 'pass' : 'FAIL'}, plain ${plain.pass ? 'pass' : 'FAIL'}`,
       );
     } catch (err) {
       // Matched on the code rather than the message, which is user-facing copy
@@ -445,6 +483,9 @@ async function main(): Promise<void> {
           fixtures: agentResults,
           legalPosture: agentResults.every((r) => r.legalPosture.pass),
           plainLanguage: agentResults.every((r) => r.plainLanguage.pass),
+          // Ungated today; FLOORS.riskCoverage records why and the printed block
+          // above carries the per-fixture numbers a floor would be set from.
+          riskCoverageGated: FLOORS.riskCoverage !== null,
           silentSamples: agentResults.reduce((n, r) => n + r.silentSamples, 0),
           totalSamples: agentResults.reduce((n, r) => n + r.sampledCount, 0),
         }
@@ -562,6 +603,24 @@ async function main(): Promise<void> {
   if (agentArmRan) {
     breaches.push(...agent.breaches);
     for (const line of agent.ungraded) console.log(`  ${line}`);
+
+    // Printed even though FLOORS.riskCoverage is null, because a number that
+    // only lands in the scorecard JSON is a number nobody reads. The silent
+    // count is on the same line: coverage below 1 on a fixture that warrants a
+    // risk is usually the agent saying nothing rather than citing the wrong stat.
+    const graded = agentResults.filter((r) => r.riskCoverage !== null);
+    if (graded.length > 0) {
+      const gate = FLOORS.riskCoverage === null ? 'ungated' : `floor ${FLOORS.riskCoverage}`;
+      console.log(`\nAgent material-risk coverage (${gate}):`);
+      for (const r of graded) {
+        const cov = r.riskCoverage as { mean: number; min: number };
+        console.log(
+          `  ${r.id}: ${cov.mean.toFixed(2)} mean, ${cov.min.toFixed(2)} min ` +
+            `over ${r.sampledCount} samples ` +
+            `(${r.silentSamples} silent = ${r.abstained} abstained + ${r.allDropped} all-dropped)`,
+        );
+      }
+    }
   }
 
   const fr22 = insightGate(results);
