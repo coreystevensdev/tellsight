@@ -40,9 +40,19 @@ export const RECORD_PROPOSAL_TOOL: ToolDefinition = {
     properties: {
       kind: { type: 'string', enum: [...FINDING_KINDS] },
       severity: { type: 'string', enum: ['info', 'notice', 'warning', 'critical'] },
-      title: { type: 'string', description: 'Plain text, max 120 characters, states the finding not the genre.' },
-      explanation: { type: 'string', description: '1-3 sentences, what the data shows with specific numbers, advisory not directive.' },
-      recommendation: { type: 'string', description: '1 sentence, advisory framing only, never "you should".' },
+      title: {
+        type: 'string',
+        description: 'Plain text, max 120 characters, states the finding not the genre.',
+      },
+      explanation: {
+        type: 'string',
+        description:
+          '1-3 sentences, what the data shows with specific numbers, advisory not directive.',
+      },
+      recommendation: {
+        type: 'string',
+        description: '1 sentence, advisory framing only, never "you should".',
+      },
       confidence: { type: 'number', minimum: 0, maximum: 1 },
       evidence: {
         type: 'array',
@@ -59,7 +69,7 @@ export const RECORD_PROPOSAL_TOOL: ToolDefinition = {
       movement: {
         type: 'string',
         description:
-          "The direction token from the stat you cited, copied exactly as it appears there, e.g. burning, shrinking, above. Omit it when the stat you cited states no direction. Do not translate it into up or down.",
+          'The direction token from the stat you cited, copied exactly as it appears there, e.g. burning, shrinking, above. Omit it when the stat you cited states no direction. Do not translate it into up or down.',
       },
       facet: {
         type: 'string',
@@ -89,7 +99,16 @@ export const RECORD_PROPOSAL_TOOL: ToolDefinition = {
         required: ['type', 'targetRef'],
       },
     },
-    required: ['kind', 'severity', 'title', 'explanation', 'recommendation', 'confidence', 'evidence', 'subject'],
+    required: [
+      'kind',
+      'severity',
+      'title',
+      'explanation',
+      'recommendation',
+      'confidence',
+      'evidence',
+      'subject',
+    ],
   },
 };
 
@@ -171,8 +190,20 @@ export async function generateProposals(
   businessProfile?: BusinessProfile | null,
   now: Date = new Date(),
   onCost?: (cost: number | null) => void,
+  // How many record_proposal calls the model made, reported separately from what
+  // survived. Zero returned proposals has two causes that look identical to a
+  // caller: the model judged nothing worth flagging, or it flagged something and
+  // validation dropped it. Only the second is a defect on our side, and the
+  // orchestrator's silent-run metric could not tell them apart.
+  onToolCalls?: (count: number) => void,
 ): Promise<AgentProposal[]> {
-  const { system, user, promptedStats } = assemblePrompt(candidates, datasetId, PROMPT_VERSION, businessProfile, now);
+  const { system, user, promptedStats } = assemblePrompt(
+    candidates,
+    datasetId,
+    PROMPT_VERSION,
+    businessProfile,
+    now,
+  );
   // Keyed by the id the prompt printed in each `[cite: id]` token, built from
   // promptedStats (what the prompt actually carried after the sample-size
   // gate), not the full candidate pool -- otherwise a suppressed stat's id
@@ -180,9 +211,13 @@ export async function generateProposals(
   const statsById = new Map(promptedStats.map((stat) => [statInstanceId(stat, datasetId), stat]));
   const period = currentPeriod(now);
 
-  logger.info({ datasetId, insightCount: promptedStats.length }, 'agent proposal generation started');
+  logger.info(
+    { datasetId, insightCount: promptedStats.length },
+    'agent proposal generation started',
+  );
 
   const calls = await generateWithTools({ system, user }, [RECORD_PROPOSAL_TOOL], onCost);
+  onToolCalls?.(calls.filter((call) => call.name === RECORD_PROPOSAL_TOOL.name).length);
 
   const proposals: AgentProposal[] = [];
   for (const call of calls) {
@@ -206,7 +241,10 @@ export async function generateProposals(
   const seenDedupKeys = new Set<string>();
   for (const proposal of rankProposals(proposals)) {
     if (seenDedupKeys.has(proposal.dedupKey)) {
-      logger.info({ dedupKey: proposal.dedupKey }, 'agent proposal dropped: duplicate within batch');
+      logger.info(
+        { dedupKey: proposal.dedupKey },
+        'agent proposal dropped: duplicate within batch',
+      );
       continue;
     }
     seenDedupKeys.add(proposal.dedupKey);
@@ -216,7 +254,12 @@ export async function generateProposals(
   const capped = deduped.slice(0, MAX_PROPOSALS);
 
   logger.info(
-    { datasetId, callCount: calls.length, proposalCount: capped.length, droppedForVolume: deduped.length - capped.length },
+    {
+      datasetId,
+      callCount: calls.length,
+      proposalCount: capped.length,
+      droppedForVolume: deduped.length - capped.length,
+    },
     'agent proposal generation complete',
   );
 

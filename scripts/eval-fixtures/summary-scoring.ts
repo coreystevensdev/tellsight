@@ -105,8 +105,14 @@ export interface FixtureScore {
 
 export interface AgentSample {
   proposalCount: number;
+  /** record_proposal calls the model made, before validation dropped any. */
+  toolCalls: number;
   faithfulness: number | null;
-  completeness: number | null;
+  // Not `completeness`: this arm is graded on whether it flagged the material
+  // risks the prompt names, which is a different contract from the summary
+  // arm's "cover the top-K stats". null means the fixture warranted no risk,
+  // which is not the same as a silent sample scoring 0. See material-risk.ts.
+  riskCoverage: number | null;
   legalPass: boolean;
   legalViolations: string[];
   plainPass: boolean;
@@ -124,7 +130,13 @@ export interface AgentFixtureScore {
   unmeasured: number;
   errored: number;
   faithfulness: { mean: number; min: number } | null;
-  completeness: { mean: number; min: number } | null;
+  riskCoverage: { mean: number; min: number } | null;
+  // One row per sample, for the same reason the dashboard arm has one (DW-251):
+  // a mean and a min cannot produce an interval, so an arm comparison whose
+  // decision rule is "the 95% interval excludes zero" is unanswerable from the
+  // aggregate alone. null faithfulness marks a silent sample, which is a real
+  // outcome and not a gap, so the rows are kept rather than filtered here.
+  sampleScores: { faithfulness: number | null; riskCoverage: number | null }[];
   legalPosture: { pass: boolean; violations: string[] };
   plainLanguage: {
     pass: boolean;
@@ -134,6 +146,13 @@ export interface AgentFixtureScore {
   };
   proposalsPerSample: number;
   silentSamples: number;
+  // silentSamples splits into these two, and they are different defects. The
+  // model judging nothing worth flagging is a prompt or reasoning question; the
+  // model flagging something that validation then dropped is ours. One run had a
+  // sample flag a 2.4-month runway citing the right stat, dropped over a movement
+  // token, and recorded identically to saying nothing at all.
+  abstained: number;
+  allDropped: number;
   sampledCount: number;
 }
 
@@ -311,7 +330,13 @@ export function summarizeAgentSamples(
   // that emitted a proposal contribute to the prose metrics.
   const scoredSamples = samples.filter((sample) => sample.faithfulness !== null);
   const faithfulness = scoredSamples.map((sample) => sample.faithfulness as number);
-  const completeness = scoredSamples.map((sample) => sample.completeness as number);
+  // Deliberately over every sample, not just the ones with prose. A silent
+  // sample on a fixture that warrants a risk scored 0 and has to stay in the
+  // mean; excluding it is what hid 17 of 36 samples saying nothing about a
+  // 2.4-month runway. null only ever means the fixture warranted no risk.
+  const coverage = samples
+    .map((sample) => sample.riskCoverage)
+    .filter((value): value is number => value !== null);
   return {
     id: fixture.id,
     label: fixture.label,
@@ -320,9 +345,11 @@ export function summarizeAgentSamples(
     faithfulness: faithfulness.length
       ? { mean: mean(faithfulness), min: Math.min(...faithfulness) }
       : null,
-    completeness: completeness.length
-      ? { mean: mean(completeness), min: Math.min(...completeness) }
-      : null,
+    riskCoverage: coverage.length ? { mean: mean(coverage), min: Math.min(...coverage) } : null,
+    sampleScores: samples.map((sample) => ({
+      faithfulness: sample.faithfulness,
+      riskCoverage: sample.riskCoverage,
+    })),
     legalPosture: {
       pass: samples.every((sample) => sample.legalPass),
       violations: [...new Set(samples.flatMap((sample) => sample.legalViolations))],
@@ -333,6 +360,9 @@ export function summarizeAgentSamples(
       unglossedSamples: samples.filter((sample) => sample.unglossed.length > 0).length,
       unglossedTerms: [...new Set(samples.flatMap((sample) => sample.unglossed))],
     },
+    abstained: samples.filter((sample) => sample.toolCalls === 0).length,
+    allDropped: samples.filter((sample) => sample.toolCalls > 0 && sample.proposalCount === 0)
+      .length,
     proposalsPerSample: mean(samples.map((sample) => sample.proposalCount)),
     silentSamples: samples.filter((sample) => sample.proposalCount === 0).length,
     sampledCount: samples.length,

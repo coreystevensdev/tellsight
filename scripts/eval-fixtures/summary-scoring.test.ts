@@ -272,12 +272,54 @@ describe('sample summaries', () => {
     });
   });
 
-  it('reports all-silent agent runs as unscored prose', () => {
+  it('keeps a silent sample in the coverage mean when a risk was warranted', () => {
+    // The point of replacing the mis-keyed completeness metric. Two samples said
+    // nothing while the fixture warranted a risk, so coverage is 0 on both and
+    // the mean is 0. Under the old scoring these were null and dropped out of
+    // the mean entirely, which is how 17 of 36 silent samples on a 2.4-month
+    // runway moved no number at all.
     const samples: AgentSample[] = [
       {
         proposalCount: 0,
+        toolCalls: 0,
         faithfulness: null,
-        completeness: null,
+        riskCoverage: 0,
+        legalPass: true,
+        legalViolations: [],
+        plainPass: true,
+        plainViolations: [],
+        unglossed: [],
+      },
+      {
+        proposalCount: 1,
+        toolCalls: 1,
+        faithfulness: 0.9,
+        riskCoverage: 1,
+        legalPass: true,
+        legalViolations: [],
+        plainPass: true,
+        plainViolations: [],
+        unglossed: [],
+      },
+    ];
+
+    const score = summarizeAgentSamples({ id: 'cash-crunch', label: 'Cash' }, samples);
+    // Faithfulness still only averages the sample that produced prose.
+    expect(score.faithfulness).toEqual({ mean: 0.9, min: 0.9 });
+    // Coverage averages both, so the silent one drags it to 0.5.
+    expect(score.riskCoverage).toEqual({ mean: 0.5, min: 0 });
+  });
+
+  it('splits a silent sample by whether the model spoke at all', () => {
+    // Both samples returned zero proposals. The first said nothing; the second
+    // made two record_proposal calls that validation dropped. Recording them the
+    // same way is what made a dropped runway flag indistinguishable from silence.
+    const samples: AgentSample[] = [
+      {
+        proposalCount: 0,
+        toolCalls: 0,
+        faithfulness: null,
+        riskCoverage: 0,
         legalPass: true,
         legalViolations: [],
         plainPass: true,
@@ -286,8 +328,41 @@ describe('sample summaries', () => {
       },
       {
         proposalCount: 0,
+        toolCalls: 2,
         faithfulness: null,
-        completeness: null,
+        riskCoverage: 0,
+        legalPass: true,
+        legalViolations: [],
+        plainPass: true,
+        plainViolations: [],
+        unglossed: [],
+      },
+    ];
+
+    const score = summarizeAgentSamples({ id: 'cash-crunch', label: 'Cash' }, samples);
+    expect(score.silentSamples).toBe(2);
+    expect(score.abstained).toBe(1);
+    expect(score.allDropped).toBe(1);
+  });
+
+  it('reports all-silent agent runs as unscored prose', () => {
+    const samples: AgentSample[] = [
+      {
+        proposalCount: 0,
+        toolCalls: 0,
+        faithfulness: null,
+        riskCoverage: null,
+        legalPass: true,
+        legalViolations: [],
+        plainPass: true,
+        plainViolations: [],
+        unglossed: [],
+      },
+      {
+        proposalCount: 0,
+        toolCalls: 0,
+        faithfulness: null,
+        riskCoverage: null,
         legalPass: true,
         legalViolations: [],
         plainPass: true,
@@ -298,7 +373,9 @@ describe('sample summaries', () => {
 
     expect(summarizeAgentSamples({ id: 'steady', label: 'Steady' }, samples)).toMatchObject({
       faithfulness: null,
-      completeness: null,
+      // null here because this fixture warranted no risk, not because the
+      // samples were silent. A warranted risk plus silence is 0, not null.
+      riskCoverage: null,
       proposalsPerSample: 0,
       silentSamples: 2,
       sampledCount: 2,

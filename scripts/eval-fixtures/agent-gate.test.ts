@@ -2,13 +2,17 @@ import { describe, it, expect } from 'vitest';
 
 import { agentGate } from './agent-gate.js';
 
-const FLOORS = { faithfulness: 0.85, completeness: 0.8 };
+// riskCoverage carries a number here so the gate's behaviour is testable. The
+// value shipped in eval-summaries.ts is null until a run measures it; FLOORS_OPEN
+// below pins that state.
+const FLOORS = { faithfulness: 0.85, completeness: 0.8, riskCoverage: 0.8 };
+const FLOORS_OPEN = { ...FLOORS, riskCoverage: null };
 
 function score(over: Partial<Parameters<typeof agentGate>[0][number]> = {}) {
   return {
     id: 'healthy-growth',
     faithfulness: { mean: 0.93 },
-    completeness: { mean: 0.9 },
+    riskCoverage: { mean: 0.9 },
     legalPosture: { pass: true, violations: [] },
     plainLanguage: { pass: true, violations: [] },
     unmeasured: 0,
@@ -25,18 +29,49 @@ describe('agentGate', () => {
     expect(ungraded).toEqual([]);
   });
 
-  // The three failures DW-242 recorded, each the actual observed one.
-  it('fails the completeness the dashboard arm is held to', () => {
-    // agent/cash-crunch scored 0.75 against a floor of 0.8 and the run printed
-    // "all fixtures meet the floors".
+  // The three failures DW-242 recorded, each the actual observed one. The first
+  // was a completeness of 0.75 passing silently; that metric graded this arm
+  // against the summary arm's answer key and has been replaced by risk coverage,
+  // so the property DW-242 pinned (the gate breaches on a sub-floor quality
+  // metric for this arm) is asserted here on the metric that replaced it.
+  it('fails a quality metric below its floor', () => {
     const { breaches } = agentGate(
-      [score({ id: 'cash-crunch', completeness: { mean: 0.75 } })],
+      [score({ id: 'cash-crunch', riskCoverage: { mean: 0.75 } })],
       [],
       1,
       10,
       FLOORS,
     );
-    expect(breaches).toEqual(['agent/cash-crunch: completeness 0.75 < 0.8']);
+    expect(breaches).toEqual(['agent/cash-crunch: risk coverage 0.75 < 0.8']);
+  });
+
+  it('reports risk coverage without breaching when no floor is set', () => {
+    // The state eval-summaries.ts ships: measured and printed, ungated, because
+    // 0.8 was calibrated against a different metric. A floor of null must not
+    // read as a floor of 0.
+    const { breaches } = agentGate(
+      [score({ id: 'cash-crunch', riskCoverage: { mean: 0.1 } })],
+      [],
+      1,
+      10,
+      FLOORS_OPEN,
+    );
+    expect(breaches).toEqual([]);
+  });
+
+  it('does not call a fixture ungraded when it simply warranted no risk', () => {
+    // riskCoverage is null for a fixture with no material risk, which says
+    // nothing about whether prose was produced. Folding that null into the
+    // all-silent check marked two prose-producing fixtures as silent.
+    const { breaches, ungraded } = agentGate(
+      [score({ id: 'healthy-growth', riskCoverage: null })],
+      [],
+      1,
+      10,
+      FLOORS,
+    );
+    expect(ungraded).toEqual([]);
+    expect(breaches).toEqual([]);
   });
 
   it('fails a fixture that produced no result at all', () => {
@@ -75,7 +110,7 @@ describe('agentGate', () => {
     // Silence is what the prompt asks for when nothing is worth flagging, so a
     // null mean is an absent measurement, not a zero-quality one.
     const { breaches, ungraded } = agentGate(
-      [score({ faithfulness: null, completeness: null })],
+      [score({ faithfulness: null, riskCoverage: null })],
       [],
       1,
       10,
@@ -87,7 +122,7 @@ describe('agentGate', () => {
 
   it('a shed sample outranks a low score, because the score is not a measurement', () => {
     const { breaches } = agentGate(
-      [score({ unmeasured: 4, completeness: { mean: 0.1 } })],
+      [score({ unmeasured: 4, riskCoverage: { mean: 0.1 } })],
       [],
       1,
       10,

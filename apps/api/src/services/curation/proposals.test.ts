@@ -45,7 +45,16 @@ const revenueTrend: ScoredInsight = {
     category: 'Sales',
     value: 0.15,
     sampleSize: 6,
-    details: { slope: 0.15, intercept: 100, growthPercent: 15, dataPoints: 6, firstValue: 400, lastValue: 460, firstPeriod: '2026-01', lastPeriod: '2026-06' },
+    details: {
+      slope: 0.15,
+      intercept: 100,
+      growthPercent: 15,
+      dataPoints: 6,
+      firstValue: 400,
+      lastValue: 460,
+      firstPeriod: '2026-01',
+      lastPeriod: '2026-06',
+    },
   },
   score: 0.8,
   breakdown: { novelty: 0.8, actionability: 0.8, specificity: 0.8 },
@@ -135,7 +144,10 @@ describe('generateProposals', () => {
     const result = await generateProposals(insights, DATASET_ID, null, NOW);
 
     expect(result).toHaveLength(2);
-    expect(result.map((p) => p.title)).toEqual(['Sales trending up', 'Marketing concentration risk']);
+    expect(result.map((p) => p.title)).toEqual([
+      'Sales trending up',
+      'Marketing concentration risk',
+    ]);
   });
 
   it('drops a call that fails schema validation but keeps other valid calls', async () => {
@@ -170,13 +182,19 @@ describe('generateProposals', () => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { subject, ...noSubject } = validInput({ title: 'No subject' });
 
-    mockGenerateWithTools.mockResolvedValue([toolCall(validInput({ title: 'Good' })), toolCall(noSubject)]);
+    mockGenerateWithTools.mockResolvedValue([
+      toolCall(validInput({ title: 'Good' })),
+      toolCall(noSubject),
+    ]);
 
     const result = await generateProposals(insights, DATASET_ID, null, NOW);
 
     expect(result).toHaveLength(1);
     expect(result[0]!.title).toBe('Good');
-    expect(logger.warn).toHaveBeenCalledWith(expect.anything(), 'record_proposal call missing a subject for dedup');
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.anything(),
+      'record_proposal call missing a subject for dedup',
+    );
   });
 
   it('drops a call whose input is not an object', async () => {
@@ -200,7 +218,10 @@ describe('generateProposals', () => {
     const result = await generateProposals(insights, DATASET_ID, null, NOW);
 
     expect(result).toEqual([]);
-    expect(logger.warn).toHaveBeenCalledWith(expect.anything(), 'record_proposal call had a non-string facet');
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.anything(),
+      'record_proposal call had a non-string facet',
+    );
   });
 
   it('treats a null facet the same as an omitted facet', async () => {
@@ -213,7 +234,9 @@ describe('generateProposals', () => {
   });
 
   it('trims whitespace around an evidence id before checking it against the allowed set', async () => {
-    mockGenerateWithTools.mockResolvedValue([toolCall(validInput({ evidence: [`  ${trendId}  `] }))]);
+    mockGenerateWithTools.mockResolvedValue([
+      toolCall(validInput({ evidence: [`  ${trendId}  `] })),
+    ]);
 
     const result = await generateProposals(insights, DATASET_ID, null, NOW);
 
@@ -227,7 +250,10 @@ describe('generateProposals', () => {
     const result = await generateProposals(insights, DATASET_ID, null, NOW);
 
     expect(result).toEqual([]);
-    expect(logger.warn).toHaveBeenCalledWith(expect.anything(), 'record_proposal call missing a subject for dedup');
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.anything(),
+      'record_proposal call missing a subject for dedup',
+    );
   });
 
   it('treats an empty-string facet the same as an omitted facet', async () => {
@@ -277,7 +303,11 @@ describe('generateProposals', () => {
     mockGenerateWithTools.mockResolvedValue([
       toolCall(
         validInput({
-          action: { type: 'flagInvoice', targetRef: 'invoice-42', estimatedImpact: { amount: 500, currency: 'USD' } },
+          action: {
+            type: 'flagInvoice',
+            targetRef: 'invoice-42',
+            estimatedImpact: { amount: 500, currency: 'USD' },
+          },
         }),
       ),
     ]);
@@ -295,8 +325,18 @@ describe('generateProposals', () => {
   it('derives the correct ISO week across a year boundary', async () => {
     mockGenerateWithTools.mockResolvedValue([toolCall(validInput())]);
 
-    const newYearsEve = await generateProposals(insights, DATASET_ID, null, new Date('2025-12-31T12:00:00Z'));
-    const newYearsDay = await generateProposals(insights, DATASET_ID, null, new Date('2026-01-01T12:00:00Z'));
+    const newYearsEve = await generateProposals(
+      insights,
+      DATASET_ID,
+      null,
+      new Date('2025-12-31T12:00:00Z'),
+    );
+    const newYearsDay = await generateProposals(
+      insights,
+      DATASET_ID,
+      null,
+      new Date('2026-01-01T12:00:00Z'),
+    );
 
     expect(newYearsEve[0]!.period).toBe('2026-W01');
     expect(newYearsDay[0]!.period).toBe('2026-W01');
@@ -320,7 +360,13 @@ describe('generateProposals', () => {
     const result = await generateProposals(insights, DATASET_ID, null, NOW);
 
     expect(result).toHaveLength(5);
-    expect(result.map((p) => p.severity)).toEqual(['critical', 'critical', 'warning', 'notice', 'info']);
+    expect(result.map((p) => p.severity)).toEqual([
+      'critical',
+      'critical',
+      'warning',
+      'notice',
+      'info',
+    ]);
     expect(result[0]!.title).toBe('Finding 5');
   });
 
@@ -339,7 +385,43 @@ describe('generateProposals', () => {
   it('propagates errors from generateWithTools, e.g. a cost budget rejection', async () => {
     mockGenerateWithTools.mockRejectedValue(new Error('exceeded safety cap'));
 
-    await expect(generateProposals(insights, DATASET_ID, null, NOW)).rejects.toThrow('exceeded safety cap');
+    await expect(generateProposals(insights, DATASET_ID, null, NOW)).rejects.toThrow(
+      'exceeded safety cap',
+    );
+  });
+
+  it('reports the tool-call count even when every proposal is dropped', async () => {
+    // The case that motivated the callback: the model flagged a 2.4-month runway
+    // citing the right stat and validation dropped it over a movement token, so
+    // the caller saw zero proposals and could not tell that from silence.
+    mockGenerateWithTools.mockResolvedValue([
+      { name: 'record_proposal', input: { nope: true } },
+      { name: 'record_proposal', input: { nope: true } },
+    ]);
+    const onToolCalls = vi.fn();
+
+    const result = await generateProposals(insights, DATASET_ID, null, NOW, undefined, onToolCalls);
+
+    expect(result).toEqual([]);
+    expect(onToolCalls).toHaveBeenCalledWith(2);
+  });
+
+  it('reports zero tool calls when the model genuinely stays silent', async () => {
+    mockGenerateWithTools.mockResolvedValue([]);
+    const onToolCalls = vi.fn();
+
+    await generateProposals(insights, DATASET_ID, null, NOW, undefined, onToolCalls);
+
+    expect(onToolCalls).toHaveBeenCalledWith(0);
+  });
+
+  it('does not count a call to some other tool', async () => {
+    mockGenerateWithTools.mockResolvedValue([{ name: 'something_else', input: {} }]);
+    const onToolCalls = vi.fn();
+
+    await generateProposals(insights, DATASET_ID, null, NOW, undefined, onToolCalls);
+
+    expect(onToolCalls).toHaveBeenCalledWith(0);
   });
 
   it('forwards the onCost callback to generateWithTools', async () => {
@@ -348,7 +430,11 @@ describe('generateProposals', () => {
 
     await generateProposals(insights, DATASET_ID, null, NOW, onCost);
 
-    expect(mockGenerateWithTools).toHaveBeenCalledWith(expect.any(Object), expect.any(Array), onCost);
+    expect(mockGenerateWithTools).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.any(Array),
+      onCost,
+    );
   });
 
   // generateProposals hands assemblePrompt the full curated candidate pool

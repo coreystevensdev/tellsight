@@ -11,7 +11,7 @@
 interface AgentScore {
   id: string;
   faithfulness: { mean: number } | null;
-  completeness: { mean: number } | null;
+  riskCoverage: { mean: number } | null;
   legalPosture: { pass: boolean; violations: string[] };
   plainLanguage: { pass: boolean; violations: string[] };
   unmeasured: number;
@@ -22,6 +22,10 @@ interface AgentScore {
 interface Floors {
   faithfulness: number;
   completeness: number;
+  // null means report the number without gating on it. Not optional: a missing
+  // field would read the same as a deliberate null at the call site, and the
+  // whole point is that choosing not to gate is a decision someone made.
+  riskCoverage: number | null;
 }
 
 export interface AgentGateResult {
@@ -65,7 +69,11 @@ export function agentGate(
       );
       continue;
     }
-    if (r.faithfulness === null || r.completeness === null) {
+    // Only faithfulness gates this. riskCoverage is null when the fixture
+    // warranted no material risk, which says nothing about whether prose was
+    // produced: folding it in here marked two prose-producing fixtures as all
+    // silent. Different nulls, different branches.
+    if (r.faithfulness === null) {
       ungraded.push(`agent/${r.id}: all ${r.sampledCount} samples silent, no prose to grade`);
       continue;
     }
@@ -74,9 +82,18 @@ export function agentGate(
         `agent/${r.id}: faithfulness ${r.faithfulness.mean.toFixed(2)} < ${floors.faithfulness}`,
       );
     }
-    if (r.completeness.mean < floors.completeness) {
+    // Reported, not gated, until a run measures it. The summary arm's 0.8 was
+    // set against a judge scoring stat coverage, and this scores whether a named
+    // material risk got flagged; carrying the number across would be borrowing a
+    // floor from a different metric. Set it from the first measured run, and if
+    // that has not happened, this comment is the reason it is still ungated.
+    if (
+      floors.riskCoverage !== null &&
+      r.riskCoverage !== null &&
+      r.riskCoverage.mean < floors.riskCoverage
+    ) {
       breaches.push(
-        `agent/${r.id}: completeness ${r.completeness.mean.toFixed(2)} < ${floors.completeness}`,
+        `agent/${r.id}: risk coverage ${r.riskCoverage.mean.toFixed(2)} < ${floors.riskCoverage}`,
       );
     }
     if (!r.legalPosture.pass) {
