@@ -2,11 +2,14 @@ import { Router } from 'express';
 
 import { requireUser } from '../lib/requireUser.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
-import { ANALYTICS_EVENTS, type AnalyticsEventName } from 'shared/constants';
+import { CLIENT_POSTABLE_EVENTS, type AnalyticsEventName } from 'shared/constants';
 
 const MAX_METADATA_BYTES = 4096;
 
-const VALID_EVENTS = new Set<string>(Object.values(ANALYTICS_EVENTS));
+// Only what the browser actually sends, not every event name in the product.
+// Anything else is emitted server-side, and a client able to forge one also
+// chose the metadata that the admin cost tile and compliance panel read back.
+const VALID_EVENTS = new Set<string>(CLIENT_POSTABLE_EVENTS);
 
 const analyticsRouter = Router();
 
@@ -25,7 +28,7 @@ analyticsRouter.post('/events', (req, res) => {
   }
 
   if (!VALID_EVENTS.has(eventName)) {
-    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Unknown event name' } });
+    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Event name is not client-postable' } });
     return;
   }
 

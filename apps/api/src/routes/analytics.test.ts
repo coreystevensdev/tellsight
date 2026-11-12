@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import http from 'node:http';
 
+import { CLIENT_POSTABLE_EVENTS } from 'shared/constants';
+
 vi.hoisted(() => {
   Object.assign(process.env, {
     DATABASE_URL: 'postgres://u:p@localhost:5432/db',
@@ -92,6 +94,29 @@ describe('POST /analytics/events', () => {
 
     expect(res.status).toBe(400);
     expect(mockTrackEvent).not.toHaveBeenCalled();
+  });
+
+  // These two are what made the cast findings exploitable: the client could
+  // forge the event and therefore the metadata that two admin aggregates read.
+  // Neither is ever sent by the browser, so refusing them breaks nothing.
+  it.each(['ai.summary_completed', 'alert.clicked'])(
+    'rejects the server-emitted event %s',
+    async (eventName) => {
+      const res = await post({ eventName, metadata: { inputTokens: 'x', fireId: 'y' } });
+
+      expect(res.status).toBe(400);
+      expect(mockTrackEvent).not.toHaveBeenCalled();
+    },
+  );
+
+  // The other half of the same gate: narrowing the allowlist must not drop an
+  // event the browser legitimately sends, which would vanish into the swallowed
+  // catch in lib/analytics.ts rather than surfacing.
+  it.each([...CLIENT_POSTABLE_EVENTS])('still accepts the client event %s', async (eventName) => {
+    const res = await post({ eventName });
+
+    expect(res.status).toBe(200);
+    expect(mockTrackEvent).toHaveBeenCalledWith(3, 7, eventName, undefined);
   });
 
   it('rejects a missing event name', async () => {
