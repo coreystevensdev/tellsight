@@ -163,6 +163,22 @@ export interface AiUsageStats {
   requestCount: number;
 }
 
+// The largest Anthropic context window is an order of magnitude under this, so a
+// row above the ceiling was forged rather than measured. Dropping it keeps the
+// admin cost tile meaningful; returning numeric instead of int is what makes an
+// overflow impossible either way.
+const MAX_TOKENS_PER_EVENT = 10_000_000;
+
+function sumTokenField(field: 'inputTokens' | 'outputTokens') {
+  return sql<string>`COALESCE(SUM(
+    CASE WHEN jsonb_typeof(${analyticsEvents.metadata}->${field}) = 'number' THEN
+      CASE WHEN (${analyticsEvents.metadata}->>${field})::numeric BETWEEN 0 AND ${MAX_TOKENS_PER_EVENT}
+           THEN (${analyticsEvents.metadata}->>${field})::numeric
+      END
+    END
+  ), 0)::numeric`;
+}
+
 /**
  * Sum AI token usage across all orgs within a time window. Pulls from the
  * `AI_SUMMARY_COMPLETED` event's JSONB metadata (where the SSE stream records
@@ -171,12 +187,15 @@ export interface AiUsageStats {
  * month-to-date via getMonthToDateAiUsage).
  *
  * `COALESCE` yields 0 when the filter matches no rows (empty month, new
- * deploy). The jsonb_typeof guard is load-bearing, not defensive: metadata is
- * caller-written (POST /analytics/events allowlists the event name and stores
- * whatever metadata arrives), so one row with a non-numeric inputTokens used to
- * raise 22P02 here and 500 the admin dashboard until someone deleted it. CASE
- * is used rather than a WHERE clause because its evaluation order is defined,
- * where an AND's operands can be reordered by the planner.
+ * deploy). Everything else here exists because metadata is caller-written:
+ * POST /analytics/events allowlists the event name and then stores whatever
+ * metadata arrives, so both of these used to 500 the admin dashboard for good
+ * off a single forged row. A non-numeric value raised 22P02, and a valid but
+ * absurd JSON number raised 22003 on the way back to int.
+ *
+ * Nested CASE rather than an AND chain: CASE has a defined evaluation order,
+ * where an AND's operands can be reordered by the planner and the cast could
+ * run before its own guard.
  */
 export async function getAiUsageStats(
   windowStart: Date,
@@ -184,8 +203,8 @@ export async function getAiUsageStats(
 ): Promise<AiUsageStats> {
   const [row] = await client
     .select({
-      inputTokens: sql<number>`COALESCE(SUM(CASE WHEN jsonb_typeof(${analyticsEvents.metadata}->'inputTokens') = 'number' THEN (${analyticsEvents.metadata}->>'inputTokens')::numeric END), 0)::int`,
-      outputTokens: sql<number>`COALESCE(SUM(CASE WHEN jsonb_typeof(${analyticsEvents.metadata}->'outputTokens') = 'number' THEN (${analyticsEvents.metadata}->>'outputTokens')::numeric END), 0)::int`,
+      inputTokens: sumTokenField('inputTokens'),
+      outputTokens: sumTokenField('outputTokens'),
       requestCount: count(),
     })
     .from(analyticsEvents)
@@ -196,9 +215,11 @@ export async function getAiUsageStats(
       ),
     );
 
+  // numeric comes back as a string to keep precision, so coerce here rather
+  // than letting every consumer do arithmetic on '1500'.
   return {
-    inputTokens: row?.inputTokens ?? 0,
-    outputTokens: row?.outputTokens ?? 0,
+    inputTokens: Number(row?.inputTokens ?? 0),
+    outputTokens: Number(row?.outputTokens ?? 0),
     requestCount: row?.requestCount ?? 0,
   };
 }
