@@ -17,11 +17,17 @@ import { dbAdmin } from '../lib/db.js';
 
 const MIGRATIONS = join(import.meta.dirname ?? __dirname, '../../drizzle/migrations');
 
-// Not org-scoped, so there is no tenant predicate to write. Named explicitly
-// because the useful failure is a *new* table appearing without a policy, and
-// that only fails if the exceptions are a closed set rather than "whatever is
-// currently unprotected".
-const NOT_ORG_SCOPED = ['audit_logs', 'orgs', 'password_reset_tokens', 'users'];
+// These three carry no org_id column at all, so there is no tenant predicate to
+// write. Named explicitly because the useful failure is a *new* table appearing
+// without a policy, and that only fails if the exceptions are a closed set
+// rather than "whatever is currently unprotected".
+//
+// audit_logs was in this list and should not have been: it has org_id, so the
+// label was false and the missing policy read as a deliberate exception rather
+// than the gap it was. Migration 0047 gives it a policy. The lesson is that an
+// exception list is only as good as the reason attached to it, so keep this one
+// meaning "no org_id column" and nothing else.
+const NOT_ORG_SCOPED = ['orgs', 'password_reset_tokens', 'users'];
 
 function tablesWithRlsInMigrations(): string[] {
   const found = new Set<string>();
@@ -41,10 +47,11 @@ const EXPECTED = tablesWithRlsInMigrations();
 describe('row-level security, schema level', () => {
   // Without this the whole file passes if the regex stops matching.
   it('parsed a plausible set of tables from the migrations', () => {
-    expect(EXPECTED.length).toBeGreaterThanOrEqual(19);
+    expect(EXPECTED.length).toBeGreaterThanOrEqual(20);
     expect(EXPECTED).toContain('data_rows');
     expect(EXPECTED).toContain('datasets');
     expect(EXPECTED).toContain('ai_summaries');
+    expect(EXPECTED).toContain('audit_logs');
   });
 
   it('has row-level security enabled on every table the migrations enable it for', async () => {
