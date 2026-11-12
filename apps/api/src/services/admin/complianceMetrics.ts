@@ -194,9 +194,15 @@ export async function getAlertComplianceMetrics(): Promise<AlertComplianceMetric
         FROM alert_rules r
         LEFT JOIN alert_rule_fires f
           ON f.rule_id = r.id AND f.fired_at >= NOW() - INTERVAL '30 days'
+        -- Compared as text rather than casting the jsonb to int. metadata is
+        -- caller-written, and a single alert.clicked row with a non-numeric
+        -- fireId raised 22P02 for every later call to this panel. A
+        -- jsonb_typeof guard beside the cast would not be enough here: the
+        -- planner may reorder AND operands, so the cast could still run first.
+        -- f.id is an integer we own, so casting that direction cannot fail.
         LEFT JOIN analytics_events c
           ON c.event_name = ${ANALYTICS_EVENTS.ALERT_CLICKED}
-          AND (c.metadata->>'fireId')::int = f.id
+          AND c.metadata->>'fireId' = f.id::text
         WHERE r.deleted_at IS NULL
         GROUP BY r.id, r.kind
       )
