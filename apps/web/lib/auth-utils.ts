@@ -34,7 +34,15 @@ export function safeRedirect(candidate: string | null | undefined): string {
   try {
     const url = new URL(candidate, PROBE_ORIGIN);
     if (url.origin !== PROBE_ORIGIN) return '/dashboard';
-    return url.pathname + url.search + url.hash;
+
+    // Dot segments normalise after resolution, so `/.//evil.example` resolves
+    // same-origin and then yields the pathname `//evil.example`, which is
+    // protocol-relative on its own. Re-resolve what we are about to hand back
+    // rather than prefix-testing it, since a prefix test is what missed the
+    // backslash in the first place.
+    const path = url.pathname + url.search + url.hash;
+    if (new URL(path, PROBE_ORIGIN).origin !== PROBE_ORIGIN) return '/dashboard';
+    return path;
   } catch {
     return '/dashboard';
   }

@@ -29,6 +29,19 @@ describe('safeRedirect', () => {
     expect(safeRedirect(path)).toBe('/dashboard');
   });
 
+  // Dot segments normalise AFTER resolution, so the candidate resolves
+  // same-origin while the pathname it produces is itself protocol-relative.
+  // The first version of this guard checked the input and returned a string it
+  // never checked, which reopened the same hole through a different door.
+  it.each([
+    ['a dot segment before a double slash', '/.//evil.example'],
+    ['a percent-encoded dot segment', '/%2e//evil.example'],
+    ['a parent segment before a double slash', '/..//evil.example'],
+    ['dot segments that climb past the root', '/a/../..//evil.example'],
+  ])('refuses %s, which normalises to a protocol-relative path', (_label, path) => {
+    expect(safeRedirect(path)).toBe('/dashboard');
+  });
+
   it.each([
     ['a protocol-relative URL', '//evil.example'],
     ['an absolute http URL', 'http://evil.example/steal'],
@@ -41,6 +54,27 @@ describe('safeRedirect', () => {
     ['undefined', undefined],
   ])('refuses %s', (_label, path) => {
     expect(safeRedirect(path)).toBe('/dashboard');
+  });
+
+  // The invariant, asserted over the whole corpus rather than case by case:
+  // whatever comes back has to resolve same-origin when the router re-parses it.
+  // That is exactly what the first version of this guard broke.
+  it('never returns a path that resolves off-origin', () => {
+    const origin = 'https://app.example';
+    const hostile = [
+      '//evil.example', '/\\evil.example', '/\\/evil.example', '/\\\\evil.example',
+      '/.//evil.example', '/..//evil.example', '/%2e//evil.example', '/%2E%2E//evil.example',
+      '/a/../..//evil.example', '/./././/evil.example', '/.%2F/evil.example',
+      '/\t//evil.example', '/\n//evil.example', '/\r//evil.example',
+      '//evil.example/path?a=1#b', '/..//..//evil.example',
+      'http://evil.example', 'https://evil.example', 'javascript:alert(1)',
+      'data:text/html,x', 'evil.example', '', '/', '/dashboard', '/a?b=//evil.example',
+    ];
+
+    for (const candidate of hostile) {
+      const out = safeRedirect(candidate);
+      expect(new URL(out, origin).origin, `candidate ${JSON.stringify(candidate)} returned ${JSON.stringify(out)}`).toBe(origin);
+    }
   });
 
   // auth-utils is imported by five server-component layouts for extractIsAdmin.
