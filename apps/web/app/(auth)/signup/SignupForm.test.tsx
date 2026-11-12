@@ -76,7 +76,13 @@ describe('SignupForm', () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith(path));
   });
 
-  it.each(['//evil.example', 'https://evil.example', 'evil.example'])(
+  it.each([
+    '//evil.example',
+    'https://evil.example',
+    'evil.example',
+    '/\\evil.example',
+    '/\\/evil.example',
+  ])(
     'refuses %s as a redirect target',
     async (path) => {
       fetchMock.mockResolvedValueOnce(ok());

@@ -90,6 +90,8 @@ describe('CallbackHandler redirect guard', () => {
     ['an absolute URL', 'https://evil.example/callback'],
     ['a bare host', 'evil.example'],
     ['a javascript URL', 'javascript:alert(1)'],
+    ['a backslash standing in for the second slash', '/\\evil.example'],
+    ['a backslash followed by a real slash', '/\\/evil.example'],
   ])('refuses %s from sessionStorage', async (_label, stored) => {
     sessionStorage.setItem('auth_redirect', stored);
     fetchMock.mockResolvedValueOnce(ok());

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { safeRedirect } from '@/lib/auth-utils';
 
 export default function CallbackHandler({
   code,
@@ -43,8 +44,7 @@ export default function CallbackHandler({
 
           const stored = sessionStorage.getItem('auth_redirect') ?? '/dashboard';
           sessionStorage.removeItem('auth_redirect');
-          // guard against open redirect, only allow relative paths starting with /
-          const redirect = stored.startsWith('/') && !stored.startsWith('//') ? stored : '/dashboard';
+          const redirect = safeRedirect(stored);
           router.push(redirect);
         }
       } catch (err) {
