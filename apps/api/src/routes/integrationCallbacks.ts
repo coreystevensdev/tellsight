@@ -39,6 +39,14 @@ import { enqueueSyncJob as enqueueSquareSyncJob } from '../services/integrations
 // it. Without that check the binding alone lets an attacker start a flow against
 // their own org and walk a victim through consent, landing the victim's books in
 // the attacker's org.
+// realmId is persisted as providerTenantId and then interpolated into the path
+// of every outbound Intuit call. Checked as an allowlist rather than by
+// stripping bad characters: the property that matters is that the value cannot
+// reshape a URL, and none of these can. Deliberately not digits-only, because
+// rejecting a legitimate realm would break the connector and Intuit's exact
+// format is not something this code should be asserting.
+const REALM_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
 export function registerIntegrationCallbacks(router: Router): void {
   router.get('/quickbooks/callback', async (req: Request, res: Response) => {
     const { code, realmId, state, error } = req.query as Record<string, string | undefined>;
@@ -70,6 +78,14 @@ export function registerIntegrationCallbacks(router: Router): void {
 
     if (!code || !realmId) {
       logger.warn({}, 'QB OAuth callback missing code or realmId');
+      res.redirect(`${dashboardUrl}?qb=error`);
+      return;
+    }
+
+    // Length only, not the value: it is caller-controlled and would carry
+    // newlines straight into the log.
+    if (!REALM_ID.test(realmId)) {
+      logger.warn({ length: realmId.length }, 'QB OAuth callback realmId failed the format check');
       res.redirect(`${dashboardUrl}?qb=error`);
       return;
     }
