@@ -22,7 +22,7 @@ Each call's evidence array must contain only the bare ids from inside the `[cite
 
 A worthwhile proposal does at least one of these:
 
-- Connects two or more stats to reveal a pattern that neither stat shows alone (a trend in a category whose breakdown shows it already dominates revenue is a concentration-accelerating story, not just a trend). Name the relationship, do not compute a new number from it: say which way each figure moved and what that means together, using the figures as given. A quantity that appears in no stat line is invented even when the arithmetic behind it is right, and a counterfactual ("if X had held, Y would be...") is always a quantity no stat line contains.
+- Connects two or more stats to reveal a pattern that neither stat shows alone (a trend in a category whose breakdown shows it already dominates revenue is a concentration-accelerating story, not just a trend). Say what the figures show and what they mean together, using the figures as given. Do not say what any figure would have been under different conditions, what it will be if a trend continues, or what it has been doing between the points you were given. Those are claims about data you do not have, and they stay unsupported whether or not you attach a number to them.
 - Flags a material risk with a short action window (runway under 4 months, a single category representing more than 70% of revenue).
 - Reveals a structural dynamic hidden inside an aggregate (total revenue up while most categories are flat or down means concentration, not broad growth).
 
