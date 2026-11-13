@@ -514,3 +514,75 @@ describe('upload limits and preview-token scope', () => {
     expect((await confirmCsv(validCsv, 'test.csv', token)).status).toBe(200);
   });
 });
+
+// multer capped fileSize and nothing else, so `fields` and `parts` kept busboy's
+// Infinity defaults and each non-file value was allowed busboy's 1MB. Every one
+// of them is accumulated into req.body before the handler runs, so a single
+// authenticated request decided how much memory the API allocated without ever
+// sending a file.
+describe('upload form limits', () => {
+  function formWith(extra: (form: FormData) => void) {
+    mockVerifyAccessToken.mockResolvedValueOnce(userPayload());
+    const form = new FormData();
+    // validCsv, not a header-only string: an empty CSV already 400s for being
+    // empty, which would make these pass without the limits existing.
+    form.append('file', new Blob([validCsv], { type: 'text/csv' }), 'test.csv');
+    extra(form);
+    return fetch(`${baseUrl}/datasets`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: form,
+    });
+  }
+
+  it('refuses a request carrying a flood of text fields', async () => {
+    const res = await formWith((form) => {
+      for (let i = 0; i < 500; i++) form.append(`pad${i}`, 'x');
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('refuses a single oversized text field', async () => {
+    const res = await formWith((form) => form.append('pad', 'x'.repeat(64 * 1024)));
+
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses a second file', async () => {
+    const res = await formWith((form) =>
+      form.append('file', new Blob([validCsv], { type: 'text/csv' }), 'second.csv'),
+    );
+
+    expect(res.status).toBe(400);
+  });
+
+  // files: 1 answers a second file with LIMIT_FILE_COUNT, so this is the case
+  // that actually reaches LIMIT_UNEXPECTED_FILE: one file, under a field name
+  // upload.single('file') is not expecting. Unmapped it was a 500.
+  it('refuses a file sent under an unexpected field name', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(userPayload());
+    const form = new FormData();
+    form.append('attachment', new Blob([validCsv], { type: 'text/csv' }), 'test.csv');
+
+    const res = await fetch(`${baseUrl}/datasets`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: form,
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  // previewToken is the one field the confirm route legitimately sends, about
+  // 250 bytes, so the caps must not clip it.
+  it('still accepts the file plus a preview token', async () => {
+    const res = await formWith((form) => form.append('previewToken', 'a'.repeat(300)));
+
+    expect(res.status).toBeLessThan(400);
+  });
+});
