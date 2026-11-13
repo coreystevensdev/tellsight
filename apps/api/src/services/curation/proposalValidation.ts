@@ -88,15 +88,26 @@ export function validateProposalCandidate(
       .filter((d): d is string => d !== undefined);
 
     if (directions.length === 0) {
+      // The field goes, the finding stays. ADR 0003 argued the whole-proposal
+      // drop for the contradiction case below and justified this one in a single
+      // line, and the first agent baseline measured the difference: 19 proposals
+      // deleted here, all of them the same correct 2.4-month runway flag, against
+      // 0 declared contradictions in 67 calls (DW-263). Nothing downstream reads
+      // `movement` either, so clearing it costs nothing a reader would notice.
       logger.info(
         { title: result.data.title, movement, evidence: trimmedEvidence },
-        'agent proposal dropped: stated a movement for stats that declare no direction',
+        'agent proposal movement cleared: cited stats declare no direction',
       );
-      return null;
+      return { ...result.data, evidence: trimmedEvidence, movement: undefined };
     }
     if (directions.length === 1 && directions[0] !== movement) {
       logger.info(
-        { title: result.data.title, movement, statDirection: directions[0], evidence: trimmedEvidence },
+        {
+          title: result.data.title,
+          movement,
+          statDirection: directions[0],
+          evidence: trimmedEvidence,
+        },
         'agent proposal dropped: stated movement contradicts the cited stat',
       );
       return null;
