@@ -1,7 +1,16 @@
 import { eq, and, inArray, sql, gte, lte, type SQL } from 'drizzle-orm';
-import type { CategoryPlan, CategoryVarianceItem, ChartData, ChartFilters, Granularity } from 'shared/types';
+import type {
+  CategoryPlan,
+  CategoryVarianceItem,
+  ChartData,
+  ChartFilters,
+  Granularity,
+} from 'shared/types';
 import { db, type DbTransaction } from '../../lib/db.js';
-import { financialEffect } from '../../services/curation/computationPrimitives.js';
+import {
+  financialEffect,
+  hasCostVisibility,
+} from '../../services/curation/computationPrimitives.js';
 
 // Both affect the expense side, so both have to pass a filter that selects it.
 // The sign is applied after aggregation, never in the predicate.
@@ -27,8 +36,18 @@ export type ChartSeries = Pick<
 >;
 
 const MONTH_LABELS = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
 ] as const;
 
 function bucketLabel(key: string, granularity: Granularity): string {
@@ -116,9 +135,8 @@ export async function getChartData(
   ]);
 
   const meta = metaRows[0];
-  const dateRange = meta?.minDate && meta?.maxDate
-    ? { min: meta.minDate, max: meta.maxDate }
-    : null;
+  const dateRange =
+    meta?.minDate && meta?.maxDate ? { min: meta.minDate, max: meta.maxDate } : null;
 
   // categories come from the aggregated rows (all expense categories present in data)
   // but we need unfiltered categories for the filter dropdown. If date filters are active,
@@ -140,9 +158,7 @@ export async function getChartData(
     availableCategories = [...catSet].sort();
   }
 
-  const activeCategories = filters?.categories?.length
-    ? new Set(filters.categories)
-    : null;
+  const activeCategories = filters?.categories?.length ? new Set(filters.categories) : null;
 
   const revenueByBucket = new Map<string, number>();
   const expenseTotals = new Map<string, number>();
@@ -162,13 +178,17 @@ export async function getChartData(
       const year = String(Number(row.year));
       const monthIdx = Number(row.monthIdx);
       if (!revenueByYearMonth.has(year)) revenueByYearMonth.set(year, new Map());
-      revenueByYearMonth.get(year)!.set(monthIdx, (revenueByYearMonth.get(year)!.get(monthIdx) ?? 0) + signed);
+      revenueByYearMonth
+        .get(year)!
+        .set(monthIdx, (revenueByYearMonth.get(year)!.get(monthIdx) ?? 0) + signed);
     } else if (effect?.side === 'Expenses') {
       if (activeCategories && !activeCategories.has(row.category)) continue;
       expenseTotals.set(row.category, (expenseTotals.get(row.category) ?? 0) + signed);
 
       if (!expenseByBucketCategory.has(key)) expenseByBucketCategory.set(key, new Map());
-      expenseByBucketCategory.get(key)!.set(row.category, (expenseByBucketCategory.get(key)!.get(row.category) ?? 0) + signed);
+      expenseByBucketCategory
+        .get(key)!
+        .set(row.category, (expenseByBucketCategory.get(key)!.get(row.category) ?? 0) + signed);
     }
   }
 
@@ -198,29 +218,44 @@ export async function getChartData(
       ? [...expenseByBucketCategory.get(key)!.values()].reduce((s, v) => s + v, 0)
       : 0;
     const expenses = round2(totalExpense);
-    return { month: bucketLabel(key, granularity), revenue, expenses, profit: round2(revenue - expenses) };
+    return {
+      month: bucketLabel(key, granularity),
+      revenue,
+      expenses,
+      profit: round2(revenue - expenses),
+    };
   });
 
   const years = [...revenueByYearMonth.keys()].sort();
-  const yoyComparison = years.length >= 2
-    ? Array.from({ length: 12 }, (_, monthIdx) => {
-        const currentYear = years[years.length - 1]!;
-        const priorYear = years[years.length - 2]!;
-        const current = revenueByYearMonth.get(currentYear)?.get(monthIdx) ?? 0;
-        const prior = revenueByYearMonth.get(priorYear)?.get(monthIdx) ?? 0;
-        const changePercent = prior > 0 ? Math.round(((current - prior) / prior) * 1000) / 10 : null;
-        return {
-          month: MONTH_LABELS[monthIdx]!,
-          currentRevenue: round2(current),
-          priorRevenue: round2(prior),
-          changePercent,
-          currentYearLabel: currentYear,
-          priorYearLabel: priorYear,
-        };
-      }).filter((p) => p.currentRevenue > 0 || p.priorRevenue > 0)
-    : [];
+  const yoyComparison =
+    years.length >= 2
+      ? Array.from({ length: 12 }, (_, monthIdx) => {
+          const currentYear = years[years.length - 1]!;
+          const priorYear = years[years.length - 2]!;
+          const current = revenueByYearMonth.get(currentYear)?.get(monthIdx) ?? 0;
+          const prior = revenueByYearMonth.get(priorYear)?.get(monthIdx) ?? 0;
+          const changePercent =
+            prior > 0 ? Math.round(((current - prior) / prior) * 1000) / 10 : null;
+          return {
+            month: MONTH_LABELS[monthIdx]!,
+            currentRevenue: round2(current),
+            priorRevenue: round2(prior),
+            changePercent,
+            currentYearLabel: currentYear,
+            priorYearLabel: priorYear,
+          };
+        }).filter((p) => p.currentRevenue > 0 || p.priorRevenue > 0)
+      : [];
 
-  return { revenueTrend, expenseBreakdown, expenseTrend, monthlyComparison, yoyComparison, availableCategories, dateRange };
+  return {
+    revenueTrend,
+    expenseBreakdown,
+    expenseTrend,
+    monthlyComparison,
+    yoyComparison,
+    availableCategories,
+    dateRange,
+  };
 }
 
 export interface CategoryVarianceWindow {
@@ -348,10 +383,17 @@ export function buildCategoryVariance(
 
 /**
  * True when `computeMarginTrend` would emit for this org's rows. Mirrors the
- * pipeline's predicate exactly: union of months with income or expenses ≥ 4,
- * and both chronological halves carry non-zero revenue. Deterministic from
- * row shape, so the dashboard can decide whether to show the break-even
- * locked card before the AI summary streams.
+ * pipeline's predicate: union of months with income or expenses >= 4, both
+ * chronological halves carry non-zero revenue, the prior half carries non-zero
+ * expense, and at least one expense row came from a source that can see
+ * operating costs. Deterministic from row shape, so the dashboard can decide
+ * whether to show the break-even locked card before the AI summary streams.
+ *
+ * The prior-expense condition arrived in the pipeline with DW-252 and was never
+ * added here, so this returned true for a dataset the pipeline suppressed and
+ * the comment claiming an exact mirror was wrong for as long as that stood. The
+ * source condition is DW-261. Both predicates now go through
+ * `hasCostVisibility`, which is the only way to stop them drifting again.
  */
 export async function getHasMarginSignal(
   orgId: number,
@@ -364,6 +406,10 @@ export async function getHasMarginSignal(
     .select({
       bucket: sql<string>`to_char(date_trunc('month', ${dataRows.date}), 'YYYY-MM')`.as('bucket'),
       parentCategory: dataRows.parentCategory,
+      // Grouped in so the source condition can be evaluated on the same rows.
+      // Splits each bucket per source, which changes nothing downstream: every
+      // total is summed into a per-month map either way.
+      sourceType: dataRows.sourceType,
       total: sql<string>`sum(${dataRows.amount})`.as('total'),
     })
     .from(dataRows)
@@ -371,6 +417,7 @@ export async function getHasMarginSignal(
     .groupBy(
       sql`to_char(date_trunc('month', ${dataRows.date}), 'YYYY-MM')`,
       dataRows.parentCategory,
+      dataRows.sourceType,
     );
 
   const revenueByMonth = new Map<string, number>();
@@ -393,6 +440,8 @@ export async function getHasMarginSignal(
   const half = Math.floor(months.length / 2);
   const priorRevenue = months.slice(0, half).reduce((s, m) => s + (revenueByMonth.get(m) ?? 0), 0);
   const recentRevenue = months.slice(half).reduce((s, m) => s + (revenueByMonth.get(m) ?? 0), 0);
+  const priorExpense = months.slice(0, half).reduce((s, m) => s + (expenseByMonth.get(m) ?? 0), 0);
 
-  return priorRevenue > 0 && recentRevenue > 0;
+  if (priorRevenue <= 0 || recentRevenue === 0 || priorExpense <= 0) return false;
+  return hasCostVisibility(rows);
 }
