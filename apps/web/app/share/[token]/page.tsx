@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import { stripAllDisplayTags } from 'shared/constants';
 import { webEnv } from '@/lib/config';
 import { TellsightLogo } from '@/components/common/TellsightLogo';
@@ -26,8 +27,10 @@ function truncateAtWord(text: string, max: number): string {
 // Next.js request memoization deduplicates this across generateMetadata + page component
 async function fetchShare(token: string): Promise<FetchResult> {
   try {
+    const callerAddress = (await headers()).get('x-forwarded-for');
     const res = await fetch(`${webEnv.API_INTERNAL_URL}/shares/${token}`, {
       cache: 'no-store',
+      headers: callerAddress ? { 'x-forwarded-for': callerAddress } : {},
     });
 
     if (!res.ok) {

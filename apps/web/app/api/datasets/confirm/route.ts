@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { webEnv } from '@/lib/config';
+import { forwardedFor } from '@/lib/bff-proxy';
 
 export const runtime = 'nodejs';
 
@@ -18,6 +19,7 @@ export async function POST(request: NextRequest) {
     headers: {
       'content-type': contentType,
       cookie,
+      ...forwardedFor(request),
     },
     body: request.body,
     duplex: 'half',

@@ -11,6 +11,13 @@ vi.mock('@/lib/config', () => ({
   webEnv: { API_INTERNAL_URL: 'http://api:3001', JWT_SECRET: 'k'.repeat(32), NODE_ENV: 'test' },
 }));
 
+// fetchShare forwards the caller address so Express keys rl_public on the real
+// visitor rather than the web container. headers() throws outside a request
+// scope, and fetchShare catches, so without this every case below rendered
+// not-found for the wrong reason.
+const incoming = new Headers({ 'x-forwarded-for': '203.0.113.9' });
+vi.mock('next/headers', () => ({ headers: () => Promise.resolve(incoming) }));
+
 vi.mock('@/components/common/TellsightLogo', () => ({
   TellsightLogo: () => <span>logo</span>,
 }));
@@ -86,6 +93,18 @@ describe('SharePage error variants', () => {
 
     expect(screen.getByText(/card for Acme Coffee/)).toBeInTheDocument();
     expect(screen.queryByText(/error variant/)).not.toBeInTheDocument();
+  });
+
+  // /shares/:token sits behind Express's rl_public bucket, keyed on req.ip. This
+  // fetch used to arrive from the web container's bridge address, so every share
+  // view in the product shared one 60/min cap.
+  it('forwards the caller address to the shares endpoint', async () => {
+    fetchMock.mockResolvedValueOnce(upstream({ data: share() }));
+
+    await SharePage({ params });
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(new Headers(init.headers).get('x-forwarded-for')).toBe('203.0.113.9');
   });
 });
 
