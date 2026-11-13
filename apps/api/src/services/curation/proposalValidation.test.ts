@@ -18,7 +18,16 @@ const trend: ComputedStat = {
   category: 'Sales',
   value: 0.15,
   sampleSize: 6,
-  details: { slope: 0.15, intercept: 100, growthPercent: 15, dataPoints: 6, firstValue: 400, lastValue: 460, firstPeriod: '2026-01', lastPeriod: '2026-06' },
+  details: {
+    slope: 0.15,
+    intercept: 100,
+    growthPercent: 15,
+    dataPoints: 6,
+    firstValue: 400,
+    lastValue: 460,
+    firstPeriod: '2026-01',
+    lastPeriod: '2026-06',
+  },
 };
 const breakdown: ComputedStat = {
   statType: StatType.CategoryBreakdown,
@@ -35,13 +44,21 @@ const cashFlow: ComputedStat = {
   category: 'Overall',
   value: -2100,
   sampleSize: 6,
-  details: { monthlyNet: -2100, trailingMonths: 6, direction: 'burning', monthsBurning: 4, recentMonths: [] },
+  details: {
+    monthlyNet: -2100,
+    trailingMonths: 6,
+    direction: 'burning',
+    monthsBurning: 4,
+    recentMonths: [],
+  },
 };
 
 const stats = [trend, breakdown, cashFlow];
 // Annotated, because inference narrows the value type to the union of the three
 // concrete members and then rejects a fourth stat type added inside a test.
-const statsById = new Map<string, ComputedStat>(stats.map((s) => [statInstanceId(s, DATASET_ID), s]));
+const statsById = new Map<string, ComputedStat>(
+  stats.map((s) => [statInstanceId(s, DATASET_ID), s]),
+);
 const trendId = statInstanceId(trend, DATASET_ID);
 const cashFlowId = statInstanceId(cashFlow, DATASET_ID);
 
@@ -81,7 +98,10 @@ describe('validateProposalCandidate', () => {
 
   it('drops a schema failure', () => {
     expect(validateProposalCandidate(candidate({ confidence: 4 }), statsById)).toBeNull();
-    expect(logger.warn).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('schema validation'));
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining('schema validation'),
+    );
   });
 
   it('drops evidence that cites a stat outside the prompt', () => {
@@ -90,7 +110,10 @@ describe('validateProposalCandidate', () => {
       statsById,
     );
     expect(result).toBeNull();
-    expect(logger.info).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('out-of-scope'));
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining('out-of-scope'),
+    );
   });
 
   it('trims whitespace the model picks up copying a cite token', () => {
@@ -109,7 +132,9 @@ describe('validateProposalCandidate', () => {
     );
     expect(result).toBeNull();
     expect(logger.info).toHaveBeenCalledWith(
-      expect.objectContaining({ unmatched: expect.arrayContaining([expect.objectContaining({ raw: '$47,500' })]) }),
+      expect.objectContaining({
+        unmatched: expect.arrayContaining([expect.objectContaining({ raw: '$47,500' })]),
+      }),
       expect.stringContaining('not derivable'),
     );
   });
@@ -138,9 +163,13 @@ describe('validateProposalCandidate', () => {
 // ADR 0003: direction is checked by literal comparison against the token the
 // stat declares, never by mapping onto a shared up/down vocabulary.
 describe('movement', () => {
-  it('keeps a proposal echoing the cited stat\'s own token', () => {
+  it("keeps a proposal echoing the cited stat's own token", () => {
     const result = validateProposalCandidate(
-      candidate({ evidence: [cashFlowId], movement: 'burning', explanation: 'Cash is going out faster than it comes in.' }),
+      candidate({
+        evidence: [cashFlowId],
+        movement: 'burning',
+        explanation: 'Cash is going out faster than it comes in.',
+      }),
       statsById,
     );
     expect(result).not.toBeNull();
@@ -149,7 +178,11 @@ describe('movement', () => {
 
   it('drops a movement that contradicts the cited stat', () => {
     const result = validateProposalCandidate(
-      candidate({ evidence: [cashFlowId], movement: 'surplus', explanation: 'Cash is going out faster than it comes in.' }),
+      candidate({
+        evidence: [cashFlowId],
+        movement: 'surplus',
+        explanation: 'Cash is going out faster than it comes in.',
+      }),
       statsById,
     );
     expect(result).toBeNull();
@@ -159,21 +192,45 @@ describe('movement', () => {
     );
   });
 
-  it('drops a movement stated for a stat that declares no direction', () => {
+  it('clears a movement stated for a stat that declares no direction, keeping the proposal', () => {
     const result = validateProposalCandidate(
       candidate({ evidence: [trendId], movement: 'up' }),
       statsById,
     );
-    expect(result).toBeNull();
+    // Only the unverifiable field goes. The old whole-proposal drop deleted 19
+    // correct runway findings across one 36-sample baseline, against 0 declared
+    // contradictions in 67 calls (DW-263), and nothing downstream reads
+    // `movement`: deriveDedupKey is kind:subject:facet.
+    expect(result).not.toBeNull();
+    expect(result!.movement).toBeUndefined();
+    expect(result!.title).toBe('Sales are trending up');
     expect(logger.info).toHaveBeenCalledWith(
       expect.anything(),
-      expect.stringContaining('declare no direction'),
+      expect.stringContaining('movement cleared'),
     );
+  });
+
+  it('still drops the whole proposal when the movement contradicts a cited stat', () => {
+    // Deliberately not field-level. ADR 0003's argument for dropping the whole
+    // proposal is about this case: a proposal reporting 'surplus' against a
+    // 'burning' stat is wrong rather than merely unverifiable.
+    const result = validateProposalCandidate(
+      candidate({
+        evidence: [cashFlowId],
+        movement: 'surplus',
+        explanation: 'Cash is going out faster than it comes in.',
+      }),
+      statsById,
+    );
+    expect(result).toBeNull();
   });
 
   it('omitting movement is always fine, including for a directional stat', () => {
     const result = validateProposalCandidate(
-      candidate({ evidence: [cashFlowId], explanation: 'Cash is going out faster than it comes in.' }),
+      candidate({
+        evidence: [cashFlowId],
+        explanation: 'Cash is going out faster than it comes in.',
+      }),
       statsById,
     );
     expect(result).not.toBeNull();
