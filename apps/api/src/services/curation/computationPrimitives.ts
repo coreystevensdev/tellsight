@@ -1,3 +1,5 @@
+import type { SourceType } from 'shared/types';
+
 export interface DataRow {
   category: string;
   parentCategory?: string | null;
@@ -9,6 +11,54 @@ export interface DataRow {
 }
 
 export type FinancialSide = 'Income' | 'Expenses';
+
+// Sources that can only ever report money coming in. Shopify pulls orders,
+// refunds and products; Square pulls orders across locations; Stripe pulls
+// payments. None can see an operating cost, so the only Expenses rows they write
+// are refunds. QuickBooks, Xero and Plaid see both sides, and a CSV's columns are
+// the owner's own choice, so none of those are listed.
+// A Record rather than a set of the blind ones, so adding a source to
+// sourceTypeSchema without classifying it is a type error rather than a silent
+// default to "can see costs". Same reason ACTION_MUTATES is a Record in
+// packages/shared/src/agent/proposal.ts.
+const SEES_OPERATING_COST: Record<SourceType, boolean> = {
+  csv: true,
+  quickbooks: true,
+  xero: true,
+  plaid: true,
+  shopify: false,
+  square: false,
+  stripe: false,
+};
+
+/**
+ * True when at least one Expenses row came from a source that can see operating
+ * costs. Refund-only expense data is an absence of cost data, and a margin
+ * computed against it reads ~97% for a store whose real margin is a fifth of
+ * that (DW-261). DW-252 already suppressed the zero case with that reasoning;
+ * its `priorExpense <= 0` guard misses this one because a refund makes the
+ * figure positive.
+ *
+ * Keyed on the source rather than on a ratio threshold: a genuine high-margin
+ * services business exists and should not be suppressed, while a revenue-only
+ * connector is knowably incapable of the data regardless of what its numbers
+ * look like. A mixed org passes as soon as one accounting source contributes an
+ * expense row, which is the correct answer for QuickBooks plus Shopify.
+ */
+export function hasCostVisibility(
+  rows: readonly { sourceType?: string | null; parentCategory?: string | null }[],
+): boolean {
+  return rows.some((row) => {
+    if (financialEffect(row)?.side !== 'Expenses') return false;
+    // The row type stays permissive because SourceRow is a Pick that drops
+    // sourceType and sourceRows.ts moves rows of that shape around this layer.
+    // An absent or unrecognised source reads as cost-visible, which keeps this
+    // predicate subtractive: it can only ever suppress what the guards before it
+    // already allowed, never widen them.
+    if (row.sourceType == null) return true;
+    return SEES_OPERATING_COST[row.sourceType as SourceType] ?? true;
+  });
+}
 
 // A contra entry reduces a side rather than adding to it: a vendor credit
 // shrinks what is owed, so it belongs against Expenses without being one. The

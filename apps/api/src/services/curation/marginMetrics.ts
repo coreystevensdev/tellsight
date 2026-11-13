@@ -1,4 +1,10 @@
-import { financialEffect, monthKey, parseAmount, type DataRow } from './computationPrimitives.js';
+import {
+  financialEffect,
+  hasCostVisibility,
+  monthKey,
+  parseAmount,
+  type DataRow,
+} from './computationPrimitives.js';
 import type { MarginTrendStat } from './types.js';
 import { StatType } from './types.js';
 
@@ -72,6 +78,11 @@ export function computeMarginTrend(rows: DataRow[]): MarginTrendStat[] {
   // a data gap should never turn into AI commentary: no expense rows is an
   // absence of cost data, not a 100% margin.
   if (recentRevenue === 0 || priorRevenue <= 0 || priorExpense <= 0) return [];
+
+  // The guard above catches no expense data. This one catches expense data that
+  // cannot be cost data: a revenue-only connector writes an Expenses row for a
+  // refund and nothing else, so the figure is positive and meaningless. DW-261.
+  if (!hasCostVisibility(rows)) return [];
 
   const recentMargin = ((recentRevenue - recentExpense) / recentRevenue) * 100;
   const priorMargin = ((priorRevenue - priorExpense) / priorRevenue) * 100;
