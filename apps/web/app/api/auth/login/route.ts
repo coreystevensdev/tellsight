@@ -1,8 +1,11 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { webEnv } from '@/lib/config';
+import { forwardedFor } from '@/lib/bff-proxy';
 
-export async function GET() {
-  const response = await fetch(`${webEnv.API_INTERNAL_URL}/auth/google`);
+export async function GET(request: NextRequest) {
+  const response = await fetch(`${webEnv.API_INTERNAL_URL}/auth/google`, {
+    headers: forwardedFor(request),
+  });
 
   if (!response.ok) {
     return NextResponse.json(

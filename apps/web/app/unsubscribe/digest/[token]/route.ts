@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { webEnv } from '@/lib/config';
-import { upstreamSignal } from '@/lib/bff-proxy';
+import { forwardedFor, upstreamSignal } from '@/lib/bff-proxy';
 
 const NULL_BODY_STATUSES = new Set([204, 205, 304]);
 
@@ -23,7 +23,7 @@ export async function POST(
   try {
     res = await fetch(
       `${webEnv.API_INTERNAL_URL}/digest/unsubscribe/${encodeURIComponent(token)}`,
-      { method: 'POST', signal: upstreamSignal(request) },
+      { method: 'POST', headers: forwardedFor(request), signal: upstreamSignal(request) },
     );
   } catch (err) {
     console.warn('[unsubscribe-bare-route] upstream unreachable', err);

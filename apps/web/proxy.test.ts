@@ -288,6 +288,35 @@ describe('proxy session refresh', () => {
     expect(redirectTarget(res)?.pathname).toBe('/login');
   });
 
+  // The static gate in lib/callerAddressForwarding.test.ts only proves the
+  // string 'x-forwarded-for' appears in the file. Deleting the spread while
+  // keeping the read above it left that gate green, so these assert the header
+  // actually reaches the upstream fetch. /auth/refresh sits behind Express's
+  // rl_auth bucket, which is keyed on req.ip.
+  it('forwards the caller address to /auth/refresh', async () => {
+    const fetchMock = mockRefresh(await sign({ org_id: 2, sub: '1' }));
+    const req = new NextRequest('http://localhost:3000/dashboard', {
+      headers: { cookie: 'refresh_token=r1', 'x-forwarded-for': '203.0.113.7' },
+    });
+
+    await proxy(req);
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(new Headers(init.headers).get('x-forwarded-for')).toBe('203.0.113.7');
+  });
+
+  // Omitted rather than sent empty: Express reads a blank value as a real
+  // forwarded hop and would key the bucket on the empty string.
+  it('sends no caller address when the request carries none', async () => {
+    const fetchMock = mockRefresh(await sign({ org_id: 2, sub: '1' }));
+
+    await proxy(request('/dashboard', 'refresh_token=r1'));
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(new Headers(init.headers).has('x-forwarded-for')).toBe(false);
+    expect(new Headers(init.headers).get('cookie')).toContain('refresh_token=r1');
+  });
+
   it('leaves /dashboard public when the refresh fails', async () => {
     mockRefresh(null);
 

@@ -91,9 +91,17 @@ async function mintSession(request: NextRequest): Promise<string[] | null> {
   if (!refreshToken) return null;
 
   try {
+    // Express keys rl_auth on req.ip, and without this every refresh in the
+    // product arrives from the web container's bridge address and shares one
+    // 10/min bucket. Read inline rather than importing lib/bff-proxy's helper,
+    // which would pull that whole module into the proxy bundle for two lines.
+    const callerAddress = request.headers.get('x-forwarded-for');
     const res = await fetch(`${webEnv.API_INTERNAL_URL}/auth/refresh`, {
       method: 'POST',
-      headers: { cookie: `${REFRESH_TOKEN}=${refreshToken}` },
+      headers: {
+        cookie: `${REFRESH_TOKEN}=${refreshToken}`,
+        ...(callerAddress ? { 'x-forwarded-for': callerAddress } : {}),
+      },
     });
     // Includes 409 REFRESH_RACE, where a sibling request rotated this token
     // first. Falling through unminted is correct and the retry that looks
