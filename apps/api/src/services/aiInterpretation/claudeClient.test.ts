@@ -37,7 +37,9 @@ vi.mock('../../lib/circuitBreaker.js', () => ({
   }),
   CircuitOpenError: class CircuitOpenError extends Error {
     readonly code = 'CIRCUIT_OPEN';
-    constructor(name: string) { super(`Circuit breaker "${name}" is open`); }
+    constructor(name: string) {
+      super(`Circuit breaker "${name}" is open`);
+    }
   },
 }));
 
@@ -80,11 +82,11 @@ vi.mock('@anthropic-ai/sdk', () => {
 
   const MockAnthropic = Object.assign(
     vi.fn().mockImplementation(function () {
-    return {
-      messages: { create: mockCreate, stream: mockStream },
-      models: { list: mockModelsList },
-    };
-  }),
+      return {
+        messages: { create: mockCreate, stream: mockStream },
+        models: { list: mockModelsList },
+      };
+    }),
     { AuthenticationError, BadRequestError },
   );
 
@@ -205,7 +207,8 @@ describe('circuit breaker wiring', () => {
     const shared = mockBreakerInstances.find((b) => b.name === 'claude-api');
     const tool = mockBreakerInstances.find((b) => b.name === 'claude-api-tool');
     const converse = mockBreakerInstances.find((b) => b.name === 'claude-api-converse');
-    if (!shared || !tool || !converse) throw new Error('expected a shared, a tool-scoped, and a converse-scoped breaker instance');
+    if (!shared || !tool || !converse)
+      throw new Error('expected a shared, a tool-scoped, and a converse-scoped breaker instance');
 
     await claudeClient.generateInterpretation({ system: '', user: 'hi' });
     expect(shared.execSpy).toHaveBeenCalledTimes(1);
@@ -300,7 +303,9 @@ describe('generateInterpretation', () => {
 
   it('logs non-retryable errors at error level', async () => {
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
-    const authErr = new (Anthropic as unknown as { AuthenticationError: new (msg: string) => Error }).AuthenticationError('Invalid API key');
+    const authErr = new (
+      Anthropic as unknown as { AuthenticationError: new (msg: string) => Error }
+    ).AuthenticationError('Invalid API key');
     mockCreate.mockRejectedValue(authErr);
 
     const { generateInterpretation } = await import('./claudeClient.js');
@@ -353,7 +358,9 @@ describe('generateInterpretation', () => {
 
     const { generateInterpretation } = await import('./claudeClient.js');
 
-    await expect(generateInterpretation({ system: '', user: 'prompt' })).rejects.toThrow('exceeded safety cap');
+    await expect(generateInterpretation({ system: '', user: 'prompt' })).rejects.toThrow(
+      'exceeded safety cap',
+    );
     expect(mockBudgetMetric.inc).toHaveBeenCalledWith({ caller: 'generate' });
     expect(mockRecordCost).not.toHaveBeenCalled();
   });
@@ -539,7 +546,9 @@ describe('streamInterpretation', () => {
 
     const { streamInterpretation } = await import('./claudeClient.js');
 
-    await expect(streamInterpretation({ system: '', user: 'test' }, () => {})).rejects.toThrow('stream failed');
+    await expect(streamInterpretation({ system: '', user: 'test' }, () => {})).rejects.toThrow(
+      'stream failed',
+    );
   });
 
   it('records cost into history on successful stream', async () => {
@@ -561,7 +570,9 @@ describe('streamInterpretation', () => {
       content: [{ type: 'text', text: 'expensive answer already shipped' }],
       usage: { input_tokens: 100000, output_tokens: 100000 },
     };
-    mockStream.mockReturnValue(createMockStream(['expensive ', 'answer ', 'already shipped'], finalMsg));
+    mockStream.mockReturnValue(
+      createMockStream(['expensive ', 'answer ', 'already shipped'], finalMsg),
+    );
     mockComputeCost.mockReturnValue(2.0);
     mockExceedsBudget.mockReturnValue({
       exceeded: true,
@@ -613,7 +624,14 @@ describe('generateWithTools', () => {
 
   it('returns one tool call when the model calls the tool once', async () => {
     mockCreate.mockResolvedValue({
-      content: [{ type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'Revenue dipped' } }],
+      content: [
+        {
+          type: 'tool_use',
+          id: 'call_1',
+          name: 'record_proposal',
+          input: { title: 'Revenue dipped' },
+        },
+      ],
       usage: { input_tokens: 200, output_tokens: 80 },
       stop_reason: 'tool_use',
     });
@@ -621,7 +639,9 @@ describe('generateWithTools', () => {
     const { generateWithTools } = await import('./claudeClient.js');
     const result = await generateWithTools({ system: '', user: 'analyze' }, [tool]);
 
-    expect(result).toEqual([{ id: 'call_1', name: 'record_proposal', input: { title: 'Revenue dipped' } }]);
+    expect(result).toEqual([
+      { id: 'call_1', name: 'record_proposal', input: { title: 'Revenue dipped' } },
+    ]);
   });
 
   it('returns every tool call when the model calls the tool multiple times in one response', async () => {
@@ -645,7 +665,12 @@ describe('generateWithTools', () => {
     mockCreate.mockResolvedValue({
       content: [
         { type: 'text', text: 'Here is what I found:' },
-        { type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'Only this counts' } },
+        {
+          type: 'tool_use',
+          id: 'call_1',
+          name: 'record_proposal',
+          input: { title: 'Only this counts' },
+        },
       ],
       usage: { input_tokens: 150, output_tokens: 60 },
       stop_reason: 'tool_use',
@@ -654,12 +679,16 @@ describe('generateWithTools', () => {
     const { generateWithTools } = await import('./claudeClient.js');
     const result = await generateWithTools({ system: '', user: 'analyze' }, [tool]);
 
-    expect(result).toEqual([{ id: 'call_1', name: 'record_proposal', input: { title: 'Only this counts' } }]);
+    expect(result).toEqual([
+      { id: 'call_1', name: 'record_proposal', input: { title: 'Only this counts' } },
+    ]);
   });
 
   it('logs a warning when the response was truncated at max_tokens', async () => {
     mockCreate.mockResolvedValue({
-      content: [{ type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'cut off' } }],
+      content: [
+        { type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'cut off' } },
+      ],
       usage: { input_tokens: 900, output_tokens: 1024 },
       stop_reason: 'max_tokens',
     });
@@ -689,7 +718,10 @@ describe('generateWithTools', () => {
     const result = await generateWithTools({ system: '', user: 'analyze' }, [tool]);
 
     expect(result).toEqual([]);
-    expect(mockDropMetric.inc).toHaveBeenCalledWith({ caller: 'generateTool', reason: 'max_tokens' });
+    expect(mockDropMetric.inc).toHaveBeenCalledWith({
+      caller: 'generateTool',
+      reason: 'max_tokens',
+    });
   });
 
   it('does not increment the drop metric when a max_tokens response had no tool calls to drop', async () => {
@@ -708,7 +740,9 @@ describe('generateWithTools', () => {
 
   it('does not warn when the response completes normally', async () => {
     mockCreate.mockResolvedValue({
-      content: [{ type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'complete' } }],
+      content: [
+        { type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'complete' } },
+      ],
       usage: { input_tokens: 200, output_tokens: 80 },
       stop_reason: 'tool_use',
     });
@@ -740,6 +774,12 @@ describe('generateWithTools', () => {
           },
         ],
       }),
+      // Second argument, so the shared client's 15s stays on the streaming path
+      // where "TTFT < 2s" is the reasoning. This path is a background job and
+      // started timing out on 27 of 36 samples once the agent produced more
+      // (DW-269). Asserted rather than left to a comment: dropping the override
+      // silently restores the 15s that was too short.
+      { timeout: 30_000 },
     );
   });
 
@@ -755,7 +795,9 @@ describe('generateWithTools', () => {
 
   it('throws CostBudgetExceededError when tool-call cost exceeds budget', async () => {
     mockCreate.mockResolvedValue({
-      content: [{ type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'Expensive' } }],
+      content: [
+        { type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'Expensive' } },
+      ],
       usage: { input_tokens: 100000, output_tokens: 100000 },
       stop_reason: 'tool_use',
     });
@@ -779,7 +821,9 @@ describe('generateWithTools', () => {
 
   it('records cost into history on a successful call', async () => {
     mockCreate.mockResolvedValue({
-      content: [{ type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'ok' } }],
+      content: [
+        { type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'ok' } },
+      ],
       usage: { input_tokens: 1000, output_tokens: 1000 },
       stop_reason: 'tool_use',
     });
@@ -801,7 +845,9 @@ describe('generateWithTools', () => {
 
   it('warns when the response ends for an unexpected reason other than max_tokens', async () => {
     mockCreate.mockResolvedValue({
-      content: [{ type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'unfinished' } }],
+      content: [
+        { type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'unfinished' } },
+      ],
       usage: { input_tokens: 100, output_tokens: 20 },
       stop_reason: 'refusal',
     });
@@ -815,12 +861,17 @@ describe('generateWithTools', () => {
       expect.stringContaining('unexpected reason'),
     );
     expect(result).toEqual([]);
-    expect(mockDropMetric.inc).toHaveBeenCalledWith({ caller: 'generateTool', reason: 'abnormal_stop_reason' });
+    expect(mockDropMetric.inc).toHaveBeenCalledWith({
+      caller: 'generateTool',
+      reason: 'abnormal_stop_reason',
+    });
   });
 
   it('drops tool calls and warns when the response ends on stop_sequence', async () => {
     mockCreate.mockResolvedValue({
-      content: [{ type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'unfinished' } }],
+      content: [
+        { type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'unfinished' } },
+      ],
       usage: { input_tokens: 100, output_tokens: 20 },
       stop_reason: 'stop_sequence',
     });
@@ -834,14 +885,22 @@ describe('generateWithTools', () => {
       expect.stringContaining('unexpected reason'),
     );
     expect(result).toEqual([]);
-    expect(mockDropMetric.inc).toHaveBeenCalledWith({ caller: 'generateTool', reason: 'abnormal_stop_reason' });
+    expect(mockDropMetric.inc).toHaveBeenCalledWith({
+      caller: 'generateTool',
+      reason: 'abnormal_stop_reason',
+    });
   });
 
   it('logs when the response includes text alongside a tool call', async () => {
     mockCreate.mockResolvedValue({
       content: [
         { type: 'text', text: 'Here is what I found:' },
-        { type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'Only this counts' } },
+        {
+          type: 'tool_use',
+          id: 'call_1',
+          name: 'record_proposal',
+          input: { title: 'Only this counts' },
+        },
       ],
       usage: { input_tokens: 150, output_tokens: 60 },
       stop_reason: 'tool_use',
@@ -859,7 +918,9 @@ describe('generateWithTools', () => {
 
   it('invokes the optional onCost callback with the computed cost on a successful call', async () => {
     mockCreate.mockResolvedValue({
-      content: [{ type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'ok' } }],
+      content: [
+        { type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'ok' } },
+      ],
       usage: { input_tokens: 1000, output_tokens: 1000 },
       stop_reason: 'tool_use',
     });
@@ -874,7 +935,9 @@ describe('generateWithTools', () => {
   it('invokes onCost with null when computeCost cannot price the model', async () => {
     mockComputeCost.mockReturnValueOnce(null);
     mockCreate.mockResolvedValue({
-      content: [{ type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'ok' } }],
+      content: [
+        { type: 'tool_use', id: 'call_1', name: 'record_proposal', input: { title: 'ok' } },
+      ],
       usage: { input_tokens: 1000, output_tokens: 1000 },
       stop_reason: 'tool_use',
     });
@@ -899,7 +962,11 @@ describe('converseWithTools', () => {
   const tool = {
     name: 'get_metric_with_trend',
     description: 'Get one metric.',
-    inputSchema: { type: 'object', properties: { statType: { type: 'string' } }, required: ['statType'] },
+    inputSchema: {
+      type: 'object',
+      properties: { statType: { type: 'string' } },
+      required: ['statType'],
+    },
   };
 
   beforeEach(() => {
@@ -912,15 +979,22 @@ describe('converseWithTools', () => {
     const { converseWithTools } = await import('./claudeClient.js');
     const priorState = [{ role: 'user', content: 'analyze' }];
 
-    await expect(converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], [])).rejects.toThrow(
-      'toolResults must be non-empty once state is non-null',
-    );
+    await expect(
+      converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], []),
+    ).rejects.toThrow('toolResults must be non-empty once state is non-null');
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
   it('sends only the user question as the first turn, with tools and tool_choice auto', async () => {
     mockCreate.mockResolvedValue({
-      content: [{ type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: { statType: 'trend' } }],
+      content: [
+        {
+          type: 'tool_use',
+          id: 'call_1',
+          name: 'get_metric_with_trend',
+          input: { statType: 'trend' },
+        },
+      ],
       usage: { input_tokens: 200, output_tokens: 80 },
     });
 
@@ -930,7 +1004,13 @@ describe('converseWithTools', () => {
     expect(mockCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: [{ role: 'user', content: 'How is revenue trending?' }],
-        tools: [{ name: 'get_metric_with_trend', description: 'Get one metric.', input_schema: tool.inputSchema }],
+        tools: [
+          {
+            name: 'get_metric_with_trend',
+            description: 'Get one metric.',
+            input_schema: tool.inputSchema,
+          },
+        ],
         tool_choice: { type: 'auto' },
       }),
       { signal: undefined },
@@ -939,7 +1019,14 @@ describe('converseWithTools', () => {
 
   it('returns ToolCalls with an id and the turn usage', async () => {
     mockCreate.mockResolvedValue({
-      content: [{ type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: { statType: 'trend' } }],
+      content: [
+        {
+          type: 'tool_use',
+          id: 'call_1',
+          name: 'get_metric_with_trend',
+          input: { statType: 'trend' },
+        },
+      ],
       usage: { input_tokens: 200, output_tokens: 80 },
       stop_reason: 'tool_use',
     });
@@ -947,7 +1034,9 @@ describe('converseWithTools', () => {
     const { converseWithTools } = await import('./claudeClient.js');
     const result = await converseWithTools(null, { system: '', user: 'analyze' }, [tool], []);
 
-    expect(result.toolCalls).toEqual([{ id: 'call_1', name: 'get_metric_with_trend', input: { statType: 'trend' } }]);
+    expect(result.toolCalls).toEqual([
+      { id: 'call_1', name: 'get_metric_with_trend', input: { statType: 'trend' } },
+    ]);
     expect(result.usage).toEqual({ inputTokens: 200, outputTokens: 80 });
     expect(result.text).toBe('');
   });
@@ -956,7 +1045,12 @@ describe('converseWithTools', () => {
     mockCreate.mockResolvedValue({
       content: [
         { type: 'text', text: 'Revenue is up, checking the exact' },
-        { type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: { statType: 'trend' } },
+        {
+          type: 'tool_use',
+          id: 'call_1',
+          name: 'get_metric_with_trend',
+          input: { statType: 'trend' },
+        },
       ],
       usage: { input_tokens: 200, output_tokens: 1024 },
       stop_reason: 'max_tokens',
@@ -972,7 +1066,10 @@ describe('converseWithTools', () => {
       expect.objectContaining({ model: expect.any(String) }),
       expect.stringContaining('truncated at max_tokens'),
     );
-    expect(mockDropMetric.inc).toHaveBeenCalledWith({ caller: 'converseWithTools', reason: 'max_tokens' });
+    expect(mockDropMetric.inc).toHaveBeenCalledWith({
+      caller: 'converseWithTools',
+      reason: 'max_tokens',
+    });
   });
 
   it.each(['refusal', 'stop_sequence', 'pause_turn'])(
@@ -981,7 +1078,12 @@ describe('converseWithTools', () => {
       mockCreate.mockResolvedValue({
         content: [
           { type: 'text', text: 'Revenue is up, checking the exact' },
-          { type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: { statType: 'trend' } },
+          {
+            type: 'tool_use',
+            id: 'call_1',
+            name: 'get_metric_with_trend',
+            input: { statType: 'trend' },
+          },
         ],
         usage: { input_tokens: 200, output_tokens: 40 },
         stop_reason: stopReason,
@@ -998,7 +1100,10 @@ describe('converseWithTools', () => {
         expect.objectContaining({ stopReason }),
         'Claude API multi-turn tool conversation ended for an unexpected reason',
       );
-      expect(mockDropMetric.inc).toHaveBeenCalledWith({ caller: 'converseWithTools', reason: 'abnormal_stop_reason' });
+      expect(mockDropMetric.inc).toHaveBeenCalledWith({
+        caller: 'converseWithTools',
+        reason: 'abnormal_stop_reason',
+      });
     },
   );
 
@@ -1044,13 +1149,19 @@ describe('converseWithTools', () => {
 
     const priorState = [
       { role: 'user', content: 'analyze' },
-      { role: 'assistant', content: [{ type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: {} }] },
+      {
+        role: 'assistant',
+        content: [{ type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: {} }],
+      },
     ];
 
     const { converseWithTools } = await import('./claudeClient.js');
-    await converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], [
-      { toolCallId: 'call_1', output: { value: 42 } },
-    ]);
+    await converseWithTools(
+      priorState,
+      { system: '', user: 'analyze' },
+      [tool],
+      [{ toolCallId: 'call_1', output: { value: 42 } }],
+    );
 
     expect(mockCreate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1058,7 +1169,13 @@ describe('converseWithTools', () => {
           ...priorState,
           {
             role: 'user',
-            content: [{ type: 'tool_result', tool_use_id: 'call_1', content: JSON.stringify({ value: 42 }) }],
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: 'call_1',
+                content: JSON.stringify({ value: 42 }),
+              },
+            ],
           },
         ],
       }),
@@ -1074,24 +1191,38 @@ describe('converseWithTools', () => {
 
     const priorState = [
       { role: 'user', content: 'analyze' },
-      { role: 'assistant', content: [{ type: 'tool_use', id: 'call_bad', name: 'get_metric_with_trend', input: {} }] },
+      {
+        role: 'assistant',
+        content: [{ type: 'tool_use', id: 'call_bad', name: 'get_metric_with_trend', input: {} }],
+      },
     ];
 
     const { converseWithTools } = await import('./claudeClient.js');
-    await converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], [
-      { toolCallId: 'call_bad', output: { error: 'rejected' }, isError: true },
-    ]);
+    await converseWithTools(
+      priorState,
+      { system: '', user: 'analyze' },
+      [tool],
+      [{ toolCallId: 'call_bad', output: { error: 'rejected' }, isError: true }],
+    );
 
     const body = mockCreate.mock.calls[0]![0] as { messages: Array<{ content: unknown }> };
     expect(body.messages[2]!.content).toEqual([
-      { type: 'tool_result', tool_use_id: 'call_bad', content: JSON.stringify({ error: 'rejected' }), is_error: true },
+      {
+        type: 'tool_result',
+        tool_use_id: 'call_bad',
+        content: JSON.stringify({ error: 'rejected' }),
+        is_error: true,
+      },
     ]);
   });
 
   describe('tool_result content sanitization', () => {
     const priorState = [
       { role: 'user', content: 'analyze' },
-      { role: 'assistant', content: [{ type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: {} }] },
+      {
+        role: 'assistant',
+        content: [{ type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: {} }],
+      },
     ];
 
     async function sendToolResult(output: unknown) {
@@ -1102,11 +1233,16 @@ describe('converseWithTools', () => {
       });
 
       const { converseWithTools } = await import('./claudeClient.js');
-      await converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], [
-        { toolCallId: 'call_1', output },
-      ]);
+      await converseWithTools(
+        priorState,
+        { system: '', user: 'analyze' },
+        [tool],
+        [{ toolCallId: 'call_1', output }],
+      );
 
-      const body = mockCreate.mock.calls[0]![0] as { messages: Array<{ content: Array<{ content: string }> }> };
+      const body = mockCreate.mock.calls[0]![0] as {
+        messages: Array<{ content: Array<{ content: string }> }>;
+      };
       return body.messages[2]!.content[0]!.content;
     }
 
@@ -1179,7 +1315,9 @@ describe('converseWithTools', () => {
 
       for (let offset = -5; offset <= 5; offset++) {
         const leadingX = Math.max(0, approxCutOffsetInCategory + offset);
-        const content = await sendToolResult({ category: 'x'.repeat(leadingX) + emoji + 'x'.repeat(50) });
+        const content = await sendToolResult({
+          category: 'x'.repeat(leadingX) + emoji + 'x'.repeat(50),
+        });
         expect(content).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
         expect(content).not.toMatch(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/);
       }
@@ -1237,7 +1375,12 @@ describe('converseWithTools', () => {
     const { converseWithTools } = await import('./claudeClient.js');
 
     await expect(
-      converseWithTools('opaque-string', { system: '', user: 'analyze' }, [tool], [{ toolCallId: 'call_1', output: {} }]),
+      converseWithTools(
+        'opaque-string',
+        { system: '', user: 'analyze' },
+        [tool],
+        [{ toolCallId: 'call_1', output: {} }],
+      ),
     ).rejects.toThrow('state must be the message array returned by a prior turn');
     expect(mockCreate).not.toHaveBeenCalled();
   });
@@ -1246,7 +1389,12 @@ describe('converseWithTools', () => {
     const { converseWithTools } = await import('./claudeClient.js');
 
     await expect(
-      converseWithTools(undefined, { system: '', user: 'analyze' }, [tool], [{ toolCallId: 'call_1', output: {} }]),
+      converseWithTools(
+        undefined,
+        { system: '', user: 'analyze' },
+        [tool],
+        [{ toolCallId: 'call_1', output: {} }],
+      ),
     ).rejects.toThrow('state must be the message array returned by a prior turn');
     expect(mockCreate).not.toHaveBeenCalled();
   });
@@ -1255,7 +1403,12 @@ describe('converseWithTools', () => {
     const { converseWithTools } = await import('./claudeClient.js');
 
     await expect(
-      converseWithTools([1, 2, 3], { system: '', user: 'analyze' }, [tool], [{ toolCallId: 'call_1', output: {} }]),
+      converseWithTools(
+        [1, 2, 3],
+        { system: '', user: 'analyze' },
+        [tool],
+        [{ toolCallId: 'call_1', output: {} }],
+      ),
     ).rejects.toThrow('state does not match the message shape returned by a prior turn');
     expect(mockCreate).not.toHaveBeenCalled();
   });
@@ -1264,7 +1417,12 @@ describe('converseWithTools', () => {
     const { converseWithTools } = await import('./claudeClient.js');
 
     await expect(
-      converseWithTools([], { system: '', user: 'analyze' }, [tool], [{ toolCallId: 'call_1', output: {} }]),
+      converseWithTools(
+        [],
+        { system: '', user: 'analyze' },
+        [tool],
+        [{ toolCallId: 'call_1', output: {} }],
+      ),
     ).rejects.toThrow('state does not match the message shape returned by a prior turn');
     expect(mockCreate).not.toHaveBeenCalled();
   });
@@ -1274,7 +1432,12 @@ describe('converseWithTools', () => {
 
     const { converseWithTools } = await import('./claudeClient.js');
     await expect(
-      converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], [{ toolCallId: 'call_1', output: {} }]),
+      converseWithTools(
+        priorState,
+        { system: '', user: 'analyze' },
+        [tool],
+        [{ toolCallId: 'call_1', output: {} }],
+      ),
     ).rejects.toThrow('state does not match the message shape returned by a prior turn');
     expect(mockCreate).not.toHaveBeenCalled();
   });
@@ -1287,7 +1450,12 @@ describe('converseWithTools', () => {
 
     const { converseWithTools } = await import('./claudeClient.js');
     await expect(
-      converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], [{ toolCallId: 'call_1', output: {} }]),
+      converseWithTools(
+        priorState,
+        { system: '', user: 'analyze' },
+        [tool],
+        [{ toolCallId: 'call_1', output: {} }],
+      ),
     ).rejects.toThrow('state does not match the message shape returned by a prior turn');
     expect(mockCreate).not.toHaveBeenCalled();
   });
@@ -1300,7 +1468,12 @@ describe('converseWithTools', () => {
 
     const { converseWithTools } = await import('./claudeClient.js');
     await expect(
-      converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], [{ toolCallId: 'call_1', output: {} }]),
+      converseWithTools(
+        priorState,
+        { system: '', user: 'analyze' },
+        [tool],
+        [{ toolCallId: 'call_1', output: {} }],
+      ),
     ).rejects.toThrow('state does not match the message shape returned by a prior turn');
     expect(mockCreate).not.toHaveBeenCalled();
   });
@@ -1313,7 +1486,12 @@ describe('converseWithTools', () => {
 
     const { converseWithTools } = await import('./claudeClient.js');
     await expect(
-      converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], [{ toolCallId: 'call_1', output: {} }]),
+      converseWithTools(
+        priorState,
+        { system: '', user: 'analyze' },
+        [tool],
+        [{ toolCallId: 'call_1', output: {} }],
+      ),
     ).rejects.toThrow('does not match a pending tool_use id');
     expect(mockCreate).not.toHaveBeenCalled();
   });
@@ -1321,15 +1499,23 @@ describe('converseWithTools', () => {
   it('rejects a duplicate toolCallId without calling the SDK', async () => {
     const priorState = [
       { role: 'user', content: 'analyze' },
-      { role: 'assistant', content: [{ type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: {} }] },
+      {
+        role: 'assistant',
+        content: [{ type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: {} }],
+      },
     ];
 
     const { converseWithTools } = await import('./claudeClient.js');
     await expect(
-      converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], [
-        { toolCallId: 'call_1', output: { value: 1 } },
-        { toolCallId: 'call_1', output: { value: 2 } },
-      ]),
+      converseWithTools(
+        priorState,
+        { system: '', user: 'analyze' },
+        [tool],
+        [
+          { toolCallId: 'call_1', output: { value: 1 } },
+          { toolCallId: 'call_1', output: { value: 2 } },
+        ],
+      ),
     ).rejects.toThrow('duplicate toolCallId');
     expect(mockCreate).not.toHaveBeenCalled();
   });
@@ -1337,12 +1523,20 @@ describe('converseWithTools', () => {
   it('rejects a toolCallId that does not match a pending tool_use id without calling the SDK', async () => {
     const priorState = [
       { role: 'user', content: 'analyze' },
-      { role: 'assistant', content: [{ type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: {} }] },
+      {
+        role: 'assistant',
+        content: [{ type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: {} }],
+      },
     ];
 
     const { converseWithTools } = await import('./claudeClient.js');
     await expect(
-      converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], [{ toolCallId: 'call_9', output: {} }]),
+      converseWithTools(
+        priorState,
+        { system: '', user: 'analyze' },
+        [tool],
+        [{ toolCallId: 'call_9', output: {} }],
+      ),
     ).rejects.toThrow('does not match a pending tool_use id');
     expect(mockCreate).not.toHaveBeenCalled();
   });
@@ -1364,9 +1558,12 @@ describe('converseWithTools', () => {
     ];
 
     const { converseWithTools } = await import('./claudeClient.js');
-    await converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], [
-      { toolCallId: 'call_1', output: { value: 1 } },
-    ]);
+    await converseWithTools(
+      priorState,
+      { system: '', user: 'analyze' },
+      [tool],
+      [{ toolCallId: 'call_1', output: { value: 1 } }],
+    );
 
     expect(mockCreate).toHaveBeenCalledTimes(1);
   });
@@ -1393,18 +1590,27 @@ describe('converseWithTools', () => {
     });
     const priorState = [
       { role: 'user', content: 'analyze' },
-      { role: 'assistant', content: [{ type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: {} }] },
+      {
+        role: 'assistant',
+        content: [{ type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: {} }],
+      },
     ];
 
     const { converseWithTools } = await import('./claudeClient.js');
-    await converseWithTools(priorState, { system: '', user: 'analyze' }, [], [
-      { toolCallId: 'call_1', output: { value: 42 } },
-    ]);
+    await converseWithTools(
+      priorState,
+      { system: '', user: 'analyze' },
+      [],
+      [{ toolCallId: 'call_1', output: { value: 42 } }],
+    );
 
     const body = mockCreate.mock.calls[0]![0] as { messages: Array<{ content: unknown }> };
     expect(body.messages[2]!.content).toEqual([
       { type: 'tool_result', tool_use_id: 'call_1', content: JSON.stringify({ value: 42 }) },
-      { type: 'text', text: 'No further tool calls are available. Answer now using only what has already been gathered.' },
+      {
+        type: 'text',
+        text: 'No further tool calls are available. Answer now using only what has already been gathered.',
+      },
     ]);
   });
 
@@ -1415,13 +1621,19 @@ describe('converseWithTools', () => {
     });
     const priorState = [
       { role: 'user', content: 'analyze' },
-      { role: 'assistant', content: [{ type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: {} }] },
+      {
+        role: 'assistant',
+        content: [{ type: 'tool_use', id: 'call_1', name: 'get_metric_with_trend', input: {} }],
+      },
     ];
 
     const { converseWithTools } = await import('./claudeClient.js');
-    await converseWithTools(priorState, { system: '', user: 'analyze' }, [tool], [
-      { toolCallId: 'call_1', output: { value: 42 } },
-    ]);
+    await converseWithTools(
+      priorState,
+      { system: '', user: 'analyze' },
+      [tool],
+      [{ toolCallId: 'call_1', output: { value: 42 } }],
+    );
 
     const body = mockCreate.mock.calls[0]![0] as { messages: Array<{ content: unknown }> };
     expect(body.messages[2]!.content).toEqual([
@@ -1454,7 +1666,9 @@ describe('converseWithTools', () => {
 
     const { converseWithTools } = await import('./claudeClient.js');
 
-    await expect(converseWithTools(null, { system: '', user: 'analyze' }, [tool], [])).rejects.toMatchObject({
+    await expect(
+      converseWithTools(null, { system: '', user: 'analyze' }, [tool], []),
+    ).rejects.toMatchObject({
       code: 'COST_BUDGET_EXCEEDED',
       statusCode: 503,
     });
@@ -1491,9 +1705,9 @@ describe('converseWithTools', () => {
 
     const { converseWithTools } = await import('./claudeClient.js');
 
-    await expect(converseWithTools(null, { system: '', user: 'analyze' }, [tool], [])).rejects.toThrow(
-      'External service error: Claude API',
-    );
+    await expect(
+      converseWithTools(null, { system: '', user: 'analyze' }, [tool], []),
+    ).rejects.toThrow('External service error: Claude API');
   });
 });
 
@@ -1587,7 +1801,10 @@ describe('checkClaudeHealth', () => {
     expect(health.status).toBe('error');
     expect(health.detail).toMatch(/credit/i);
     expect(logger.error).toHaveBeenCalledWith(
-      expect.objectContaining({ err: expect.stringMatching(/credit balance/i), source: 'health_probe' }),
+      expect.objectContaining({
+        err: expect.stringMatching(/credit balance/i),
+        source: 'health_probe',
+      }),
       'Claude API non-retryable error',
     );
   });
