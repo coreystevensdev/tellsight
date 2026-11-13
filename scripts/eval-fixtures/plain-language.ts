@@ -1,14 +1,23 @@
-// The measurable half of "No jargon" from the live prompt template:
-//   apps/api/src/services/curation/config/prompt-templates/v2.3-system.md
-//     line 70 -> "Write like a person, not a report. Short sentences. Vary their
-//                 length. Have opinions. No jargon. If you must use a financial
-//                 term, explain it in parentheses."
+// The measurable half of rule 9 from the live prompt template:
+//   apps/api/src/services/curation/config/prompt-templates/v2.4-system.md
+//     line 70 -> "Margin, break-even and fixed costs are ordinary words for
+//                 someone running a business, use them plainly. Runway and burn
+//                 rate are borrowed from startups, so the first time you use
+//                 either, say what it means in the same sentence."
 //     line 1  -> the reader is "a small business owner who doesn't have a
 //                 finance background"
 //
+// v2.3 said "No jargon. If you must use a financial term, explain it in
+// parentheses", which no measured sample ever obeyed: three samples used runway,
+// margin and break-even bare. The cause was not the rule. v2.3 used `runway` 29
+// times and glossed it none, and one of the three samples reproduced its example
+// clause verbatim, so the model was copying a demonstration that contradicted the
+// instruction. v2.4 narrows the rule to the two terms genuinely borrowed from
+// startup vocabulary and glosses them in its own examples.
+//
 // Pure string scan, no model call, same contract as legal-posture.ts.
 //
-// The list below is every candidate term that the v2.3 templates never use
+// The list below is every candidate term that the v2.4 templates never use
 // themselves. That derivation matters more than the list: runway, burn rate,
 // margin, break-even, fixed costs, structural, aggregate and top-line all appear
 // in the prompt, so banning them would have the eval penalising the vocabulary
@@ -17,8 +26,9 @@
 // prompt's own vocabulary, which is why this gate passes today and is still worth
 // having: it catches drift into accountant register, not the house style.
 //
-// If v2.3 is superseded, re-derive against the new template rather than copying
-// this list forward. legal-posture.ts has the same warning for the same reason.
+// Re-derived against v2.4 when v2.3 was superseded, and unchanged: all 22 are
+// still absent from both halves of the template. Re-derive again on the next
+// version rather than copying this list forward. legal-posture.ts has the same warning for the same reason.
 const OFF_VOCABULARY = [
   'EBITDA',
   'EBIT',
@@ -44,13 +54,15 @@ const OFF_VOCABULARY = [
   'ROI',
 ];
 
-// Terms the prompt does use, and which rule 9 says to explain in parentheses on
-// use. Reported, never gated: the prompt's bar is stricter than its own
-// vocabulary, and three samples glossed none of them while reading perfectly
-// plainly ("about 2.4 months", "roughly double where you are now"). Gating this
-// would fail every healthy run, which is the mistake FR22's per-sample floor made
-// before it became a pooled ceiling.
-const NEEDS_GLOSS = ['runway', 'burn rate', 'margin', 'break-even', 'EBITDA'];
+// Exactly the two terms v2.4's rule 9 names. margin, break-even and fixed costs
+// came off this list when the rule blessed them as ordinary: measuring a bar the
+// prompt no longer sets would report a failure nobody asked for.
+//
+// Still reported rather than gated, for one more run. v2.4 is the first version
+// whose examples demonstrate the gloss, so whether the rule now holds is a
+// measurement and not a prediction; gating it before that reading would be
+// FR22's per-sample floor again, failing healthy runs on an untested threshold.
+const NEEDS_GLOSS = ['runway', 'burn rate'];
 
 export interface PlainLanguageResult {
   /** False only when a term outside the prompt's own vocabulary appears. */

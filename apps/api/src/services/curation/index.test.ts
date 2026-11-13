@@ -286,8 +286,8 @@ describe('runFullPipeline', () => {
         orgId: 1,
         datasetId: 1,
         content: 'Fresh AI analysis.',
-        metadata: expect.objectContaining({ promptVersion: 'v2.3', insightCount: expect.any(Number) }),
-        promptVersion: 'v2.3',
+        metadata: expect.objectContaining({ promptVersion: 'v2.4', insightCount: expect.any(Number) }),
+        promptVersion: 'v2.4',
       }),
     );
   });
@@ -447,7 +447,7 @@ describe('cash flow end-to-end pipeline', () => {
 
     // metadata: cash_flow present, prompt version bumped
     expect(result.metadata.statTypes).toContain('cash_flow');
-    expect(result.metadata.promptVersion).toBe('v2.3');
+    expect(result.metadata.promptVersion).toBe('v2.4');
 
     // prompt: cash flow framing with signed monthly net
     expect(result.user).toMatch(/Cash Flow: burning/);
@@ -503,7 +503,7 @@ describe('runway end-to-end pipeline', () => {
     const result = assemblePrompt(insights, 1);
 
     expect(result.metadata.statTypes).toContain('runway');
-    expect(result.metadata.promptVersion).toBe('v2.3');
+    expect(result.metadata.promptVersion).toBe('v2.4');
     expect(result.user).toMatch(/Runway:\s+3\.0\s+months/);
     expect(result.user).toContain('cash $15,000');
     expect(result.user).toContain('as of 2026-04-10');
@@ -590,7 +590,7 @@ describe('break-even end-to-end pipeline', () => {
     const result = assemblePrompt(insights, 1);
 
     expect(result.metadata.statTypes).toContain('break_even');
-    expect(result.metadata.promptVersion).toBe('v2.3');
+    expect(result.metadata.promptVersion).toBe('v2.4');
     expect(result.user).toMatch(/Break-Even:\s+\$75,000\/mo/);
     expect(result.user).toMatch(/at 20\.0% margin/);
     expect(result.user).toMatch(/gap \$25,000/);
@@ -752,7 +752,7 @@ describe('cash forecast end-to-end pipeline', () => {
 
     // Forecast emits
     expect(result.metadata.statTypes).toContain('cash_forecast');
-    expect(result.metadata.promptVersion).toBe('v2.3');
+    expect(result.metadata.promptVersion).toBe('v2.4');
     expect(result.user).toMatch(/Cash Forecast: balance \$/);
 
     // Runway also emits from the same fixture, both should be ranked in.

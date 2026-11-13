@@ -12,7 +12,7 @@ import { isBelowFloor } from './sampleSizeFloors.js';
 import { scoringConfig } from './scoring.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_VERSION = 'v2.3';
+const DEFAULT_VERSION = 'v2.4';
 export const usd = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
 
 // Signed currency with explicit `+` for positives, used for CashFlow and
@@ -91,7 +91,7 @@ function getTemplate(version: string): SplitTemplate {
 // monthly surplus trend it had never been given. Showing half a series is
 // itself a prompt. Leaving it pinnable would invite someone reproducing the
 // worse arm by accident; the finding lives in the ledger and in 6c3e818.
-const MONTHLY_CASH_FLOW_VERSIONS = new Set(['v2.3']);
+const MONTHLY_CASH_FLOW_VERSIONS = new Set(['v2.3', 'v2.4']);
 
 function formatStatBody(insight: ScoredInsight, promptVersion: string): string {
   const { stat, score } = insight;
