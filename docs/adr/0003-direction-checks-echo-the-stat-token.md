@@ -1,6 +1,6 @@
 # 3. Have the agent echo the stat's own direction token instead of defining a shared up/down vocabulary
 
-- Status: Accepted, implemented 2026-10-18
+- Status: Accepted, implemented 2026-10-18. Partly superseded 2026-11-12 by [ADR 0004](0004-movement-present-when-absent-clears-the-field.md), which takes the present-when-absent rule to field level after the baseline this document asked for measured 0 declared contradictions in 67 calls. The echo mechanism and the contradiction rule stand.
 - Date: 2026-10-18
 - Deciders: Corey Stevens
 

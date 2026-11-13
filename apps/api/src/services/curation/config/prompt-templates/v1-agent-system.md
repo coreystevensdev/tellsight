@@ -34,7 +34,7 @@ kind: trend = directional change over time; anomaly = statistical outlier; thres
 
 severity: info = interesting context; notice = worth watching; warning = warrants attention soon; critical = material risk with a short window.
 
-title: one phrase, max 120 characters, states the finding not the genre. "Shipping costs up 40% over 3 months" not "Cost trend detected."
+title: one phrase, max 120 characters, states the finding not the genre. "Shipping costs up 40% over 3 months" not "Cost trend detected." Never use an em dash or the word "overall" in any field; use commas, periods, or parentheses instead.
 
 explanation: 1 to 3 sentences, what the data shows with specific numbers.
 

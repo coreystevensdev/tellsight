@@ -63,31 +63,55 @@ describe('fixture stats are reachable by the production computations', () => {
   // computeTrends: value is the regression slope, and growthPercent is derived
   // from the endpoints it also reports.
   it.each(of('trend'))('trend/$category reports the decline its endpoints describe', (stat) => {
-    const d = stat.details as { slope: number; growthPercent: number; firstValue: number; lastValue: number };
+    const d = stat.details as {
+      slope: number;
+      growthPercent: number;
+      firstValue: number;
+      lastValue: number;
+    };
 
     expect(stat.value).toBe(d.slope);
-    expect(d.growthPercent).toBeCloseTo(((d.lastValue - d.firstValue) / Math.abs(d.firstValue)) * 100, 1);
+    expect(d.growthPercent).toBeCloseTo(
+      ((d.lastValue - d.firstValue) / Math.abs(d.firstValue)) * 100,
+      1,
+    );
   });
 
   // computeBreakEven: breakEvenRevenue = fixedCosts / (margin/100), and value is
   // that revenue rather than the gap.
-  it.each(of('break_even'))('break_even is the revenue its fixed costs and margin imply', (stat) => {
-    const d = stat.details as {
-      monthlyFixedCosts: number; marginPercent: number;
-      breakEvenRevenue: number; currentMonthlyRevenue: number; gap: number;
-    };
+  it.each(of('break_even'))(
+    'break_even is the revenue its fixed costs and margin imply',
+    (stat) => {
+      const d = stat.details as {
+        monthlyFixedCosts: number;
+        marginPercent: number;
+        breakEvenRevenue: number;
+        currentMonthlyRevenue: number;
+        gap: number;
+      };
 
-    expect(d.breakEvenRevenue).toBe(Math.round(d.monthlyFixedCosts / (d.marginPercent / 100)));
-    expect(d.gap).toBe(d.breakEvenRevenue - d.currentMonthlyRevenue);
-    expect(stat.value).toBe(d.breakEvenRevenue);
-  });
+      expect(d.breakEvenRevenue).toBe(Math.round(d.monthlyFixedCosts / (d.marginPercent / 100)));
+      expect(d.gap).toBe(d.breakEvenRevenue - d.currentMonthlyRevenue);
+      expect(stat.value).toBe(d.breakEvenRevenue);
+    },
+  );
 
-  it.each(of('year_over_year'))('year_over_year change follows from its two revenue figures', (stat) => {
-    const d = stat.details as { currentRevenue: number; priorRevenue: number; changePercent: number };
+  it.each(of('year_over_year'))(
+    'year_over_year change follows from its two revenue figures',
+    (stat) => {
+      const d = stat.details as {
+        currentRevenue: number;
+        priorRevenue: number;
+        changePercent: number;
+      };
 
-    expect(d.changePercent).toBeCloseTo(((d.currentRevenue - d.priorRevenue) / d.priorRevenue) * 100, 1);
-    expect(stat.value).toBe(d.currentRevenue);
-  });
+      expect(d.changePercent).toBeCloseTo(
+        ((d.currentRevenue - d.priorRevenue) / d.priorRevenue) * 100,
+        1,
+      );
+      expect(stat.value).toBe(d.currentRevenue);
+    },
+  );
 
   it.each(of('runway'))('runway months follow from cash and burn', (stat) => {
     const d = stat.details as { cashOnHand: number; monthlyNet: number; runwayMonths: number };
@@ -106,18 +130,52 @@ describe('fixture stats are reachable by the production computations', () => {
   });
 
   it.each(of('margin_trend'))('margin_trend direction matches its two margins', (stat) => {
-    const d = stat.details as { recentMarginPercent: number; priorMarginPercent: number; direction: string };
+    const d = stat.details as {
+      recentMarginPercent: number;
+      priorMarginPercent: number;
+      direction: string;
+    };
 
     expect(stat.value).toBe(d.recentMarginPercent);
-    if (d.direction === 'expanding') expect(d.recentMarginPercent).toBeGreaterThan(d.priorMarginPercent);
-    if (d.direction === 'shrinking') expect(d.recentMarginPercent).toBeLessThan(d.priorMarginPercent);
+    if (d.direction === 'expanding')
+      expect(d.recentMarginPercent).toBeGreaterThan(d.priorMarginPercent);
+    if (d.direction === 'shrinking')
+      expect(d.recentMarginPercent).toBeLessThan(d.priorMarginPercent);
   });
+
+  // Every check above is internal to one stat. This one is across two, which is
+  // the class the suite was missing: cash-crunch carried a break_even with no
+  // margin_trend for as long as the fixture existed, a combination
+  // computeBreakEven cannot emit, and nothing here could see it (DW-262).
+  it.each(FIXTURES.map((f) => [f.id, f.build()] as const))(
+    '%s: a break_even fixture also carries the margin_trend it is derived from',
+    (_id, stats) => {
+      const breakEven = stats.find((s) => s.statType === 'break_even');
+      if (!breakEven) return;
+
+      const margin = stats.find((s) => s.statType === 'margin_trend');
+      // computeBreakEven returns [] on an empty marginStats array
+      // (financialMetrics.ts:142), so break_even without this is unreachable.
+      expect(margin, 'break_even requires a margin_trend').toBeDefined();
+
+      const be = breakEven.details as { marginPercent: number; monthlyFixedCosts: number };
+      const mt = margin!.details as { recentMarginPercent: number };
+      // computeBreakEven reads recentMarginPercent and nothing else, so a
+      // fixture whose two margins disagree is describing two businesses.
+      expect(be.marginPercent).toBe(mt.recentMarginPercent);
+      expect(breakEven.value).toBe(
+        Math.round(be.monthlyFixedCosts / (mt.recentMarginPercent / 100)),
+      );
+    },
+  );
 
   // The projected balances have to be the running sum the slope produces, and the
   // crossing month has to be the first negative one.
   it.each(of('cash_forecast'))('cash_forecast balances follow its own slope', (stat) => {
     const d = stat.details as {
-      startingBalance: number; slope: number; crossesZeroAtMonth: number | null;
+      startingBalance: number;
+      slope: number;
+      crossesZeroAtMonth: number | null;
       projectedMonths: { projectedNet: number; projectedBalance: number }[];
     };
 
@@ -143,8 +201,12 @@ describe('fixture stats are reachable by the production computations', () => {
   // arithmetic needs asserting somewhere cheap.
   it.each(of('cash_forecast'))('cash_forecast re-derives from its own basis', (stat) => {
     const d = stat.details as {
-      startingBalance: number; slope: number; intercept: number; method: string;
-      basisMonths: string[]; basisValues: number[];
+      startingBalance: number;
+      slope: number;
+      intercept: number;
+      method: string;
+      basisMonths: string[];
+      basisValues: number[];
       projectedMonths: { month: string; projectedNet: number; projectedBalance: number }[];
       crossesZeroAtMonth: number | null;
     };
@@ -178,7 +240,10 @@ describe('fixture stats are reachable by the production computations', () => {
   // with a monthlyNet of 9000 beside it, which is that exact shape.
   it.each(of('cash_flow'))('cash_flow derives its figures from its own months', (stat) => {
     const d = stat.details as {
-      monthlyNet: number; trailingMonths: number; direction: string; monthsBurning: number;
+      monthlyNet: number;
+      trailingMonths: number;
+      direction: string;
+      monthsBurning: number;
       recentMonths: { month: string; revenue: number; expenses: number; net: number }[];
     };
 
@@ -204,15 +269,22 @@ describe('fixture stats are reachable by the production computations', () => {
     expect(new Set(months).size).toBe(months.length);
   });
 
-  it.each(of('seasonal_projection'))('seasonal_projection reports the amount it projected', (stat) => {
-    const d = stat.details as { projectedAmount: number; basisValues: number[] };
+  it.each(of('seasonal_projection'))(
+    'seasonal_projection reports the amount it projected',
+    (stat) => {
+      const d = stat.details as { projectedAmount: number; basisValues: number[] };
 
-    expect(stat.value).toBe(d.projectedAmount);
-    expect(d.basisValues.length).toBeGreaterThan(0);
-  });
+      expect(stat.value).toBe(d.projectedAmount);
+      expect(d.basisValues.length).toBeGreaterThan(0);
+    },
+  );
 
   it.each(of('anomaly'))('anomaly deviates from a mean inside its own bounds', (stat) => {
-    const d = stat.details as { direction: string; deviation: number; iqrBounds: { lower: number; upper: number } };
+    const d = stat.details as {
+      direction: string;
+      deviation: number;
+      iqrBounds: { lower: number; upper: number };
+    };
     const impliedMean = stat.value - d.deviation;
 
     expect(d.direction).toBe(stat.value > d.iqrBounds.upper ? 'above' : 'below');

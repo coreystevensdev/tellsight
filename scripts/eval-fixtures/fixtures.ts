@@ -181,6 +181,27 @@ export function cashCrunch(): ComputedStat[] {
       // against 16000 of fixed costs, which is not break-even. Faithfulness
       // scored 1.00 on it regardless, because that judge checks the summary
       // against the ground truth and never the ground truth against the formula.
+      statType: 'margin_trend',
+      category: null,
+      value: 20,
+      // computeBreakEven reads recentMarginPercent off this stat and returns []
+      // without it (financialMetrics.ts:142), so a fixture carrying break_even
+      // and not this one encodes a state the pipeline cannot produce. It did,
+      // and the break_even below still says it "inherits margin_trend's
+      // sampleSize" (DW-262).
+      sampleSize: 8,
+      details: {
+        // Pinned at 20 by the break_even below: 16000 / 0.20 = 80000.
+        recentMarginPercent: 20,
+        priorMarginPercent: 28,
+        direction: 'shrinking',
+        // Six months either side at 44k then 40k a month: revenue off 9.1%
+        // while expenses held, which is what compresses 28% to 20%.
+        revenueGrowthPercent: -9.1,
+        expenseGrowthPercent: 1,
+      },
+    },
+    {
       statType: 'break_even',
       category: null,
       value: 80000,
