@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { csvAdapter, stripBom, normalizeHeader, buildHeaderMap, isValidDate, isValidAmount, detectDayFirst, parseDate, hasClassificationSignal, normalizeParentCategory } from './csvAdapter.js';
+import { CSV_MAX_ROWS } from 'shared/constants';
 import {
   validCsv,
   validCsvWithOptionals,
@@ -320,5 +321,34 @@ describe('helper functions', () => {
     expect(isValidAmount('1200')).toBe(true);
     expect(isValidAmount('twelve')).toBe(false);
     expect(isValidAmount('')).toBe(false);
+  });
+});
+
+// The row limit was checked after parse() had already turned the whole buffer
+// into row objects. A 10MB upload holds roughly 35x CSV_MAX_ROWS, so the check
+// could only ever reject a file the process had finished materialising.
+//
+// rowCount is the observable: capped at the limit plus one means parsing stopped
+// there, where the real row count means it did not.
+describe('csvAdapter row ceiling', () => {
+  function csvWithRows(n: number): Buffer {
+    const lines = ['date,amount,category'];
+    for (let i = 0; i < n; i++) lines.push(`2026-01-01,${i},ops`);
+    return Buffer.from(lines.join('\n'));
+  }
+
+  it('stops parsing at the ceiling instead of after it', () => {
+    const result = csvAdapter.parse(csvWithRows(CSV_MAX_ROWS + 5_000));
+
+    expect(result.rows).toEqual([]);
+    expect(result.warnings[0]).toContain('exceeds our limit');
+    expect(result.rowCount).toBe(CSV_MAX_ROWS + 1);
+  });
+
+  it('still accepts a file exactly at the ceiling', () => {
+    const result = csvAdapter.parse(csvWithRows(CSV_MAX_ROWS));
+
+    expect(result.rowCount).toBe(CSV_MAX_ROWS);
+    expect(result.warnings.some((w) => w.includes('exceeds our limit'))).toBe(false);
   });
 });

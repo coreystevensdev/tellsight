@@ -193,6 +193,10 @@ export const csvAdapter = {
       skip_empty_lines: true,
       trim: true,
       relax_column_count: true,
+      // One past the limit, so the check below rejects without the whole file
+      // having become row objects first. A 10MB upload holds roughly 35x
+      // CSV_MAX_ROWS, and all of it used to be materialised before the reject.
+      to: CSV_MAX_ROWS + 1,
     });
 
     // csv-parse handles quoted headers correctly (e.g. "Revenue, Q1")
@@ -224,7 +228,9 @@ export const csvAdapter = {
         headers: rawHeaders,
         rows: [],
         rowCount: records.length,
-        warnings: [`File has ${records.length.toLocaleString()} rows, which exceeds our limit of ${CSV_MAX_ROWS.toLocaleString()}. Try splitting your data into smaller files.`],
+        // "more than", not an exact count: parsing stops at the ceiling now, so
+        // records.length is the cap rather than the file's real length.
+        warnings: [`File has more than ${CSV_MAX_ROWS.toLocaleString()} rows, which exceeds our limit. Try splitting your data into smaller files.`],
       };
     }
 
