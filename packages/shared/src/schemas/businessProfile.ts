@@ -49,6 +49,17 @@ export const businessProfileSchema = z.object({
 
 export type BusinessProfile = z.infer<typeof businessProfileSchema>;
 
+// The complement of orgFinancialsSchema, and all that PUT /org/profile accepts.
+// Both halves live in the same orgs.business_profile column, but only the
+// financial half is owner-gated (roleGuard on PUT /org/financials, none on the
+// profile route), so the baseline must not be reachable through onboarding.
+export const onboardingProfileSchema = businessProfileSchema.omit({
+  cashOnHand: true,
+  cashAsOfDate: true,
+  businessStartedDate: true,
+  monthlyFixedCosts: true,
+});
+
 // Narrower subset for the /api/org/financials endpoints. Keeps runway/break-even
 // concerns separate from onboarding concerns.
 export const orgFinancialsSchema = businessProfileSchema.pick({

@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { SEED_ORG } from 'shared/constants';
 import { businessProfileSchema } from 'shared/schemas';
 import type { BusinessProfile } from 'shared/types';
@@ -51,8 +51,16 @@ export async function getBusinessProfile(
   return result.success ? result.data : null;
 }
 
+// Merged, not replaced: the financial baseline shares this column and is written
+// only by updateOrgFinancials, so a full replace here deleted it whenever a
+// member completed onboarding. COALESCE because `null || jsonb` is null.
 export async function updateBusinessProfile(orgId: number, profile: Record<string, unknown>) {
-  await db.update(orgs).set({ businessProfile: profile }).where(eq(orgs.id, orgId));
+  await db
+    .update(orgs)
+    .set({
+      businessProfile: sql`COALESCE(${orgs.businessProfile}, '{}'::jsonb) || ${JSON.stringify(profile)}::jsonb`,
+    })
+    .where(eq(orgs.id, orgId));
 }
 
 export async function setActiveDataset(

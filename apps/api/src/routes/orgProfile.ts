@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import type { Response } from 'express';
-import { businessProfileSchema } from 'shared/schemas';
+import { onboardingProfileSchema } from 'shared/schemas';
 import { requireUser } from '../lib/requireUser.js';
 import { orgsQueries } from '../db/queries/index.js';
 import { logger } from '../lib/logger.js';
@@ -15,7 +15,7 @@ orgProfileRouter.get('/profile', async (req, res: Response) => {
 
 orgProfileRouter.put('/profile', async (req, res: Response) => {
   const orgId = requireUser(req).org_id;
-  const result = businessProfileSchema.safeParse(req.body);
+  const result = onboardingProfileSchema.safeParse(req.body);
 
   if (!result.success) {
     res.status(400).json({
