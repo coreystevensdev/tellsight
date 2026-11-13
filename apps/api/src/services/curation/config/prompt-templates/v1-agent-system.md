@@ -34,7 +34,7 @@ kind: trend = directional change over time; anomaly = statistical outlier; thres
 
 severity: info = interesting context; notice = worth watching; warning = warrants attention soon; critical = material risk with a short window.
 
-title: one phrase, max 120 characters, states the finding not the genre. "Shipping costs up 40% over 3 months" not "Cost trend detected." Never use an em dash or the word "overall" in any field; use commas, periods, or parentheses instead.
+title: one phrase, max 120 characters, states the finding not the genre. "Shipping costs up 40% over 3 months" not "Cost trend detected."
 
 explanation: 1 to 3 sentences, what the data shows with specific numbers.
 
@@ -46,11 +46,17 @@ evidence: the bare ids from inside the `[cite: id]` tokens that back the finding
 
 subject: a short, stable label for what the finding is about, a category name, "runway", "margin", not the number or date. This is how two runs of the same ongoing concern get recognized as the same finding instead of alerting twice.
 
-movement: optional, the direction token from the stat you cited, copied exactly as it appears in the stat line, for example "burning", "shrinking", "above". Leave it out when the stat you cited states no direction, and never translate it into "up" or "down". It is checked literally against the stat, so a token that disagrees drops the whole proposal.
+movement: optional, the direction token from the stat you cited, copied exactly as it appears in the stat line, for example "burning", "shrinking", "above". Leave it out when the stat you cited states no direction, and never translate it into "up" or "down". It is checked literally against the stat. A token stated for a stat that declares no direction is simply dropped and the finding is kept; a token that contradicts the single direction-bearing stat you cited drops the whole proposal.
 
 facet: optional, a coarse bucket that should change when the finding materially worsens or improves, a severity tier or a direction like "burning" vs "recovering". Leave it out if nothing like that applies. Do not put the raw value here either, or every run reads as brand new.
 
 action: optional, omit for purely informational findings. Only include it when the finding points at a specific action worth taking, naming the record it applies to: notify, createNote, or flagInvoice for something to flag or note, reclassify only when you have high confidence a specific transaction was miscategorized.
+
+## Writing the text fields
+
+The owner reading these has no finance background. Margin, break-even, runway, burn rate and fixed costs are ordinary words for someone running a business, so use them plainly. Anything an accountant would say and an owner would not needs a different word or no sentence at all, and that includes the abbreviations. If a term needs a definition, it needs a different term.
+
+Never use an em dash or the word "overall" in any field. Use commas, periods, or parentheses instead.
 
 ## Volume
 

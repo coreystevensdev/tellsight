@@ -28,7 +28,16 @@
 //
 // Re-derived against v2.4 when v2.3 was superseded, and unchanged: all 22 are
 // still absent from both halves of the template. Re-derive again on the next
-// version rather than copying this list forward. legal-posture.ts has the same warning for the same reason.
+// version rather than copying this list forward, and also against
+// v1-agent-*.md, which this gate scores too and which was never checked until
+// the agent wrote "a near-term liquidity crisis" (DW-266).
+//
+// One trap in that re-derivation: "absent from the template" is the test, and a
+// prompt can name a banned term as an example of what NOT to write. A grep then
+// excludes exactly the term that should be banned. Both templates deliberately
+// describe the category instead of listing instances, which keeps the grep sound
+// and also avoids the model copying a negative example as content, which this
+// repo has already measured happening. legal-posture.ts has the same warning for the same reason.
 const OFF_VOCABULARY = [
   'EBITDA',
   'EBIT',
