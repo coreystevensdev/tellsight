@@ -19,7 +19,17 @@ import { enqueueAlertsOnUploadCheck } from '../jobs/alerts/index.js';
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_FILE_SIZE },
+  // fileSize alone left parts on busboy's Infinity default at 1MB a value, and
+  // every value lands in req.body before the handler runs. These two routes send
+  // one file plus at most previewToken, around 250 bytes. No `fields` or `files`
+  // cap: `parts` bounds both counts and single() rejects a second file, so
+  // neither could ever be the limit that fires.
+  limits: {
+    fileSize: MAX_FILE_SIZE,
+    parts: 4,
+    fieldSize: 4096,
+    fieldNameSize: 64,
+  },
   fileFilter: (_req, file, cb) => {
     const csvTypes = ['text/csv', 'application/vnd.ms-excel', 'text/plain'];
     if (csvTypes.includes(file.mimetype) || file.originalname.endsWith('.csv')) {
@@ -30,12 +40,24 @@ const upload = multer({
   },
 });
 
+// Unmapped multer codes reach the global handler as a 500, which reads as our
+// fault rather than a rejected request. LIMIT_UNEXPECTED_FILE was doing exactly
+// that for a second file in the form.
+const MULTER_MESSAGES: Record<string, string> = {
+  LIMIT_FILE_SIZE: 'File size exceeds 10MB limit. Try splitting your data into smaller files.',
+  LIMIT_FILE_COUNT: 'Upload one CSV file at a time.',
+  LIMIT_UNEXPECTED_FILE: 'Upload one CSV file at a time.',
+  LIMIT_FIELD_COUNT: 'The upload form carried more fields than this endpoint accepts.',
+  LIMIT_PART_COUNT: 'The upload form carried more parts than this endpoint accepts.',
+  LIMIT_FIELD_VALUE: 'A form field in the upload was too large.',
+  LIMIT_FIELD_KEY: 'A form field name in the upload was too long.',
+};
+
 function handleMulterError(err: unknown, _req: Request, _res: Response, next: NextFunction) {
   if (err && typeof err === 'object' && 'code' in err) {
-    const multerErr = err as { code: string; message: string };
-    if (multerErr.code === 'LIMIT_FILE_SIZE') {
-      return next(new ValidationError('File size exceeds 10MB limit. Try splitting your data into smaller files.'));
-    }
+    const { code } = err as { code: string };
+    const message = MULTER_MESSAGES[code];
+    if (message) return next(new ValidationError(message));
   }
   next(err);
 }
