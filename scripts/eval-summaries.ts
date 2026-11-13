@@ -32,6 +32,7 @@ import { scoreLegalPosture } from './eval-fixtures/legal-posture.js';
 import { scorePlainLanguage } from './eval-fixtures/plain-language.js';
 import { warrantedRisks, scoreRiskCoverage } from './eval-fixtures/material-risk.js';
 import { dashboardGate } from './eval-fixtures/dashboard-gate.js';
+import { freshShedState, onShed, sleep, SHED_RETRY_WAIT_MS } from './eval-fixtures/shed-retry.js';
 import type { GenerateProvider } from './eval-fixtures/parse-judge.js';
 import {
   AGENT_SUMMARIES_START,
@@ -145,6 +146,7 @@ async function scoreAgentFixture(
   const risks = warrantedRisks(stats);
 
   const samples: AgentSample[] = [];
+  const shedState = freshShedState();
   // A breaker trip sheds every subsequent sample, and samples run back to back,
   // so the 30s cooldown never closes. Whatever survives is therefore whatever
   // ran before the trip, not a random subset, which is why a partial arm under
@@ -224,8 +226,19 @@ async function scoreAgentFixture(
       // ("Service temporarily unavailable, please retry shortly.") and free to
       // change. CircuitOpenError sets CIRCUIT_OPEN at circuitBreaker.ts:107.
       const shed = (err as { code?: string } | null)?.code === 'CIRCUIT_OPEN';
-      if (shed) unmeasured++;
-      else errored++;
+      if (shed) {
+        const { action, attempt } = onShed(shedState, i);
+        if (action === 'retry') {
+          console.error(
+            `  ${fixture.id} agent sample ${i + 1}/${SAMPLES} shed; waiting ` +
+              `${SHED_RETRY_WAIT_MS / 1000}s for the breaker to half-open (attempt ${attempt})`,
+          );
+          await sleep(SHED_RETRY_WAIT_MS);
+          i--;
+          continue;
+        }
+        unmeasured++;
+      } else errored++;
       console.error(
         `  ${fixture.id} agent sample ${i + 1}/${SAMPLES} ${shed ? 'shed, never reached the API' : 'failed'}: ` +
           `${err instanceof Error ? err.message : err}`,
@@ -267,6 +280,7 @@ async function scoreFixture(
   // DW-251: a third category. The cap refuses the priciest samples, cost tracks
   // output length, so unlike a shed or errored sample this exclusion is
   // correlated with the thing being scored.
+  const shedState = freshShedState();
   let capRefused = 0;
   const capRefusedCostsUsd: number[] = [];
   const { spentOn } = await import('../apps/api/src/lib/cost.js');
@@ -307,6 +321,16 @@ async function scoreFixture(
       const code = (err as { code?: string } | null)?.code;
       let why = 'failed';
       if (code === 'CIRCUIT_OPEN') {
+        const { action, attempt } = onShed(shedState, i);
+        if (action === 'retry') {
+          console.error(
+            `  ${fixture.id} sample ${i + 1}/${SAMPLES} shed; waiting ` +
+              `${SHED_RETRY_WAIT_MS / 1000}s for the breaker to half-open (attempt ${attempt})`,
+          );
+          await sleep(SHED_RETRY_WAIT_MS);
+          i--;
+          continue;
+        }
         unmeasured++;
         why = 'shed, never reached the API';
       } else if (code === 'COST_BUDGET_EXCEEDED') {
