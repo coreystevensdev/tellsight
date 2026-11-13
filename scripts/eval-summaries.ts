@@ -33,6 +33,7 @@ import { scorePlainLanguage } from './eval-fixtures/plain-language.js';
 import { warrantedRisks, scoreRiskCoverage } from './eval-fixtures/material-risk.js';
 import { dashboardGate } from './eval-fixtures/dashboard-gate.js';
 import { freshShedState, onShed, sleep, SHED_RETRY_WAIT_MS } from './eval-fixtures/shed-retry.js';
+import { isPermanentUpstreamFailure } from './eval-fixtures/permanent-failure.js';
 import type { GenerateProvider } from './eval-fixtures/parse-judge.js';
 import {
   AGENT_SUMMARIES_START,
@@ -225,6 +226,14 @@ async function scoreAgentFixture(
       // Matched on the code rather than the message, which is user-facing copy
       // ("Service temporarily unavailable, please retry shortly.") and free to
       // change. CircuitOpenError sets CIRCUIT_OPEN at circuitBreaker.ts:107.
+      // Nothing downstream improves across 36 samples once the upstream is
+      // permanently refusing, and the run has already paid for the discovery.
+      if (isPermanentUpstreamFailure(err)) {
+        throw new Error(
+          `${fixture.id}: upstream failure is permanent, abandoning the run after ` +
+            `${samples.length} of ${SAMPLES} agent samples: ${err instanceof Error ? err.message : err}`,
+        );
+      }
       const shed = (err as { code?: string } | null)?.code === 'CIRCUIT_OPEN';
       if (shed) {
         const { action, attempt } = onShed(shedState, i);
@@ -318,6 +327,12 @@ async function scoreFixture(
         `  ${fixture.id} sample ${i + 1}/${SAMPLES}: faith ${faithfulness.toFixed(2)}, comp ${completeness.toFixed(2)}, legal ${legal.pass ? 'pass' : 'FAIL'}, plain ${plain.pass ? 'pass' : 'FAIL'}, insight ${insight.pass ? 'pass' : 'FAIL'}`,
       );
     } catch (err) {
+      if (isPermanentUpstreamFailure(err)) {
+        throw new Error(
+          `${fixture.id}: upstream failure is permanent, abandoning the run after ` +
+            `${samples.length} of ${SAMPLES} samples: ${err instanceof Error ? err.message : err}`,
+        );
+      }
       const code = (err as { code?: string } | null)?.code;
       let why = 'failed';
       if (code === 'CIRCUIT_OPEN') {
