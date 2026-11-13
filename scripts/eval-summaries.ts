@@ -31,6 +31,7 @@ import { insightGate, INSIGHT_MISS_CEILING } from './eval-fixtures/insight-gate.
 import { scoreLegalPosture } from './eval-fixtures/legal-posture.js';
 import { scorePlainLanguage } from './eval-fixtures/plain-language.js';
 import { warrantedRisks, scoreRiskCoverage } from './eval-fixtures/material-risk.js';
+import { dashboardGate } from './eval-fixtures/dashboard-gate.js';
 import type { GenerateProvider } from './eval-fixtures/parse-judge.js';
 import {
   AGENT_SUMMARIES_START,
@@ -566,39 +567,11 @@ async function main(): Promise<void> {
     );
   }
 
-  const breaches: string[] = [];
-  for (const r of results) {
-    // DW-250: shedding is correlated, so the survivors are whatever ran before
-    // the breaker tripped rather than a random subset of 36. A mean over those
-    // is not a noisier measurement of the same thing, so it is not graded.
-    if (r.unmeasured > 0) {
-      breaches.push(
-        `${r.id}: inconclusive, ${r.unmeasured} of ${SAMPLES} samples shed before reaching the API ` +
-          `(scored ${r.sampledCount}, errored ${r.errored})`,
-      );
-      continue;
-    }
-    if (r.faithfulness.mean < FLOORS.faithfulness) {
-      breaches.push(
-        `${r.id}: faithfulness ${r.faithfulness.mean.toFixed(2)} < ${FLOORS.faithfulness}`,
-      );
-    }
-    if (r.completeness.mean < FLOORS.completeness) {
-      breaches.push(
-        `${r.id}: completeness ${r.completeness.mean.toFixed(2)} < ${FLOORS.completeness}`,
-      );
-    }
-    if (!r.legalPosture.pass) {
-      breaches.push(`${r.id}: legal posture failed (${r.legalPosture.violations.join('; ')})`);
-    }
-    if (!r.plainLanguage.pass) {
-      breaches.push(`${r.id}: plain language failed (${r.plainLanguage.violations.join('; ')})`);
-    }
-  }
+  const breaches: string[] = dashboardGate(results, SAMPLES, FLOORS);
 
-  // DW-242. Extracted so it has its own tests: a gate shipped ungated is the
-  // defect this closes, and the dashboard floors above are still inline only
-  // because they predate the entry.
+  // Both arms' gates now live beside their tests. DW-242 extracted the agent's
+  // after a gate shipped ungated; DW-258 extracted this one after `if (false)`
+  // in place of a breach condition left all 190 tests green.
   const agent = agentGate(agentResults, failedAgentFixtureIds, selected.length, SAMPLES, FLOORS);
   if (agentArmRan) {
     breaches.push(...agent.breaches);
