@@ -56,11 +56,27 @@ describe('scorePlainLanguage', () => {
 
   it('reports unglossed terms without failing on them', () => {
     const r = scorePlainLanguage(REAL_SUMMARY);
-    // Rule 9 asks for a parenthetical on first use and production never gives
-    // one. Reported so the gap is visible, ungated so a healthy run stays green.
+    // Reported so the gap is visible, ungated so a healthy run stays green.
     expect(r.pass).toBe(true);
     expect(r.unglossed).toContain('runway');
-    expect(r.unglossed).toContain('margin');
+  });
+
+  it('no longer counts the terms v2.4 blessed as ordinary', () => {
+    // v2.3 asked for a parenthetical on any financial term and got one zero
+    // times. v2.4 narrows the ask to runway and burn rate, so margin and
+    // break-even used bare are compliant and must not register.
+    const r = scorePlainLanguage(REAL_SUMMARY);
+    expect(r.unglossed).not.toContain('margin');
+    expect(r.unglossed).not.toContain('break-even');
+  });
+
+  it('counts burn rate, the other term v2.4 names', () => {
+    const bare = 'The burn rate has been accelerating since July.';
+    expect(scorePlainLanguage(bare).unglossed).toContain('burn rate');
+
+    const glossed =
+      'The burn rate (how much more you spend than you take in each month) has been accelerating.';
+    expect(scorePlainLanguage(glossed).unglossed).not.toContain('burn rate');
   });
 
   it('counts a prose parenthetical as a gloss and a bare figure as not', () => {
