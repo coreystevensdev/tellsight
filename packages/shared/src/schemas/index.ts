@@ -43,6 +43,7 @@ export {
 
 export {
   businessProfileSchema,
+  onboardingProfileSchema,
   orgFinancialsSchema,
   BUSINESS_TYPES,
   REVENUE_RANGES,

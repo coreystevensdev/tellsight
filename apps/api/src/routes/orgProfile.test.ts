@@ -93,22 +93,36 @@ describe('PUT /org/profile', () => {
     expect(mockUpdateBusinessProfile).toHaveBeenCalledWith(3, VALID);
   });
 
-  it('accepts the optional financial baseline fields', async () => {
-    const withMoney = { ...VALID, cashOnHand: 25_000, monthlyFixedCosts: 8_000 };
+  // This used to assert the opposite, which is how the gap stayed invisible: the
+  // four baseline fields are owner-only on PUT /org/financials (roleGuard there,
+  // none here), and they live in the same JSONB column this route writes. A
+  // member could set them through the onboarding endpoint.
+  //
+  // Dropped rather than rejected, matching how this route already treats every
+  // other key it does not own. /org/financials is the only writer.
+  it('ignores the financial baseline fields a member could otherwise set', async () => {
+    const withMoney = {
+      ...VALID,
+      cashOnHand: 25_000,
+      cashAsOfDate: '2026-01-01T00:00:00.000Z',
+      businessStartedDate: '2020-01-01',
+      monthlyFixedCosts: 8_000,
+    };
 
-    await put(withMoney);
+    const res = await put(withMoney);
 
-    expect(mockUpdateBusinessProfile).toHaveBeenCalledWith(3, withMoney);
+    expect(res.status).toBe(200);
+    expect(mockUpdateBusinessProfile).toHaveBeenCalledWith(3, VALID);
+    const [, written] = mockUpdateBusinessProfile.mock.calls[0]!;
+    for (const key of ['cashOnHand', 'cashAsOfDate', 'businessStartedDate', 'monthlyFixedCosts']) {
+      expect(written).not.toHaveProperty(key);
+    }
   });
 
   it.each([
     ['a missing required field', { revenueRange: '100k_500k', teamSize: '2_5', topConcern: 'cash_flow' }],
     ['an unknown business type', { ...VALID, businessType: 'crypto_mining' }],
     ['an unknown revenue range', { ...VALID, revenueRange: 'squillions' }],
-    ['a negative cash balance', { ...VALID, cashOnHand: -1 }],
-    ['cash beyond the ceiling', { ...VALID, cashOnHand: 1_000_000_000 }],
-    ['a non-datetime cashAsOfDate', { ...VALID, cashAsOfDate: 'last tuesday' }],
-    ['negative fixed costs', { ...VALID, monthlyFixedCosts: -5 }],
     ['an empty body', {}],
     ['an array instead of an object', []],
   ])('rejects %s without writing', async (_label, body) => {
