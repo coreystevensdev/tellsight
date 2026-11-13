@@ -47,7 +47,16 @@ export function applyCostGate(usage: Usage, caller: string, model: string): numb
 export function mapAnthropicError(err: unknown): never {
   if (err instanceof CostBudgetExceededError) throw err;
 
-  if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.BadRequestError) {
+  // A 400 or a 401 is a fact about the request or the account rather than
+  // weather: a bad key, a malformed call, an exhausted credit balance. No amount
+  // of retrying changes any of them. This split already existed to pick a log
+  // level and was then discarded, so every caller saw the same error whether the
+  // upstream had timed out once or the account had run dry. The eval burned 72
+  // samples over 40 minutes discovering the second case one sample at a time.
+  const permanent =
+    err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.BadRequestError;
+
+  if (permanent) {
     logger.error({ err: (err as Error).message }, 'Claude API non-retryable error');
   } else {
     logger.warn({ err: (err as Error).message }, 'Claude API retryable error exhausted');
@@ -55,5 +64,6 @@ export function mapAnthropicError(err: unknown): never {
 
   throw new ExternalServiceError('Claude API', {
     originalError: (err as Error).message,
+    permanent,
   });
 }
