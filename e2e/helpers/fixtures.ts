@@ -75,6 +75,33 @@ export async function ensureTestUser(
  * org's seed data as part of the same transaction, so running an upload against
  * SEED_ORG_ID destroys the fixture every later test depends on.
  */
+/**
+ * An alert rule to hang a mute token off. The mute routes are reached from an
+ * alert email, so the rule has to exist for the confirm to resolve to anything.
+ */
+export async function ensureAlertRule(
+  orgId: number,
+  createdByUserId: number,
+  kind = 'runway_runs_short',
+): Promise<number> {
+  const sql = getConnection();
+
+  const [existing] = await sql`
+    SELECT id FROM alert_rules
+    WHERE org_id = ${orgId} AND kind = ${kind} AND deleted_at IS NULL
+    LIMIT 1
+  `;
+  if (existing) return existing.id as number;
+
+  const [row] = await sql`
+    INSERT INTO alert_rules (org_id, created_by_user_id, kind, threshold, enabled)
+    VALUES (${orgId}, ${createdByUserId}, ${kind}, ${sql.json({ months: 3 })}, true)
+    RETURNING id
+  `;
+  if (!row) throw new Error('ensureAlertRule: no row returned');
+  return row.id as number;
+}
+
 export async function ensureIsolatedOrg(
   slug: string,
   user: typeof TEST_USER | typeof FREE_TIER_USER = TEST_USER,
