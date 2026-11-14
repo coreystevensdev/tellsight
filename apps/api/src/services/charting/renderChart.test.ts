@@ -107,6 +107,32 @@ describe('axis text actually renders', () => {
     expect(meta.width).toBe(1200);
     expect(meta.height).toBe(600);
   });
+
+  it('names each line at its own end, inside the surface', async () => {
+    const { renderChart } = await import('./renderChart.js');
+    const sharp = (await import('sharp')).default;
+    const png = await renderChart({ chartKind: 'cash-flow', data: cashFlowData }, context);
+    expect(png).not.toBeNull();
+
+    // Nothing but the two end labels draws in the right margin: the plot area
+    // stops where the last data point sits. A <Legend> could never appear here
+    // because Recharts renders it as HTML outside the <svg> this pipeline
+    // rasterises, which is why the labels are drawn as <text> instead.
+    const { width = 0, height = 0 } = await sharp(png!).metadata();
+    const strip = 160;
+    const { data: raw, info } = await sharp(png!)
+      .extract({ left: width - strip, top: 0, width: strip, height })
+      .flatten({ background: '#ffffff' })
+      .greyscale()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    expect(info.channels).toBe(1);
+
+    let dark = 0;
+    for (const v of raw) if (v < 160) dark++;
+    // ~700 with both labels present, 0 without them.
+    expect(dark).toBeGreaterThan(200);
+  });
 });
 
 describe('buildRunwayPoints', () => {
