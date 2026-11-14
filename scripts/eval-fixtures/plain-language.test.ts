@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { scorePlainLanguage } from './plain-language.js';
+import { formatGloss, scorePlainLanguage } from './plain-language.js';
 
 // Verbatim from a v2.3 run on cash-crunch, stat and cite tags stripped. Kept
 // real rather than hand-written because the question this check answers is
@@ -90,5 +90,36 @@ describe('scorePlainLanguage', () => {
     // the case that pins the prose rule itself rather than the string's size.
     const longFigures = 'Your runway ($24,000.00 of $41,500.00) is about 2.4 months.';
     expect(scorePlainLanguage(longFigures).unglossed).toContain('runway');
+  });
+  it('tells a term that was never used apart from one that was glossed', () => {
+    // The distinction the aggregate cannot make. This prose says "monthly burn"
+    // and never "burn rate", so the term is in neither list, while runway is
+    // used bare and lands in unglossed. Reading only unglossed, both terms look
+    // equally compliant, and a prompt change that stopped the model saying
+    // "burn rate" at all would have scored as a perfect gloss rate.
+    const r = scorePlainLanguage(REAL_SUMMARY);
+    expect(r.unglossed).toContain('runway');
+    expect(r.glossed).not.toContain('burn rate');
+    expect(r.unglossed).not.toContain('burn rate');
+  });
+
+  it('records a used-and-glossed term in glossed', () => {
+    const glossed =
+      'The burn rate (how much more you spend than you take in each month) has been accelerating.';
+    const r = scorePlainLanguage(glossed);
+    expect(r.glossed).toContain('burn rate');
+    expect(r.unglossed).not.toContain('burn rate');
+  });
+});
+
+describe('formatGloss', () => {
+  it('names each term and its state', () => {
+    const both =
+      'Your runway (the months of cash left at this spend rate) is 2.4 months and the burn rate is rising.';
+    expect(formatGloss(scorePlainLanguage(both))).toBe('runway glossed, burn rate bare');
+  });
+
+  it('says so when no term appeared, rather than reading as a clean pass', () => {
+    expect(formatGloss(scorePlainLanguage('Revenue rose and costs held.'))).toBe('no terms used');
   });
 });

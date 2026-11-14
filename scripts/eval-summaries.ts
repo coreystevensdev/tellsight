@@ -29,7 +29,7 @@ import { FIXTURES, FROZEN_NOW } from './eval-fixtures/fixtures.js';
 import { agentGate } from './eval-fixtures/agent-gate.js';
 import { insightGate, INSIGHT_MISS_CEILING } from './eval-fixtures/insight-gate.js';
 import { scoreLegalPosture } from './eval-fixtures/legal-posture.js';
-import { scorePlainLanguage } from './eval-fixtures/plain-language.js';
+import { formatGloss, scorePlainLanguage } from './eval-fixtures/plain-language.js';
 import { warrantedRisks, scoreRiskCoverage } from './eval-fixtures/material-risk.js';
 import { dashboardGate } from './eval-fixtures/dashboard-gate.js';
 import { freshShedState, onShed, sleep, SHED_RETRY_WAIT_MS } from './eval-fixtures/shed-retry.js';
@@ -220,7 +220,7 @@ async function scoreAgentFixture(
         unglossed: plain.unglossed,
       });
       console.log(
-        `  ${fixture.id} agent sample ${i + 1}/${SAMPLES}: ${proposals.length} proposal(s), faith ${faithfulness.toFixed(2)}, risk ${coverage.score === null ? 'n/a' : coverage.score.toFixed(2)}, legal ${legal.pass ? 'pass' : 'FAIL'}, plain ${plain.pass ? 'pass' : 'FAIL'}`,
+        `  ${fixture.id} agent sample ${i + 1}/${SAMPLES}: ${proposals.length} proposal(s), faith ${faithfulness.toFixed(2)}, risk ${coverage.score === null ? 'n/a' : coverage.score.toFixed(2)}, legal ${legal.pass ? 'pass' : 'FAIL'}, plain ${plain.pass ? 'pass' : 'FAIL'}, gloss [${formatGloss(plain)}]`,
       );
     } catch (err) {
       // Matched on the code rather than the message, which is user-facing copy
@@ -324,7 +324,7 @@ async function scoreFixture(
         insightShortfall: insight.shortfall,
       });
       console.log(
-        `  ${fixture.id} sample ${i + 1}/${SAMPLES}: faith ${faithfulness.toFixed(2)}, comp ${completeness.toFixed(2)}, legal ${legal.pass ? 'pass' : 'FAIL'}, plain ${plain.pass ? 'pass' : 'FAIL'}, insight ${insight.pass ? 'pass' : 'FAIL'}`,
+        `  ${fixture.id} sample ${i + 1}/${SAMPLES}: faith ${faithfulness.toFixed(2)}, comp ${completeness.toFixed(2)}, legal ${legal.pass ? 'pass' : 'FAIL'}, plain ${plain.pass ? 'pass' : 'FAIL'}, gloss [${formatGloss(plain)}], insight ${insight.pass ? 'pass' : 'FAIL'}`,
       );
     } catch (err) {
       if (isPermanentUpstreamFailure(err)) {

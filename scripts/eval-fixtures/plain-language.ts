@@ -79,6 +79,11 @@ export interface PlainLanguageResult {
   violations: string[];
   /** Reported, not gated. Terms rule 9 asks to gloss that were used bare. */
   unglossed: string[];
+  /** Terms rule 9 asks to gloss that were used and glossed. A term in neither
+   *  list was never used, which is not the same as glossed: a prompt change
+   *  that stops the model reaching for the word at all would otherwise read as
+   *  a perfect gloss rate. */
+  glossed: string[];
 }
 
 function escapeRe(s: string): string {
@@ -115,9 +120,22 @@ export function scorePlainLanguage(summary: string): PlainLanguageResult {
     }
   }
 
-  const unglossed = NEEDS_GLOSS.filter(
-    (t) => new RegExp(`\\b${escapeRe(t)}\\b`, 'i').test(summary) && !isGlossed(summary, t),
+  const used = NEEDS_GLOSS.filter((t) =>
+    new RegExp(`\\b${escapeRe(t)}\\b`, 'i').test(summary),
   );
 
-  return { pass: violations.length === 0, violations, unglossed };
+  return {
+    pass: violations.length === 0,
+    violations,
+    unglossed: used.filter((t) => !isGlossed(summary, t)),
+    glossed: used.filter((t) => isGlossed(summary, t)),
+  };
+}
+
+/** The per-sample log line is the only copy that survives a run that throws, so
+ *  it spells out all three states rather than just the bare terms. Grep it with
+ *  `grep -c 'burn rate bare'`. */
+export function formatGloss(r: PlainLanguageResult): string {
+  const parts = [...r.glossed.map((t) => `${t} glossed`), ...r.unglossed.map((t) => `${t} bare`)];
+  return parts.length > 0 ? parts.join(', ') : 'no terms used';
 }
