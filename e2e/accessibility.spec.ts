@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { authenticateAs } from './helpers/auth';
-import { ensureTestUser, TEST_USER } from './helpers/fixtures';
+import { ensureAlertRule, ensureTestUser, TEST_USER } from './helpers/fixtures';
+import { signMuteToken, signUnsubscribeToken } from './helpers/tokens';
 
 // Every route reachable without a session or a signed token. proxy.ts guards
 // /upload, /billing, /admin and /settings, and the token routes (/share,
@@ -34,7 +35,9 @@ const summarize = (
 // color-contrast was briefly excluded here: it failed on 12 nodes, all of them
 // palette rather than markup. The tokens were darkened instead (#0D9488 to
 // #0B7C72, success to #2F7D37), so the exclusion is gone and the rule gates like
-// any other. Re-add an exclusion only as a last resort, and never silently:
+// any other. Both have been darkened a second time since, to #0A6F66 and
+// #2A6E30, because a colour that only just clears 4.5 on white fails on a 10%
+// tint of itself and both are used that way. Re-add an exclusion only as a last resort, and never silently:
 // a disabled rule looks identical to a passing one from the outside.
 const GATED_IMPACTS = new Set(['critical', 'serious']);
 
@@ -208,6 +211,68 @@ const AUTHENTICATED_ROUTES = [
   { path: '/admin', name: 'admin' },
   { path: '/admin/analytics', name: 'admin analytics' },
 ];
+
+// Reached from an email, by a recipient with no session and no prior context,
+// which is a harder starting point than the dashboard rather than an easier
+// one. The spec header used to list these as unscannable because they need a
+// real token; the tokens are HMACs over an id, so they can be minted.
+//
+// Each case names the control the card renders, which proves the component
+// mounted rather than that the token is good: these pages verify on click, not
+// on load, so the idle card appears for any string in the path. Mutation
+// confirms it, a wrong signing prefix leaves all six green. What the block
+// covers is the markup a recipient lands on, in both themes, which is what was
+// uncovered before.
+async function scanTokenRoute(
+  page: import('@playwright/test').Page,
+  theme: (typeof THEMES)[number],
+  path: string,
+  working: RegExp,
+) {
+  await page.emulateMedia({ colorScheme: theme.colorScheme });
+  await page.goto(path);
+  await expect(page.getByRole('button', { name: working })).toBeVisible({ timeout: 15_000 });
+
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.classList.contains('dark')), {
+      timeout: 10_000,
+    })
+    .toBe(theme.name === 'dark');
+
+  await revealLazyContent(page);
+
+  const results = await new AxeBuilder({ page }).analyze();
+  expect(summarize(results.violations.filter((v) => GATED_IMPACTS.has(v.impact ?? '')))).toEqual([]);
+}
+
+test.describe('token routes', () => {
+  let user: { userId: number; orgId: number };
+  let ruleId: number;
+
+  test.beforeAll(async () => {
+    user = await ensureTestUser(TEST_USER);
+    ruleId = await ensureAlertRule(user.orgId, user.userId);
+  });
+
+  for (const theme of THEMES) {
+    test(`alert mute confirm passes axe in ${theme.name}`, async ({ page }) => {
+      await scanTokenRoute(page, theme, `/mute/alert-rule/${signMuteToken(ruleId)}/confirm`, /confirm mute/i);
+    });
+
+    test(`alert unmute passes axe in ${theme.name}`, async ({ page }) => {
+      await scanTokenRoute(page, theme, `/mute/alert-rule/${signMuteToken(ruleId)}/unmute`, /confirm unmute/i);
+    });
+
+    test(`digest unsubscribe passes axe in ${theme.name}`, async ({ page }) => {
+      await scanTokenRoute(
+        page,
+        theme,
+        `/unsubscribe/digest/${signUnsubscribeToken(user.userId)}/confirm`,
+        /confirm unsubscribe/i,
+      );
+    });
+  }
+});
 
 test.describe('authenticated routes', () => {
   let user: { userId: number; orgId: number };
