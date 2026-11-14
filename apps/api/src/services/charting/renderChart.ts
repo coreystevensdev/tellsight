@@ -1,3 +1,6 @@
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { createElement, act } from 'react';
 import type { ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -16,6 +19,16 @@ import type { MarginChartPoint } from './charts/MarginEmailChart.js';
 // react-dom/client reads document/window/navigator off globalThis, so React
 // won't complain about act() being used outside a configured test runner.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// node:22-slim carries no fonts and no fontconfig, so loadSystemFonts resolved
+// nothing in the deployed image and every chart rendered with its axis labels
+// missing: byte-identical to passing loadSystemFonts false. It looked right in
+// dev and in CI because both have system fonts. Shipping the file is also what
+// makes the three environments render the same bytes.
+const CHART_FONT = resolve(__dirname, 'fonts', 'JetBrainsMono-Regular.ttf');
+const CHART_FONT_FAMILY = 'JetBrains Mono';
 
 const RENDER_WIDTH = 1200; // 2x the 600px email display width, for retina
 const RENDER_HEIGHT = 600;
@@ -136,7 +149,17 @@ async function renderSvgString(element: ReactElement): Promise<string> {
       root.render(element);
     });
 
-    const svg = container.querySelector('svg');
+    // Legend icons are <svg class="recharts-surface"> too and precede the chart
+    // in document order, so both querySelector('svg') and a class selector
+    // return a 14px icon on any chart carrying a <Legend>. The surface is the
+    // biggest one: icons are iconSize square.
+    const svg = [...container.querySelectorAll('svg')].reduce<Element | null>((biggest, el) => {
+      const area = Number(el.getAttribute('width')) * Number(el.getAttribute('height'));
+      const best = biggest
+        ? Number(biggest.getAttribute('width')) * Number(biggest.getAttribute('height'))
+        : -1;
+      return area > best ? el : biggest;
+    }, null);
     if (!svg) return '';
 
     let html = svg.outerHTML;
@@ -165,7 +188,11 @@ async function renderSvgString(element: ReactElement): Promise<string> {
 function svgToPng(svg: string, width: number): Buffer {
   const resvg = new Resvg(svg, {
     fitTo: { mode: 'width', value: width },
-    font: { loadSystemFonts: true },
+    font: {
+      loadSystemFonts: false,
+      fontFiles: [CHART_FONT],
+      defaultFontFamily: CHART_FONT_FAMILY,
+    },
   });
   return resvg.render().asPng();
 }

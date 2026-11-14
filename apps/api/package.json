@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc && tsc-alias && cp -r src/services/curation/config/. dist/services/curation/config/",
+    "build": "tsc && tsc-alias && cp -r src/services/curation/config/. dist/services/curation/config/ && cp -r src/services/charting/fonts/. dist/services/charting/fonts/",
     "start": "node dist/index.js",
     "lint": "eslint src/",
     "type-check": "tsc --noEmit",
