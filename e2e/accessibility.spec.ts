@@ -1,7 +1,15 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { authenticateAs } from './helpers/auth';
-import { ensureAlertRule, ensureTestUser, TEST_USER } from './helpers/fixtures';
+import {
+  createInviteToken,
+  createPasswordResetToken,
+  createShareToken,
+  ensureAlertRule,
+  ensureTestUser,
+  SHARE_FIXTURE_ORG,
+  TEST_USER,
+} from './helpers/fixtures';
 import { signMuteToken, signUnsubscribeToken } from './helpers/tokens';
 
 // Every route reachable without a session or a signed token. proxy.ts guards
@@ -217,21 +225,36 @@ const AUTHENTICATED_ROUTES = [
 // one. The spec header used to list these as unscannable because they need a
 // real token; the tokens are HMACs over an id, so they can be minted.
 //
-// Each case names the control the card renders, which proves the component
-// mounted rather than that the token is good: these pages verify on click, not
-// on load, so the idle card appears for any string in the path. Mutation
-// confirms it, a wrong signing prefix leaves all six green. What the block
-// covers is the markup a recipient lands on, in both themes, which is what was
-// uncovered before.
+// Six routes, and they split into two kinds. Measured by corrupting each token
+// and rerunning, not by reading the components:
+//
+//   resolve on load   /share, /invite
+//   resolve on submit /mute confirm, /mute unmute, /unsubscribe, /reset-password
+//
+// The first two render an error card for a bad token, so the marker each waits
+// for is only reachable with a token that works, and the scan would fail if the
+// fixtures drifted from how apps/api mints them. The other four render their
+// form or idle card for any string in the path, so their markers prove the
+// component mounted and nothing about the token. Their tokens are real because
+// a recipient's URL is real.
+//
+// Either way the block covers the markup a recipient lands on, in both themes,
+// which had no coverage at all before.
 async function scanTokenRoute(
   page: import('@playwright/test').Page,
   theme: (typeof THEMES)[number],
   path: string,
-  working: RegExp,
+  working: RegExp | null,
+  text?: string | RegExp,
 ) {
   await page.emulateMedia({ colorScheme: theme.colorScheme });
   await page.goto(path);
-  await expect(page.getByRole('button', { name: working })).toBeVisible({ timeout: 15_000 });
+  if (working) {
+    await expect(page.getByRole('button', { name: working })).toBeVisible({ timeout: 15_000 });
+  }
+  if (text !== undefined) {
+    await expect(page.getByText(text).first()).toBeVisible({ timeout: 15_000 });
+  }
 
   await expect
     .poll(() => page.evaluate(() => document.documentElement.classList.contains('dark')), {
@@ -249,9 +272,17 @@ test.describe('token routes', () => {
   let user: { userId: number; orgId: number };
   let ruleId: number;
 
+  let shareToken: string;
+  let inviteToken: string;
+  let resetToken: string;
+
   test.beforeAll(async () => {
     user = await ensureTestUser(TEST_USER);
     ruleId = await ensureAlertRule(user.orgId, user.userId);
+
+    shareToken = await createShareToken(user.orgId, user.userId);
+    inviteToken = await createInviteToken(user.orgId, user.userId);
+    resetToken = await createPasswordResetToken(user.userId);
   });
 
   for (const theme of THEMES) {
@@ -270,6 +301,23 @@ test.describe('token routes', () => {
         `/unsubscribe/digest/${signUnsubscribeToken(user.userId)}/confirm`,
         /confirm unsubscribe/i,
       );
+    });
+
+    // These two resolve the token during load, so their markers are real
+    // guards: a bad share token renders a not-found card and a bad invite
+    // renders "Invite Link Invalid", and neither carries these strings.
+    test(`shared insight passes axe in ${theme.name}`, async ({ page }) => {
+      await scanTokenRoute(page, theme, `/share/${shareToken}`, null, SHARE_FIXTURE_ORG);
+    });
+
+    test(`invite accept passes axe in ${theme.name}`, async ({ page }) => {
+      await scanTokenRoute(page, theme, `/invite/${inviteToken}`, null, /^Join /);
+    });
+
+    // Back to the submit-time kind: the form renders for any token string, so
+    // this scan covers the form's markup and does not exercise the token.
+    test(`password reset passes axe in ${theme.name}`, async ({ page }) => {
+      await scanTokenRoute(page, theme, `/reset-password?token=${resetToken}`, /reset password/i);
     });
   }
 });
