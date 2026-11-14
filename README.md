@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://tellsight.coreystevens.dev"><img src="https://img.shields.io/badge/demo-live-2DD4BF.svg" alt="Live demo"></a>
   <a href="https://github.com/coreystevensdev/tellsight/actions/workflows/ci.yml"><img src="https://github.com/coreystevensdev/tellsight/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/tests-5%2C262-brightgreen.svg" alt="5,262 tests">
+  <img src="https://img.shields.io/badge/tests-5%2C267-brightgreen.svg" alt="5,267 tests">
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License">
   <img src="https://img.shields.io/badge/Next.js-16-black.svg" alt="Next.js 16">
   <img src="https://img.shields.io/badge/TypeScript-6.0-3178c6.svg" alt="TypeScript">
