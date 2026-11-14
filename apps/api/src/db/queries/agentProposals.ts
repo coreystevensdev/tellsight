@@ -111,15 +111,30 @@ export async function expireProposals(before: Date, client: Client = dbAdmin): P
   return rows.map((r) => r.id);
 }
 
-// Expired proposals not yet folded into a digest. Scoped by resolvedAt >=
-// since (the digest week's start) so a proposal expired by this week's sweep
-// only ever matches one week's perOrg run -- next week's call passes a later
-// weekStart the old resolvedAt no longer clears. limit bounds a multi-week
-// outage from feeding an unbounded bullet list into one digest; the caller
-// pairs this with countExpiredUnfoldedProposals to report what got omitted.
+// How far back a digest reaches for expired proposals it has not folded in.
+//
+// The resolvedAt window is a staleness bound, not a watermark: `status` already
+// tracks fold-in state, going expired -> notified once a digest carrying the
+// proposal sends. Scoping to weekStart alone made it act like a watermark by
+// accident, because every run re-anchored it, so anything expired during a week
+// whose digest never sent fell out of range for good. That contradicts the
+// guarantee perOrg states for a rolled-back markNotified: those proposals
+// "fold into next week's digest too, a duplicate notification rather than a
+// lost one". Four weeks covers three consecutive missed runs and still keeps a
+// two-month-old finding out of an inbox.
+const FOLD_IN_LOOKBACK_MS = 28 * 24 * 60 * 60 * 1000;
+
+function foldInSince(weekStart: Date): Date {
+  return new Date(weekStart.getTime() - FOLD_IN_LOOKBACK_MS);
+}
+
+// Expired proposals not yet folded into a digest, from weekStart back through
+// the lookback above. limit bounds a multi-week outage from feeding an
+// unbounded bullet list into one digest; the caller pairs this with
+// countExpiredUnfoldedProposals to report what got omitted.
 export async function getExpiredUnfoldedProposals(
   orgId: number,
-  since: Date,
+  weekStart: Date,
   limit: number,
   client: Client = dbAdmin,
 ) {
@@ -127,7 +142,7 @@ export async function getExpiredUnfoldedProposals(
     where: and(
       eq(agentProposals.orgId, orgId),
       eq(agentProposals.status, 'expired'),
-      gte(agentProposals.resolvedAt, since),
+      gte(agentProposals.resolvedAt, foldInSince(weekStart)),
     ),
     // id tiebreaks expiresAt so a retried job sees the same LIMIT-ed subset,
     // not a different one every time two proposals expire at the same tick.
@@ -140,7 +155,7 @@ export async function getExpiredUnfoldedProposals(
 // by limit, so the digest can report precisely how many findings the cap left out.
 export async function countExpiredUnfoldedProposals(
   orgId: number,
-  since: Date,
+  weekStart: Date,
   client: Client = dbAdmin,
 ): Promise<number> {
   const [row] = await client
@@ -149,7 +164,7 @@ export async function countExpiredUnfoldedProposals(
     .where(and(
       eq(agentProposals.orgId, orgId),
       eq(agentProposals.status, 'expired'),
-      gte(agentProposals.resolvedAt, since),
+      gte(agentProposals.resolvedAt, foldInSince(weekStart)),
     ));
   return row?.value ?? 0;
 }

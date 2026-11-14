@@ -118,6 +118,39 @@ describe('getExpiredUnfoldedProposals / countExpiredUnfoldedProposals against re
     expect(rows).toHaveLength(limit);
     expect(total).toBe(7);
   });
+
+  it('still finds a proposal whose digest week never ran', async () => {
+    // perOrg.ts:219 states the guarantee this checks: a rolled-back
+    // markNotified leaves proposals unnotified so they "fold into next week's
+    // digest too, a duplicate notification rather than a lost one". status is
+    // what tracks that (expired -> notified), so the resolvedAt window is a
+    // staleness bound and not a watermark. Re-anchoring it to each week's own
+    // start is what breaks the guarantee: a week that never ran takes its
+    // expired proposals out of range for good.
+    // Worst case, and the one the lookback is sized for: expired at the very
+    // start of the week that failed, so every day of the outage counts against
+    // the window. A 6-day grace passes a mid-week date and still loses this.
+    const weekThatFailed = new Date('2026-06-07T00:00:00Z');
+    const resolvedAt = new Date('2026-06-07T00:00:00Z');
+    const nextWeek = new Date('2026-06-14T00:00:00Z');
+    // Three consecutive missed runs, which is what the lookback comment claims.
+    const threeWeeksLater = new Date('2026-06-28T00:00:00Z');
+
+    await insertTestProposal({
+      status: 'expired',
+      resolvedAt,
+      title: 'Finding from a missed week',
+    });
+
+    const ownWeek = await getExpiredUnfoldedProposals(orgId, weekThatFailed, 5, dbAdmin);
+    expect(ownWeek.map((r) => r.title)).toContain('Finding from a missed week');
+
+    const weekAfter = await getExpiredUnfoldedProposals(orgId, nextWeek, 5, dbAdmin);
+    expect(weekAfter.map((r) => r.title)).toContain('Finding from a missed week');
+
+    const afterThree = await getExpiredUnfoldedProposals(orgId, threeWeeksLater, 5, dbAdmin);
+    expect(afterThree.map((r) => r.title)).toContain('Finding from a missed week');
+  });
 });
 
 // agentProposals.test.ts mocks the query builder and asserts only what .set()
