@@ -390,6 +390,35 @@ describe('generateProposals', () => {
     );
   });
 
+  it('logs what each surviving proposal cited', async () => {
+    // ADR 0003 asked whether proposals cite more than one direction-bearing stat
+    // often enough to make the movement check a no-op. Only dropped proposals
+    // logged evidence, and a proposal citing two skips the check and is kept, so
+    // the question was unanswerable from the logs (DW-263).
+    mockGenerateWithTools.mockResolvedValue([
+      {
+        name: 'record_proposal',
+        input: {
+          kind: 'trend',
+          severity: 'notice',
+          title: 'Sales are trending up',
+          explanation: 'Sales grew 15% across the period.',
+          recommendation: 'You might consider whether the pace is sustainable.',
+          confidence: 0.8,
+          evidence: [trendId],
+          subject: 'sales',
+        },
+      },
+    ]);
+
+    await generateProposals(insights, DATASET_ID, null, NOW);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({ keptEvidence: [[trendId]] }),
+      'agent proposal generation complete',
+    );
+  });
+
   it('reports the tool-call count even when every proposal is dropped', async () => {
     // The case that motivated the callback: the model flagged a 2.4-month runway
     // citing the right stat and validation dropped it over a movement token, so

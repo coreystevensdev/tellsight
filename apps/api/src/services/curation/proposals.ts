@@ -259,6 +259,13 @@ export async function generateProposals(
       callCount: calls.length,
       proposalCount: capped.length,
       droppedForVolume: deduped.length - capped.length,
+      // What each surviving proposal cited. Only dropped proposals logged their
+      // evidence, and ADR 0003's parked question is whether proposals cite more
+      // than one direction-bearing stat often enough to make the movement check
+      // a no-op. A proposal that cites two SKIPS the check and is therefore
+      // kept, so the dropped population is the one place the case cannot
+      // appear: counting it there found 0 of 68 and answered nothing (DW-263).
+      keptEvidence: capped.map((p) => p.evidence),
     },
     'agent proposal generation complete',
   );
