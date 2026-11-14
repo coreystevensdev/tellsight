@@ -112,6 +112,30 @@ describe('scorePlainLanguage', () => {
   });
 });
 
+describe('an arm whose prompt carries no gloss rule', () => {
+  // v1-agent-system.md names runway and burn rate and says the opposite of
+  // v2.4 rule 9: use them plainly, and if a term needs a definition it needs a
+  // different term. Scoring that arm's glosses measured a rule it was never
+  // given, and reported 0 of 35 as though it were a failure.
+  it('returns null rather than an empty list, so nothing reads as a clean sweep', () => {
+    const r = scorePlainLanguage(REAL_SUMMARY, { hasGlossRule: false });
+    expect(r.unglossed).toBeNull();
+    expect(r.glossed).toBeNull();
+  });
+
+  it('still applies the off-vocabulary half, which both prompts share', () => {
+    const r = scorePlainLanguage('Your EBITDA improved this quarter.', { hasGlossRule: false });
+    expect(r.pass).toBe(false);
+    expect(r.violations.join(' ')).toMatch(/EBITDA/i);
+  });
+
+  it('says so in the per-sample line instead of looking compliant', () => {
+    expect(formatGloss(scorePlainLanguage(REAL_SUMMARY, { hasGlossRule: false }))).toBe(
+      'no gloss rule',
+    );
+  });
+});
+
 describe('formatGloss', () => {
   it('names each term and its state', () => {
     const both =

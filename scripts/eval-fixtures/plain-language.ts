@@ -77,13 +77,15 @@ export interface PlainLanguageResult {
   /** False only when a term outside the prompt's own vocabulary appears. */
   pass: boolean;
   violations: string[];
-  /** Reported, not gated. Terms rule 9 asks to gloss that were used bare. */
-  unglossed: string[];
+  /** Reported, not gated. Terms rule 9 asks to gloss that were used bare.
+   *  null when the prompt behind this text carries no gloss rule, so nothing
+   *  was checked. An empty array would read as a clean sweep. */
+  unglossed: string[] | null;
   /** Terms rule 9 asks to gloss that were used and glossed. A term in neither
    *  list was never used, which is not the same as glossed: a prompt change
    *  that stops the model reaching for the word at all would otherwise read as
-   *  a perfect gloss rate. */
-  glossed: string[];
+   *  a perfect gloss rate. null alongside `unglossed`. */
+  glossed: string[] | null;
 }
 
 function escapeRe(s: string): string {
@@ -111,13 +113,25 @@ function isGlossed(summary: string, term: string): boolean {
   return /[a-z]{4,}\s+[a-z]{3,}/i.test(m[1] ?? '');
 }
 
-export function scorePlainLanguage(summary: string): PlainLanguageResult {
+/** `hasGlossRule` is false for text produced by a prompt that does not ask for
+ *  glosses. v1-agent-system.md names runway and burn rate and says the opposite
+ *  of v2.4 rule 9, "use them plainly [...] if a term needs a definition, it
+ *  needs a different term", so grading that arm on glosses measured a rule it
+ *  was never given. The off-vocabulary half applies to both. */
+export function scorePlainLanguage(
+  summary: string,
+  { hasGlossRule = true }: { hasGlossRule?: boolean } = {},
+): PlainLanguageResult {
   const violations: string[] = [];
   for (const term of OFF_VOCABULARY) {
     const re = new RegExp(`\\b${escapeRe(term)}\\b`, 'i');
     if (re.test(summary)) {
       violations.push(`off-vocabulary term: "${term}" in: ${sentenceAround(summary, term)}`);
     }
+  }
+
+  if (!hasGlossRule) {
+    return { pass: violations.length === 0, violations, unglossed: null, glossed: null };
   }
 
   const used = NEEDS_GLOSS.filter((t) =>
@@ -136,6 +150,7 @@ export function scorePlainLanguage(summary: string): PlainLanguageResult {
  *  it spells out all three states rather than just the bare terms. Grep it with
  *  `grep -c 'burn rate bare'`. */
 export function formatGloss(r: PlainLanguageResult): string {
+  if (r.unglossed === null || r.glossed === null) return 'no gloss rule';
   const parts = [...r.glossed.map((t) => `${t} glossed`), ...r.unglossed.map((t) => `${t} bare`)];
   return parts.length > 0 ? parts.join(', ') : 'no terms used';
 }

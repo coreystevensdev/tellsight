@@ -64,7 +64,7 @@ export interface SampleScore {
   plainViolations: string[];
   // Reported, never gated. See plain-language.ts for why the gloss half of
   // prompt rule 9 is measured rather than enforced.
-  unglossed: string[];
+  unglossed: string[] | null;
 }
 
 export interface FixtureScore {
@@ -96,8 +96,10 @@ export interface FixtureScore {
   plainLanguage: {
     pass: boolean;
     violations: string[];
-    unglossedSamples: number;
-    unglossedTerms: string[];
+    /** null when no sample was checked, because this arm's prompt has no gloss
+     *  rule. Zero would read as a clean sweep. */
+    unglossedSamples: number | null;
+    unglossedTerms: string[] | null;
   };
   insight: { misses: number; examples: string[]; missed: string[] };
   sampledCount: number;
@@ -117,7 +119,7 @@ export interface AgentSample {
   legalViolations: string[];
   plainPass: boolean;
   plainViolations: string[];
-  unglossed: string[];
+  unglossed: string[] | null;
 }
 
 export interface AgentFixtureScore {
@@ -141,8 +143,10 @@ export interface AgentFixtureScore {
   plainLanguage: {
     pass: boolean;
     violations: string[];
-    unglossedSamples: number;
-    unglossedTerms: string[];
+    /** null when no sample was checked, because this arm's prompt has no gloss
+     *  rule. Zero would read as a clean sweep. */
+    unglossedSamples: number | null;
+    unglossedTerms: string[] | null;
   };
   proposalsPerSample: number;
   silentSamples: number;
@@ -154,6 +158,10 @@ export interface AgentFixtureScore {
   abstained: number;
   allDropped: number;
   sampledCount: number;
+}
+
+function glossChecked(samples: { unglossed: string[] | null }[]): boolean {
+  return samples.some((sample) => sample.unglossed !== null);
 }
 
 export function extractGroundTruth(userPrompt: string, startAnchor = SUMMARIES_START): string {
@@ -301,8 +309,12 @@ export function summarizeFixtureSamples(
     plainLanguage: {
       pass: samples.every((sample) => sample.plainPass),
       violations: [...new Set(samples.flatMap((sample) => sample.plainViolations))],
-      unglossedSamples: samples.filter((sample) => sample.unglossed.length > 0).length,
-      unglossedTerms: [...new Set(samples.flatMap((sample) => sample.unglossed))],
+      unglossedSamples: glossChecked(samples)
+        ? samples.filter((sample) => (sample.unglossed ?? []).length > 0).length
+        : null,
+      unglossedTerms: glossChecked(samples)
+        ? [...new Set(samples.flatMap((sample) => sample.unglossed ?? []))]
+        : null,
     },
     insight: {
       misses: samples.filter((sample) => !sample.insightPass).length,
@@ -357,8 +369,12 @@ export function summarizeAgentSamples(
     plainLanguage: {
       pass: samples.every((sample) => sample.plainPass),
       violations: [...new Set(samples.flatMap((sample) => sample.plainViolations))],
-      unglossedSamples: samples.filter((sample) => sample.unglossed.length > 0).length,
-      unglossedTerms: [...new Set(samples.flatMap((sample) => sample.unglossed))],
+      unglossedSamples: glossChecked(samples)
+        ? samples.filter((sample) => (sample.unglossed ?? []).length > 0).length
+        : null,
+      unglossedTerms: glossChecked(samples)
+        ? [...new Set(samples.flatMap((sample) => sample.unglossed ?? []))]
+        : null,
     },
     abstained: samples.filter((sample) => sample.toolCalls === 0).length,
     allDropped: samples.filter((sample) => sample.toolCalls > 0 && sample.proposalCount === 0)
