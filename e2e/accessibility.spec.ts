@@ -196,6 +196,8 @@ const AUTHENTICATED_ROUTES = [
   { path: '/settings/email', name: 'settings email' },
   { path: '/settings/financials', name: 'settings financials' },
   { path: '/settings/invites', name: 'settings invites' },
+  { path: '/settings/account', name: 'settings account' },
+  { path: '/settings/plans', name: 'settings plans' },
   { path: '/admin', name: 'admin' },
   { path: '/admin/analytics', name: 'admin analytics' },
 ];
