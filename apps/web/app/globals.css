@@ -12,16 +12,24 @@
      on the AI surface, so axe failed 12 nodes on it. #0B7C72 is the same hue
      one step deeper: 5.07 on white, 4.61 on the AI surface. Same identity,
      legible at small sizes. Do not lighten it back without re-running
-     e2e/accessibility.spec.ts, which now gates on serious violations. */
+     e2e/accessibility.spec.ts, which now gates on serious violations.
+
+     Darkened again to #0A6F66 on 2026-11-14, for the reason the success token
+     below already records: a colour that only just clears 4.5 on white fails
+     on a 10% tint of itself. #0B7C72 scored 5.07 on white but 4.13 on
+     bg-primary/10 over the canvas, and four components pair that tint with
+     text-primary. #0A6F66 scores 6.04 on white, 5.60 on the canvas, 5.88 on
+     the card and 4.85 on its own tint. Dark mode is untouched: #2DD4BF on a
+     tint of itself over a dark card is bright-on-dark and already passes. */
   --color-background: #FAF6EF;
   --color-foreground: oklch(0.24 0 0);
-  --color-primary: #0B7C72;
+  --color-primary: #0A6F66;
   --color-primary-foreground: oklch(1 0 0);
   --color-muted: oklch(0.94 0 0);
   --color-muted-foreground: oklch(0.48 0 0);
   --color-border: oklch(0.87 0 0);
   --color-accent: oklch(0.92 0.03 190);
-  --color-accent-warm: #0B7C72;
+  --color-accent-warm: #0A6F66;
   --color-destructive: oklch(0.55 0.2 25);
   --color-destructive-foreground: oklch(1 0 0);
   /* was oklch(0.60 0.15 145), which rendered #3A9742 and scored 3.60 on the
@@ -37,7 +45,7 @@
   --color-warning: oklch(0.72 0.15 85);
   --color-warning-foreground: oklch(0.2 0 0);
   --color-info: oklch(0.55 0.1 230);
-  --color-ring: #0B7C72;
+  --color-ring: #0A6F66;
   --color-card: oklch(0.99 0 0);
   --color-card-foreground: oklch(0.24 0 0);
   --color-ai-surface: oklch(0.965 0.015 185);
