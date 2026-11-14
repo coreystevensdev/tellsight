@@ -84,6 +84,13 @@ for (const theme of THEMES) {
         await page.goto(route.path);
         await page.locator('h1').first().waitFor({ timeout: 15_000 });
 
+        // proxy.ts sends an unauthenticated request to /login, which has an h1
+        // of its own and passes axe cleanly, so waiting for a heading is not
+        // evidence the intended page was reached. Without this the whole
+        // authenticated block could scan the login screen eleven times over and
+        // report eleven passes.
+        expect(new URL(page.url()).pathname).toBe(route.path);
+
         // Assert the theme took before scanning. next-themes applies .dark after
         // hydration, so a scan that starts too early, or an emulateMedia that
         // stops working after an upgrade, would scan light twice and report two
