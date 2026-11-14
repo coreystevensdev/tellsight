@@ -58,6 +58,57 @@ describe('renderChart (real pipeline, per the compatibility spike)', () => {
   }, 20_000);
 });
 
+describe('axis text actually renders', () => {
+  // The three checks above pass on a chart with no text at all: a textless
+  // render is a few hundred bytes, which clears both the PNG magic check and
+  // the 80KB budget. node:22-slim ships no fonts, so that is exactly what
+  // production was sending until the font was bundled. X axis tick labels are
+  // the only thing drawn below the plot area, so ink in that strip is text.
+  async function darkPixelsBelowPlot(png: Buffer): Promise<number> {
+    const sharp = (await import('sharp')).default;
+    const { width = 0, height = 0 } = await sharp(png).metadata();
+    const band = Math.round(height * 0.08);
+    const { data: raw, info } = await sharp(png)
+      .extract({ left: 0, top: height - band, width, height: band })
+      .flatten({ background: '#ffffff' })
+      .greyscale()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    if (info.channels !== 1) {
+      throw new Error(`expected 1 channel after flatten+greyscale, got ${info.channels}`);
+    }
+    let dark = 0;
+    for (const v of raw) if (v < 160) dark++;
+    return dark;
+  }
+
+  it('draws axis labels below the plot area', async () => {
+    const { renderChart } = await import('./renderChart.js');
+    const png = await renderChart({ chartKind: 'cash-flow', data: cashFlowData }, context);
+    expect(png).not.toBeNull();
+
+    // Measured at ~700 on a correct render. A chart with no resolvable font
+    // draws no text at all and scores 0, so the floor only has to be clear of
+    // zero to catch the real regression; it is set well under the observed
+    // value so antialiasing differences between platforms cannot trip it.
+    expect(await darkPixelsBelowPlot(png!)).toBeGreaterThan(200);
+  });
+
+  it('renders the chart surface, not a legend icon', async () => {
+    const { renderChart } = await import('./renderChart.js');
+    const sharp = (await import('sharp')).default;
+    const png = await renderChart({ chartKind: 'cash-flow', data: cashFlowData }, context);
+    expect(png).not.toBeNull();
+
+    // cash-flow is the only chart carrying a <Legend>, and its icons are
+    // <svg class="recharts-surface"> that precede the chart in document order.
+    // Selecting the first one produced a 1200x1200 PNG of a single circle.
+    const meta = await sharp(png!).metadata();
+    expect(meta.width).toBe(1200);
+    expect(meta.height).toBe(600);
+  });
+});
+
 describe('buildRunwayPoints', () => {
   it('projects a straight decline to zero over ceil(runwayMonths)', async () => {
     const { buildRunwayPoints } = await import('./renderChart.js');
