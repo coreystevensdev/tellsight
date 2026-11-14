@@ -109,7 +109,11 @@ function printScorecardTable(rows: FixtureScore[]): void {
     const missed = `${r.insight.misses}/${r.sampledCount}`;
     // The gate result and the ungated gloss rate in one cell: "pass" alone would
     // read as rule 9 being met, and the second half of that rule is not.
-    const plain = `${r.plainLanguage.pass ? 'pass' : 'FAIL'} (${r.plainLanguage.unglossedSamples}/${r.sampledCount} unglossed)`;
+    const gloss =
+      r.plainLanguage.unglossedSamples === null
+        ? 'no gloss rule'
+        : `${r.plainLanguage.unglossedSamples}/${r.sampledCount} unglossed`;
+    const plain = `${r.plainLanguage.pass ? 'pass' : 'FAIL'} (${gloss})`;
     console.log(
       `| ${r.id}${degraded} | ${f} | ${c} | ${r.legalPosture.pass ? 'pass' : 'FAIL'} | ${plain} | ${missed} missed |`,
     );
@@ -207,7 +211,7 @@ async function scoreAgentFixture(
       const faithfulness = faith.score;
       const coverage = scoreRiskCoverage(risks, proposals);
       const legal = scoreLegalPosture(prose);
-      const plain = scorePlainLanguage(prose);
+      const plain = scorePlainLanguage(prose, { hasGlossRule: false });
       samples.push({
         proposalCount: proposals.length,
         toolCalls,
@@ -501,8 +505,14 @@ async function main(): Promise<void> {
     // Rule 9's second half, measured and not gated. A rising rate here is the
     // model drifting away from explaining its own terms, which is worth seeing
     // even though no healthy run has ever had this at zero.
-    unglossedSamples: results.reduce((n, r) => n + r.plainLanguage.unglossedSamples, 0),
-    unglossedTerms: [...new Set(results.flatMap((r) => r.plainLanguage.unglossedTerms))],
+      // null when no fixture checked glosses at all, rather than 0, which would
+      // read as every sample having glossed cleanly.
+      unglossedSamples: results.some((r) => r.plainLanguage.unglossedSamples !== null)
+        ? results.reduce((n, r) => n + (r.plainLanguage.unglossedSamples ?? 0), 0)
+        : null,
+      unglossedTerms: results.some((r) => r.plainLanguage.unglossedTerms !== null)
+        ? [...new Set(results.flatMap((r) => r.plainLanguage.unglossedTerms ?? []))]
+        : null,
     // A rate, not a boolean, and with its denominator: 1 miss reads very
     // differently at 9 samples than at 36, and the scorecard is the only place a
     // later reader can recover which one this was.
