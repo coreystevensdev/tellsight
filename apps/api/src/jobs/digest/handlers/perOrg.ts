@@ -207,6 +207,24 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
     correlationId,
   });
 
+  // Zero enqueued with failures is a transient Redis problem, not an empty
+  // audience, so let BullMQ retry the org rather than dropping its week. The
+  // retry is safe: nothing has been recorded yet (delivery.ts skips at zero),
+  // resolveDigestSummary is cache-first on (org, dataset, weekStart) so the
+  // LLM is not paid twice, and send job ids carry weekStart so any sends that
+  // did land are deduped. Guarded on enqueueFailures, not on enqueued alone:
+  // every member sitting inside the 6-day dedupe window is a normal Sunday,
+  // and throwing there would burn three attempts per org every week. Plain
+  // Error because nothing branches on the type, BullMQ needs the rejection.
+  if (enqueued === 0 && enqueueFailures > 0) {
+    throw new Error(
+      `Every digest-send enqueue failed for org ${orgId} (${enqueueFailures} failures)`,
+    );
+  }
+
+  // No-ops entirely when nothing was enqueued; see the guard in delivery.ts
+  // for why recording an undelivered week is worse than recording nothing.
+  //
   // Sends are already enqueued by this point, so a write failure here never
   // fails the job. History and awards commit together, an award recorded
   // without its digest_history row (or vice versa) would leave the audit
@@ -248,7 +266,10 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
       enqueueFailures,
       weekStart,
       weekEnd,
-      outcome: 'sent',
+      // Read 'sent' unconditionally until 2026-11-14, which is how org 2's
+      // 2026-11-01 week looked successful while no send job existed for it.
+      // sendJobsEnqueued and enqueueFailures separate the two zero cases.
+      outcome: enqueued > 0 ? 'sent' : 'skipped',
       durationMs: Date.now() - start,
     },
     'Per-org digest complete',

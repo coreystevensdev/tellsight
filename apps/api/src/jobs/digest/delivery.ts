@@ -119,6 +119,26 @@ export async function persistDigestDelivery({
   enqueued,
   correlationId,
 }: PersistDigestDeliveryInput): Promise<void> {
+  // enqueued 0 means nobody received this digest, so there is nothing to
+  // record. digest_history.sent_at is not nullable and (org_id, week_start)
+  // is unique, so a row here claims a send that never happened and blocks the
+  // week from ever being retried. awardMilestone is worse: (org_id, kind) is
+  // unique, so an all-time first spent on an undelivered email is just gone.
+  // Org 2 lost first_profitable_month and first_break_even this way 2026-11-01.
+  if (enqueued === 0) {
+    logger.warn(
+      {
+        correlationId,
+        orgId,
+        weekStart,
+        milestoneKinds: firstTimeMilestones.map((milestone) => milestone.kind),
+        notifiedProposalIds,
+      },
+      'Digest reached nobody, skipping history, milestone awards and notify',
+    );
+    return;
+  }
+
   try {
     await dbAdmin.transaction(async (tx) => {
       await digestHistoryQueries.saveDigestHistory(
@@ -152,11 +172,7 @@ export async function persistDigestDelivery({
         await milestoneAwardsQueries.awardMilestone({ orgId, kind: milestone.kind, datasetId }, tx);
       }
 
-      // Empty recipient lists and total enqueue failure mean nobody saw the
-      // proposal bullets, so leave them pending for the next digest.
-      if (enqueued > 0) {
-        await agentProposalsQueries.markNotified(orgId, notifiedProposalIds, tx);
-      }
+      await agentProposalsQueries.markNotified(orgId, notifiedProposalIds, tx);
     });
   } catch (err) {
     logger.error(
