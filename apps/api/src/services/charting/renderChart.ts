@@ -126,6 +126,36 @@ function buildChartElement(input: ChartRenderInput, width: number, height: numbe
 // concurrent renders" requires even though alerts-send runs at concurrency 10.
 let renderQueue: Promise<unknown> = Promise.resolve();
 
+// Long enough that a slow render on a loaded box does not cry wolf, short
+// enough to beat the digest's weekly cadence by a wide margin.
+export const LANE_STALL_MS = 30_000;
+
+/**
+ * Makes a stalled lane loud. A render that hangs rather than failing holds the
+ * lane for the life of the process: `serialize` chains unconditionally and
+ * nothing here aborts. It cannot be recovered from in this file either.
+ * `renderSvgString` installs the jsdom shim onto `globalThis` and removes it in
+ * a `finally` that a hung `await` never reaches, so cancelling the render would
+ * leave the shim installed for the next one. Racing `act()` instead would let
+ * the cleanup run but leave the orphan alive to touch the *next* render's
+ * globals, which is the corruption `serialize` exists to prevent. Recovery
+ * wants a disposable per-render scope, meaning worker threads: see
+ * render-contention.md option 4.
+ *
+ * So this reports rather than intervenes. Returns the cancel function.
+ */
+export function watchForLaneStall(fields: Record<string, unknown>): () => void {
+  const timer = setTimeout(() => {
+    logger.error(
+      { ...fields, stalledForMs: LANE_STALL_MS },
+      'Chart render still holds the serialized lane; every later render is blocked behind it',
+    );
+  }, LANE_STALL_MS);
+  // A watchdog should never be the reason a process stays up.
+  timer.unref();
+  return () => clearTimeout(timer);
+}
+
 function serialize<T>(task: () => Promise<T>): Promise<T> {
   const result = renderQueue.then(task, task);
   renderQueue = result.then(
@@ -225,62 +255,69 @@ export async function renderChart(
     const renderStartedAt = Date.now();
     const queueWaitMs = renderStartedAt - enqueuedAt;
     const timings = () => ({ queueWaitMs, renderMs: Date.now() - renderStartedAt });
-
-    let svg: string;
+    const stopStallWatch = watchForLaneStall({ ...logFields, queueWaitMs });
     try {
-      svg = await renderSvgString(buildChartElement(params, width, height));
-    } catch (err) {
-      logger.warn(
-        { ...logFields, err, ...timings() },
-        'Chart render threw before producing SVG, sending text-only',
-      );
-      return null;
-    }
 
-    if (!svg) {
-      logger.warn(
-        { ...logFields, ...timings() },
-        'Chart render produced no SVG content, sending text-only',
-      );
-      return null;
-    }
-
-    let png: Buffer;
-    try {
-      png = svgToPng(svg, width);
-    } catch (err) {
-      logger.warn(
-        { ...logFields, err, ...timings() },
-        'Resvg failed to parse chart SVG, sending text-only',
-      );
-      return null;
-    }
-
-    let optimized: Buffer;
-    try {
-      optimized = await optimizePng(png, SHARP_QUALITY_PRIMARY);
-      if (optimized.length > MAX_PNG_BYTES) {
-        optimized = await optimizePng(png, SHARP_QUALITY_RETRY);
+      let svg: string;
+      try {
+        svg = await renderSvgString(buildChartElement(params, width, height));
+      } catch (err) {
+        logger.warn(
+          { ...logFields, err, ...timings() },
+          'Chart render threw before producing SVG, sending text-only',
+        );
+        return null;
       }
-    } catch (err) {
-      logger.warn(
-        { ...logFields, err, ...timings() },
-        'Sharp failed to optimize the chart PNG, sending text-only',
-      );
-      return null;
-    }
-    if (optimized.length > MAX_PNG_BYTES) {
-      logger.warn(
-        { ...logFields, bytes: optimized.length, maxBytes: MAX_PNG_BYTES, ...timings() },
-        'Chart PNG still exceeds the size budget after a lower-quality retry, sending text-only',
-      );
-      return null;
-    }
 
-    logger.info(
-      { ...logFields, ...timings(), bytes: optimized.length },
-      'Chart rendered',
-    );
-    return optimized;
+      if (!svg) {
+        logger.warn(
+          { ...logFields, ...timings() },
+          'Chart render produced no SVG content, sending text-only',
+        );
+        return null;
+      }
+
+      let png: Buffer;
+      try {
+        png = svgToPng(svg, width);
+      } catch (err) {
+        logger.warn(
+          { ...logFields, err, ...timings() },
+          'Resvg failed to parse chart SVG, sending text-only',
+        );
+        return null;
+      }
+
+      let optimized: Buffer;
+      try {
+        optimized = await optimizePng(png, SHARP_QUALITY_PRIMARY);
+        if (optimized.length > MAX_PNG_BYTES) {
+          optimized = await optimizePng(png, SHARP_QUALITY_RETRY);
+        }
+      } catch (err) {
+        logger.warn(
+          { ...logFields, err, ...timings() },
+          'Sharp failed to optimize the chart PNG, sending text-only',
+        );
+        return null;
+      }
+      if (optimized.length > MAX_PNG_BYTES) {
+        logger.warn(
+          { ...logFields, bytes: optimized.length, maxBytes: MAX_PNG_BYTES, ...timings() },
+          'Chart PNG still exceeds the size budget after a lower-quality retry, sending text-only',
+        );
+        return null;
+      }
+
+      logger.info(
+        { ...logFields, ...timings(), bytes: optimized.length },
+        'Chart rendered',
+      );
+      return optimized;
+    } finally {
+      // Never reached when the render hangs, which is exactly when the
+      // watchdog should be left to fire.
+      stopStallWatch();
+    }
   });
 }
