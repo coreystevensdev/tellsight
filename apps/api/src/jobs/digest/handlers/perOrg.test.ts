@@ -681,6 +681,70 @@ describe('fan-out', () => {
 
     expect(mockSendQueueAdd).toHaveBeenCalledTimes(3);
   });
+
+  // enqueued 0 with failures is a transient Redis problem, not an empty
+  // audience. The two were indistinguishable before: the job resolved
+  // successfully either way and the org's week was dropped with no retry.
+  it('rethrows when every recipient enqueue fails, so BullMQ retries the org', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
+    mockSendQueueAdd.mockRejectedValueOnce(new Error('Redis blip'));
+
+    await expect(
+      handlePerOrgJob({ id: 'org-all-enqueues-failed', data: baseJobData } as never),
+    ).rejects.toThrow(/enqueue/i);
+  });
+
+  // The counterweight to the test above, and the reason the throw is guarded on
+  // enqueueFailures rather than on enqueued alone. Every member sitting inside
+  // the 6-day dedupe window is a normal Sunday, not a fault; throwing there
+  // would burn three attempts per org per week forever.
+  it('resolves without throwing when there were simply no recipients', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([]);
+
+    await expect(
+      handlePerOrgJob({ id: 'org-no-recipients-resolves', data: baseJobData } as never),
+    ).resolves.toBeUndefined();
+  });
+
+  // outcome is the field an operator greps to find runs that delivered
+  // nothing. It read 'sent' on a zero-recipient run, which is how org 2's
+  // 2026-11-01 week looked successful in the logs while no send job was ever
+  // created for it.
+  it('reports outcome skipped, not sent, when nothing was enqueued', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([]);
+
+    await handlePerOrgJob({ id: 'org-outcome-no-recipients', data: baseJobData } as never);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 42, outcome: 'skipped', sendJobsEnqueued: 0 }),
+      expect.any(String),
+    );
+    expect(logger.info).not.toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'sent' }),
+      expect.any(String),
+    );
+  });
 });
 
 describe('agent proposal fold-in', () => {
@@ -737,7 +801,10 @@ describe('agent proposal fold-in', () => {
     ]);
     mockSendQueueAdd.mockRejectedValueOnce(new Error('Redis blip'));
 
-    await handlePerOrgJob({ id: 'org-agent-6', data: baseJobData } as never);
+    // Now rejects so BullMQ retries the org; the writes still must not happen.
+    await expect(
+      handlePerOrgJob({ id: 'org-agent-6', data: baseJobData } as never),
+    ).rejects.toThrow(/enqueue/i);
 
     expect(mockMarkNotified).not.toHaveBeenCalled();
   });
@@ -1105,7 +1172,7 @@ describe('digest history', () => {
       content: '\n  - Revenue held flat this week.\n- second bullet',
       transparencyMetadata: {},
     });
-    mockFindOrgRecipients.mockResolvedValueOnce([]);
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
 
     await handlePerOrgJob({ id: 'org-12', data: baseJobData } as never);
 
@@ -1166,6 +1233,45 @@ describe('digest history', () => {
 
     expect(mockSendQueueAdd).toHaveBeenCalledTimes(2);
     expect(mockSaveDigestHistory).toHaveBeenCalledOnce();
+  });
+
+  // digest_history.sent_at is not nullable and the (org_id, week_start) index
+  // is unique, so a row written for an undelivered week both asserts a send
+  // that never happened and permanently blocks a retry of that week. There is
+  // no "attempted" state the table can hold, so the only honest write is none.
+  it('does not save history when there are zero eligible recipients', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([]);
+
+    await handlePerOrgJob({ id: 'org-history-no-recipients', data: baseJobData } as never);
+
+    expect(mockSendQueueAdd).not.toHaveBeenCalled();
+    expect(mockSaveDigestHistory).not.toHaveBeenCalled();
+  });
+
+  it('does not save history when every recipient enqueue fails', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
+    mockSendQueueAdd.mockRejectedValueOnce(new Error('Redis blip'));
+
+    // Now rejects so BullMQ retries the org; the writes still must not happen.
+    await expect(
+      handlePerOrgJob({ id: 'org-history-enqueue-failed', data: baseJobData } as never),
+    ).rejects.toThrow(/enqueue/i);
+
+    expect(mockSaveDigestHistory).not.toHaveBeenCalled();
   });
 });
 
@@ -1244,6 +1350,7 @@ describe('prior-digest lookup', () => {
       '',
     );
   });
+
 });
 
 describe('first-time milestones', () => {
@@ -1327,7 +1434,7 @@ describe('first-time milestones', () => {
     mockGetAwardedKinds.mockResolvedValueOnce(new Set(['first_profitable_month']));
     mockGenerateInterpretation.mockResolvedValueOnce('- steady week');
     mockStoreSummary.mockResolvedValueOnce({ id: 6 });
-    mockFindOrgRecipients.mockResolvedValueOnce([]);
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
 
     await handlePerOrgJob({ id: 'org-16', data: baseJobData } as never);
 
@@ -1381,7 +1488,7 @@ describe('first-time milestones', () => {
     mockGetAwardedKinds.mockResolvedValueOnce(new Set());
     mockGenerateInterpretation.mockResolvedValueOnce('- revenue covered fixed costs');
     mockStoreSummary.mockResolvedValueOnce({ id: 7 });
-    mockFindOrgRecipients.mockResolvedValueOnce([]);
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
 
     await handlePerOrgJob({ id: 'org-17', data: baseJobData } as never);
 
@@ -1416,7 +1523,7 @@ describe('first-time milestones', () => {
     mockGetAwardedKinds.mockResolvedValueOnce(new Set());
     mockGenerateInterpretation.mockResolvedValueOnce('- steady week');
     mockStoreSummary.mockResolvedValueOnce({ id: 8 });
-    mockFindOrgRecipients.mockResolvedValueOnce([]);
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
     mockAwardMilestone.mockRejectedValueOnce(new Error('unique violation'));
 
     await expect(
@@ -1491,7 +1598,7 @@ describe('first-time milestones', () => {
     mockGetAwardedKinds.mockResolvedValueOnce(new Set());
     mockGenerateInterpretation.mockResolvedValueOnce('- steady week');
     mockStoreSummary.mockResolvedValueOnce({ id: 10 });
-    mockFindOrgRecipients.mockResolvedValueOnce([]);
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
     mockAwardMilestone
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error('connection reset'));
@@ -1518,6 +1625,59 @@ describe('first-time milestones', () => {
       }),
       'Failed to save digest history and award milestones, continuing',
     );
+  });
+
+  // idx_milestone_awards_org_kind is unique, so an award granted on a digest
+  // nobody received spends an all-time first permanently. Org 2 lost both
+  // first_profitable_month and first_break_even this way on 2026-11-01.
+  // Skipping the write is what lets the milestone fire again next week.
+  it('does not award a first-time milestone when there are zero eligible recipients', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
+    mockGetMonthlyBucketsByDataset.mockResolvedValueOnce(
+      new Map([
+        ['2026-04', { revenue: 4000, expenses: 5000 }],
+        ['2026-05', { revenue: 6000, expenses: 5000 }],
+      ]),
+    );
+    mockGetAwardedKinds.mockResolvedValueOnce(new Set());
+    mockFindOrgRecipients.mockResolvedValueOnce([]);
+
+    await handlePerOrgJob({ id: 'org-award-no-recipients', data: baseJobData } as never);
+
+    expect(mockSendQueueAdd).not.toHaveBeenCalled();
+    expect(mockAwardMilestone).not.toHaveBeenCalled();
+  });
+
+  it('does not award a first-time milestone when every recipient enqueue fails', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
+    mockGetMonthlyBucketsByDataset.mockResolvedValueOnce(
+      new Map([
+        ['2026-04', { revenue: 4000, expenses: 5000 }],
+        ['2026-05', { revenue: 6000, expenses: 5000 }],
+      ]),
+    );
+    mockGetAwardedKinds.mockResolvedValueOnce(new Set());
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
+    mockSendQueueAdd.mockRejectedValueOnce(new Error('Redis blip'));
+
+    // Now rejects so BullMQ retries the org; the writes still must not happen.
+    await expect(
+      handlePerOrgJob({ id: 'org-award-enqueue-failed', data: baseJobData } as never),
+    ).rejects.toThrow(/enqueue/i);
+
+    expect(mockAwardMilestone).not.toHaveBeenCalled();
   });
 });
 
