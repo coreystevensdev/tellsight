@@ -135,6 +135,50 @@ describe('axis text actually renders', () => {
   });
 });
 
+describe('watchForLaneStall', () => {
+  // The lane is serialized on purpose, so a render that hangs rather than fails
+  // blocks every later render for the life of the process. Nothing aborts it:
+  // renderSvgString installs the jsdom shim onto globalThis and removes it in a
+  // finally that a hung await never reaches, so cancelling would leave the shim
+  // behind for the next render. Detection is the half that can be done safely,
+  // and silence is what makes a stall expensive.
+  it('logs an error once the render has held the lane past the threshold', async () => {
+    vi.useFakeTimers();
+    try {
+      const { watchForLaneStall, LANE_STALL_MS } = await import('./renderChart.js');
+      const { logger } = await import('../../lib/logger.js');
+
+      watchForLaneStall({ orgId: 42, chartKind: 'runway' });
+      expect(logger.error).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(LANE_STALL_MS);
+
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({ orgId: 42, chartKind: 'runway', stalledForMs: LANE_STALL_MS }),
+        expect.stringContaining('lane'),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('logs nothing when the render settles before the threshold', async () => {
+    vi.useFakeTimers();
+    try {
+      const { watchForLaneStall, LANE_STALL_MS } = await import('./renderChart.js');
+      const { logger } = await import('../../lib/logger.js');
+
+      const stop = watchForLaneStall({ orgId: 42, chartKind: 'runway' });
+      stop();
+      vi.advanceTimersByTime(LANE_STALL_MS * 3);
+
+      expect(logger.error).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('buildRunwayPoints', () => {
   it('projects a straight decline to zero over ceil(runwayMonths)', async () => {
     const { buildRunwayPoints } = await import('./renderChart.js');
