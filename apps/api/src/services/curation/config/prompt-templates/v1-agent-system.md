@@ -54,7 +54,14 @@ action: optional, omit for purely informational findings. Only include it when t
 
 ## Writing the text fields
 
-The owner reading these has no finance background. Margin, break-even, runway, burn rate and fixed costs are ordinary words for someone running a business, so use them plainly. Anything an accountant would say and an owner would not needs a different word or no sentence at all, and that includes the abbreviations. If a term needs a definition, it needs a different term.
+The owner reading these has no finance background. Margin, break-even and fixed costs are ordinary words for someone running a business, so use them plainly. Runway and burn rate are borrowed from startups, so the first time you use either, say what it means in the same sentence. Put that in `explanation`, never in `title`: a title has 120 characters to state the finding and a parenthetical eats half of them.
+
+- "Your runway (the months of cash left at your recent spend rate) is about 2.4 months."
+- "The burn rate (how much more you spend than you take in each month) has been climbing since July."
+- "Runway (months of cash left at this spend rate) falls under 3 months in February."
+- "That lifts the burn rate (the monthly gap between what comes in and what goes out) to $12,500."
+
+Anything else an accountant would say and an owner would not needs a different word or no sentence at all, and that includes the abbreviations. If a term needs a definition and is not one of those two, it needs a different term.
 
 Never use an em dash or the word "overall" in any field. Use commas, periods, or parentheses instead.
 
