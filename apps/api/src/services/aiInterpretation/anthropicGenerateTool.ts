@@ -2,7 +2,12 @@ import type Anthropic from '@anthropic-ai/sdk';
 
 import { logger } from '../../lib/logger.js';
 import type { BreakerRunner } from './anthropicBreakers.js';
-import { MAX_OUTPUT_TOKENS, modelFor, singleTurnPrompt, toolParams } from './anthropicRequest.js';
+import {
+  MAX_TOOL_OUTPUT_TOKENS,
+  modelFor,
+  singleTurnPrompt,
+  toolParams,
+} from './anthropicRequest.js';
 import { applyCostGate, mapAnthropicError } from './anthropicRuntime.js';
 import {
   countTextBlocks,
@@ -35,7 +40,7 @@ export function createAnthropicGenerateTool({
         const message = await client.messages.create(
           {
             model,
-            max_tokens: MAX_OUTPUT_TOKENS,
+            max_tokens: MAX_TOOL_OUTPUT_TOKENS,
             ...singleTurnPrompt(input),
             tools: toolParams(tools),
             tool_choice: { type: 'auto' },

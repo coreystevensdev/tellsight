@@ -3,10 +3,16 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { env } from '../../config.js';
 import type { PromptInput, ToolDefinition } from './provider.js';
 
-// Raised from 1024 on 2026-09-18. Newer models spend output tokens on
-// thinking, so tool paths need enough headroom to avoid dropping truncated
-// tool-call batches.
+// Prose and multi-turn conversations usually produce one answer or one tool
+// turn. Keep their bound separate from the single-turn proposal path below.
 export const MAX_OUTPUT_TOKENS = 2048;
+
+// Sonnet 5 spent 737-1,419 tokens thinking before emitting 2-3 agent proposals
+// in a focused cash-crunch eval. Every sample hit the old shared 2,048 ceiling,
+// and retainCompleteToolCalls correctly discarded each truncated batch. This is
+// an upper bound rather than a reservation; successful short calls are billed
+// only for what they use, and the existing cost gate still applies afterwards.
+export const MAX_TOOL_OUTPUT_TOKENS = 4096;
 
 /**
  * Prose powers interpretations, digests, and alert copy. Tools powers

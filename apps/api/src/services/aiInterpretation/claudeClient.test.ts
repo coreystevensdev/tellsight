@@ -765,6 +765,7 @@ describe('generateWithTools', () => {
 
     expect(mockCreate).toHaveBeenCalledWith(
       expect.objectContaining({
+        max_tokens: 4096,
         tool_choice: { type: 'auto' },
         tools: [
           {
