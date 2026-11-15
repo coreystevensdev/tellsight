@@ -5,11 +5,12 @@ const findOrgBySlug = vi.fn();
 const addMember = vi.fn();
 const getUserOrgs = vi.fn();
 const createDataset = vi.fn();
+const setActiveDataset = vi.fn();
 const insertBatch = vi.fn();
 const loggerError = vi.fn();
 const tx = { marker: 'tx' };
 
-vi.mock('../../db/queries/orgs.js', () => ({ createOrg, findOrgBySlug }));
+vi.mock('../../db/queries/orgs.js', () => ({ createOrg, findOrgBySlug, setActiveDataset }));
 vi.mock('../../db/queries/userOrgs.js', () => ({ addMember, getUserOrgs }));
 vi.mock('../../db/queries/datasets.js', () => ({ createDataset }));
 vi.mock('../../db/queries/dataRows.js', () => ({ insertBatch }));
@@ -61,6 +62,18 @@ describe('createOwnerOrgForUser', () => {
     expect(datasetId).toBe(900);
     expect(rows.length).toBeGreaterThan(0);
     expect(client).toBe(tx);
+  });
+
+  // Every other createDataset caller sets this: CSV upload, dataset management,
+  // and the QuickBooks, Shopify and Square syncs. This one did not, so every org
+  // seeded at sign-up carried a null active_dataset_id. The dashboard hid it by
+  // falling back to datasets[0], while all three worker eligibility queries
+  // require the pointer, so the org silently got no digest, no alerts and no
+  // agent proposals. Org 7 was a paying customer in that state.
+  it('points the new org at its seed dataset, inside the same transaction', async () => {
+    await createOwnerOrgForUser(5, 'Dana');
+
+    expect(setActiveDataset).toHaveBeenCalledWith(77, 900, tx);
   });
 
   // The dataset and its rows go in one transaction; a dataset with no rows would

@@ -52,6 +52,12 @@ async function seedDemoData(orgId: number) {
       tx,
     );
     await dataRowsQueries.insertBatch(orgId, dataset.id, rows, tx);
+    // The dashboard reads `datasets.find(activeDatasetId) ?? datasets[0]`, so it
+    // renders fine without this and hid the omission for months. The three
+    // worker eligibility queries do not fall back: digest, alerts and the agent
+    // all require a non-null pointer, so an org missing it goes silent on every
+    // one of them while looking healthy to its owner.
+    await orgsQueries.setActiveDataset(orgId, dataset.id, tx);
   });
 }
 
