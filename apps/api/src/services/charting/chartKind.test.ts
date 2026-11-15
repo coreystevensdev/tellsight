@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 
 import type { ComputedStat, ScoredInsight } from '../curation/types.js';
 import { StatType } from '../curation/types.js';
+import type { ChartKind } from './chartKind.js';
 import { getChartKindForPool, getChartKindForRuleKind } from './chartKind.js';
 
 describe('getChartKindForRuleKind', () => {
@@ -88,6 +89,12 @@ describe('getChartKindForPool', () => {
     },
   };
 
+  const byKind: Record<ChartKind, ComputedStat> = {
+    runway,
+    'cash-flow': cashFlow,
+    margin,
+  };
+
   it('picks the highest scoring chartable kind', () => {
     expect(
       getChartKindForPool([scored(margin, 0.52), scored(runway, 0.90), scored(cashFlow, 0.74)]),
@@ -124,6 +131,19 @@ describe('getChartKindForPool', () => {
     const a = getChartKindForPool([scored(margin, 0.84), scored(cashFlow, 0.84)]);
     const b = getChartKindForPool([scored(cashFlow, 0.84), scored(margin, 0.84)]);
     expect(a).toBe(b);
+  });
+
+  // TIEBREAK_ORDER and the stat-type mapping are independent arrays. A kind in
+  // the mapping but missing from the order gets indexOf -1, which sorts it ahead
+  // of everything rather than failing, so the symptom is a silently wrong chart.
+  // The scores have to be equal for this to prove anything: a losing score never
+  // reaches the tiebreak branch at all, and a first version of this test used one
+  // and passed against a deliberately broken order.
+  it('ranks runway over every other kind they can tie with', () => {
+    for (const kind of ['cash-flow', 'margin'] as const) {
+      expect(getChartKindForPool([scored(runway, 0.84), scored(byKind[kind], 0.84)])).toBe('runway');
+      expect(getChartKindForPool([scored(byKind[kind], 0.84), scored(runway, 0.84)])).toBe('runway');
+    }
   });
 
   it('prefers runway when it ties with cash-flow', () => {
