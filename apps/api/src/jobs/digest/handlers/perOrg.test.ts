@@ -1235,6 +1235,57 @@ describe('digest history', () => {
     expect(mockSaveDigestHistory).toHaveBeenCalledOnce();
   });
 
+  // A logger line is not a record. The three early returns above this one each
+  // emit digest.skipped beside their warn, and perOrg.ts_explained.md says why:
+  // on 2026-09-13 the only trace of why a digest produced nothing was a log
+  // line, and that night's deploy recreated the container and erased it. This
+  // guard preventing an irreversible write is worth at least as much evidence
+  // as an ordinary skip. Reason is unambiguous here: perOrg throws on the
+  // all-enqueues-failed case before reaching persistDigestDelivery, so zero
+  // enqueued at this point means an empty audience.
+  it('emits digest.skipped with reason no_recipients when the digest reached nobody', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([]);
+
+    await handlePerOrgJob({ id: 'org-no-recipients-event', data: baseJobData } as never);
+
+    expect(mockTrackEventOrg).toHaveBeenCalledWith(
+      42,
+      'digest.skipped',
+      expect.objectContaining({ reason: 'no_recipients' }),
+    );
+  });
+
+  // The counterweight. An event that also fires on delivering weeks would
+  // corrupt the exact analytics this one exists to provide, and the corruption
+  // would be invisible: 'no_recipients' rows next to digest.sent rows for the
+  // same week read as a contradiction nobody would trust.
+  it('does not emit no_recipients when the digest actually went out', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
+
+    await handlePerOrgJob({ id: 'org-delivered-no-event', data: baseJobData } as never);
+
+    expect(mockSendQueueAdd).toHaveBeenCalledOnce();
+    expect(mockTrackEventOrg).not.toHaveBeenCalledWith(
+      42,
+      'digest.skipped',
+      expect.objectContaining({ reason: 'no_recipients' }),
+    );
+  });
+
   // digest_history.sent_at is not nullable and the (org_id, week_start) index
   // is unique, so a row written for an undelivered week both asserts a send
   // that never happened and permanently blocks a retry of that week. There is

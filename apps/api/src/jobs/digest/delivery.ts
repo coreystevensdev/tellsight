@@ -1,3 +1,5 @@
+import { ANALYTICS_EVENTS } from 'shared/constants';
+
 import type { DigestRecipient } from '../../db/queries/digestEligibility.js';
 import type { DigestValence } from '../../db/queries/digestHistory.js';
 import {
@@ -7,6 +9,7 @@ import {
 } from '../../db/queries/index.js';
 import { dbAdmin } from '../../lib/db.js';
 import { logger } from '../../lib/logger.js';
+import { trackEventOrg } from '../../services/analytics/trackEvent.js';
 import type { ComputedStat } from '../../services/curation/types.js';
 import type { FirstTimeMilestone } from './firstTimeMilestones.js';
 import type { TransitionMilestone } from './milestones.js';
@@ -136,6 +139,20 @@ export async function persistDigestDelivery({
       },
       'Digest reached nobody, skipping history, milestone awards and notify',
     );
+    // Beside the warn, not instead of it. A deploy recreates the api container
+    // and takes its logs with it, which is the whole reason the three early
+    // returns in perOrg.ts emit this too. A guard that stopped an irreversible
+    // write deserves a record that outlives the container.
+    //
+    // 'no_recipients' is exact rather than a guess: perOrg throws on the
+    // all-enqueues-failed case before calling this, so zero enqueued here means
+    // an empty audience. A second caller that does not throw would make this
+    // reason wrong, and would be the thing to revisit.
+    trackEventOrg(orgId, ANALYTICS_EVENTS.DIGEST_SKIPPED, {
+      reason: 'no_recipients',
+      weekStart: weekStart.toISOString(),
+      milestoneKinds: firstTimeMilestones.map((milestone) => milestone.kind),
+    });
     return;
   }
 

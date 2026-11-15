@@ -61,6 +61,7 @@ const mockStripInvalidCiteRefs = vi.fn((text: string) => text);
 
 const mockSendEmail = vi.fn();
 const mockTrackEvent = vi.fn();
+const mockTrackEventOrg = vi.fn();
 
 class FakeEmailSendError extends Error {
   retryable: boolean;
@@ -164,7 +165,15 @@ vi.mock('../../services/email/index.js', () => ({
   EmailSendError: FakeEmailSendError,
 }));
 
-vi.mock('../../services/analytics/trackEvent.js', () => ({ trackEvent: mockTrackEvent }));
+// trackEventOrg was missing from this factory, so it resolved to undefined and
+// calling it threw a TypeError. perOrg.ts has imported it since its skip paths
+// were instrumented, which means none of those three early returns could be
+// exercised here without the harness crashing. delivery.ts importing it too is
+// what finally surfaced that.
+vi.mock('../../services/analytics/trackEvent.js', () => ({
+  trackEvent: mockTrackEvent,
+  trackEventOrg: mockTrackEventOrg,
+}));
 
 vi.mock('./queue.js', async () => {
   const actual = await vi.importActual<typeof import('./queue.js')>('./queue.js');
