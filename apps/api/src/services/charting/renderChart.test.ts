@@ -238,6 +238,76 @@ describe('renderChart degrade paths (I/O matrix)', () => {
     );
   });
 
+  // CAP-5. Before this the renderer logged nothing on success, and `start` was
+  // captured outside serialize(), so the only duration it ever reported folded
+  // lane wait into render time. Those are the two numbers an operator needs
+  // separated: one says the lane is contended, the other says the render is slow,
+  // and the fixes are different.
+  it('logs queue wait and render time as separate fields on a successful render', async () => {
+    const { renderChart } = await import('./renderChart.js');
+    const { logger } = await import('../../lib/logger.js');
+
+    const png = await renderChart({ chartKind: 'runway', data: runwayData }, context);
+    expect(png).not.toBeNull();
+
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        correlationId: 'corr-1',
+        orgId: 42,
+        chartKind: 'runway',
+        queueWaitMs: expect.any(Number),
+        renderMs: expect.any(Number),
+      }),
+      expect.any(String),
+    );
+  }, 20_000);
+
+  // No ruleId in the context, which is the whole point: the digest has no rule to
+  // attribute a render to. tsconfig type-checks test files (`include:
+  // src/**/*.ts`, `tsc --noEmit`), so re-requiring ruleId fails `pnpm type-check`
+  // here rather than surfacing later as a puzzling error in the digest caller.
+  it('renders for a caller with no rule to attribute it to', async () => {
+    const { renderChart } = await import('./renderChart.js');
+    const { logger } = await import('../../lib/logger.js');
+
+    const png = await renderChart(
+      { chartKind: 'margin', data: marginData },
+      { correlationId: 'corr-2', orgId: 42 },
+    );
+
+    expect(png).not.toBeNull();
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        correlationId: 'corr-2',
+        queueWaitMs: expect.any(Number),
+        renderMs: expect.any(Number),
+      }),
+      expect.any(String),
+    );
+  }, 20_000);
+
+  // The lane is the thing CAP-5 exists to measure, so the measurement has to be
+  // able to see it. Two renders fired together serialize, so the second one's
+  // wait has to be larger than the first's; if both read ~0 the field is
+  // measuring the wrong interval.
+  it('reports a larger queue wait for the render that queued behind another', async () => {
+    const { renderChart } = await import('./renderChart.js');
+    const { logger } = await import('../../lib/logger.js');
+
+    await Promise.all([
+      renderChart({ chartKind: 'runway', data: runwayData }, context),
+      renderChart({ chartKind: 'margin', data: marginData }, context),
+    ]);
+
+    const waits = (logger.info as unknown as { mock: { calls: [Record<string, unknown>, string][] } })
+      .mock.calls
+      .map(([fields]) => fields.queueWaitMs)
+      .filter((w): w is number => typeof w === 'number');
+
+    expect(waits).toHaveLength(2);
+    expect(Math.max(...waits)).toBeGreaterThan(Math.min(...waits));
+  }, 40_000);
+
   it('returns null and logs a warning when Sharp throws mid-optimize', async () => {
     const toBuffer = vi.fn().mockRejectedValue(new Error('libvips encode failure'));
     const pngFn = vi.fn(() => ({ toBuffer }));

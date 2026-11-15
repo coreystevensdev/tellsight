@@ -60,7 +60,9 @@ export type ChartRenderInput =
 export interface RenderChartContext {
   correlationId: string;
   orgId: number;
-  ruleId: number;
+  // Optional because the digest has no rule to attribute a render to. The
+  // alert path still passes it and its log fields are unchanged.
+  ruleId?: number;
 }
 
 // Alert payloads carry one point-in-time stat, not the historical series the
@@ -212,16 +214,24 @@ export async function renderChart(
 ): Promise<Buffer | null> {
   const width = params.width ?? RENDER_WIDTH;
   const height = params.height ?? RENDER_HEIGHT;
-  const start = Date.now();
+  const enqueuedAt = Date.now();
   const logFields = { ...context, chartKind: params.chartKind };
 
   return serialize(async () => {
+    // Two numbers, not one. The old single duration was captured before
+    // serialize(), so it folded lane wait into render time and an operator
+    // could not tell a contended lane from a slow render. The fixes for those
+    // differ: one is scheduling, the other is the pipeline itself.
+    const renderStartedAt = Date.now();
+    const queueWaitMs = renderStartedAt - enqueuedAt;
+    const timings = () => ({ queueWaitMs, renderMs: Date.now() - renderStartedAt });
+
     let svg: string;
     try {
       svg = await renderSvgString(buildChartElement(params, width, height));
     } catch (err) {
       logger.warn(
-        { ...logFields, err, durationMs: Date.now() - start },
+        { ...logFields, err, ...timings() },
         'Chart render threw before producing SVG, sending text-only',
       );
       return null;
@@ -229,7 +239,7 @@ export async function renderChart(
 
     if (!svg) {
       logger.warn(
-        { ...logFields, durationMs: Date.now() - start },
+        { ...logFields, ...timings() },
         'Chart render produced no SVG content, sending text-only',
       );
       return null;
@@ -240,7 +250,7 @@ export async function renderChart(
       png = svgToPng(svg, width);
     } catch (err) {
       logger.warn(
-        { ...logFields, err, durationMs: Date.now() - start },
+        { ...logFields, err, ...timings() },
         'Resvg failed to parse chart SVG, sending text-only',
       );
       return null;
@@ -254,19 +264,23 @@ export async function renderChart(
       }
     } catch (err) {
       logger.warn(
-        { ...logFields, err, durationMs: Date.now() - start },
+        { ...logFields, err, ...timings() },
         'Sharp failed to optimize the chart PNG, sending text-only',
       );
       return null;
     }
     if (optimized.length > MAX_PNG_BYTES) {
       logger.warn(
-        { ...logFields, bytes: optimized.length, maxBytes: MAX_PNG_BYTES, durationMs: Date.now() - start },
+        { ...logFields, bytes: optimized.length, maxBytes: MAX_PNG_BYTES, ...timings() },
         'Chart PNG still exceeds the size budget after a lower-quality retry, sending text-only',
       );
       return null;
     }
 
+    logger.info(
+      { ...logFields, ...timings(), bytes: optimized.length },
+      'Chart rendered',
+    );
     return optimized;
   });
 }
