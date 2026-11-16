@@ -168,6 +168,39 @@ describe('normalizeRows', () => {
     expect(result[1]!.parentCategory).toBeNull();
   });
 
+  // DW-280. Customer concentration is the one high-demand insight that needs a
+  // counterparty on the revenue side, and counterparty data cannot be recovered
+  // after the fact: the column has to exist before the rows arrive or the
+  // history is lost. CSV is the producer that exists today.
+  it('carries a counterparty through when the column is present', () => {
+    const rows: ParsedRow[] = [
+      { date: '2025-01-15', amount: '1200.00', category: 'Consulting', parent_category: 'Income', counterparty: 'Acme Ltd' },
+    ];
+
+    const result = normalizeRows(rows, ['date', 'amount', 'category', 'parent_category', 'counterparty']);
+    expect(result[0]!.counterparty).toBe('Acme Ltd');
+  });
+
+  it('resolves the names real exports use for it', () => {
+    const rows: ParsedRow[] = [
+      { date: '2025-01-15', amount: '1200.00', category: 'Consulting', customer: '  Acme Ltd  ' },
+      { date: '2025-01-16', amount: '400.00', category: 'Rent', customer: '' },
+    ];
+
+    const result = normalizeRows(rows, ['date', 'amount', 'category', 'customer']);
+    expect(result[0]!.counterparty).toBe('Acme Ltd');
+    // An empty cell is an absent counterparty, not an empty-string one: a
+    // concentration stat grouping on '' would invent a customer.
+    expect(result[1]!.counterparty).toBeNull();
+  });
+
+  it('leaves counterparty null when the file has no such column', () => {
+    const rows: ParsedRow[] = [{ date: '2025-01-15', amount: '1200.00', category: 'Consulting' }];
+
+    const result = normalizeRows(rows, ['date', 'amount', 'category']);
+    expect(result[0]!.counterparty).toBeNull();
+  });
+
   it('handles messy headers by normalizing', () => {
     const messyHeaders = ['Date', ' AMOUNT ', 'category'];
     const rows: ParsedRow[] = [

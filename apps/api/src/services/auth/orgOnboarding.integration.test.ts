@@ -69,7 +69,7 @@ describe('a new org after sign-up', () => {
   it('swaps the demo data out for the first real upload', async () => {
     const result = await withRlsContext(orgId, false, (tx) =>
       datasetsQueries.persistUpload(orgId, userId, 'january.csv', [
-        { category: 'Revenue', parentCategory: 'Income', date: new Date('2026-01-05'), amount: '1200.00', label: null, metadata: null },
+        { category: 'Revenue', parentCategory: 'Income', date: new Date('2026-01-05'), amount: '1200.00', label: null, counterparty: null, metadata: null },
       ], tx),
     );
 

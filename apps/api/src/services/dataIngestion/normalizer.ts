@@ -13,6 +13,7 @@ export interface NormalizedRow {
   date: Date;
   amount: string;
   label: string | null;
+  counterparty: string | null;
   metadata: null;
 }
 
@@ -53,6 +54,7 @@ export function normalizeRows(rows: ParsedRow[], rawHeaders: string[]): Normaliz
   const categoryKey = headerMap.get('category')!;
   const labelKey = headerMap.get('label');
   const parentCatKey = headerMap.get('parent_category');
+  const counterpartyKey = headerMap.get('counterparty');
   const dayFirst = detectDayFirst(rows.map((r) => r[dateKey] ?? ''));
   // No parent_category column: fall back to amount sign (negative = expense,
   // a common bank/ledger export convention), but only once the file proves
@@ -93,6 +95,9 @@ export function normalizeRows(rows: ParsedRow[], rawHeaders: string[]): Normaliz
       date: parseDate(dateStr, dayFirst)!,
       amount,
       label: labelKey ? (row[labelKey]?.trim() || null) : null,
+      // `|| null` rather than `?? null`: an empty cell is an absent
+      // counterparty, and a concentration stat grouping on '' would invent one.
+      counterparty: counterpartyKey ? (row[counterpartyKey]?.trim() || null) : null,
       metadata: null,
     };
   });

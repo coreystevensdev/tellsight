@@ -211,6 +211,11 @@ export const dataRows = pgTable(
     parentCategory: varchar('parent_category', { length: 255 }),
     date: date('date', { mode: 'date' }).notNull(),
     amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+    // Who the row was with. category says what the money was for; this says
+    // with whom, which is what a concentration stat has to group on. Null for
+    // every row ingested before 2026-11-16 and for any source that does not
+    // carry one (DW-280).
+    counterparty: varchar({ length: 255 }),
     label: varchar({ length: 255 }),
     metadata: jsonb('metadata'),
     createdAt: timestamp('created_at', { withTimezone: true })
@@ -220,6 +225,9 @@ export const dataRows = pgTable(
   (table) => [
     index('idx_data_rows_org_id_date').on(table.orgId, table.date),
     index('idx_data_rows_dataset_id').on(table.datasetId),
+    index('idx_data_rows_counterparty')
+      .on(table.orgId, table.datasetId, table.counterparty)
+      .where(sql`${table.counterparty} is not null`),
     index('idx_data_rows_category').on(table.category),
     uniqueIndex('idx_data_rows_source_id')
       .on(table.orgId, table.sourceId)
