@@ -1,6 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    // The test script builds first so the render worker loads the same dist
+    // production does. Without this that is a 10s full compile on every run.
+    "incremental": true,
+    "tsBuildInfoFile": "./node_modules/.cache/tsbuildinfo",
     "outDir": "dist",
     // TypeScript 6 will not infer this when emitting (TS5011), and `tsc --noEmit`
     // never asks, so the type-check job cannot see it missing. Only the Docker
