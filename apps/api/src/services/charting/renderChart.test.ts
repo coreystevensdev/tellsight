@@ -240,7 +240,12 @@ describe('renderChart degrade paths (I/O matrix)', () => {
     vi.doUnmock('sharp');
   });
 
-  it('returns null and logs a warning when Resvg fails to parse the chart SVG', async () => {
+  // These assert the stage the pipeline reports rather than the sentence it
+  // logs. renderToPng is imported directly so the failure is a return value: a
+  // log line is prose, and a test that pins the prose fails on a reword that
+  // broke nothing. renderChart still gets one assertion that the stages reach
+  // an operator, since it is now the only thing that logs them.
+  it('reports the raster stage when Resvg fails to parse the chart SVG', async () => {
     vi.doMock('@resvg/resvg-js', () => ({
       Resvg: class {
         constructor() {
@@ -249,14 +254,22 @@ describe('renderChart degrade paths (I/O matrix)', () => {
       },
     }));
 
-    const { renderChart } = await import('./renderChart.js');
+    const { renderToPng, renderChart } = await import('./renderChart.js');
     const { logger } = await import('../../lib/logger.js');
 
-    const png = await renderChart({ chartKind: 'runway', data: runwayData }, context);
+    const outcome = await renderToPng({ chartKind: 'runway', data: runwayData });
 
-    expect(png).toBeNull();
+    expect(outcome).toMatchObject({ ok: false, stage: 'raster' });
+    expect(await renderChart({ chartKind: 'runway', data: runwayData }, context)).toBeNull();
     expect(logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ correlationId: 'corr-1', orgId: 42, ruleId: 7, chartKind: 'runway' }),
+      expect.objectContaining({
+        correlationId: 'corr-1',
+        orgId: 42,
+        ruleId: 7,
+        chartKind: 'runway',
+        queueWaitMs: expect.any(Number),
+        renderMs: expect.any(Number),
+      }),
       expect.stringContaining('Resvg failed to parse'),
     );
   });
@@ -267,19 +280,14 @@ describe('renderChart degrade paths (I/O matrix)', () => {
     const sharpFn = vi.fn(() => ({ png: pngFn }));
     vi.doMock('sharp', () => ({ default: sharpFn }));
 
-    const { renderChart } = await import('./renderChart.js');
-    const { logger } = await import('../../lib/logger.js');
+    const { renderToPng } = await import('./renderChart.js');
 
-    const png = await renderChart({ chartKind: 'runway', data: runwayData }, context);
+    const outcome = await renderToPng({ chartKind: 'runway', data: runwayData });
 
-    expect(png).toBeNull();
+    expect(outcome).toMatchObject({ ok: false, stage: 'oversize', fields: { bytes: 90 * 1024 } });
     expect(pngFn).toHaveBeenCalledTimes(2);
     expect(pngFn.mock.calls[0]![0]).toMatchObject({ quality: 80 });
     expect(pngFn.mock.calls[1]![0]).toMatchObject({ quality: 50 });
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ correlationId: 'corr-1', orgId: 42, ruleId: 7, chartKind: 'runway' }),
-      expect.stringContaining('exceeds the size budget'),
-    );
   });
 
   // CAP-5. Before this the renderer logged nothing on success, and `start` was
@@ -358,15 +366,10 @@ describe('renderChart degrade paths (I/O matrix)', () => {
     const sharpFn = vi.fn(() => ({ png: pngFn }));
     vi.doMock('sharp', () => ({ default: sharpFn }));
 
-    const { renderChart } = await import('./renderChart.js');
-    const { logger } = await import('../../lib/logger.js');
+    const { renderToPng } = await import('./renderChart.js');
 
-    const png = await renderChart({ chartKind: 'runway', data: runwayData }, context);
+    const outcome = await renderToPng({ chartKind: 'runway', data: runwayData });
 
-    expect(png).toBeNull();
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ correlationId: 'corr-1', orgId: 42, ruleId: 7, chartKind: 'runway' }),
-      expect.stringContaining('Sharp failed to optimize'),
-    );
+    expect(outcome).toMatchObject({ ok: false, stage: 'optimize' });
   });
 });
