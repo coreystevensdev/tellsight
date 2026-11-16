@@ -10,6 +10,7 @@ import { runCurationPipeline } from '../../../services/curation/index.js';
 import { classifyValence } from '../valence.js';
 import { generateSubjectLine } from '../subjectLine.js';
 import { loadDigestAgentFindings } from '../loadDigestAgentFindings.js';
+import { renderDigestChart } from '../renderDigestChart.js';
 import { resolveDigestSummary } from '../resolveDigestSummary.js';
 import { enqueueDigestSends, persistDigestDelivery } from '../delivery.js';
 import { prepareDigestContext } from '../prepareDigestContext.js';
@@ -195,6 +196,23 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
     correlationId,
   );
 
+  // Once per org per week, ahead of fan-out, so N recipients cost one render
+  // and no send job ever waits on the shared render lane. Its own failures are
+  // already null-valued, and a throw here would cost the week's digest for a
+  // picture, so the whole thing is belt-and-braces inside a try.
+  let chartKind = null;
+  try {
+    chartKind = await renderDigestChart({
+      orgId,
+      datasetId,
+      weekStart,
+      scoredPool,
+      correlationId,
+    });
+  } catch (err) {
+    logger.warn({ correlationId, orgId, err }, 'Digest chart render threw, sending text-only');
+  }
+
   const recipients = await digestEligibilityQueries.findOrgRecipients(orgId);
   const { enqueued, enqueueFailures } = await enqueueDigestSends({
     recipients,
@@ -262,6 +280,7 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
       cacheHit,
       insightCount,
       promptVersion: generatedPromptVersion,
+      chartKind,
       sendJobsEnqueued: enqueued,
       enqueueFailures,
       weekStart,

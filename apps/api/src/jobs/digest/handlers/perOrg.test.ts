@@ -25,8 +25,11 @@ const mockGetExpiredUnfoldedProposals = vi.fn();
 const mockCountExpiredUnfoldedProposals = vi.fn();
 const mockMarkNotified = vi.fn();
 const mockGetAgentEnabled = vi.fn();
+const mockRenderDigestChart = vi.fn();
 
 const mockTrackEventOrg = vi.fn();
+vi.mock('../renderDigestChart.js', () => ({ renderDigestChart: mockRenderDigestChart }));
+
 vi.mock('../../../services/analytics/trackEvent.js', () => ({
   trackEventOrg: mockTrackEventOrg,
 }));
@@ -195,6 +198,7 @@ beforeEach(() => {
   mockCountExpiredUnfoldedProposals.mockResolvedValue(0);
   mockMarkNotified.mockResolvedValue(undefined);
   mockGetAgentEnabled.mockResolvedValue(true);
+  mockRenderDigestChart.mockResolvedValue(null);
 });
 
 describe('cache miss path', () => {
@@ -744,6 +748,79 @@ describe('fan-out', () => {
       expect.objectContaining({ outcome: 'sent' }),
       expect.any(String),
     );
+  });
+});
+
+describe('digest chart', () => {
+  // CAP-3: once per org, before fan-out, so N recipients cost one render and no
+  // send job ever waits on the shared render lane.
+  it('renders once per org with the scored pool, ahead of the fan-out', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'runway' }, score: 0.9 }],
+    });
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([
+      { userId: 1, email: 'a@x.com', name: 'A' },
+      { userId: 2, email: 'b@x.com', name: 'B' },
+    ]);
+    mockRenderDigestChart.mockResolvedValueOnce('runway');
+
+    await handlePerOrgJob({ id: 'org-chart-1', data: baseJobData } as never);
+
+    expect(mockRenderDigestChart).toHaveBeenCalledOnce();
+    expect(mockRenderDigestChart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgId: 42,
+        datasetId: 100,
+        scoredPool: [{ stat: { statType: 'runway' }, score: 0.9 }],
+      }),
+    );
+    // Two recipients, still one render.
+    expect(mockSendQueueAdd).toHaveBeenCalledTimes(2);
+    expect(
+      mockRenderDigestChart.mock.invocationCallOrder[0]!,
+    ).toBeLessThan(mockSendQueueAdd.mock.invocationCallOrder[0]!);
+  });
+
+  it('reports the chart kind on the completion log', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
+    mockRenderDigestChart.mockResolvedValueOnce('cash-flow');
+
+    await handlePerOrgJob({ id: 'org-chart-2', data: baseJobData } as never);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({ chartKind: 'cash-flow', outcome: 'sent' }),
+      'Per-org digest complete',
+    );
+  });
+
+  // The chart is decoration on an email whose words carry the message, so a
+  // throw from the render path must not cost the week's digest.
+  it('still sends when the chart render throws', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'Total' } }],
+    });
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
+    mockRenderDigestChart.mockRejectedValueOnce(new Error('worker exploded'));
+
+    await handlePerOrgJob({ id: 'org-chart-3', data: baseJobData } as never);
+
+    expect(mockSendQueueAdd).toHaveBeenCalledOnce();
+    expect(mockSaveDigestHistory).toHaveBeenCalledOnce();
   });
 });
 
