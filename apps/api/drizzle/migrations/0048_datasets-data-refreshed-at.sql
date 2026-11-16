@@ -24,8 +24,11 @@ WHERE ic.org_id = d.org_id
   AND ic.provider = d.source_type::text
   AND ic.last_synced_at IS NOT NULL;
 
-ALTER TABLE datasets ALTER COLUMN data_refreshed_at SET NOT NULL;
+-- DEFAULT first, then NOT NULL. The previous release does not know this column
+-- exists, so its createDataset insert omits it; the default is what keeps that
+-- insert working if the image is rolled back while the schema stays.
 ALTER TABLE datasets ALTER COLUMN data_refreshed_at SET DEFAULT now();
+ALTER TABLE datasets ALTER COLUMN data_refreshed_at SET NOT NULL;
 
 -- The eligibility gate and the stale nudge both filter on this now, and the
 -- nudge compares it against orgs.stale_nudge_sent_at.
