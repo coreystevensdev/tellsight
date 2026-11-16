@@ -9,6 +9,7 @@ const mockSyncJobUpdate = vi.fn();
 const mockGetDatasetsByOrg = vi.fn();
 const mockCreateDataset = vi.fn();
 const mockUpdateDatasetName = vi.fn();
+const mockTouchDataRefreshed = vi.fn().mockResolvedValue(undefined);
 const mockSetActiveDataset = vi.fn();
 const mockMarkStale = vi.fn();
 const mockGetOrgOwnerId = vi.fn();
@@ -106,6 +107,7 @@ vi.mock('../../../db/queries/index.js', () => ({
     getDatasetsByOrg: mockGetDatasetsByOrg,
     createDataset: mockCreateDataset,
     updateDatasetName: mockUpdateDatasetName,
+    touchDataRefreshed: mockTouchDataRefreshed,
   },
   orgsQueries: {
     setActiveDataset: mockSetActiveDataset,
@@ -389,6 +391,23 @@ describe('runSync', () => {
         typeof c === 'object' && c !== null && (c as { op?: string }).op === 'inArray',
     );
     expect(inArrayCond?.vals).toEqual(['inv-good-1', 'inv-good-2']);
+  });
+
+  // DW-281. Without this call the column that the eligibility gate, the stale
+  // nudge and the no-new-data skip all read never moves for a connector, so the
+  // org goes silent 30 days after connecting while still syncing daily.
+  // Deleting the call broke no test until this one existed.
+  it('marks the dataset as refreshed so the freshness gates can see the sync', async () => {
+    mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
+    mockCreateQbClient.mockResolvedValueOnce(mockQbClient());
+    mockGetDatasetsByOrg.mockResolvedValueOnce([]);
+    mockCreateDataset.mockResolvedValueOnce({ id: 500 });
+    mockNormalizeTransactions.mockReturnValue([]);
+
+    const { runSync } = await import('./sync.js');
+    await runSync(1, 'initial');
+
+    expect(mockTouchDataRefreshed).toHaveBeenCalled();
   });
 
   it('marks AI summaries stale after successful sync', async () => {

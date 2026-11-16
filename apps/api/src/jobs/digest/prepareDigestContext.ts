@@ -30,7 +30,7 @@ export interface PreparedDigestContext {
   priorContext: string;
   promptVersion: 'v1-digest' | 'v2-digest';
   noNewData: {
-    datasetCreatedAt: Date;
+    dataRefreshedAt: Date;
     priorDigestWeekStart: Date;
   } | null;
 }
@@ -94,19 +94,22 @@ export async function prepareDigestContext({
     : transitionMilestones;
   const milestones = [...firstTimeMilestones, ...dedupedTransitionMilestones];
 
-  // Datasets are immutable: a dataset no newer than the prior digest means no
-  // new upload arrived. Milestones remain an explicit guard because they can
-  // depend on the wall clock as well as the underlying financial data.
+  // Keyed on data_refreshed_at, not created_at. Datasets are not immutable: a
+  // CSV upload mints one, but a connector sync reuses a dataset per provider and
+  // rewrites its rows, so created_at freezes at first connect and this
+  // comparison would be true forever from the second digest onward (DW-281).
+  // Milestones remain an explicit guard because they can depend on the wall
+  // clock as well as the underlying financial data.
   const activeDataset = await datasetsQueries.getDatasetById(orgId, datasetId, dbAdmin);
   const priorWeekStart = lastDigest?.weekStart;
   const noNewData =
     priorWeekStart instanceof Date &&
-    activeDataset?.createdAt instanceof Date &&
-    activeDataset.createdAt.getTime() <= priorWeekStart.getTime() &&
+    activeDataset?.dataRefreshedAt instanceof Date &&
+    activeDataset.dataRefreshedAt.getTime() <= priorWeekStart.getTime() &&
     deltaEntries.length === 0 &&
     milestones.length === 0
       ? {
-          datasetCreatedAt: activeDataset.createdAt,
+          dataRefreshedAt: activeDataset.dataRefreshedAt,
           priorDigestWeekStart: priorWeekStart,
         }
       : null;

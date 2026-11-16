@@ -104,6 +104,12 @@ export async function runSync(connectionId: number, trigger: SyncTrigger): Promi
       await orgsQueries.setActiveDataset(orgId, dataset.id, dbAdmin);
     }
 
+    // The rows just changed, so the dataset is fresher than its created_at says.
+
+    // Everything that gates on "when did this org last receive data" reads this.
+
+    await datasetsQueries.touchDataRefreshed(orgId, dataset.id, dbAdmin);
+
     await aiSummariesQueries.markStale(orgId, dbAdmin);
 
     await syncJobsQueries.update(

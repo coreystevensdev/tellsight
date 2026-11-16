@@ -8,6 +8,7 @@ const syncJobUpdate = vi.fn();
 const getDatasetsByOrg = vi.fn();
 const createDataset = vi.fn();
 const updateDatasetName = vi.fn();
+const touchDataRefreshed = vi.fn().mockResolvedValue(undefined);
 const setActiveDataset = vi.fn();
 const findOrgById = vi.fn();
 const markStale = vi.fn();
@@ -43,6 +44,7 @@ vi.mock('../../../db/queries/index.js', () => ({
     getDatasetsByOrg: (...a: unknown[]) => getDatasetsByOrg(...a),
     createDataset: (...a: unknown[]) => createDataset(...a),
     updateDatasetName: (...a: unknown[]) => updateDatasetName(...a),
+    touchDataRefreshed: (...a: unknown[]) => touchDataRefreshed(...a),
   },
   orgsQueries: {
     setActiveDataset: (...a: unknown[]) => setActiveDataset(...a),
@@ -165,6 +167,15 @@ describe('runSync', () => {
     createSquareClient.mockResolvedValue({ listLocations, searchOrders });
     await runSync(7, 'scheduled');
     expect(setActiveDataset).not.toHaveBeenCalled();
+  });
+
+  // DW-281. Without this call the column that the eligibility gate, the stale
+  // nudge and the no-new-data skip all read never moves for a connector, so the
+  // org goes silent 30 days after connecting while still syncing daily.
+  // Deleting the call broke no test until this one existed.
+  it('marks the dataset as refreshed so the freshness gates can see the sync', async () => {
+    await runSync(7, 'initial');
+    expect(touchDataRefreshed).toHaveBeenCalled();
   });
 
   it('stales the cached summary so it is recomputed against new rows', async () => {

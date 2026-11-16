@@ -130,12 +130,12 @@ export async function handleOrchestratorJob(job: Job): Promise<void> {
       try {
         await nudgeQueue.add(
           `${JOB_PREFIX_NUDGE}-${org.id}`,
-          { orgId: org.id, orgName: org.name, datasetCreatedAt: org.datasetCreatedAt, correlationId },
+          { orgId: org.id, orgName: org.name, dataRefreshedAt: org.dataRefreshedAt, correlationId },
           {
             // Keyed on the dataset, not the week. The nudge is once per staleness
             // episode, so a retry on the same stale dataset must collapse onto
             // the same job rather than queueing a second identical email.
-            jobId: `${JOB_PREFIX_NUDGE}-${org.id}-${org.datasetCreatedAt.getTime()}`,
+            jobId: `${JOB_PREFIX_NUDGE}-${org.id}-${org.dataRefreshedAt.getTime()}`,
             attempts: ORG_JOB_ATTEMPTS,
             backoff: { type: 'exponential', delay: ORG_JOB_BACKOFF_MS },
             removeOnComplete: { count: 100 },

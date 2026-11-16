@@ -58,6 +58,14 @@ const JOURNAL = join(MIGRATIONS_DIR, 'meta/_journal.json');
 // inheriting the old sentence.
 const ACKNOWLEDGED = new Map<string, Acknowledgement>([
   [
+    '0048_datasets-data-refreshed-at.sql',
+    {
+      hits: ['SET NOT NULL', 'DATA WRITE'],
+      reason:
+        'adds data_refreshed_at with a DEFAULT before the NOT NULL, so a rolled-back release that omits the column on insert still writes a valid row; the DATA WRITE only fills the new column, and created_at, which every deployed version reads, is left alone',
+    },
+  ],
+  [
     '0022_drop-user-orgs-digest-opt-in.sql',
     {
       hits: ['DROP COLUMN'],

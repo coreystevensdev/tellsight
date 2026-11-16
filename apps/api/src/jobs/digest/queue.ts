@@ -49,12 +49,26 @@ export const subjectLineSchema = z.string().trim().min(1);
 // dataset timestamp travels with the job so the email can say how long it has
 // been, without the handler going back to the database for a row the sweep
 // already read.
-export const nudgeJobDataSchema = z.object({
-  orgId: z.number().int().finite(),
-  orgName: z.string(),
-  datasetCreatedAt: z.union([z.string(), z.date()]).transform((v) => new Date(v)),
-  correlationId: z.string(),
-});
+// dataRefreshedAt replaced datasetCreatedAt in DW-281, and both are accepted
+// because this is a queue payload: a nudge job enqueued by the old code is
+// already in Redis when the new worker starts, and a strict rename would make
+// its handler throw on parse. The legacy key can go once the queue has drained
+// past one weekly sweep.
+export const nudgeJobDataSchema = z
+  .object({
+    orgId: z.number().int().finite(),
+    orgName: z.string(),
+    dataRefreshedAt: z.union([z.string(), z.date()]).optional(),
+    datasetCreatedAt: z.union([z.string(), z.date()]).optional(),
+    correlationId: z.string(),
+  })
+  .transform(({ dataRefreshedAt, datasetCreatedAt, ...rest }) => {
+    const when = dataRefreshedAt ?? datasetCreatedAt;
+    if (when === undefined) {
+      throw new Error('nudge job carries neither dataRefreshedAt nor datasetCreatedAt');
+    }
+    return { ...rest, dataRefreshedAt: new Date(when) };
+  });
 
 export type NudgeJobData = z.infer<typeof nudgeJobDataSchema>;
 
