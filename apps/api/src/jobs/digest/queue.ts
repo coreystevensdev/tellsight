@@ -73,6 +73,11 @@ export const sendJobDataSchema = z.object({
   // when their own send job runs. .catch(), like subjectLine above: a shape
   // mismatch here should drop the extra bullets, not the whole digest send.
   agentBullets: z.array(z.string()).optional().catch(undefined),
+  // Which chart perOrg drew, if any. Carried so a chartless week costs no
+  // Redis round trip per recipient, and so the send can tag chart_kind without
+  // re-deriving it from bytes. .catch() for the same reason as agentBullets: a
+  // shape mismatch should drop the picture, not the digest.
+  chartKind: z.enum(['runway', 'cash-flow', 'margin']).optional().catch(undefined),
   correlationId: z.string().min(1),
 });
 export type SendJobData = z.infer<typeof sendJobDataSchema>;

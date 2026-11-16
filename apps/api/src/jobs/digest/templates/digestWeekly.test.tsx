@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render } from '@react-email/render';
 
+import type { DigestWeeklyProps } from './digestWeekly.js';
+
 vi.mock('../../../config.js', () => ({
   env: {
     APP_URL: 'https://app.tellsight.com',
@@ -41,7 +43,9 @@ const fixture: {
 const RECIPIENT_EXPLANATION_ENCODED =
   'You&#x27;re receiving this because you&#x27;re a Pro subscriber at Acme Coffee';
 
-async function renderFixture(overrides: Partial<typeof fixture> = {}) {
+// Typed by the component's props rather than by whatever the fixture happens to
+// contain, so a newly added prop is passable here without widening the fixture.
+async function renderFixture(overrides: Partial<DigestWeeklyProps> = {}) {
   return render(DigestWeekly({ ...fixture, ...overrides }));
 }
 
@@ -274,5 +278,26 @@ describe('buildUnsubscribeUrl', () => {
     const tokenEncoded = segments[segments.length - 1]!;
     const token = decodeURIComponent(tokenEncoded);
     expect(verifyUnsubscribeToken(token)).toEqual({ userId: 7 });
+  });
+});
+
+describe('chart (CAP-1, CAP-4)', () => {
+  it('renders an inline cid image when a chart was cached for the week', async () => {
+    const html = await renderFixture({ chartContentId: 'digest-chart-42-1794700800000' });
+    expect(html).toContain('src="cid:digest-chart-42-1794700800000"');
+  });
+
+  // CAP-4. A missing chart has to leave no trace at all: an <img> with an empty
+  // or dangling src renders as a broken-image icon in most clients, which is
+  // worse than the text-only email this is supposed to degrade to.
+  it('emits no chart img at all when there is no chart', async () => {
+    const html = await renderFixture();
+    expect(html).not.toContain('cid:');
+  });
+
+  it('gives the chart alt text rather than leaving it empty', async () => {
+    const html = await renderFixture({ chartContentId: 'c1' });
+    const imgTag = html.slice(html.indexOf('cid:c1') - 200, html.indexOf('cid:c1') + 200);
+    expect(imgTag).toMatch(/alt="[^"]+"/);
   });
 });

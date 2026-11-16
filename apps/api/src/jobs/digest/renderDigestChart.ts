@@ -113,3 +113,22 @@ export async function renderDigestChart({
   logger.info({ correlationId, orgId, datasetId, chartKind: kind, bytes: png.length }, 'Digest chart cached');
   return kind;
 }
+
+/**
+ * The per-send half of the handoff. A miss is the ordinary case rather than an
+ * error: a retry hours after the write, a Redis restart (this instance runs RDB
+ * snapshots with AOF off), and an org whose week had no chartable stat all land
+ * here, and each sends text-only.
+ */
+export async function readDigestChart(
+  orgId: number,
+  datasetId: number,
+  weekStart: Date,
+): Promise<Buffer | null> {
+  try {
+    return await redis.getBuffer(chartCacheKey(orgId, datasetId, weekStart));
+  } catch (err) {
+    logger.warn({ orgId, datasetId, err }, 'Could not read the digest chart, sending text-only');
+    return null;
+  }
+}

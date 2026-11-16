@@ -30,6 +30,7 @@ interface EnqueueDigestSendsInput {
   orgName: string;
   subjectLine: string;
   agentBullets: string[];
+  chartKind?: 'runway' | 'cash-flow' | 'margin' | null;
   correlationId: string;
 }
 
@@ -46,6 +47,7 @@ export async function enqueueDigestSends({
   orgName,
   subjectLine,
   agentBullets,
+  chartKind,
   correlationId,
 }: EnqueueDigestSendsInput): Promise<DigestEnqueueResult> {
   const queue = getSendQueue();
@@ -62,6 +64,7 @@ export async function enqueueDigestSends({
       orgName,
       subjectLine,
       agentBullets,
+      ...(chartKind ? { chartKind } : {}),
       correlationId,
     };
 

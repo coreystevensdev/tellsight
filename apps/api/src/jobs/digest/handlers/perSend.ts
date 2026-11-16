@@ -15,6 +15,7 @@ import {
   buildDashboardUrl,
   buildUnsubscribeUrl,
 } from '../templates/digestWeekly.js';
+import { readDigestChart } from '../renderDigestChart.js';
 import { signDigestTrackingToken } from '../trackingToken.js';
 import { sendJobDataSchema, subjectLineSchema } from '../queue.js';
 
@@ -42,7 +43,7 @@ export async function handlePerSendJob(job: Job): Promise<void> {
     return;
   }
 
-  const { userId, orgId, summaryId, weekStart, userEmail, orgName, subjectLine, agentBullets, correlationId } =
+  const { userId, orgId, summaryId, weekStart, userEmail, orgName, subjectLine, agentBullets, chartKind, correlationId } =
     parsed.data;
   const start = Date.now();
   const weekStartIso = weekStart.toISOString();
@@ -58,6 +59,7 @@ export async function handlePerSendJob(job: Job): Promise<void> {
     scope.setTag('user_id', String(userId));
     scope.setTag('template_version', TEMPLATE_VERSION);
     scope.setTag('week_start', weekStartIso);
+    if (chartKind) scope.setTag('chart_kind', chartKind);
 
     const prefs = await digestPreferencesQueries.upsertDefaults(userId, dbAdmin);
     if (
@@ -130,6 +132,13 @@ export async function handlePerSendJob(job: Job): Promise<void> {
     const bullets = [...parseSummaryToBullets(row.content), ...(agentBullets ?? [])];
     const dashboardUrl = buildDashboardUrl(row.datasetId, trackingToken);
     const unsubscribeUrl = buildUnsubscribeUrl(userId);
+
+    // Only when perOrg says it drew one, so a chartless week costs no round
+    // trip per recipient. A miss here is ordinary rather than an error: the key
+    // has a TTL, this Redis keeps RDB snapshots with AOF off, and a retried
+    // send can run hours after the write. Each of those sends text-only.
+    const chartPng = chartKind ? await readDigestChart(orgId, row.datasetId, weekStart) : null;
+    const chartContentId = chartPng ? `digest-chart-${orgId}-${weekStart.getTime()}` : undefined;
     const headers = buildListUnsubscribeHeaders(unsubscribeUrl);
 
     if (subjectLineFellBack) {
@@ -151,14 +160,22 @@ export async function handlePerSendJob(job: Job): Promise<void> {
           mailingAddress: env.EMAIL_MAILING_ADDRESS,
           companyName: env.EMAIL_FROM_NAME,
           openTrackingUrl,
+          chartContentId,
         }),
         tags: {
           template: TEMPLATE_VERSION,
           org_id: String(orgId),
           user_id: String(userId),
+          // Chart presence rides its own tag rather than a TEMPLATE_VERSION
+          // bump: the chart is conditional, so a v2 would label chart and
+          // chartless sends alike and answer nothing. Matches the alert path.
+          ...(chartKind ? { chart_kind: chartKind } : {}),
         },
         headers,
         correlationId,
+        ...(chartPng && chartContentId
+          ? { attachments: [{ filename: 'chart.png', content: chartPng, contentId: chartContentId }] }
+          : {}),
       });
 
       await digestPreferencesQueries.markSent(userId, new Date(), dbAdmin);

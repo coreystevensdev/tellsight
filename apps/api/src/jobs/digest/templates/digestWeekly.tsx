@@ -25,6 +25,12 @@ export interface DigestWeeklyProps {
   // industry convention, the pixel doesn't block content render in clients
   // that pre-fetch sequentially.
   openTrackingUrl?: string;
+  // Content ID of the week's chart, when perOrg cached one. Undefined on a week
+  // with no chartable stat, a degraded render, or a cache miss, and the <img> is
+  // omitted entirely rather than left pointing at nothing: a dangling cid draws
+  // a broken-image icon in most clients, which is worse than the text-only
+  // email this degrades to.
+  chartContentId?: string;
 }
 
 const colors = {
@@ -104,6 +110,7 @@ export function DigestWeekly({
   orgName,
   bullets,
   dashboardUrl,
+  chartContentId,
   unsubscribeUrl,
   mailingAddress,
   companyName,
@@ -128,6 +135,22 @@ export function DigestWeekly({
                     <tr>
                       <td style={styles.cardCell}>
                         <h1 style={styles.heading}>{`${orgName} weekly insights`}</h1>
+                        {chartContentId && (
+                          <img
+                            src={`cid:${chartContentId}`}
+                            alt={`${orgName} weekly chart`}
+                            width={600}
+                            height={300}
+                            style={{
+                              display: 'block',
+                              width: '100%',
+                              maxWidth: 600,
+                              height: 'auto',
+                              border: 0,
+                              marginBottom: 16,
+                            }}
+                          />
+                        )}
                         {bullets.map((bullet, i) => (
                           <p key={i} style={styles.bullet}>
                             {stripAllDisplayTags(bullet)}

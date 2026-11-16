@@ -6,6 +6,7 @@ const mockMarkSent = vi.fn().mockResolvedValue(undefined);
 const mockGetById = vi.fn();
 const mockSendEmail = vi.fn();
 const mockTrackEvent = vi.fn();
+const mockReadDigestChart = vi.fn();
 
 class FakeEmailSendError extends Error {
   retryable: boolean;
@@ -61,6 +62,8 @@ vi.mock('../../../db/queries/index.js', () => ({
   },
 }));
 
+vi.mock('../renderDigestChart.js', () => ({ readDigestChart: mockReadDigestChart }));
+
 vi.mock('../../../services/email/index.js', () => ({
   sendEmail: mockSendEmail,
   EmailSendError: FakeEmailSendError,
@@ -108,6 +111,7 @@ const okSummary = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockReadDigestChart.mockResolvedValue(null);
 });
 
 describe('happy path', () => {
@@ -483,5 +487,77 @@ describe('failure semantics', () => {
         providerStatusCode: 422,
       }),
     );
+  });
+});
+
+describe('chart attachment (CAP-1, CAP-4)', () => {
+  function primeSend() {
+    mockUpsertDefaults.mockResolvedValueOnce({ userId: 7, cadence: 'weekly', lastSentAt: null });
+    mockGetById.mockResolvedValueOnce(okSummary);
+    mockSendEmail.mockResolvedValueOnce({ status: 'sent', providerMessageId: 'm1', durationMs: 10 });
+  }
+
+  it('attaches the cached PNG under a content id the template points at', async () => {
+    primeSend();
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+    mockReadDigestChart.mockResolvedValueOnce(png);
+
+    await handlePerSendJob({
+      id: 'send-chart-1',
+      data: { ...baseJobData, chartKind: 'runway' },
+    } as never);
+
+    // The key comes from the summary row's datasetId, not the job payload,
+    // which is why no schema change was needed to address the cache.
+    expect(mockReadDigestChart).toHaveBeenCalledWith(42, 100, baseJobData.weekStart);
+
+    const sent = mockSendEmail.mock.calls[0]![0];
+    expect(sent.attachments).toHaveLength(1);
+    expect(sent.attachments[0]).toMatchObject({ filename: 'chart.png', content: png });
+    const cid = sent.attachments[0].contentId;
+    expect(mockDigestWeekly).toHaveBeenCalledWith(
+      expect.objectContaining({ chartContentId: cid }),
+    );
+  });
+
+  // Threading the kind means a chartless week costs no Redis round trip per
+  // recipient, which is the whole reason it is in the job payload.
+  it('does not touch Redis when the week drew no chart', async () => {
+    primeSend();
+
+    await handlePerSendJob({ id: 'send-chart-2', data: baseJobData } as never);
+
+    expect(mockReadDigestChart).not.toHaveBeenCalled();
+    expect(mockSendEmail.mock.calls[0]![0].attachments).toBeUndefined();
+  });
+
+  // A miss is ordinary: a retry hours later, a Redis restart, an evicted key.
+  it('sends text-only with no attachment when the key has gone', async () => {
+    primeSend();
+    mockReadDigestChart.mockResolvedValueOnce(null);
+
+    await handlePerSendJob({
+      id: 'send-chart-3',
+      data: { ...baseJobData, chartKind: 'margin' },
+    } as never);
+
+    const sent = mockSendEmail.mock.calls[0]![0];
+    expect(sent.attachments).toBeUndefined();
+    expect(mockDigestWeekly).toHaveBeenCalledWith(
+      expect.objectContaining({ chartContentId: undefined }),
+    );
+  });
+
+  it('tags chart_kind so the send is attributable without a version bump', async () => {
+    primeSend();
+    mockReadDigestChart.mockResolvedValueOnce(Buffer.from([1]));
+
+    await handlePerSendJob({
+      id: 'send-chart-4',
+      data: { ...baseJobData, chartKind: 'cash-flow' },
+    } as never);
+
+    expect(mockSetTag).toHaveBeenCalledWith('chart_kind', 'cash-flow');
+    expect(mockSendEmail.mock.calls[0]![0].tags).toMatchObject({ chart_kind: 'cash-flow' });
   });
 });
