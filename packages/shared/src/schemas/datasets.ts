@@ -1,10 +1,17 @@
 import { z } from 'zod';
 
+// stripe is deliberately absent. Every Stripe touchpoint in this codebase is
+// billing (routes/stripeWebhook.ts, services/subscription/*, accountDeletion),
+// and nothing has ever written a data_rows row from it. It stayed in this enum
+// implying a data connector that never existed, which cost a line in
+// SEES_OPERATING_COST and a slot in the connector survey (DW-280). The
+// source_type Postgres enum still carries the value: Postgres has no
+// ALTER TYPE DROP VALUE, and an unused enum value costs nothing, so schema.ts
+// keeps describing the database as it actually is.
 export const sourceTypeSchema = z.enum([
   'csv',
   'quickbooks',
   'xero',
-  'stripe',
   'plaid',
   'shopify',
   'square',

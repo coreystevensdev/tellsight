@@ -49,7 +49,7 @@ describe('hasCostVisibility', () => {
   it('is false when every expense row came from a revenue-only source', () => {
     expect(hasCostVisibility(revenueOnly('shopify'))).toBe(false);
     expect(hasCostVisibility(revenueOnly('square'))).toBe(false);
-    expect(hasCostVisibility(revenueOnly('stripe'))).toBe(false);
+
   });
 
   it('is true as soon as one accounting source contributes an expense row', () => {
