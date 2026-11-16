@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -59,5 +60,34 @@ describe('migration and seed scripts require the admin database URL', () => {
 
     expect(result.stderr).toContain('DATABASE_ADMIN_URL is required for seeding');
     expect(result.status).toBe(1);
+  });
+});
+
+// DW-287. Drizzle applies a migration only when its journal `when` is strictly
+// greater than the last applied one, so two entries sharing a timestamp make the
+// second unapplicable: it is skipped with no error, the deploy goes green, and
+// the column is simply absent. 0049 shipped that way on 2026-11-16 because it
+// was hand-authored with the same `when` as 0048. Nothing caught it until a
+// query failed in production.
+describe('the migration journal', () => {
+  const journal = JSON.parse(
+    readFileSync(join(API_ROOT, 'drizzle/migrations/meta/_journal.json'), 'utf8'),
+  ) as { entries: { idx: number; when: number; tag: string }[] };
+
+  it('has entries to check, so this cannot pass vacuously', () => {
+    expect(journal.entries.length).toBeGreaterThan(40);
+  });
+
+  it('gives every migration a timestamp strictly later than the one before it', () => {
+    const offenders = journal.entries
+      .slice(1)
+      .filter((e, i) => e.when <= journal.entries[i]!.when)
+      .map((e) => `${e.tag} (when ${e.when})`);
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('numbers entries consecutively, so none is missing from the sequence', () => {
+    expect(journal.entries.map((e) => e.idx)).toEqual(journal.entries.map((_, i) => i));
   });
 });
