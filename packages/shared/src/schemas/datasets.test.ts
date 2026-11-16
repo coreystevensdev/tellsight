@@ -12,7 +12,8 @@ describe('dataset schemas', () => {
       expect(sourceTypeSchema.parse('csv')).toBe('csv');
       expect(sourceTypeSchema.parse('quickbooks')).toBe('quickbooks');
       expect(sourceTypeSchema.parse('xero')).toBe('xero');
-      expect(sourceTypeSchema.parse('stripe')).toBe('stripe');
+      // stripe is billing, never a data source: see the comment on the schema.
+      expect(() => sourceTypeSchema.parse('stripe')).toThrow();
       expect(sourceTypeSchema.parse('plaid')).toBe('plaid');
     });
 

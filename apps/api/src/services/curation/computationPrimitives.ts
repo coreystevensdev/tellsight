@@ -28,7 +28,6 @@ const SEES_OPERATING_COST: Record<SourceType, boolean> = {
   plaid: true,
   shopify: false,
   square: false,
-  stripe: false,
 };
 
 /**
