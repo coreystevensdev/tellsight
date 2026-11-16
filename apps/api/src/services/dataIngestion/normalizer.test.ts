@@ -85,6 +85,63 @@ describe('normalizeRows', () => {
     expect(result[1]!.amount).toBe('450.50'); // stored as positive magnitude
   });
 
+  // DW-278. A ledger export that names the account type and signs the amount is
+  // a normal shape, not an exotic one, and taking those negatives at face value
+  // made every expense read as a refund.
+  it('stores positive magnitudes when every expense row in the file is negative', () => {
+    const rows: ParsedRow[] = [
+      { date: '2025-01-15', amount: '1200.00', category: 'Consulting', parent_category: 'Income' },
+      { date: '2025-01-16', amount: '-450.50', category: 'Rent', parent_category: 'Expenses' },
+      { date: '2025-01-17', amount: '-99.00', category: 'Utilities', parent_category: 'Expenses' },
+    ];
+
+    const result = normalizeRows(rows, headers);
+    expect(result[1]!.amount).toBe('450.50');
+    expect(result[1]!.parentCategory).toBe('Expenses');
+    expect(result[2]!.amount).toBe('99.00');
+    expect(result[0]!.amount).toBe('1200.00');
+  });
+
+  // A zero is not evidence either way, and counting it as non-negative would
+  // disqualify the whole side and quietly put the file back on the old reading.
+  it('still corrects an all-negative side that happens to contain a zero row', () => {
+    const rows: ParsedRow[] = [
+      { date: '2025-01-15', amount: '-450.50', category: 'Rent', parent_category: 'Expenses' },
+      { date: '2025-01-16', amount: '0.00', category: 'Waived Fee', parent_category: 'Expenses' },
+      { date: '2025-01-17', amount: '-99.00', category: 'Utilities', parent_category: 'Expenses' },
+    ];
+
+    const result = normalizeRows(rows, headers);
+    expect(result[0]!.amount).toBe('450.50');
+    expect(result[2]!.amount).toBe('99.00');
+  });
+
+  // The guard on the rule above. One positive row proves the file distinguishes
+  // a cost from a credit, so its negatives mean something and must survive.
+  it('leaves expense signs alone when the file mixes them, because those negatives are refunds', () => {
+    const rows: ParsedRow[] = [
+      { date: '2025-01-15', amount: '450.50', category: 'Rent', parent_category: 'Expenses' },
+      { date: '2025-01-16', amount: '-99.00', category: 'Rent', parent_category: 'Expenses' },
+    ];
+
+    const result = normalizeRows(rows, headers);
+    expect(result[0]!.amount).toBe('450.50');
+    expect(result[1]!.amount).toBe('-99.00');
+  });
+
+  it('applies the same rule to income, so an all-negative revenue column is not negative revenue', () => {
+    const rows: ParsedRow[] = [
+      { date: '2025-01-15', amount: '-1200.00', category: 'Consulting', parent_category: 'Income' },
+      { date: '2025-01-16', amount: '-800.00', category: 'Retainer', parent_category: 'Income' },
+      { date: '2025-01-17', amount: '450.50', category: 'Rent', parent_category: 'Expenses' },
+    ];
+
+    const result = normalizeRows(rows, headers);
+    expect(result[0]!.amount).toBe('1200.00');
+    expect(result[1]!.amount).toBe('800.00');
+    expect(result[2]!.amount).toBe('450.50');
+  });
+
   it('normalizes parent_category synonyms and case variants to canonical values', () => {
     const rows: ParsedRow[] = [
       { date: '2025-01-15', amount: '1200.00', category: 'Consulting', parent_category: 'Revenue' },
