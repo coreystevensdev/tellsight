@@ -222,6 +222,7 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
     orgName: org.name,
     subjectLine,
     agentBullets,
+    chartKind,
     correlationId,
   });
 

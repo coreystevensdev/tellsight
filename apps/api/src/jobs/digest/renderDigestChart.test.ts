@@ -5,14 +5,15 @@ import { StatType } from '../../services/curation/types.js';
 
 const mockRenderChart = vi.fn();
 const mockRedisSet = vi.fn();
+const mockRedisGetBuffer = vi.fn();
 
 vi.mock('../../services/charting/renderChart.js', () => ({ renderChart: mockRenderChart }));
-vi.mock('../../lib/redis.js', () => ({ redis: { set: mockRedisSet } }));
+vi.mock('../../lib/redis.js', () => ({ redis: { set: mockRedisSet, getBuffer: mockRedisGetBuffer } }));
 vi.mock('../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-const { renderDigestChart, chartCacheKey } = await import('./renderDigestChart.js');
+const { renderDigestChart, readDigestChart, chartCacheKey } = await import('./renderDigestChart.js');
 
 function scored(stat: ComputedStat, score: number): ScoredInsight {
   return { stat, score, breakdown: { novelty: 0, actionability: 0, specificity: 0 } };
@@ -68,6 +69,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockRenderChart.mockResolvedValue(Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]));
   mockRedisSet.mockResolvedValue('OK');
+  mockRedisGetBuffer.mockResolvedValue(null);
 });
 
 describe('chartCacheKey', () => {
@@ -150,5 +152,30 @@ describe('renderDigestChart', () => {
     await expect(
       renderDigestChart({ ...base, scoredPool: [scored(runway, 0.9)] }),
     ).resolves.toBeNull();
+  });
+});
+
+describe('readDigestChart', () => {
+  it('reads the buffer back from the week key', async () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+    mockRedisGetBuffer.mockResolvedValueOnce(png);
+
+    const got = await readDigestChart(42, 100, weekStart);
+
+    expect(mockRedisGetBuffer).toHaveBeenCalledWith('digest:chart:42:100:1794700800000');
+    expect(got).toEqual(png);
+  });
+
+  // A miss is the ordinary case, not an error: a retry hours after the write, a
+  // Redis restart (AOF off, RDB snapshots only), and an org whose week had no
+  // chartable stat all land here.
+  it('returns null on a miss', async () => {
+    mockRedisGetBuffer.mockResolvedValueOnce(null);
+    expect(await readDigestChart(42, 100, weekStart)).toBeNull();
+  });
+
+  it('returns null rather than throwing when Redis is down', async () => {
+    mockRedisGetBuffer.mockRejectedValueOnce(new Error('Redis is down'));
+    await expect(readDigestChart(42, 100, weekStart)).resolves.toBeNull();
   });
 });
