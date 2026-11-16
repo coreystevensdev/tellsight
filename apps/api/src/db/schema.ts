@@ -188,7 +188,11 @@ export const datasets = pgTable(
       .defaultNow()
       .notNull(),
   },
-  (table) => [index('idx_datasets_org_id').on(table.orgId)],
+  (table) => [
+    index('idx_datasets_org_id').on(table.orgId),
+    // The eligibility gate and the stale nudge both filter on this.
+    index('idx_datasets_data_refreshed_at').on(table.dataRefreshedAt),
+  ],
 );
 
 export const dataRows = pgTable(
