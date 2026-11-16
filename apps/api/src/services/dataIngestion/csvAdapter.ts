@@ -38,6 +38,9 @@ const COLUMN_ALIASES: Record<string, readonly string[]> = {
   category: ['product', 'product_name', 'item', 'sku', 'stock_code', 'expense_category'],
   label: ['description', 'memo', 'notes', 'name'],
   parent_category: ['group', 'account_type'],
+  // 'name' deliberately absent: it is already a label alias, and a column
+  // called name is more often a line-item description than a counterparty.
+  counterparty: ['customer', 'client', 'vendor', 'supplier', 'payee', 'contact'],
 };
 
 function resolveColumn(canonical: string, normalizedHeaders: string[]): string | undefined {

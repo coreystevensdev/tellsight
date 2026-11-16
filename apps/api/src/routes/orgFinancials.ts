@@ -40,6 +40,11 @@ orgFinancialsRouter.put('/financials', roleGuard('owner'), async (req, res: Resp
   const parsed = orgFinancialsSchema.partial().safeParse(req.body);
 
   if (!parsed.success) {
+    // A rejected submit used to emit nothing, so an owner who tried and failed
+    // looked exactly like one who never tried. Field names only, never values.
+    trackEvent(user.org_id, parseInt(user.sub, 10), ANALYTICS_EVENTS.FINANCIALS_REJECTED, {
+      fields: Object.keys(parsed.error.flatten().fieldErrors),
+    });
     res.status(400).json({
       error: {
         code: 'VALIDATION_ERROR',

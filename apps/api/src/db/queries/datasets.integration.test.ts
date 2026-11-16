@@ -259,8 +259,8 @@ describe('persistUpload against real Postgres', () => {
   });
 
   const rows: NormalizedRow[] = [
-    { category: 'Sales', parentCategory: 'Income', date: new Date('2026-01-15'), amount: '1000.00', label: 'A', metadata: null },
-    { category: 'Rent', parentCategory: 'Expenses', date: new Date('2026-01-16'), amount: '400.00', label: 'B', metadata: null },
+    { category: 'Sales', parentCategory: 'Income', date: new Date('2026-01-15'), amount: '1000.00', label: 'A', counterparty: null, metadata: null },
+    { category: 'Rent', parentCategory: 'Expenses', date: new Date('2026-01-16'), amount: '400.00', label: 'B', counterparty: null, metadata: null },
   ];
 
   // persistUpload falls back to the RLS-scoped client when no transaction is
@@ -340,7 +340,7 @@ describe('persistUpload against real Postgres', () => {
     const orgId = await seedOrg('persist-rollback');
     const before = await getNonSeedDatasetCount(orgId, dbAdmin);
     const overflows: NormalizedRow[] = [
-      { category: 'Sales', parentCategory: 'Income', date: new Date('2026-01-15'), amount: '99999999999.99', label: 'too big', metadata: null },
+      { category: 'Sales', parentCategory: 'Income', date: new Date('2026-01-15'), amount: '99999999999.99', label: 'too big', counterparty: null, metadata: null },
     ];
 
     await expect(upload(orgId, 'broken.csv', overflows)).rejects.toThrow();

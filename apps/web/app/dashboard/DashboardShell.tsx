@@ -4,6 +4,8 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import type { ChartData, SubscriptionTier, TransparencyMetadata } from 'shared/types';
+import { ANALYTICS_EVENTS } from 'shared/constants';
+import { trackClientEvent } from '@/lib/analytics';
 import { useSubscription } from '@/lib/hooks/useSubscription';
 import { useDashboardFinancials } from '@/lib/hooks/useDashboardFinancials';
 import { useDashboardSharing } from '@/lib/hooks/useDashboardSharing';
@@ -129,6 +131,17 @@ export function DashboardShell({
     hasMarginSignal: data.hasMarginSignal === true,
     onSaved: router.refresh,
   });
+
+  // runway.enabled only fires on success, so a zero there could mean the card
+  // was never shown, shown and ignored, or submitted and rejected. This is the
+  // first of those three, and the ref keeps it one event per mount rather than
+  // one per render.
+  const promptedRef = useRef(false);
+  useEffect(() => {
+    if (!needsCashBalance || promptedRef.current) return;
+    promptedRef.current = true;
+    trackClientEvent(ANALYTICS_EVENTS.RUNWAY_PROMPTED, { surface: 'dashboard' });
+  }, [needsCashBalance]);
 
   return (
     <>

@@ -146,6 +146,11 @@ export const ANALYTICS_EVENTS = {
   CATEGORY_PLANS_UPDATED: 'category_plans.updated',
   FORECAST_REQUESTED: 'forecast.requested',
   RUNWAY_ENABLED: 'runway.enabled',
+  // RUNWAY_ENABLED only fires on success, so "never shown", "shown and ignored"
+  // and "tried and failed" produced one indistinguishable silence: zero events
+  // for all three. These split them apart.
+  RUNWAY_PROMPTED: 'runway.prompted',
+  FINANCIALS_REJECTED: 'financials.rejected',
   ALERT_RULE_CREATED: 'alert_rule.created',
   ALERT_RULE_UPDATED: 'alert_rule.updated',
   ALERT_RULE_DELETED: 'alert_rule.deleted',
@@ -184,6 +189,7 @@ export const CLIENT_POSTABLE_EVENTS = [
   ANALYTICS_EVENTS.CHART_FILTERED,
   ANALYTICS_EVENTS.DASHBOARD_VIEWED,
   ANALYTICS_EVENTS.INSIGHT_CHART_OPENED,
+  ANALYTICS_EVENTS.RUNWAY_PROMPTED,
   ANALYTICS_EVENTS.INSIGHT_EXPORTED,
   ANALYTICS_EVENTS.SHARE_LINK_CREATED,
   ANALYTICS_EVENTS.SUBSCRIPTION_UPGRADE_INTENDED,
@@ -302,7 +308,7 @@ export const AI_MONTHLY_QUOTA = {
 export const MAX_DATASETS_PER_ORG = 20;
 
 export const CSV_REQUIRED_COLUMNS = ['date', 'amount', 'category'] as const;
-export const CSV_OPTIONAL_COLUMNS = ['label', 'parent_category'] as const;
+export const CSV_OPTIONAL_COLUMNS = ['label', 'parent_category', 'counterparty'] as const;
 export const CSV_MAX_ROWS = 50_000;
 export const ACCEPTED_FILE_TYPES = ['.csv', 'text/csv', 'application/vnd.ms-excel'] as const;
 
