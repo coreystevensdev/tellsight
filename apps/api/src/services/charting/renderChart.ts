@@ -233,6 +233,74 @@ async function optimizePng(png: Buffer, quality: number): Promise<Buffer> {
   return sharp(png).png({ quality, compressionLevel: 9 }).toBuffer();
 }
 
+export type RenderOutcome =
+  | { ok: true; png: Buffer }
+  | {
+      ok: false;
+      stage: 'svg' | 'empty' | 'raster' | 'optimize' | 'oversize';
+      message: string;
+      fields: Record<string, unknown>;
+    };
+
+function failed(
+  stage: Extract<RenderOutcome, { ok: false }>['stage'],
+  message: string,
+  fields: Record<string, unknown> = {},
+): RenderOutcome {
+  return { ok: false, stage, message, fields };
+}
+
+/**
+ * The pipeline itself: SVG, raster, optimize. Returns which stage gave up
+ * rather than logging, so a caller can report it and a test can assert it
+ * without pinning the wording of a log line.
+ *
+ * Exported for tests. Callers want renderChart, which adds the lane and the
+ * timings.
+ */
+export async function renderToPng(
+  params: ChartRenderInput & { width?: number; height?: number },
+): Promise<RenderOutcome> {
+  const width = params.width ?? RENDER_WIDTH;
+  const height = params.height ?? RENDER_HEIGHT;
+
+  let svg: string;
+  try {
+    svg = await renderSvgString(buildChartElement(params, width, height));
+  } catch (err) {
+    return failed('svg', 'Chart render threw before producing SVG, sending text-only', { err });
+  }
+  if (!svg) {
+    return failed('empty', 'Chart render produced no SVG content, sending text-only');
+  }
+
+  let png: Buffer;
+  try {
+    png = svgToPng(svg, width);
+  } catch (err) {
+    return failed('raster', 'Resvg failed to parse chart SVG, sending text-only', { err });
+  }
+
+  let optimized: Buffer;
+  try {
+    optimized = await optimizePng(png, SHARP_QUALITY_PRIMARY);
+    if (optimized.length > MAX_PNG_BYTES) {
+      optimized = await optimizePng(png, SHARP_QUALITY_RETRY);
+    }
+  } catch (err) {
+    return failed('optimize', 'Sharp failed to optimize the chart PNG, sending text-only', { err });
+  }
+  if (optimized.length > MAX_PNG_BYTES) {
+    return failed(
+      'oversize',
+      'Chart PNG still exceeds the size budget after a lower-quality retry, sending text-only',
+      { bytes: optimized.length, maxBytes: MAX_PNG_BYTES },
+    );
+  }
+
+  return { ok: true, png: optimized };
+}
+
 /**
  * Renders a fired insight to a PNG chart, or null if it can't be produced
  * within the size/parse constraints. Never throws: every failure mode here
@@ -242,8 +310,6 @@ export async function renderChart(
   params: ChartRenderInput & { width?: number; height?: number },
   context: RenderChartContext,
 ): Promise<Buffer | null> {
-  const width = params.width ?? RENDER_WIDTH;
-  const height = params.height ?? RENDER_HEIGHT;
   const enqueuedAt = Date.now();
   const logFields = { ...context, chartKind: params.chartKind };
 
@@ -257,63 +323,14 @@ export async function renderChart(
     const timings = () => ({ queueWaitMs, renderMs: Date.now() - renderStartedAt });
     const stopStallWatch = watchForLaneStall({ ...logFields, queueWaitMs });
     try {
-
-      let svg: string;
-      try {
-        svg = await renderSvgString(buildChartElement(params, width, height));
-      } catch (err) {
-        logger.warn(
-          { ...logFields, err, ...timings() },
-          'Chart render threw before producing SVG, sending text-only',
-        );
+      const outcome = await renderToPng(params);
+      if (!outcome.ok) {
+        logger.warn({ ...logFields, ...outcome.fields, ...timings() }, outcome.message);
         return null;
       }
 
-      if (!svg) {
-        logger.warn(
-          { ...logFields, ...timings() },
-          'Chart render produced no SVG content, sending text-only',
-        );
-        return null;
-      }
-
-      let png: Buffer;
-      try {
-        png = svgToPng(svg, width);
-      } catch (err) {
-        logger.warn(
-          { ...logFields, err, ...timings() },
-          'Resvg failed to parse chart SVG, sending text-only',
-        );
-        return null;
-      }
-
-      let optimized: Buffer;
-      try {
-        optimized = await optimizePng(png, SHARP_QUALITY_PRIMARY);
-        if (optimized.length > MAX_PNG_BYTES) {
-          optimized = await optimizePng(png, SHARP_QUALITY_RETRY);
-        }
-      } catch (err) {
-        logger.warn(
-          { ...logFields, err, ...timings() },
-          'Sharp failed to optimize the chart PNG, sending text-only',
-        );
-        return null;
-      }
-      if (optimized.length > MAX_PNG_BYTES) {
-        logger.warn(
-          { ...logFields, bytes: optimized.length, maxBytes: MAX_PNG_BYTES, ...timings() },
-          'Chart PNG still exceeds the size budget after a lower-quality retry, sending text-only',
-        );
-        return null;
-      }
-
-      logger.info(
-        { ...logFields, ...timings(), bytes: optimized.length },
-        'Chart rendered',
-      );
-      return optimized;
+      logger.info({ ...logFields, ...timings(), bytes: outcome.png.length }, 'Chart rendered');
+      return outcome.png;
     } finally {
       // Never reached when the render hangs, which is exactly when the
       // watchdog should be left to fire.
