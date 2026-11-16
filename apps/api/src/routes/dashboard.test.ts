@@ -317,13 +317,17 @@ describe('digestPausesAt', () => {
   // date it warns about has to be the same one the eligibility gate enforces.
   // Computed server-side from DATASET_FRESHNESS_DAYS so the browser is never
   // holding a second copy of the rule.
-  it('is the active dataset created_at plus the freshness window', async () => {
-    const created = new Date('2026-09-13T14:18:02.000Z');
+  it('is the active dataset data_refreshed_at plus the freshness window', async () => {
+    const refreshed = new Date('2026-09-13T14:18:02.000Z');
     mockVerifyAccessToken.mockResolvedValueOnce({ sub: '42', org_id: 10, role: 'owner', isAdmin: false });
     mockFindOrgById.mockResolvedValueOnce({ id: 10, name: 'Acme Corp', slug: 'acme' });
     mockGetUserOrgDemoState.mockResolvedValueOnce('user_only');
     mockGetActiveDatasetId.mockResolvedValueOnce(1);
-    mockGetDatasetsByOrg.mockResolvedValue([{ id: 1, name: 'Data', isSeedData: false, createdAt: created }]);
+    // dataRefreshedAt only. created_at freezes at first connect for a connector
+    // dataset, so predicting the pause from it warned a daily-syncing org weeks
+    // early. Supplying only the new column means this fails if the route reads
+    // the old one (DW-281).
+    mockGetDatasetsByOrg.mockResolvedValue([{ id: 1, name: 'Data', isSeedData: false, dataRefreshedAt: refreshed }]);
 
     const res = await fetch(`${baseUrl}/dashboard/charts`, { headers: { Cookie: 'access_token=t' } });
     const body = await res.json();
@@ -332,8 +336,8 @@ describe('digestPausesAt', () => {
   });
 
   // The banner is advisory and sits on the product's main surface. A dataset row
-  // arriving without created_at should cost the warning, not the dashboard.
-  it('is null rather than a 500 when created_at is missing', async () => {
+  // arriving without data_refreshed_at should cost the warning, not the dashboard.
+  it('is null rather than a 500 when data_refreshed_at is missing', async () => {
     mockVerifyAccessToken.mockResolvedValueOnce({ sub: '42', org_id: 10, role: 'owner', isAdmin: false });
     mockFindOrgById.mockResolvedValueOnce({ id: 10, name: 'Acme Corp', slug: 'acme' });
     mockGetUserOrgDemoState.mockResolvedValueOnce('user_only');

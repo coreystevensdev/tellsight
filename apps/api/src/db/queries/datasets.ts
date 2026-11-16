@@ -196,7 +196,8 @@ export async function getDatasetListWithCounts(
       isSeedData: datasets.isSeedData,
       uploadedById: users.id,
       uploadedByName: users.name,
-      createdAt: datasets.createdAt,
+      dataRefreshedAt: datasets.dataRefreshedAt,
+        createdAt: datasets.createdAt,
       rowCount: sql<number>`coalesce(count(${dataRows.id}), 0)::int`,
     })
     .from(datasets)

@@ -127,10 +127,14 @@ dashboardRouter.get('/dashboard/charts', async (req: Request, res: Response) => 
       // cannot be missing from a real row, but this is an advisory banner field
       // on the product's main surface: a query that ever selects a narrower set
       // of columns should cost the warning, not the whole dashboard.
-      const createdAt = resolvedDataset?.createdAt;
+      // data_refreshed_at, matching the gate this banner predicts. created_at
+      // freezes at first connect for a connector dataset, so predicting from it
+      // told a daily-syncing org it was about to pause weeks before it would
+      // (DW-281, a fourth read site the original fix missed).
+      const refreshedAt = resolvedDataset?.dataRefreshedAt;
       const digestPausesAt =
-        createdAt instanceof Date && !Number.isNaN(createdAt.getTime())
-          ? new Date(createdAt.getTime() + DATASET_FRESHNESS_DAYS * 86_400_000).toISOString()
+        refreshedAt instanceof Date && !Number.isNaN(refreshedAt.getTime())
+          ? new Date(refreshedAt.getTime() + DATASET_FRESHNESS_DAYS * 86_400_000).toISOString()
           : null;
 
       trackEvent(orgId, userId, ANALYTICS_EVENTS.DASHBOARD_VIEWED, {
