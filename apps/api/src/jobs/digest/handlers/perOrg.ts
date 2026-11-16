@@ -149,7 +149,7 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
         weekStart,
         jobId: job.id,
         outcome: 'skipped',
-        datasetCreatedAt: preparedContext.noNewData.datasetCreatedAt.toISOString(),
+        dataRefreshedAt: preparedContext.noNewData.dataRefreshedAt.toISOString(),
         priorDigestWeekStart: preparedContext.noNewData.priorDigestWeekStart.toISOString(),
         durationMs: Date.now() - start,
       },

@@ -24,7 +24,7 @@ function daysSince(from: Date, now: Date): number {
  * so reaching here means send.
  */
 export async function handleStaleNudgeJob(job: Job): Promise<void> {
-  const { orgId, orgName, datasetCreatedAt, correlationId } = nudgeJobDataSchema.parse(job.data);
+  const { orgId, orgName, dataRefreshedAt, correlationId } = nudgeJobDataSchema.parse(job.data);
   const start = Date.now();
 
   const recipients = await digestEligibilityQueries.findOrgNudgeRecipients(orgId);
@@ -37,7 +37,7 @@ export async function handleStaleNudgeJob(job: Job): Promise<void> {
   }
 
   const uploadUrl = buildUploadUrl();
-  const daysSinceData = daysSince(datasetCreatedAt, new Date());
+  const daysSinceData = daysSince(dataRefreshedAt, new Date());
   let sent = 0;
   const failures: number[] = [];
 

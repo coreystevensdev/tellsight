@@ -73,7 +73,7 @@ describe('buildStaleNudgeQuery: SQL shape', () => {
 
     expect(sql).toMatch(/"subscriptions"\."plan"\s*=/);
     expect(sql).toMatch(/"orgs"\."active_dataset_id"\s+is\s+not\s+null/i);
-    expect(sql).toMatch(/"datasets"\."created_at"\s*<\s*now\(\)\s*-\s*interval\s*'30 days'/);
+    expect(sql).toMatch(/"datasets"\."data_refreshed_at"\s*<\s*now\(\)\s*-\s*interval\s*'30 days'/);
     expect(sql).toMatch(/exists/i);
   });
 
@@ -85,14 +85,14 @@ describe('buildStaleNudgeQuery: SQL shape', () => {
     const { sql } = buildStaleNudgeQuery(inertDb as never).toSQL();
 
     expect(sql).toMatch(/"orgs"\."stale_nudge_sent_at"\s+is\s+null/i);
-    expect(sql).toMatch(/"orgs"\."stale_nudge_sent_at"\s*<\s*"datasets"\."created_at"/);
+    expect(sql).toMatch(/"orgs"\."stale_nudge_sent_at"\s*<\s*"datasets"\."data_refreshed_at"/);
   });
 
   // lt, not gte. Backwards here selects the orgs whose digest is working and
   // emails them to say it has stopped.
   it('selects stale datasets, not fresh ones', () => {
     const { sql } = buildStaleNudgeQuery(inertDb as never).toSQL();
-    expect(sql).not.toMatch(/"datasets"\."created_at"\s*>=/);
+    expect(sql).not.toMatch(/"datasets"\."data_refreshed_at"\s*>=/);
   });
 });
 
@@ -117,7 +117,7 @@ describe('buildEligibilityQuery: SQL shape (AC #2, AC #14b)', () => {
     expect(sql).toMatch(/"subscriptions"\."status"\s*=\s*\$/);
     expect(sql).toMatch(/"subscriptions"\."plan"\s*=\s*\$/);
     expect(sql).toMatch(/"orgs"\."active_dataset_id"\s+is not null/i);
-    expect(sql).toMatch(/"datasets"\."created_at"\s*>=\s*now\(\)\s*-\s*interval\s*'30 days'/);
+    expect(sql).toMatch(/"datasets"\."data_refreshed_at"\s*>=\s*now\(\)\s*-\s*interval\s*'30 days'/);
     // Member-opted-in EXISTS subquery checks digest_preferences.cadence
     expect(sql.toLowerCase()).toContain('exists');
     expect(sql).toMatch(/"digest_preferences"\."cadence"/);
@@ -268,14 +268,25 @@ describe('findOrgRecipients: execute path', () => {
   });
 });
 
+  // DW-281. Connector syncs reuse one dataset per provider and rewrite its rows,
+  // so created_at freezes at first connect while the data changes daily. Reading
+  // it here silenced a connector org 30 days after it connected however fresh its
+  // data was. The absence assertion matters as much as the presence one: a gate
+  // reading both columns would satisfy the positive test and still be wrong.
+  it('never reads created_at for freshness, because a connector never moves it', () => {
+    const { sql } = buildEligibilityQuery(inertDb as never).toSQL();
+
+    expect(sql).not.toMatch(/"datasets"\."created_at"/);
+  });
+
 describe('buildPausedForStaleDataQuery: the complement of eligibility', () => {
   it('inverts only the freshness predicate, keeping every other gate', () => {
     const { sql } = buildPausedForStaleDataQuery(inertDb as never).toSQL();
 
     // The whole point of the query. gte here counts fresh orgs instead, which
     // still returns a plausible-looking number nobody would question.
-    expect(sql).toContain('"created_at" <');
-    expect(sql).not.toContain('"created_at" >=');
+    expect(sql).toContain('"data_refreshed_at" <');
+    expect(sql).not.toContain('"data_refreshed_at" >=');
 
     expect(sql).toContain('"plan"');
     expect(sql).toContain('"active_dataset_id" is not null');

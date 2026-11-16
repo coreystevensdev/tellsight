@@ -459,7 +459,7 @@ describe('no new data since the prior digest', () => {
    * and fails somewhere unrelated. A bare vi.fn() already returns undefined,
    * which is the cache miss the send cases below want anyway.
    */
-  function unchangedSince(datasetCreatedAt: Date) {
+  function unchangedSince(dataRefreshedAt: Date) {
     mockGetActiveDatasetId.mockResolvedValueOnce(100);
     mockFindOrgById.mockResolvedValueOnce(baseOrg);
     mockRunCurationPipeline.mockResolvedValueOnce({
@@ -483,7 +483,11 @@ describe('no new data since the prior digest', () => {
       stateSentence: 'Runway was holding steady.',
       weekStart: PRIOR_WEEK,
     });
-    mockGetDatasetById.mockResolvedValue({ id: 100, createdAt: datasetCreatedAt });
+    // dataRefreshedAt, not createdAt. DW-281: a connector reuses one dataset and
+      // rewrites its rows, so createdAt freezes at first connect and this skip
+      // would fire forever. Supplying only the new column means this test fails
+      // if the production code reads the old one.
+      mockGetDatasetById.mockResolvedValue({ id: 100, dataRefreshedAt });
   }
 
   // A monthly uploader on a weekly cadence gets four emails per data change,

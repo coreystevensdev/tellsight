@@ -215,6 +215,26 @@ export async function getDatasetListWithCounts(
   }));
 }
 
+/**
+ * Marks a dataset as holding fresher rows than it did. Connector syncs reuse one
+ * dataset per provider and rewrite its rows, so created_at freezes at first
+ * connect; the eligibility gate, the stale nudge and the digest's no-new-data
+ * skip all read this instead (DW-281).
+ *
+ * Deliberately separate from updateDatasetName: renaming a dataset is not new
+ * data, and a generic touch-on-any-write would report a rename as a refresh.
+ */
+export async function touchDataRefreshed(
+  orgId: number,
+  datasetId: number,
+  client: typeof db | DbTransaction = db,
+): Promise<void> {
+  await client
+    .update(datasets)
+    .set({ dataRefreshedAt: new Date() })
+    .where(and(eq(datasets.orgId, orgId), eq(datasets.id, datasetId)));
+}
+
 export async function updateDatasetName(
   orgId: number,
   datasetId: number,

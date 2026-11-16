@@ -176,6 +176,14 @@ export const datasets = pgTable(
     uploadedBy: integer('uploaded_by').references(() => users.id, {
       onDelete: 'set null',
     }),
+    // DW-281: connector syncs reuse one dataset and rewrite its rows, so
+    // created_at freezes at first connect. This is when the rows last changed,
+    // which is what the eligibility gate and the stale nudge actually mean.
+    // Not named updated_at on purpose: updateDatasetName mutates a dataset too,
+    // and a rename is not new data.
+    dataRefreshedAt: timestamp('data_refreshed_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
     createdAt: timestamp('created_at', { withTimezone: true })
       .defaultNow()
       .notNull(),

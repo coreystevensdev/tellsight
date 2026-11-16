@@ -9,6 +9,7 @@ const mockSyncJobUpdate = vi.fn();
 const mockGetDatasetsByOrg = vi.fn();
 const mockCreateDataset = vi.fn();
 const mockUpdateDatasetName = vi.fn();
+const mockTouchDataRefreshed = vi.fn().mockResolvedValue(undefined);
 const mockSetActiveDataset = vi.fn();
 const mockMarkStale = vi.fn();
 const mockGetOrgOwnerId = vi.fn();
@@ -73,6 +74,7 @@ vi.mock('../../../db/queries/index.js', () => ({
     getDatasetsByOrg: mockGetDatasetsByOrg,
     createDataset: mockCreateDataset,
     updateDatasetName: mockUpdateDatasetName,
+    touchDataRefreshed: mockTouchDataRefreshed,
   },
   orgsQueries: {
     setActiveDataset: mockSetActiveDataset,
@@ -154,6 +156,22 @@ describe('runSync', () => {
       expect.anything(),
     );
     expect(mockSetActiveDataset).toHaveBeenCalledWith(10, 500, expect.anything());
+  });
+
+  // DW-281. Without this call the column that the eligibility gate, the stale
+  // nudge and the no-new-data skip all read never moves for a connector, so the
+  // org goes silent 30 days after connecting while still syncing daily.
+  // Deleting the call broke no test until this one existed.
+  it('marks the dataset as refreshed so the freshness gates can see the sync', async () => {
+    mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
+    mockCreateShopifyClient.mockResolvedValueOnce(mockShopifyClient());
+    mockGetDatasetsByOrg.mockResolvedValueOnce([]);
+    mockCreateDataset.mockResolvedValueOnce({ id: 500, name: 'Shopify, My Store' });
+
+    const { runSync } = await import('./sync.js');
+    await runSync(1, 'initial');
+
+    expect(mockTouchDataRefreshed).toHaveBeenCalled();
   });
 
   it('reuses an existing Shopify dataset instead of creating a second one', async () => {

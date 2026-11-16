@@ -11,15 +11,18 @@ export interface EligibleOrg {
   businessProfile: unknown;
 }
 
-// Every path that brings an org new data mints a new `datasets` row: CSV upload
-// goes through persistUpload -> createDataset, and the QuickBooks and Shopify
-// syncs both call createDataset directly. The table has no updated_at. So the
-// active dataset's created_at is not a row birthday, it is the last time this
-// org received data at all, and this gate reads as "stop sending if nothing new
-// has arrived in 30 days". That is deliberate: the digest narrates what moved
-// week over week, and over an unchanged dataset it would restate identical
-// numbers forever. The cost is that an org crossing this line goes quiet with
-// no signal to the user, which is why countOrgsPausedForStaleData exists below.
+// This gate reads as "stop sending if nothing new has arrived in 30 days", and
+// it reads datasets.data_refreshed_at rather than created_at. The distinction is
+// the whole of DW-281: a CSV upload mints a new dataset, but the QuickBooks,
+// Shopify and Square syncs each reuse one dataset per provider and rewrite its
+// rows, so for a connector created_at freezes at first connect while the data
+// changes daily. Reading created_at silenced a connector org 30 days after it
+// connected, no matter how fresh its data was.
+//
+// Pausing at all is deliberate: the digest narrates what moved week over week,
+// and over genuinely unchanged data it would restate identical numbers forever.
+// The cost is that an org crossing this line goes quiet with no signal to the
+// user, which is why countOrgsPausedForStaleData exists below.
 export const DATASET_FRESHNESS_DAYS = 30;
 
 // Built from the constant rather than written twice, so the dashboard warning
@@ -67,7 +70,7 @@ export function buildEligibilityQuery(
     or(eq(subscriptions.status, 'active'), canceledWithGracePeriod(asOf)),
     eq(subscriptions.plan, 'pro'),
     isNotNull(orgs.activeDatasetId),
-    gte(datasets.createdAt, RECENT_DATASET_INTERVAL),
+    gte(datasets.dataRefreshedAt, RECENT_DATASET_INTERVAL),
     memberOptedIn,
   ];
 
@@ -140,14 +143,14 @@ export async function countOrgsPausedForStaleData(asOf: Date = new Date()): Prom
 // Shared by the count and the nudge sweep for the same reason optedInMemberExists
 // is shared: these two must describe the same population, or the number reported
 // and the orgs emailed drift apart with nothing to catch it. The one that matters
-// is `lt` on created_at, not `gte`. Backwards yields a plausible number over the
+// is `lt` on data_refreshed_at, not `gte`. Backwards yields a plausible number over the
 // wrong orgs.
 function pausedForStaleData(client: DrizzleClient, asOf: Date) {
   return and(
     or(eq(subscriptions.status, 'active'), canceledWithGracePeriod(asOf)),
     eq(subscriptions.plan, 'pro'),
     isNotNull(orgs.activeDatasetId),
-    lt(datasets.createdAt, RECENT_DATASET_INTERVAL),
+    lt(datasets.dataRefreshedAt, RECENT_DATASET_INTERVAL),
     optedInMemberExists(client),
   );
 }
@@ -172,20 +175,21 @@ export function buildPausedForStaleDataQuery(client: DrizzleClient, asOf: Date =
  * predates the dataset they are currently sitting on.
  *
  * That comparison is what makes this self-resetting. Uploading mints a new
- * datasets row with a newer created_at, so an org that recovers and goes stale
+ * datasets row with a newer data_refreshed_at, or a connector sync rewriting an
+ * existing one, so an org that recovers and goes stale
  * again months later is nudged again, and nothing has to clear the column in
  * between. A bare boolean flag would need a reset hook on every ingest path.
  */
 export function buildStaleNudgeQuery(client: DrizzleClient, asOf: Date = new Date(), limit = 500) {
   return client
-    .select({ id: orgs.id, name: orgs.name, datasetCreatedAt: datasets.createdAt })
+    .select({ id: orgs.id, name: orgs.name, dataRefreshedAt: datasets.dataRefreshedAt })
     .from(orgs)
     .innerJoin(subscriptions, eq(subscriptions.orgId, orgs.id))
     .innerJoin(datasets, eq(datasets.id, orgs.activeDatasetId))
     .where(
       and(
         pausedForStaleData(client, asOf),
-        or(isNull(orgs.staleNudgeSentAt), lt(orgs.staleNudgeSentAt, datasets.createdAt)),
+        or(isNull(orgs.staleNudgeSentAt), lt(orgs.staleNudgeSentAt, datasets.dataRefreshedAt)),
       ),
     )
     .orderBy(desc(orgs.id))
@@ -195,7 +199,7 @@ export function buildStaleNudgeQuery(client: DrizzleClient, asOf: Date = new Dat
 export interface StaleNudgeOrg {
   id: number;
   name: string;
-  datasetCreatedAt: Date;
+  dataRefreshedAt: Date;
 }
 
 /** Paying orgs whose digest has stopped and who have not been told about it. */
