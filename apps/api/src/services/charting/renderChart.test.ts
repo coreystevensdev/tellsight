@@ -254,24 +254,11 @@ describe('renderChart degrade paths (I/O matrix)', () => {
       },
     }));
 
-    const { renderToPng, renderChart } = await import('./renderChart.js');
-    const { logger } = await import('../../lib/logger.js');
+    const { renderToPng } = await import('./renderChart.js');
 
     const outcome = await renderToPng({ chartKind: 'runway', data: runwayData });
 
     expect(outcome).toMatchObject({ ok: false, stage: 'raster' });
-    expect(await renderChart({ chartKind: 'runway', data: runwayData }, context)).toBeNull();
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({
-        correlationId: 'corr-1',
-        orgId: 42,
-        ruleId: 7,
-        chartKind: 'runway',
-        queueWaitMs: expect.any(Number),
-        renderMs: expect.any(Number),
-      }),
-      expect.stringContaining('Resvg failed to parse'),
-    );
   });
 
   it('retries once at a lower quality tier, then degrades to null if still over budget', async () => {
@@ -372,4 +359,72 @@ describe('renderChart degrade paths (I/O matrix)', () => {
 
     expect(outcome).toMatchObject({ ok: false, stage: 'optimize' });
   });
+});
+
+describe('worker recovery', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.doUnmock('node:worker_threads');
+  });
+
+  // The reason the render moved onto a thread at all. In-process a hung render
+  // held the lane for the life of the process and could not be abandoned,
+  // because the finally that removes the jsdom shim never ran. terminate()
+  // takes the worker's globalThis with it, so there is nothing left to corrupt.
+  it('kills a render that outlives its budget and reports the timeout stage', async () => {
+    const { runInWorker } = await import('./renderChart.js');
+
+    const outcome = await runInWorker({ chartKind: 'runway', data: runwayData }, 1);
+
+    expect(outcome).toMatchObject({ ok: false, stage: 'timeout', fields: { timeoutMs: 1 } });
+  });
+
+  // The lane survives the kill. Before this, one hang wedged every later render
+  // for as long as the process lived, which is the whole of DW-277.
+  it('renders normally on the very next call after a timeout', async () => {
+    const { runInWorker, renderChart } = await import('./renderChart.js');
+
+    expect(await runInWorker({ chartKind: 'runway', data: runwayData }, 1)).toMatchObject({
+      ok: false,
+      stage: 'timeout',
+    });
+
+    const png = await renderChart({ chartKind: 'runway', data: runwayData }, context);
+    expect(png).not.toBeNull();
+    expect(png!.subarray(0, 4)).toEqual(PNG_MAGIC);
+  }, 30_000);
+
+  // Freeing the lane and killing the thread are two different things, and the
+  // tests above only prove the first: a timeout that resolved but never
+  // terminated would pass them while leaking a thread holding jsdom and sharp
+  // for the life of the process, on a 1GB box. Stubbing the thread is the only
+  // way to see the parent's half of that contract.
+  it('terminates the thread it abandoned, not just the promise', async () => {
+    const terminate = vi.fn().mockResolvedValue(0);
+    vi.doMock('node:worker_threads', () => ({
+      Worker: class {
+        terminate = terminate;
+        // never fires message, so the timeout is the only way out
+        once() {}
+      },
+    }));
+
+    const { runInWorker } = await import('./renderChart.js');
+    const outcome = await runInWorker({ chartKind: 'runway', data: runwayData }, 1);
+
+    expect(outcome).toMatchObject({ ok: false, stage: 'timeout' });
+    expect(terminate).toHaveBeenCalledTimes(1);
+
+    vi.doUnmock('node:worker_threads');
+  });
+
+  // structuredClone drops the Buffer subclass. redis.set and nodemailer's
+  // attachment content both want a real Buffer, and this used to be one.
+  it('hands back a Buffer, not the Uint8Array the thread boundary produces', async () => {
+    const { renderChart } = await import('./renderChart.js');
+
+    const png = await renderChart({ chartKind: 'runway', data: runwayData }, context);
+
+    expect(Buffer.isBuffer(png)).toBe(true);
+  }, 30_000);
 });

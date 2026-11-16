@@ -125,6 +125,13 @@ jobs:
 
       - uses: ./.github/actions/setup-workspace
 
+      # The chart renderer runs in a worker thread, and a worker's module graph
+      # is resolved by plain Node rather than vitest. It loads the compiled
+      # worker from dist in every environment, so the tests only exercise what
+      # ships if dist is current. Building here is what makes that true.
+      - name: Build API
+        run: pnpm --filter api build
+
       - name: Run API tests
         working-directory: apps/api
         run: |
