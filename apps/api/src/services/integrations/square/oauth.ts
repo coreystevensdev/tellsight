@@ -5,6 +5,7 @@ import { logger } from '../../../lib/logger.js';
 import { dbAdmin } from '../../../lib/db.js';
 import { ExternalServiceError } from '../../../lib/appError.js';
 import { integrationConnectionsQueries } from '../../../db/queries/index.js';
+import { adoptRotatedTokens, commitRotatedTokens } from '../tokenRotation.js';
 import { encrypt, decrypt } from '../encryption.js';
 
 // Read-only, same posture as the other connectors: nothing here writes back to
@@ -191,10 +192,20 @@ export async function refreshAccessToken(connectionId: number): Promise<{
   );
   if (!connection) throw new Error(`Connection ${connectionId} not found`);
 
+  // Held so the write can compare against it; see tokenRotation.ts.
+  const startedFrom = connection.encryptedRefreshToken;
+
   let tokens;
   try {
-    tokens = await refreshTokens(decrypt(connection.encryptedRefreshToken));
+    tokens = await refreshTokens(decrypt(startedFrom));
   } catch (err) {
+    // Ambiguous: a revoked application, or a concurrent refresh having
+    // already spent this token. Only the stored token tells them apart, and
+    // marking a healthy connection broken makes the seller reconnect for
+    // nothing (DW-283).
+    const adopted = await adoptRotatedTokens(connectionId, 'square', startedFrom);
+    if (adopted) return adopted;
+
     // A refresh token Square no longer honours means the seller revoked the
     // application. Nothing retries out of that, so the row is marked rather
     // than left looking healthy.
@@ -210,14 +221,12 @@ export async function refreshAccessToken(connectionId: number): Promise<{
   const encryptedAccessToken = encrypt(tokens.accessToken);
   const encryptedRefreshToken = encrypt(tokens.refreshToken);
 
-  await integrationConnectionsQueries.updateTokens(
-    connection.id,
-    encryptedAccessToken,
-    encryptedRefreshToken,
-    tokens.expiresAt,
-    dbAdmin,
-  );
+
 
   logger.info({ connectionId }, 'Refreshed Square access token');
-  return { encryptedAccessToken, encryptedRefreshToken, accessTokenExpiresAt: tokens.expiresAt };
+  return commitRotatedTokens(connectionId, 'square', startedFrom, {
+    encryptedAccessToken,
+    encryptedRefreshToken,
+    accessTokenExpiresAt: tokens.expiresAt,
+  });
 }

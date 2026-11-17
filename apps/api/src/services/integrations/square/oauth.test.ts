@@ -14,8 +14,22 @@ vi.mock('../../../lib/db.js', () => ({ dbAdmin: {}, db: {} }));
 vi.mock('../../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
+// refreshAccessToken had no test before DW-283, which is why wiring it to the
+// rotation helper broke nothing here. Reaching it needs the queries and the
+// encryption boundary stubbed.
+const queries = {
+  getByIdAndProvider: vi.fn(),
+  updateTokens: vi.fn(),
+  updateTokensIfUnchanged: vi.fn(),
+  updateSyncStatus: vi.fn(),
+};
+vi.mock('../../../db/queries/index.js', () => ({ integrationConnectionsQueries: queries }));
+vi.mock('../encryption.js', () => ({
+  encrypt: (v: string) => `enc:${v}`,
+  decrypt: (v: string) => v.replace(/^enc:/, ''),
+}));
 
-const { generateAuthUrl, exchangeCode, refreshTokens, revokeToken, apiHost, squareScopes } =
+const { generateAuthUrl, exchangeCode, refreshTokens, revokeToken, apiHost, squareScopes, refreshAccessToken } =
   await import('./oauth.js');
 
 function jsonOnce(body: unknown, ok = true, status = 200) {
@@ -154,5 +168,69 @@ describe('revokeToken', () => {
 describe('squareScopes', () => {
   it('space-separates, which is what the authorize endpoint expects', () => {
     expect(squareScopes()).toBe('ORDERS_READ MERCHANT_PROFILE_READ');
+  });
+});
+
+describe('refreshAccessToken, when another refresh raced it (DW-283)', () => {
+  const STORED = {
+    id: 7,
+    encryptedAccessToken: 'enc:old-access',
+    encryptedRefreshToken: 'enc:old-refresh',
+    accessTokenExpiresAt: new Date('2026-11-17T09:00:00Z'),
+  };
+
+  beforeEach(() => {
+    Object.values(queries).forEach((m) => m.mockReset());
+    queries.getByIdAndProvider.mockResolvedValue({ ...STORED });
+    queries.updateTokensIfUnchanged.mockResolvedValue(true);
+    queries.updateTokens.mockResolvedValue(undefined);
+    queries.updateSyncStatus.mockResolvedValue(undefined);
+  });
+
+  it('writes the new pair as a compare-and-set against the token it started from', async () => {
+    jsonOnce(TOKENS);
+
+    await refreshAccessToken(7);
+
+    expect(queries.updateTokensIfUnchanged).toHaveBeenCalledWith(
+      7,
+      'enc:old-refresh',
+      'enc:sq-access',
+      'enc:sq-refresh',
+      expect.any(Date),
+      expect.anything(),
+    );
+  });
+
+  // The case that bricks a connection on a rotating provider. Square rejecting
+  // the token is indistinguishable from a revocation at the HTTP layer, so
+  // without this the row is marked broken and the seller reconnects for nothing.
+  it('adopts the winner tokens instead of marking the connection revoked', async () => {
+    jsonOnce({ error: 'invalid_grant' }, false, 400);
+    queries.getByIdAndProvider
+      .mockResolvedValueOnce({ ...STORED })
+      .mockResolvedValueOnce({
+        ...STORED,
+        encryptedAccessToken: 'enc:winner-access',
+        encryptedRefreshToken: 'enc:winner-refresh',
+      });
+
+    const result = await refreshAccessToken(7);
+
+    expect(result.encryptedAccessToken).toBe('enc:winner-access');
+    expect(queries.updateSyncStatus).not.toHaveBeenCalled();
+  });
+
+  // And the other side of it: an unmoved token means the rejection was real.
+  it('still marks the connection revoked when nothing rotated', async () => {
+    jsonOnce({ error: 'invalid_grant' }, false, 400);
+
+    await expect(refreshAccessToken(7)).rejects.toThrow();
+    expect(queries.updateSyncStatus).toHaveBeenCalledWith(
+      7,
+      'error',
+      expect.stringContaining('reconnect'),
+      expect.anything(),
+    );
   });
 });

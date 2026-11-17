@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getByIdAndProvider: vi.fn(),
   updateSyncStatus: vi.fn(),
   updateTokens: vi.fn(),
+  updateTokensIfUnchanged: vi.fn(),
   loggerError: vi.fn(),
   loggerWarn: vi.fn(),
 }));
@@ -32,6 +33,7 @@ vi.mock('../../../db/queries/index.js', () => ({
     getByIdAndProvider: mocks.getByIdAndProvider,
     updateSyncStatus: mocks.updateSyncStatus,
     updateTokens: mocks.updateTokens,
+    updateTokensIfUnchanged: mocks.updateTokensIfUnchanged,
   },
 }));
 
@@ -74,6 +76,7 @@ beforeEach(() => {
   mocks.encrypt.mockImplementation((value: string) => `encrypted:${value}`);
   mocks.updateSyncStatus.mockResolvedValue(undefined);
   mocks.updateTokens.mockResolvedValue(undefined);
+  mocks.updateTokensIfUnchanged.mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -165,8 +168,12 @@ describe('refreshAccessToken', () => {
       'new-access-token',
       'new-refresh-token',
     ]);
-    expect(mocks.updateTokens).toHaveBeenCalledWith(
+      // The second argument is the refresh token the call started from, which
+      // is what makes the write a compare-and-set rather than a blind
+      // overwrite (DW-283).
+    expect(mocks.updateTokensIfUnchanged).toHaveBeenCalledWith(
       42,
+        'encrypted-old-refresh-token',
       'encrypted:new-access-token',
       'encrypted:new-refresh-token',
       expectedExpiry,

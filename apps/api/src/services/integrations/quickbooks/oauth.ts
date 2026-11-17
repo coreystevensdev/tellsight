@@ -6,6 +6,7 @@ import { dbAdmin } from '../../../lib/db.js';
 import { ExternalServiceError } from '../../../lib/appError.js';
 import { encrypt, decrypt } from '../encryption.js';
 import { integrationConnectionsQueries } from '../../../db/queries/index.js';
+import { adoptRotatedTokens, commitRotatedTokens } from '../tokenRotation.js';
 
 const INTUIT_AUTH_URL = 'https://appcenter.intuit.com/connect/oauth2';
 const INTUIT_TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
@@ -95,7 +96,11 @@ export async function refreshAccessToken(connectionId: number): Promise<{
   );
   if (!connection) throw new Error(`Connection ${connectionId} not found`);
 
-  const refreshToken = decrypt(connection.encryptedRefreshToken);
+  // Held so the write can compare against it. A refresh token is a version
+  // stamp: a provider issues one new pair per token, so at most one writer can
+  // match any given value (DW-283).
+  const startedFrom = connection.encryptedRefreshToken;
+  const refreshToken = decrypt(startedFrom);
   const credentials = Buffer.from(
     `${env.QUICKBOOKS_CLIENT_ID}:${env.QUICKBOOKS_CLIENT_SECRET}`,
   ).toString('base64');
@@ -119,6 +124,13 @@ export async function refreshAccessToken(connectionId: number): Promise<{
     logger.error({ status: res.status, body, connectionId }, 'Intuit token refresh failed');
 
     if (res.status === 401) {
+      // Ambiguous at the HTTP layer: a real revocation, or a concurrent refresh
+      // having already spent this token. Only the stored token tells them
+      // apart, and marking a healthy connection broken makes the owner
+      // reconnect for nothing (DW-283).
+      const adopted = await adoptRotatedTokens(connectionId, 'quickbooks', startedFrom);
+      if (adopted) return adopted;
+
       await integrationConnectionsQueries.updateSyncStatus(
         connection.id,
         'error',
@@ -137,15 +149,11 @@ export async function refreshAccessToken(connectionId: number): Promise<{
   const encryptedRefreshToken = encrypt(data.refresh_token);
   const accessTokenExpiresAt = new Date(Date.now() + data.expires_in * 1000);
 
-  await integrationConnectionsQueries.updateTokens(
-    connection.id,
+  return commitRotatedTokens(connectionId, 'quickbooks', startedFrom, {
     encryptedAccessToken,
     encryptedRefreshToken,
     accessTokenExpiresAt,
-    dbAdmin,
-  );
-
-  return { encryptedAccessToken, encryptedRefreshToken, accessTokenExpiresAt };
+  });
 }
 
 export async function revokeToken(encryptedRefreshToken: string): Promise<void> {

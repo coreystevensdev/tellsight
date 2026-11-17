@@ -100,6 +100,51 @@ export async function updateTokens(
     .where(eq(integrationConnections.id, id));
 }
 
+/**
+ * Writes a rotated token pair only if nobody else rotated first, and reports
+ * whether it won. Returns false when another refresh already moved the row.
+ *
+ * The compare is on the refresh token the caller actually used, which makes it a
+ * version stamp rather than a guess: a provider issues one new pair per refresh
+ * token, so at most one writer can match any given value. That turns the
+ * property making Xero dangerous (its refresh tokens rotate and the old one dies
+ * immediately) into the mechanism that keeps two concurrent refreshes from
+ * clobbering each other.
+ *
+ * Preferred over a lock. `createQbClient` already collapses concurrent refreshes
+ * inside one client instance, but a client is built per sync, so a scheduled run
+ * and a manual run hold separate instances and refresh independently (DW-283).
+ * Serialising that with `SELECT ... FOR UPDATE` would hold a pooled connection
+ * across a 10s token call, and a Redis lock would be fail-open here, which is
+ * not a lock.
+ */
+export async function updateTokensIfUnchanged(
+  id: number,
+  previousEncryptedRefreshToken: string,
+  encryptedAccessToken: string,
+  encryptedRefreshToken: string,
+  accessTokenExpiresAt: Date,
+  client: typeof db | DbTransaction = db,
+): Promise<boolean> {
+  const won = await client
+    .update(integrationConnections)
+    .set({
+      encryptedAccessToken,
+      encryptedRefreshToken,
+      accessTokenExpiresAt,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(integrationConnections.id, id),
+        eq(integrationConnections.encryptedRefreshToken, previousEncryptedRefreshToken),
+      ),
+    )
+    .returning({ id: integrationConnections.id });
+
+  return won.length > 0;
+}
+
 export async function updateLastSyncedAt(
   id: number,
   client: typeof db | DbTransaction = db,
