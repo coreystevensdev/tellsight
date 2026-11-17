@@ -97,12 +97,17 @@ function getAccountRef(line: QbLine) {
   );
 }
 
+// This name was always being written, into label, which also falls back to a
+// memo and then a doc number. That mix is exactly why label cannot be grouped
+// on. Same source, its own column now, and with no fallbacks: a doc number is
+// not a counterparty, and grouping on one would report a customer that does not
+// exist (DW-280).
+function getCounterparty(tx: QbTransaction): string | null {
+  return tx.CustomerRef?.name ?? tx.VendorRef?.name ?? tx.EntityRef?.name ?? null;
+}
+
 function getLabel(tx: QbTransaction): string | null {
-  const entityName = tx.CustomerRef?.name ?? tx.VendorRef?.name ?? tx.EntityRef?.name;
-  if (entityName) return entityName;
-  if (tx.PrivateNote) return tx.PrivateNote;
-  if (tx.DocNumber) return tx.DocNumber;
-  return null;
+  return getCounterparty(tx) ?? tx.PrivateNote ?? tx.DocNumber ?? null;
 }
 
 // Shared by the TotalAmt fallback below and the UnappliedAmt path: both are
@@ -127,6 +132,7 @@ function uncategorizedRow(
     category: REFUND_TYPES.has(txnType) ? 'Refunds' : 'Uncategorized',
     parentCategory,
     label: getLabel(tx),
+    counterparty: getCounterparty(tx),
     metadata: {
       qb_id: tx.Id,
       txnType,
@@ -245,6 +251,7 @@ export function normalizeTransaction(
       category,
       parentCategory,
       label,
+      counterparty: getCounterparty(tx),
       metadata: {
         qb_id: tx.Id,
         txnType,

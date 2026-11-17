@@ -81,6 +81,7 @@ export interface NormalizedQbRow {
   category: string;
   parentCategory: 'Income' | 'Expenses' | 'ExpensesContra' | 'Other';
   label: string | null;
+  counterparty: string | null;
   metadata: {
     qb_id: string;
     txnType: QbTransactionType;
