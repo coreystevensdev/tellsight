@@ -45,6 +45,10 @@ export const businessProfileSchema = z.object({
   cashAsOfDate: z.string().datetime().optional(),
   businessStartedDate: z.string().date().optional(),
   monthlyFixedCosts: z.number().nonnegative().max(9_999_999).optional(),
+  // The owner's own rate, never inferred from a jurisdiction: a rate the
+  // product chose would make the set-aside advice rather than arithmetic
+  // (DW-284). Capped at 60 because anything higher is a typo, not a rate.
+  taxSetAsidePercent: z.number().positive().max(60).optional(),
 });
 
 export type BusinessProfile = z.infer<typeof businessProfileSchema>;
@@ -58,6 +62,7 @@ export const onboardingProfileSchema = businessProfileSchema.omit({
   cashAsOfDate: true,
   businessStartedDate: true,
   monthlyFixedCosts: true,
+  taxSetAsidePercent: true,
 });
 
 // Narrower subset for the /api/org/financials endpoints. Keeps runway/break-even
@@ -67,6 +72,7 @@ export const orgFinancialsSchema = businessProfileSchema.pick({
   cashAsOfDate: true,
   businessStartedDate: true,
   monthlyFixedCosts: true,
+  taxSetAsidePercent: true,
 });
 
 export type OrgFinancials = z.infer<typeof orgFinancialsSchema>;

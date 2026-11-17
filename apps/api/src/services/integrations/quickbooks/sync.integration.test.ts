@@ -98,6 +98,29 @@ describe('upsertRows reconciliation against real Postgres', () => {
     expect(await sourceIdsFor('txn-b')).toEqual(['txn-b-0']);
   });
 
+  // Against real Postgres on purpose. The upsert's `set` clause names its
+  // columns one at a time, so a column added to the insert values alone never
+  // reaches a row that already exists, and every connector row already exists
+  // after the first sync. counterparty read 0 of 142 in production for a day
+  // because of exactly that, and no mocked-insert test could have seen it: the
+  // mock records the object it was handed, not what Postgres did with it.
+  it('writes counterparty onto a row that already exists', async () => {
+    await dbAdmin.insert(dataRows).values([
+      { orgId, datasetId, ...row({ sourceId: 'txn-c-0', qbId: 'txn-c', counterparty: null }) },
+    ]);
+
+    await upsertRows(orgId, datasetId, 'Payment', ['txn-c'], [
+      row({ sourceId: 'txn-c-0', qbId: 'txn-c', counterparty: 'Acme Supplies' }),
+    ]);
+
+    const [after] = await dbAdmin
+      .select({ counterparty: dataRows.counterparty })
+      .from(dataRows)
+      .where(and(eq(dataRows.orgId, orgId), eq(dataRows.sourceId, 'txn-c-0')));
+
+    expect(after!.counterparty).toBe('Acme Supplies');
+  });
+
   it('deletes only the stale line when a transaction shrinks from two rows to one', async () => {
     // The $1,000 invoice / $400-applied shape from the design doc: a
     // partial payment that was synced as two rows (the invoice and the

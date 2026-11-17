@@ -87,5 +87,11 @@ export function resolveSourceRows(rows: DataRow[], stat: IdentifiedStat): DataRo
       const months = new Set([...split.recentMonths, ...split.priorMonths]);
       return rows.filter((r) => isFinancialRow(r) && months.has(monthKey(r.date)));
     }
+
+    // Every classified row in the dataset, because the figure is a period total
+    // over all of them rather than a window. The audit drawer showing a subset
+    // would not add up to the number it is explaining.
+    case StatType.TaxSetAside:
+      return rows.filter(isFinancialRow);
   }
 }

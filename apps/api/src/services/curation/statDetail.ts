@@ -74,6 +74,22 @@ export function buildStatDetail(stat: IdentifiedStat): StatDetailView {
       };
     }
 
+    case StatType.TaxSetAside: {
+      const profit = `$${usd.format(stat.details.netProfit)}`;
+      const rate = `${stat.details.ratePercent}%`;
+      const setAside = `$${usd.format(stat.details.setAside)}`;
+      return {
+        kind: 'formula',
+        expression: `${profit} x ${rate} = ${setAside}`,
+        terms: [
+          { label: 'Revenue', value: `$${usd.format(stat.details.revenue)}` },
+          { label: 'Expenses', value: `$${usd.format(stat.details.expenses)}` },
+          { label: 'Rate on record for this business', value: rate },
+          { label: 'Months covered', value: String(stat.details.monthsCovered) },
+        ],
+      };
+    }
+
     case StatType.YearOverYear: {
       const current = `$${usd.format(stat.details.currentRevenue)}`;
       const prior = `$${usd.format(stat.details.priorRevenue)}`;

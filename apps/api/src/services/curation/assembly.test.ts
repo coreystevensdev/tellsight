@@ -1186,3 +1186,57 @@ describe('assemblePrompt, the minus goes outside the dollar sign everywhere', ()
     expect(user).toContain('$50,000 in 2026 vs $38,000 in 2025');
   });
 });
+
+// The seed cannot produce this stat, because it needs a rate the owner supplies
+// and giving a seed org an invented rate is the one thing the stat refuses to
+// do. So the prompt-hash snapshot never sees this renderer and validate-seed
+// declares it in UNCOVERED_BY_PROMPT_HASH. These are the cover it asks for.
+describe('assemblePrompt renders tax_set_aside', () => {
+  const insight = (stat: ScoredInsight['stat']): ScoredInsight => ({
+    stat,
+    score: 0.77,
+    breakdown: { novelty: 0.5, actionability: 0.85, specificity: 0.9 },
+  });
+
+  const taxStat: ScoredInsight['stat'] = {
+    statType: StatType.TaxSetAside,
+    category: null,
+    value: 1_000,
+    sampleSize: 2,
+    details: {
+      netProfit: 4_000,
+      ratePercent: 25,
+      setAside: 1_000,
+      monthsCovered: 2,
+      revenue: 10_000,
+      expenses: 6_000,
+    },
+  };
+
+  async function body(stat: ScoredInsight['stat']): Promise<string> {
+    const { assemblePrompt } = await import('./assembly.js');
+    return assemblePrompt([insight(stat)], 1).user;
+  }
+
+  it('shows the whole arithmetic, so the model is not handed a bare figure', async () => {
+    const out = await body(taxStat);
+
+    expect(out).toContain('$1,000');
+    expect(out).toContain('$4,000');
+    expect(out).toContain('$10,000');
+    expect(out).toContain('$6,000');
+    expect(out).toContain('25%');
+    expect(out).toContain('2 months');
+  });
+
+  // The legal posture, in the one place the model reads. The rate has to be
+  // attributed to the business, not stated as the product's own, and nothing
+  // here may read as an instruction.
+  it('attributes the rate to the business and never tells anyone what to do', async () => {
+    const out = await body(taxStat);
+
+    expect(out).toMatch(/rate this business recorded/i);
+    expect(out).not.toMatch(/you should/i);
+    expect(out).not.toMatch(/we recommend/i);
+  });
+});

@@ -7,6 +7,7 @@ import type {
 import { StatType } from './types.js';
 
 import type { DataRow } from './computationPrimitives.js';
+import { computeTaxSetAside } from './taxMetrics.js';
 import {
   computeBreakEven,
   computeCashFlow,
@@ -99,6 +100,8 @@ export function computeStats(
     opts?.now,
   );
 
+  const taxStats = computeTaxSetAside(rows, opts?.financials?.taxSetAsidePercent);
+
   return [
     ...computeTotals(groups, allAmounts),
     ...computeAverages(groups, allAmounts),
@@ -113,6 +116,7 @@ export function computeStats(
     ...breakEvenStats,
     ...cashForecastStats,
     ...computeCategoryVariance(groups, opts?.categoryPlans, opts?.now),
+    ...taxStats,
   ];
 }
 

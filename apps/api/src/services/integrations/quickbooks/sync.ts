@@ -368,6 +368,13 @@ export async function upsertRows(
             category: sql`excluded.category`,
             parentCategory: sql`excluded.parent_category`,
             label: sql`excluded.label`,
+            // Needed because every row already exists: a sync takes the conflict
+            // path, so a column added to the insert values alone never lands on
+            // an existing row. counterparty was 0 of 142 for a full day because
+            // of exactly that. Not added to the shopify or square clauses, which
+            // produce no counterparty: there, excluded.counterparty would be NULL
+            // and would erase whatever a previous source had written.
+            counterparty: sql`excluded.counterparty`,
             metadata: sql`excluded.metadata`,
           },
         })
