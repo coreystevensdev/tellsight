@@ -166,16 +166,23 @@ In the repo Settings > Secrets > Actions, add:
 | `RESEND_API_KEY` | `re_...` |
 | `RESEND_WEBHOOK_SECRET` | Svix-shared secret from the Resend webhook config |
 | `METRICS_TOKEN` | `openssl rand -hex 24` |
+> **The `/api` prefix belongs to the public host, not to Express.** `next.config.ts`
+> rewrites `/api/:path*` to `http://api:3001/:path*`, stripping the prefix, and Express
+> mounts the callbacks at `/integrations/<provider>/callback`. So a redirect URI pointed
+> at the production domain needs `/api` and one pointed straight at `localhost:3001` must
+> not have it. `.env.example` shows the latter and is correct; these rows show the former.
+> The rows omitted `/api` until 2026-11-17 and disagreed with every deployed value.
+
 | `QUICKBOOKS_CLIENT_ID` | optional, Intuit developer app's **Production** keys (not Development/sandbox) |
 | `QUICKBOOKS_CLIENT_SECRET` | optional, same Intuit app |
-| `QUICKBOOKS_REDIRECT_URI` | optional, `https://<PRODUCTION_DOMAIN>/integrations/quickbooks/callback`, must also be registered as an authorized redirect URI in the Intuit app |
+| `QUICKBOOKS_REDIRECT_URI` | optional, `https://<PRODUCTION_DOMAIN>/api/integrations/quickbooks/callback`, must also be registered as an authorized redirect URI in the Intuit app |
 | `QUICKBOOKS_ENVIRONMENT` | optional, `production` once you have live Intuit keys, defaults to `sandbox` if unset |
 | `SHOPIFY_CLIENT_ID` | optional, Shopify app's client ID |
 | `SHOPIFY_CLIENT_SECRET` | optional, same Shopify app |
-| `SHOPIFY_REDIRECT_URI` | optional, `https://<PRODUCTION_DOMAIN>/integrations/shopify/callback`, must also be registered in the Shopify app |
+| `SHOPIFY_REDIRECT_URI` | optional, `https://<PRODUCTION_DOMAIN>/api/integrations/shopify/callback`, must also be registered in the Shopify app |
 | `SQUARE_CLIENT_ID` | optional, Square application ID, **Production** credentials not Sandbox |
 | `SQUARE_CLIENT_SECRET` | optional, same Square application |
-| `SQUARE_REDIRECT_URI` | optional, `https://<PRODUCTION_DOMAIN>/integrations/square/callback`, must match the Redirect URL registered in the Square app character for character |
+| `SQUARE_REDIRECT_URI` | optional, `https://<PRODUCTION_DOMAIN>/api/integrations/square/callback`, must match the Redirect URL registered in the Square app character for character |
 | `SQUARE_ENVIRONMENT` | optional, `production` once you have live Square keys, defaults to `sandbox` if unset |
 | `ENCRYPTION_KEY` | optional, `openssl rand -hex 32`, encrypts every connector's OAuth tokens at rest |
 
