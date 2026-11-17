@@ -72,6 +72,35 @@ describe('normalizeTransaction', () => {
     expect(row!.label).toBe('Big Client Co');
   });
 
+  // DW-280. The entity name was already being written, into label, alongside
+  // memos and doc numbers, which is exactly why label cannot be grouped on: it
+  // holds a counterparty sometimes and a note the rest of the time. Same source,
+  // its own column, so a concentration stat has something to group by.
+  it('records the vendor as the counterparty on an expense', () => {
+    const [row] = normalizeTransaction(makePurchase(), 'Purchase');
+
+    expect(row!.counterparty).toBe('Acme Supplies');
+  });
+
+  it('records the customer as the counterparty on income', () => {
+    const [row] = normalizeTransaction(makeInvoice(), 'Invoice');
+
+    expect(row!.counterparty).toBe('Big Client Co');
+  });
+
+  // label keeps its fallbacks; counterparty does not. A doc number is not a
+  // counterparty, and a concentration stat grouping on 'P-001' would report a
+  // customer that does not exist.
+  it('leaves counterparty null when no entity is named, even though label falls back', () => {
+    const [row] = normalizeTransaction(
+      makePurchase({ VendorRef: undefined, PrivateNote: undefined }),
+      'Purchase',
+    );
+
+    expect(row!.counterparty).toBeNull();
+    expect(row!.label).toBe('P-001');
+  });
+
   it('maps Bill to Expenses', () => {
     const [row] = normalizeTransaction(makePurchase({ Id: 'tx-bill' }), 'Bill');
     expect(row!.parentCategory).toBe('Expenses');

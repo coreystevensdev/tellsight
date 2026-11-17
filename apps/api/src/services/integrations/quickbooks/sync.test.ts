@@ -173,6 +173,7 @@ function normalizedRow(overrides: Partial<NormalizedQbRow> = {}): NormalizedQbRo
     category: 'Office Supplies',
     parentCategory: 'Expenses',
     label: 'Acme Supplies',
+    counterparty: 'Acme Supplies',
     metadata: {
       qb_id: 'tx-1',
       txnType: 'Purchase',

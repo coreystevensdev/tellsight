@@ -352,6 +352,7 @@ export async function upsertRows(
         date: row.date,
         amount: row.amount,
         label: row.label,
+        counterparty: row.counterparty,
         metadata: row.metadata,
       }));
 

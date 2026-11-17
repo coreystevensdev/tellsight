@@ -40,6 +40,7 @@ function row(
     category: 'Uncategorized',
     parentCategory: 'Income',
     label: null,
+    counterparty: null,
     metadata: {
       qb_id: qbId,
       txnType,
@@ -134,6 +135,7 @@ describe('upsertRows reconciliation against real Postgres', () => {
       date: new Date('2026-04-10'),
       amount: '50.00',
       label: null,
+      counterparty: null,
       metadata: { qb_id: 'txn-collide' },
     });
 
