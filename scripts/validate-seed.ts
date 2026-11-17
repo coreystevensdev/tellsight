@@ -187,6 +187,12 @@ function validate() {
   const UNCOVERED_BY_PROMPT_HASH = new Set([
     'total', 'average', 'category_breakdown', 'year_over_year', 'seasonal_projection',
     'cash_flow', 'runway', 'break_even', 'cash_forecast', 'category_variance',
+    // tax_set_aside belongs here rather than in the seed for the same reason
+    // runway and break_even do: it needs a number the owner supplies, and the
+    // seed has no financial baseline. Giving a seed org an invented tax rate
+    // would be the product choosing a rate, which is the one thing that stat
+    // refuses to do. Its renderer is covered in assembly.test.ts instead.
+    'tax_set_aside',
   ]);
   const uncovered = [...ALL_STAT_TYPES].filter((t) => !presentTypes.has(t)).sort();
   const declared = [...UNCOVERED_BY_PROMPT_HASH].sort();
