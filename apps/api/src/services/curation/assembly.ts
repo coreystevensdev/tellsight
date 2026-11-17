@@ -182,6 +182,10 @@ function formatStatBody(insight: ScoredInsight, promptVersion: string): string {
       const cur = `${usdMinus(stat.details.currentMonthlyRevenue)}`;
       return `- [Overall] Break-Even: ${be}/mo at ${stat.details.marginPercent.toFixed(1)}% margin, current revenue ${cur}/mo, gap ${usdMinus(stat.details.gap)} (confidence: ${stat.details.confidence}, relevance: ${score.toFixed(2)})`;
     }
+    case StatType.TaxSetAside: {
+      const d = stat.details;
+      return `- [Overall] Tax set-aside at the rate this business recorded (${d.ratePercent}%): ${usdMinus(d.setAside)} of ${usdMinus(d.netProfit)} net profit over ${d.monthsCovered} months, from ${usdMinus(d.revenue)} revenue less ${usdMinus(d.expenses)} expenses (relevance: ${score.toFixed(2)})`;
+    }
     case StatType.CategoryVariance: {
       const word = stat.details.direction === 'over' ? 'over' : stat.details.direction === 'under' ? 'under' : 'on';
       return `- [${category}] Plan vs actual (${stat.details.monthLabel}): planned ${usdMinus(stat.details.plannedMonthly)}, spent ${usdMinus(stat.details.actualMonthly)}, ${word} plan by ${Math.abs(stat.details.variancePercent).toFixed(1)}% (relevance: ${score.toFixed(2)})`;

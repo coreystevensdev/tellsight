@@ -124,8 +124,10 @@ export function DashboardShell({
     needsCashBalance,
     hasBalance,
     needsBreakEvenEnable,
+    needsTaxRate,
     saveCashBalance,
     saveMonthlyFixedCosts,
+    saveTaxRate,
   } = useDashboardFinancials({
     hasAuth,
     hasAnyData,
@@ -290,6 +292,18 @@ export function DashboardShell({
               inputMask="currency"
               inputMax={9_999_999}
               onSubmit={saveMonthlyFixedCosts}
+              className="mt-6"
+            />
+          )}
+          {needsTaxRate && (
+            <LockedInsightCard
+              title="Enable Tax Set-Aside"
+              description="Add the rate you use for tax and we will show that share of your net profit. We never pick a rate for you, and this is not tax advice."
+              inputLabel="Your tax rate (%)"
+              inputMask="number"
+              inputMax={60}
+              submitLabel="Save rate"
+              onSubmit={saveTaxRate}
               className="mt-6"
             />
           )}

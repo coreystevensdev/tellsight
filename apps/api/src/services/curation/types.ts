@@ -14,6 +14,7 @@ export const StatType = {
   BreakEven: 'break_even',
   CashForecast: 'cash_forecast',
   CategoryVariance: 'category_variance',
+  TaxSetAside: 'tax_set_aside',
 } as const;
 
 export type StatType = (typeof StatType)[keyof typeof StatType];
@@ -131,6 +132,7 @@ export interface RunwayFinancials {
   cashOnHand?: number;
   cashAsOfDate?: string;
   monthlyFixedCosts?: number;
+  taxSetAsidePercent?: number;
 }
 
 export interface RunwayDetails {
@@ -146,6 +148,21 @@ export interface RunwayDetails {
 // when MarginTrend is present, fixed costs are set, and margin is at least 2%.
 // `gap` is signed, positive means revenue is below break-even (still burning);
 // negative means revenue already covers fixed costs.
+// Arithmetic on the owner's own two numbers: their stated rate against their
+// own net profit. Deliberately not a recommendation and not a jurisdiction
+// lookup. The product never says "you should", and a rate it inferred would be
+// exactly that, so the rate is always the one the owner typed.
+export interface TaxSetAsideDetails {
+  netProfit: number;
+  ratePercent: number;
+  setAside: number;
+  monthsCovered: number;
+  // Reported so the audit drawer can show the arithmetic rather than a figure
+  // the reader has to take on trust.
+  revenue: number;
+  expenses: number;
+}
+
 export interface BreakEvenDetails {
   monthlyFixedCosts: number;
   marginPercent: number;
@@ -246,6 +263,11 @@ export interface BreakEvenStat extends BaseComputedStat {
   details: BreakEvenDetails;
 }
 
+export interface TaxSetAsideStat extends BaseComputedStat {
+  statType: 'tax_set_aside';
+  details: TaxSetAsideDetails;
+}
+
 export interface CategoryVarianceStat extends BaseComputedStat {
   statType: 'category_variance';
   details: CategoryVarianceDetails;
@@ -269,7 +291,8 @@ export type ComputedStat =
   | RunwayStat
   | BreakEvenStat
   | CashForecastStat
-  | CategoryVarianceStat;
+  | CategoryVarianceStat
+  | TaxSetAsideStat;
 
 // Citation target for the audit drawer and NL Q&A: a ComputedStat with a stable instance id.
 // The id is derived (see statInstanceId in computation.ts), never stored on ComputedStat itself.

@@ -71,6 +71,11 @@ function noveltyScore(stat: ComputedStat): number {
     case StatType.BreakEven:
       // Below break-even gives a concrete revenue target; above it is reassuring.
       return stat.details.gap > 0 ? 0.75 : 0.60;
+    case StatType.TaxSetAside:
+      // Not surprising, by construction: it is the owner's own rate times their
+      // own profit and it moves every period. Mid-range because nothing else in
+      // the product reports it, so it is new information without being news.
+      return 0.5;
     case StatType.CategoryVariance:
       // A category landing on its plan is the expected outcome, so it is not
       // news. A miss is, and the size of the miss is already in the score below.
@@ -109,6 +114,11 @@ function actionabilityScore(stat: ComputedStat): number {
       return 0.45;
     case StatType.BreakEven:
       return stat.details.gap > 0 ? 0.88 : 0.55;
+    case StatType.TaxSetAside:
+      // A number with one obvious action behind it, which is why it scores high
+      // here while scoring mid on novelty. Deliberately not scored on size: a
+      // bigger set-aside means a more profitable period, not a more urgent one.
+      return 0.85;
     case StatType.CategoryVariance:
       // Overspending against a plan the owner set themselves is the most
       // actionable thing here: they chose the number, so the gap is theirs to

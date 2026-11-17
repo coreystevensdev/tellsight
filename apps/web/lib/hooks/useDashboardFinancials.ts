@@ -60,8 +60,18 @@ export function useDashboardFinancials({
     financials !== undefined &&
     financials.monthlyFixedCosts == null;
 
+  // Gated on hasMarginSignal like break-even, and for the same reason: a
+  // set-aside needs real profit, which needs both sides of the ledger. A
+  // revenue-only connector cannot produce one, so prompting there would ask
+  // for a number the product then could not use (DW-279).
+  const needsTaxRate =
+    hasAnyData &&
+    hasMarginSignal &&
+    financials !== undefined &&
+    financials.taxSetAsidePercent == null;
+
   async function saveFinancials(
-    update: Partial<Pick<OrgFinancials, 'cashOnHand' | 'monthlyFixedCosts'>>,
+    update: Partial<Pick<OrgFinancials, 'cashOnHand' | 'monthlyFixedCosts' | 'taxSetAsidePercent'>>,
   ) {
     await apiClient('/org/financials', {
       method: 'PUT',
@@ -78,7 +88,9 @@ export function useDashboardFinancials({
     needsCashBalance,
     hasBalance,
     needsBreakEvenEnable,
+    needsTaxRate,
     saveCashBalance: (cashOnHand: number) => saveFinancials({ cashOnHand }),
     saveMonthlyFixedCosts: (monthlyFixedCosts: number) => saveFinancials({ monthlyFixedCosts }),
+    saveTaxRate: (taxSetAsidePercent: number) => saveFinancials({ taxSetAsidePercent }),
   };
 }
