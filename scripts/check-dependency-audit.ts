@@ -21,7 +21,21 @@ import {
   type Advisory,
 } from './safety-gates/dependency-audit.js';
 
-const ACKNOWLEDGED: Acknowledgement[] = [];
+const ACKNOWLEDGED: Acknowledgement[] = [
+  {
+    module: 'picomatch',
+    reviewed: '2026-11-17',
+    reason:
+      'ReDoS through single-branch repeated extglobs, reached only via ' +
+      'apps/web > @sentry/nextjs > @rollup/plugin-commonjs > picomatch. That is bundler ' +
+      'tooling: it matches glob patterns written in this repo at build time, never a ' +
+      'string from a request, so there is no attacker-controlled input to the matcher. ' +
+      'An override cannot help either, since the advisory reports no patched version.',
+    revisit:
+      'when a patched picomatch ships, or if picomatch ever appears on a runtime path ' +
+      'rather than under a bundler plugin',
+  },
+];
 
 function audit(): Advisory[] {
   let raw: string;
