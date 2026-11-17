@@ -17,6 +17,7 @@ import { useDashboardData } from './useDashboardData';
 import { questionForChartPoint, type ChartPoint } from './suggestedQuestions';
 import type { BusinessProfile } from 'shared/schemas';
 import { ShareFab } from './ShareMenu';
+import { JumpToInterpretation } from './JumpToInterpretation';
 import { DemoModeBanner } from '@/components/common/DemoModeBanner';
 import { KpiCards } from './KpiCards';
 import { OnboardingModal } from './OnboardingModal';
@@ -222,6 +223,12 @@ export function DashboardShell({
             <KpiCards revenueTrend={data.revenueTrend} expenseBreakdown={data.expenseBreakdown} />
           )}
 
+          {/* Mobile only: on desktop the summary is close enough that a button
+              to reach it is noise. The charts are what it skips. */}
+          {hasData && (
+            <JumpToInterpretation targetId="dashboard-interpretation" className="mb-2 md:hidden" />
+          )}
+
           <DashboardCharts
             data={data}
             isLoading={isLoading}
@@ -231,7 +238,10 @@ export function DashboardShell({
             onAskAboutPoint={askAboutChartPoint}
           />
 
-          {/* The interpretation follows the charts it describes. */}
+          {/* The interpretation follows the charts it describes, and carries the
+              id JumpToInterpretation scrolls to. Wrapped here rather than inside
+              the component, which returns a fragment with no root. */}
+          <div id="dashboard-interpretation" className="scroll-mt-4">
           <DashboardInsights
             datasetId={data.datasetId}
             cachedSummary={cachedSummary}
@@ -248,6 +258,7 @@ export function DashboardShell({
             teamSize={teamSize}
             onStreamComplete={markAiDone}
           />
+          </div>
 
           {hasAnyData && hasBalance && (
             <CashBalanceStaleBanner
