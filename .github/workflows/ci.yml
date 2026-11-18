@@ -326,8 +326,14 @@ jobs:
       # Keep apt and browser downloads separate so a slow runner says which
       # phase failed. System package work is not safe to interrupt and retry
       # mid-transaction, but it is bounded so it cannot hold CI indefinitely.
+      #
+      # 20 rather than 10 because the mirror degrades two different ways and the
+      # config above only covers one. On 2026-11-18 apt made steady progress for
+      # the whole ten minutes and was still fetching at package 62 of ~65 when
+      # the ceiling killed it, roughly fifteen times slower than the 31s a
+      # healthy run takes. Nothing was wrong except the budget.
       - name: Install Playwright system dependencies
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: npx playwright install-deps chromium webkit
 
       - name: Restore Playwright browser cache
