@@ -4,7 +4,13 @@ import express from 'express';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import pinoHttp from 'pino-http';
-import { env, isQbConfigured, isShopifyConfigured, isSquareConfigured } from './config.js';
+import {
+  env,
+  isPlaidConfigured,
+  isQbConfigured,
+  isShopifyConfigured,
+  isSquareConfigured,
+} from './config.js';
 import { logger } from './lib/logger.js';
 import { correlationId } from './middleware/correlationId.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -28,6 +34,8 @@ import { initSyncWorker as initShopifySyncWorker, shutdownWorker as shutdownShop
 import { initScheduler as initShopifyScheduler } from './services/integrations/shopify/scheduler.js';
 import { initSyncWorker as initSquareSyncWorker, shutdownWorker as shutdownSquareWorker } from './services/integrations/square/worker.js';
 import { initScheduler as initSquareScheduler } from './services/integrations/square/scheduler.js';
+import { initSyncWorker as initPlaidSyncWorker, shutdownWorker as shutdownPlaidWorker } from './services/integrations/plaid/worker.js';
+import { initScheduler as initPlaidScheduler } from './services/integrations/plaid/scheduler.js';
 import {
   initDigestCronJob,
   initDigestOrchestratorWorker,
@@ -199,6 +207,13 @@ async function start() {
     logger.info({}, 'Square integration not configured, sync worker disabled');
   }
 
+  if (isPlaidConfigured(env)) {
+    initPlaidSyncWorker();
+    await initPlaidScheduler();
+  } else {
+    logger.info({}, 'Plaid integration not configured, sync worker disabled');
+  }
+
   // Email digest pipeline: cron registration is unconditional once the email
   // provider is wired (validated at boot by config.ts refines). Four workers
   // bind to four queues (orchestrator, org, send, nudge) with their own
@@ -264,6 +279,7 @@ async function start() {
         await shutdownWorker();
         await shutdownShopifyWorker();
         await shutdownSquareWorker();
+        await shutdownPlaidWorker();
         await redis.quit();
         await queryClient.end({ timeout: 5 });
         await adminClient.end({ timeout: 5 });

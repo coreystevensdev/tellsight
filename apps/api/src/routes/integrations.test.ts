@@ -44,6 +44,11 @@ const mockGetByOrgAndProvider = vi.fn();
 const mockUpsert = vi.fn();
 const mockDeleteByOrgAndProvider = vi.fn();
 const mockGetDatasetsByOrg = vi.fn().mockResolvedValue([]);
+const mockPlaidRegisterDailySync = vi.fn();
+const mockPlaidRemoveDailySync = vi.fn();
+const mockPlaidEnqueueSyncJob = vi.fn();
+const mockExchangePublicToken = vi.fn();
+const mockCreateLinkToken = vi.fn();
 const mockGenerateAuthUrl = vi.fn();
 const mockExchangeCode = vi.fn();
 const mockRevokeToken = vi.fn();
@@ -194,6 +199,20 @@ vi.mock('../services/audit/auditService.js', () => ({
 
 vi.mock('../services/integrations/worker.js', () => ({
   enqueueSyncJob: vi.fn(),
+}));
+
+vi.mock('../services/integrations/plaid/scheduler.js', () => ({
+  registerDailySync: mockPlaidRegisterDailySync,
+  removeDailySync: mockPlaidRemoveDailySync,
+}));
+
+vi.mock('../services/integrations/plaid/worker.js', () => ({
+  enqueueSyncJob: mockPlaidEnqueueSyncJob,
+}));
+
+vi.mock('../services/integrations/plaid/api.js', () => ({
+  createLinkToken: mockCreateLinkToken,
+  exchangePublicToken: mockExchangePublicToken,
 }));
 
 vi.mock('../services/integrations/scheduler.js', () => ({
@@ -357,6 +376,61 @@ describe('integrations routes', () => {
 
   // The Plaid card reads this to show which bank is connected, and the item id
   // in providerTenantId is not a name, so the institution comes from the dataset.
+  // A bank feed is the least time-sensitive of the four sources, and also the
+  // one an owner is least likely to open the app to refresh, so the daily
+  // schedule is the only thing that keeps it current.
+  describe('plaid daily schedule', () => {
+    it('registers the daily sync once the connection exists', async () => {
+      mockExchangePublicToken.mockResolvedValueOnce({
+        access_token: 'access-sandbox-1',
+        item_id: 'item-abc123',
+      });
+      mockUpsert.mockResolvedValueOnce({ id: 77 });
+      mockGetDatasetsByOrg.mockResolvedValueOnce([]);
+
+      const { integrationsRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsRouter, 'POST', '/plaid/exchange');
+      const req = createMockReq();
+      req.body = { publicToken: 'public-sandbox-1', institutionName: 'Chase' };
+
+      await handler(req, createMockRes(), vi.fn());
+
+      // The connection id, not the org id: the schedule carries what runSync
+      // needs to look the connection up.
+      expect(mockPlaidRegisterDailySync).toHaveBeenCalledWith(10, 77);
+      // And the first sync is immediate rather than waiting for 6am.
+      expect(mockPlaidEnqueueSyncJob).toHaveBeenCalledWith(77, 'manual');
+    });
+
+    // A schedule outliving its connection fires daily and fails every time on
+    // the lookup, which is noise that looks like a broken integration.
+    it('removes the schedule when the bank is disconnected', async () => {
+      mockGetByOrgAndProvider.mockResolvedValueOnce({ id: 77, providerTenantId: 'item-abc123' });
+      mockDeleteByOrgAndProvider.mockResolvedValueOnce(1);
+
+      const { integrationsRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsRouter, 'DELETE', '/plaid');
+
+      await handler(createMockReq(), createMockRes(), vi.fn());
+
+      expect(mockPlaidRemoveDailySync).toHaveBeenCalledWith(10);
+      expect(mockDeleteByOrgAndProvider).toHaveBeenCalledWith(10, 'plaid', expect.anything());
+    });
+
+    it('does not touch the schedule when there was nothing connected', async () => {
+      mockGetByOrgAndProvider.mockResolvedValueOnce(null);
+
+      const { integrationsRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsRouter, 'DELETE', '/plaid');
+      const res = createMockRes();
+
+      await handler(createMockReq(), res, vi.fn());
+
+      expect(res.statusCode).toBe(404);
+      expect(mockPlaidRemoveDailySync).not.toHaveBeenCalled();
+    });
+  });
+
   describe('GET /plaid/status', () => {
     it('names the institution from the dataset rather than the Plaid item id', async () => {
       mockGetByOrgAndProvider.mockResolvedValueOnce({
