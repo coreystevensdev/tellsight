@@ -11,6 +11,10 @@ import { trackEvent } from '../services/analytics/trackEvent.js';
 import { auditAuth } from '../services/audit/auditService.js';
 import { encrypt } from '../services/integrations/encryption.js';
 import { createLinkToken, exchangePublicToken } from '../services/integrations/plaid/api.js';
+import {
+  registerDailySync,
+  removeDailySync,
+} from '../services/integrations/plaid/scheduler.js';
 import { enqueueSyncJob } from '../services/integrations/plaid/worker.js';
 
 const MAX_INSTITUTION_NAME = 120;
@@ -138,7 +142,10 @@ export function registerPlaidIntegrationRoutes(router: Router): void {
       return stored;
     });
 
+    // The first sync now, the daily one from here on. Registered after the
+    // connection row exists, because the scheduler stores its id.
     await enqueueSyncJob(connection.id, 'manual');
+    await registerDailySync(orgId, connection.id);
 
     auditAuth(req, AUDIT_ACTIONS.INTEGRATION_CONNECTED, {
       targetType: 'integration',
@@ -187,6 +194,9 @@ export function registerPlaidIntegrationRoutes(router: Router): void {
     // worth adding, but it is a network call that can fail, and failing it must
     // not leave the owner unable to disconnect locally. Deliberate gap rather
     // than an oversight: the stored token is deleted either way.
+    // Before the row goes: a schedule left behind fires daily against a
+    // connection that no longer exists, and every run fails on the lookup.
+    await removeDailySync(orgId);
     await withRlsContext(orgId, user.isAdmin, (tx) =>
       integrationConnectionsQueries.deleteByOrgAndProvider(orgId, 'plaid', tx),
     );
