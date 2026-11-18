@@ -348,29 +348,74 @@ jobs:
           path: ~/.cache/apt-playwright
           key: apt-playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
 
-      # One attempt, deliberately. A retry here is not safe: killing
-      # install-deps leaves the apt-get it spawned holding
-      # /var/lib/dpkg/lock-frontend, so every later attempt dies on the lock
-      # instead of retrying. Measured on #374, where all three attempts failed
-      # that way after the first was killed at its deadline.
+      # Retries only matter on a cache miss, which is once per Playwright
+      # version. A hit installs from the seeded .debs and never touches a mirror.
+      #
+      # The hazard that made the first attempt at this worse than nothing: timeout
+      # kills install-deps and not the apt-get it spawned, and that orphan keeps
+      # /var/lib/dpkg/lock-frontend. dpkg --configure -a cannot take a lock a live
+      # process holds, so the guard alone does nothing and every later attempt
+      # dies on the lock rather than running. Measured on #374, where all three
+      # went that way after the first was killed. The orphan has to go first.
+      #
+      # Only between attempts, never before the first: on a fresh runner the only
+      # thing that could hold that lock is the system's own unattended-upgrades,
+      # and killing a transaction we did not start is the thing the original
+      # comment here rightly warned about.
       - name: Install Playwright system dependencies
         timeout-minutes: 20
         run: |
           set -euo pipefail
+
           sudo mkdir -p /var/cache/apt/archives
           if compgen -G "$HOME/.cache/apt-playwright/*.deb" > /dev/null; then
             echo "Seeding apt from $(ls "$HOME"/.cache/apt-playwright/*.deb | wc -l) cached packages"
             sudo cp -n "$HOME"/.cache/apt-playwright/*.deb /var/cache/apt/archives/
           fi
 
-          npx playwright install-deps chromium webkit
+          clear_apt_orphan() {
+            sudo pkill -TERM -x apt-get 2>/dev/null || true
+            sudo pkill -TERM -x dpkg 2>/dev/null || true
+            for _ in $(seq 1 30); do
+              if ! pgrep -x apt-get >/dev/null && ! pgrep -x dpkg >/dev/null; then
+                sudo dpkg --configure -a || true
+                return 0
+              fi
+              sleep 2
+            done
+            echo "::warning title=apt lock::Orphan ignored TERM, escalating to KILL"
+            sudo pkill -KILL -x apt-get 2>/dev/null || true
+            sudo pkill -KILL -x dpkg 2>/dev/null || true
+            sleep 2
+            sudo dpkg --configure -a || true
+          }
 
-          # Repopulate for the next run. cp -n so a partially warm cache is
-          # topped up rather than rewritten.
-          mkdir -p "$HOME/.cache/apt-playwright"
-          sudo cp -n /var/cache/apt/archives/*.deb "$HOME/.cache/apt-playwright/" 2>/dev/null || true
-          sudo chown -R "$(id -u):$(id -g)" "$HOME/.cache/apt-playwright"
-          echo "Cache now holds $(ls "$HOME"/.cache/apt-playwright/*.deb 2>/dev/null | wc -l) packages"
+          save_cache() {
+            mkdir -p "$HOME/.cache/apt-playwright"
+            sudo cp -n /var/cache/apt/archives/*.deb "$HOME/.cache/apt-playwright/" 2>/dev/null || true
+            sudo chown -R "$(id -u):$(id -g)" "$HOME/.cache/apt-playwright"
+            echo "Cache now holds $(ls "$HOME"/.cache/apt-playwright/*.deb 2>/dev/null | wc -l) packages"
+          }
+
+          # 5m not 6m so three attempts plus two lock waits stay inside the
+          # step deadline; a healthy install is about 40s either way.
+          for attempt in 1 2 3; do
+            echo "Playwright system dependency attempt ${attempt}/3"
+            if timeout --signal=TERM --kill-after=30s 5m \
+              npx playwright install-deps chromium webkit; then
+              save_cache
+              exit 0
+            fi
+
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning title=apt retry::Attempt ${attempt} timed out or failed; clearing the dpkg lock and retrying"
+              clear_apt_orphan
+              sleep 10
+            fi
+          done
+
+          echo "::error title=Playwright system dependencies failed::Three bounded attempts failed"
+          exit 1
 
       - name: Restore Playwright browser cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
