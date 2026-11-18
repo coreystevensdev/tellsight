@@ -348,56 +348,6 @@ jobs:
           path: ~/.cache/apt-playwright
           key: apt-playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
 
-      # TEMPORARY, removed before merge. Proves the orphan-and-recovery path by
-      # creating the exact condition: kill install-deps mid-download and check
-      # that an apt-get survives holding the lock, then that clearing it works.
-      - name: PROOF orphaned apt-get holds the lock and gets cleared
-        timeout-minutes: 8
-        run: |
-          set -euo pipefail
-
-          clear_apt_orphan() {
-            sudo pkill -TERM -x apt-get 2>/dev/null || true
-            sudo pkill -TERM -x dpkg 2>/dev/null || true
-            for _ in $(seq 1 30); do
-              if ! pgrep -x apt-get >/dev/null && ! pgrep -x dpkg >/dev/null; then
-                sudo dpkg --configure -a || true
-                return 0
-              fi
-              sleep 2
-            done
-            sudo pkill -KILL -x apt-get 2>/dev/null || true
-            sudo pkill -KILL -x dpkg 2>/dev/null || true
-            sleep 2
-            sudo dpkg --configure -a || true
-          }
-
-          echo "--- killing install-deps after 20s to orphan its apt-get ---"
-          timeout --signal=TERM --kill-after=5s 20s \
-            npx playwright install-deps chromium webkit || true
-
-          orphans=$(pgrep -x apt-get | wc -l | tr -d ' ')
-          echo "PROOF orphaned apt-get processes after the kill: ${orphans}"
-
-          if [ "${orphans}" -gt 0 ]; then
-            echo "PROOF does dpkg --configure -a fail while the orphan lives?"
-            if sudo dpkg --configure -a; then
-              echo "PROOF unexpected: dpkg succeeded despite a live orphan"
-            else
-              echo "PROOF confirmed: dpkg cannot take the lock, which is why the guard alone was useless"
-            fi
-          else
-            echo "PROOF no orphan survived this kill, so the retry would have been safe anyway"
-          fi
-
-          echo "--- clearing ---"
-          clear_apt_orphan
-          echo "PROOF orphans after clear: $(pgrep -x apt-get | wc -l | tr -d ' ')"
-
-          echo "--- a real install must now succeed ---"
-          timeout --signal=TERM --kill-after=30s 10m npx playwright install-deps chromium webkit
-          echo "PROOF recovery install succeeded"
-
       # Retries only matter on a cache miss, which is once per Playwright
       # version. A hit installs from the seeded .debs and never touches a mirror.
       #
