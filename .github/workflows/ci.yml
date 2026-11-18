@@ -309,6 +309,20 @@ jobs:
 
       - uses: ./.github/actions/setup-workspace
 
+      # A stalled mirror connection, not a slow one, is what fails this job: the
+      # step takes 31s when it works and otherwise hangs to the timeout with a
+      # download part-finished. Retrying the step is still wrong, because an
+      # interrupted apt transaction leaves dpkg half-configured, so the retry
+      # goes where it cannot do that: apt's own acquire layer, which gives up on
+      # a stalled socket and refetches without ever interrupting the install.
+      - name: Make apt give up on a stalled mirror rather than hang
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99-stalled-mirror >/dev/null <<'EOF'
+          Acquire::Retries "3";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          EOF
+
       # Keep apt and browser downloads separate so a slow runner says which
       # phase failed. System package work is not safe to interrupt and retry
       # mid-transaction, but it is bounded so it cannot hold CI indefinitely.
