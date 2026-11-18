@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { isShopifyShopDomain } from 'shared/constants';
 import { apiClient } from '@/lib/api-client';
+import { usePlaidConnect } from './usePlaidConnect';
 import type { IntegrationAction, IntegrationStatus } from './IntegrationCard';
 
 interface QuickBooksStatus extends IntegrationStatus {
@@ -24,6 +25,12 @@ interface ShopifyStatus extends IntegrationStatus {
   connectedAt?: string;
 }
 
+interface PlaidStatus extends IntegrationStatus {
+  provider?: string;
+  institutionName?: string | null;
+  connectedAt?: string;
+}
+
 function isNotConfigured(error: unknown) {
   return (error as { code?: string } | null)?.code === 'INTEGRATION_NOT_CONFIGURED';
 }
@@ -32,19 +39,21 @@ export function useIntegrations() {
   const [quickBooks, setQuickBooks] = useState<QuickBooksStatus | null>(null);
   const [shopify, setShopify] = useState<ShopifyStatus | null>(null);
   const [square, setSquare] = useState<SquareStatus | null>(null);
+  const [plaid, setPlaid] = useState<PlaidStatus | null>(null);
   const [shopDomain, setShopDomain] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [quickBooksAction, setQuickBooksAction] = useState<IntegrationAction>(null);
   const [shopifyAction, setShopifyAction] = useState<IntegrationAction>(null);
   const [squareAction, setSquareAction] = useState<IntegrationAction>(null);
+  const [plaidAction, setPlaidAction] = useState<IntegrationAction>(null);
 
   const trimmedShopDomain = shopDomain.trim();
   const shopDomainValid = isShopifyShopDomain(trimmedShopDomain);
 
   const load = useCallback(async () => {
     try {
-      const [quickBooksResponse, shopifyResponse, squareResponse] = await Promise.all([
+      const [quickBooksResponse, shopifyResponse, squareResponse, plaidResponse] = await Promise.all([
         apiClient<QuickBooksStatus>('/integrations/quickbooks/status').catch((loadError) => ({
           data: { connected: false, configured: !isNotConfigured(loadError) } as QuickBooksStatus,
         })),
@@ -54,10 +63,14 @@ export function useIntegrations() {
         apiClient<SquareStatus>('/integrations/square/status').catch((loadError) => ({
           data: { connected: false, configured: !isNotConfigured(loadError) } as SquareStatus,
         })),
+        apiClient<PlaidStatus>('/integrations/plaid/status').catch((loadError) => ({
+          data: { connected: false, configured: !isNotConfigured(loadError) } as PlaidStatus,
+        })),
       ]);
       setQuickBooks({ configured: true, ...quickBooksResponse.data });
       setShopify({ configured: true, ...shopifyResponse.data });
       setSquare({ configured: true, ...squareResponse.data });
+      setPlaid({ configured: true, ...plaidResponse.data });
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Failed to load integrations');
     } finally {
@@ -194,6 +207,37 @@ export function useIntegrations() {
     }
   }
 
+  // Connecting is the only one that differs: Link opens in an iframe here
+  // instead of navigating to the provider, so the flow lives in its own hook.
+  const { connect: connectPlaid, connecting: plaidConnecting } = usePlaidConnect({
+    onConnected: load,
+    onError: setError,
+  });
+
+  async function syncPlaid() {
+    setPlaidAction('syncing');
+    try {
+      await apiClient('/integrations/plaid/sync', { method: 'POST' });
+      await load();
+    } catch (syncError) {
+      setError(syncError instanceof Error ? syncError.message : 'Failed to start bank sync');
+    } finally {
+      setPlaidAction(null);
+    }
+  }
+
+  async function disconnectPlaid() {
+    setPlaidAction('disconnecting');
+    try {
+      await apiClient('/integrations/plaid', { method: 'DELETE' });
+      setPlaid({ connected: false, configured: true });
+    } catch (disconnectError) {
+      setError(disconnectError instanceof Error ? disconnectError.message : 'Failed to disconnect');
+    } finally {
+      setPlaidAction(null);
+    }
+  }
+
   return {
     quickBooks,
     shopify,
@@ -217,5 +261,12 @@ export function useIntegrations() {
     connectSquare,
     syncSquare,
     disconnectSquare,
+    plaid,
+    // usePlaidConnect owns the connecting state, so it is folded into the same
+    // IntegrationAction the card already understands rather than exposed apart.
+    plaidAction: plaidConnecting ? ('connecting' as IntegrationAction) : plaidAction,
+    connectPlaid,
+    syncPlaid,
+    disconnectPlaid,
   };
 }

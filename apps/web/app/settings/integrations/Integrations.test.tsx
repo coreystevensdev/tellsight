@@ -9,13 +9,28 @@ import userEvent from '@testing-library/user-event';
 const apiClient = vi.fn();
 vi.mock('@/lib/api-client', () => ({ apiClient: (...args: unknown[]) => apiClient(...args) }));
 
+// The real SDK injects a script tag from Plaid's CDN, which jsdom would try to
+// fetch. `open` is captured so the tests can assert Link was opened without
+// standing up an iframe.
+const plaidOpen = vi.fn();
+vi.mock('react-plaid-link', () => ({
+  usePlaidLink: (opts: { token: string | null }) => ({
+    open: plaidOpen,
+    ready: Boolean(opts.token),
+  }),
+}));
+
 import Integrations from './Integrations';
 
+// Explicit rather than falling through to one provider. It used to return
+// 'shopify' for anything unmatched, so adding Plaid silently served it
+// Shopify's payload and the only symptom was a card showing the wrong thing.
 function status(path: string) {
   const p = String(path);
-  if (p.includes('quickbooks')) return 'quickbooks';
-  if (p.includes('square')) return 'square';
-  return 'shopify';
+  for (const name of ['quickbooks', 'square', 'shopify', 'plaid'] as const) {
+    if (p.includes(name)) return name;
+  }
+  throw new Error(`status() does not know this provider: ${p}`);
 }
 
 /** Answers every status call, then hands later calls to `then`. */
@@ -24,12 +39,11 @@ function respondWith(
   shopify: unknown,
   then?: (path: string) => unknown,
   square: unknown = { connected: false },
+  plaid: unknown = { connected: false },
 ) {
+  const byProvider = { quickbooks: qb, shopify, square, plaid };
   apiClient.mockImplementation(async (path: string) => {
-    if (path.endsWith('/status')) {
-      const which = status(path);
-      return { data: which === 'quickbooks' ? qb : which === 'square' ? square : shopify };
-    }
+    if (path.endsWith('/status')) return { data: byProvider[status(path)] };
     if (then) return then(path);
     return { data: {} };
   });
@@ -42,6 +56,7 @@ function section(name: RegExp) {
 
 beforeEach(() => {
   apiClient.mockReset();
+  plaidOpen.mockReset();
   // jsdom's window.location is not writable, and stubGlobal('location') does
   // not reach window.location, which is what the component assigns to.
   Object.defineProperty(window, 'location', {
@@ -57,7 +72,7 @@ describe('Integrations loading', () => {
 
     render(<Integrations />);
 
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(3));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(4));
   });
 
   // Each status call has its own catch returning { connected: false }. Without
@@ -111,7 +126,7 @@ describe('Integrations actions', () => {
 
     const user = userEvent.setup({ delay: null });
     render(<Integrations />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(3));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(4));
     await user.click(within(section(/QuickBooks/)).getByRole('button', { name: 'Connect' }));
 
     await waitFor(() =>
@@ -128,7 +143,7 @@ describe('Integrations actions', () => {
 
     const user = userEvent.setup({ delay: null });
     render(<Integrations />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(3));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(4));
     await user.type(screen.getByPlaceholderText('your-store.myshopify.com'), '  my-store.myshopify.com  ');
     await user.click(within(section(/Shopify/)).getByRole('button', { name: 'Connect' }));
 
@@ -156,7 +171,7 @@ describe('Integrations actions', () => {
     render(<Integrations />);
 
     await waitFor(() =>
-      expect(screen.getAllByText(/not available in this deployment/i)).toHaveLength(3),
+      expect(screen.getAllByText(/not available in this deployment/i)).toHaveLength(4),
     );
     expect(screen.queryByRole('button', { name: 'Connect' })).toBeNull();
   });
@@ -174,7 +189,7 @@ describe('Integrations actions', () => {
 
     render(<Integrations />);
 
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(3));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(4));
     expect(screen.queryByText(/not available in this deployment/i)).toBeNull();
   });
 
@@ -219,7 +234,7 @@ describe('Integrations actions', () => {
 
     const user = userEvent.setup({ delay: null });
     render(<Integrations />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(3));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(4));
     await user.click(within(section(/QuickBooks/)).getByRole('button', { name: 'Connect' }));
 
     expect(await screen.findByText('Intuit is unavailable')).toBeInTheDocument();
@@ -286,7 +301,7 @@ describe('Shopify needs a store domain before Connect does anything', () => {
 // QuickBooks and Shopify also shared an emerald tile, so two of the three were
 // identical but for their heading. Tile colour alone is not identification.
 describe('each connector card shows its own mark', () => {
-  it('gives the three cards three different marks', async () => {
+  it('gives every card its own mark', async () => {
     respondWith({ connected: true, companyName: '9341457586501237' }, { connected: false }, undefined, {
       connected: true,
       merchantId: 'MLWEC01GRVSA3',
@@ -296,8 +311,13 @@ describe('each connector card shows its own mark', () => {
 
     const marks = [...document.querySelectorAll('[data-mark]')].map((n) => n.getAttribute('data-mark'));
 
-    expect(marks).toEqual(['quickbooks', 'shopify', 'square']);
-    expect(new Set(marks).size).toBe(3);
+    expect(marks).toEqual(['quickbooks', 'shopify', 'square', 'bank']);
+    // 'bank' rather than a Plaid mark on purpose: the card is about the owner's
+    // bank, and there is no verified Plaid path to draw from.
+    // Distinctness against the list's own length rather than a literal, which
+    // is the assertion that actually matters and does not need editing when a
+    // fifth connector lands.
+    expect(new Set(marks).size).toBe(marks.length);
   });
 
   it('keeps the provider mark when disconnected, rather than a generic slot', async () => {
