@@ -302,7 +302,12 @@ jobs:
     name: E2E Tests
     needs: seed-validation
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    # Sized to the step budgets below rather than to a healthy run, which takes
+    # about five minutes. apt and the browser download can claim 20 and 12 on a
+    # bad mirror, and the unbudgeted compose and test steps need about eight, so
+    # 25 was already under-committed by seven and would have killed a slow run
+    # that was going to pass.
+    timeout-minutes: 40
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -324,17 +329,47 @@ jobs:
           EOF
 
       # Keep apt and browser downloads separate so a slow runner says which
-      # phase failed. System package work is not safe to interrupt and retry
-      # mid-transaction, but it is bounded so it cannot hold CI indefinitely.
+      # phase failed.
       #
-      # 20 rather than 10 because the mirror degrades two different ways and the
-      # config above only covers one. On 2026-11-18 apt made steady progress for
-      # the whole ten minutes and was still fetching at package 62 of ~65 when
-      # the ceiling killed it, roughly fifteen times slower than the 31s a
-      # healthy run takes. Nothing was wrong except the budget.
+      # This step used to run once with a rising deadline, which does not fit how
+      # the mirror actually behaves. Measured 2026-11-18: 36s at 02:05, a kill at
+      # the 20-minute ceiling at 02:15, then 44s at 02:37 for the same 125 MB. The
+      # bad window is minutes long, so no single deadline is both safe and useful,
+      # and a retry is nearly free.
+      #
+      # The old comment said system package work is unsafe to interrupt and retry,
+      # which is true in general and did not apply to any failure seen here: every
+      # one died mid `Get:` line with no Unpacking or Setting up reached, so no
+      # transaction existed to corrupt. dpkg --configure -a covers the case where a
+      # later attempt does get killed past that point.
+      #
+      # Each attempt keeps whatever the last one finished downloading, because
+      # /var/cache/apt/archives survives within a job, so a slow mirror makes
+      # progress across attempts rather than starting over. That does not apply to
+      # a job rerun, which gets a fresh VM and an empty cache.
       - name: Install Playwright system dependencies
         timeout-minutes: 20
-        run: npx playwright install-deps chromium webkit
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            echo "Playwright system dependency attempt ${attempt}/3"
+
+            # No-op when nothing is half-configured, which is the normal case.
+            sudo dpkg --configure -a || true
+
+            if timeout --signal=TERM --kill-after=30s 6m \
+              npx playwright install-deps chromium webkit; then
+              exit 0
+            fi
+
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning title=apt retry::System dependency install timed out or failed; retrying in 20 seconds"
+              sleep 20
+            fi
+          done
+
+          echo "::error title=Playwright system dependencies failed::Three bounded attempts failed"
+          exit 1
 
       - name: Restore Playwright browser cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
