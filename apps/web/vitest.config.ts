@@ -2,12 +2,12 @@ import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
 
+import { vitestCachePath } from '../../packages/shared/src/test/vitestCachePath.js';
+
 export default defineConfig({
   plugins: [react()],
   test: {
-    // Keep concurrent Turbo tasks from racing over Vitest's workspace-level
-    // transformed-module cache during startup cleanup.
-    fsModuleCachePath: '../../node_modules/.vitest-cache/web',
+    fsModuleCachePath: vitestCachePath('web'),
     environment: 'jsdom',
     setupFiles: ['../../packages/shared/src/test/blockExternalNetwork.ts', './test/setup.ts'],
     include: ['**/*.test.{ts,tsx}'],
