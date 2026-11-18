@@ -155,6 +155,25 @@ export async function updateLastSyncedAt(
     .where(eq(integrationConnections.id, id));
 }
 
+/**
+ * Stores Plaid's /transactions/sync cursor.
+ *
+ * Written in the same transaction as the rows it accounts for, because the
+ * cursor is a claim that everything before it has been persisted. Committing it
+ * separately would let a failed write leave transactions marked as seen that no
+ * row exists for, and nothing later would ask for them again.
+ */
+export async function updateSyncCursor(
+  id: number,
+  cursor: string,
+  client: typeof db | DbTransaction = db,
+): Promise<void> {
+  await client
+    .update(integrationConnections)
+    .set({ syncCursor: cursor, updatedAt: new Date() })
+    .where(eq(integrationConnections.id, id));
+}
+
 export async function deleteByOrgAndProvider(
   orgId: number,
   provider: string,

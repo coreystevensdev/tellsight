@@ -18,6 +18,7 @@ import {
 import * as qbOAuth from '../services/integrations/quickbooks/oauth.js';
 import { removeDailySync } from '../services/integrations/scheduler.js';
 import { enqueueSyncJob } from '../services/integrations/worker.js';
+import { requireRefreshToken } from '../services/integrations/tokenRotation.js';
 
 export function registerQuickBooksIntegrationRoutes(router: Router): void {
   router.post('/quickbooks/connect', async (req: Request, res: Response) => {
@@ -112,7 +113,7 @@ export function registerQuickBooksIntegrationRoutes(router: Router): void {
         return;
       }
 
-      await qbOAuth.revokeToken(connection.encryptedRefreshToken);
+      await qbOAuth.revokeToken(requireRefreshToken(connection));
       await removeDailySync(user.org_id);
       await withRlsContext(user.org_id, user.isAdmin, (tx) =>
         integrationConnectionsQueries.deleteByOrgAndProvider(user.org_id, 'quickbooks', tx),

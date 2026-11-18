@@ -10,6 +10,7 @@ import {
   TokenRevokedError,
 } from './errors.js';
 import type { SquareLocation, SquareOrder } from './types.js';
+import { requireTokenExpiry } from '../tokenRotation.js';
 
 const SQUARE_VERSION = '2026-08-19';
 const REQUEST_TIMEOUT_MS = 20_000;
@@ -36,7 +37,7 @@ export async function createSquareClient(connectionId: number): Promise<SquareCl
   if (!connection) throw new ConnectionNotFoundError(connectionId);
 
   let accessToken = decrypt(connection.encryptedAccessToken);
-  let expiresAt = connection.accessTokenExpiresAt;
+  let expiresAt = requireTokenExpiry(connection);
   let refreshing: Promise<void> | null = null;
 
   async function ensureFreshToken() {

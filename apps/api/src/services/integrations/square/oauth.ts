@@ -7,6 +7,7 @@ import { ExternalServiceError } from '../../../lib/appError.js';
 import { integrationConnectionsQueries } from '../../../db/queries/index.js';
 import { adoptRotatedTokens, commitRotatedTokens } from '../tokenRotation.js';
 import { encrypt, decrypt } from '../encryption.js';
+import { requireRefreshToken } from '../tokenRotation.js';
 
 // Read-only, same posture as the other connectors: nothing here writes back to
 // the seller's account. MERCHANT_PROFILE_READ is not about the profile, it is
@@ -193,7 +194,7 @@ export async function refreshAccessToken(connectionId: number): Promise<{
   if (!connection) throw new Error(`Connection ${connectionId} not found`);
 
   // Held so the write can compare against it; see tokenRotation.ts.
-  const startedFrom = connection.encryptedRefreshToken;
+  const startedFrom = requireRefreshToken(connection);
 
   let tokens;
   try {

@@ -10,6 +10,7 @@ import {
   QbApiError,
   ConnectionNotFoundError,
 } from './errors.js';
+import { requireTokenExpiry } from '../tokenRotation.js';
 
 const BASE_URLS = {
   sandbox: 'https://sandbox-quickbooks.api.intuit.com',
@@ -46,7 +47,7 @@ export async function createQbClient(connectionId: number): Promise<QbClient> {
   const baseUrl = BASE_URLS[env.QUICKBOOKS_ENVIRONMENT ?? 'sandbox'];
 
   let accessToken = decrypt(connection.encryptedAccessToken);
-  let expiresAt = connection.accessTokenExpiresAt;
+  let expiresAt = requireTokenExpiry(connection);
 
   let refreshing: Promise<void> | null = null;
 

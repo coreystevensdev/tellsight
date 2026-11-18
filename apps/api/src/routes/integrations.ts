@@ -1,11 +1,18 @@
 import { Router } from 'express';
 import type { Response, Request } from 'express';
 
-import { env, isQbConfigured, isShopifyConfigured, isSquareConfigured } from '../config.js';
+import {
+  env,
+  isPlaidConfigured,
+  isQbConfigured,
+  isShopifyConfigured,
+  isSquareConfigured,
+} from '../config.js';
 import { registerIntegrationCallbacks } from './integrationCallbacks.js';
 import { registerSquareIntegrationRoutes } from './squareIntegrationRoutes.js';
 import { registerShopifyIntegrationRoutes } from './shopifyIntegrationRoutes.js';
 import { registerQuickBooksIntegrationRoutes } from './quickbooksIntegrationRoutes.js';
+import { registerPlaidIntegrationRoutes } from './plaidIntegrationRoutes.js';
 
 function qbGuard(_req: Request, res: Response, next: () => void) {
   if (!isQbConfigured(env)) {
@@ -33,6 +40,19 @@ function shopifyGuard(_req: Request, res: Response, next: () => void) {
   next();
 }
 
+function plaidGuard(_req: Request, res: Response, next: () => void) {
+  if (!isPlaidConfigured(env)) {
+    res.status(501).json({
+      error: {
+        code: 'INTEGRATION_NOT_CONFIGURED',
+        message: 'Bank connections are not configured',
+      },
+    });
+    return;
+  }
+  next();
+}
+
 function squareGuard(_req: Request, res: Response, next: () => void) {
   if (!isSquareConfigured(env)) {
     res.status(501).json({
@@ -53,12 +73,15 @@ export const integrationsRouter = Router();
 integrationsRouter.use('/quickbooks', qbGuard);
 integrationsRouter.use('/shopify', shopifyGuard);
 integrationsRouter.use('/square', squareGuard);
+integrationsRouter.use('/plaid', plaidGuard);
 
 registerQuickBooksIntegrationRoutes(integrationsRouter);
 
 registerShopifyIntegrationRoutes(integrationsRouter);
 
 registerSquareIntegrationRoutes(integrationsRouter);
+
+registerPlaidIntegrationRoutes(integrationsRouter);
 
 // Public callback routes (providers redirect the browser here, no auth cookies)
 export const integrationsCallbackRouter = Router();

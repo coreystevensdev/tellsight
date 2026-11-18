@@ -48,3 +48,25 @@ There is a failure mode worth naming, because it produces something worse than t
 Nothing in the test suite can confirm a nonce matched. A mismatch is a blank page in a real browser, so verification is browser-only and the E2E job is the only thing that would catch it.
 
 Revisit this if any of the following change: the app starts injecting HTML it did not author, `connect-src` has to widen to third-party origins, the static-rendering count drops far enough that the per-request cost stops mattering, or Next.js gains a way to apply a nonce without routing every request through middleware.
+
+## Amendment, 2026-11-18: connect-src now names Plaid, and the decision holds anyway
+
+This ADR's own revisit condition fired. Its last line lists "`connect-src` has to widen to third-party origins" as a reason to reconsider, and adding the Plaid connector did exactly that.
+
+The policy now carries three Plaid origins:
+
+```
+script-src  ... https://cdn.plaid.com/link/v2/stable/link-initialize.js
+frame-src   https://cdn.plaid.com
+connect-src 'self' https://production.plaid.com https://sandbox.plaid.com
+```
+
+None of that was avoidable. Plaid Link is the only way to connect a bank account, since Plaid will not let a server collect bank credentials, and their documentation requires the SDK be "loaded directly from the CDN, not bundled or hosted". Self-hosting the script, which would have spared `script-src`, is explicitly unsupported. `frame-src` is new: Link renders in an iframe and without the directive it fell through to `default-src 'self'` and was blocked.
+
+**Why the original decision still stands.** The reasoning above treats `connect-src 'self'` as the compensating control for a knowingly weak `script-src`: an injected script runs, but it has nowhere to send anything. That argument degrades rather than collapses, because the two new destinations are Plaid's own authenticated API. An injected script can now reach them, and gains very little by doing so: every Plaid endpoint authenticates per request with a `client_id` and `secret` in the body, so data posted there is not retrievable without an attacker's own Plaid account, and Plaid is not a storage service an attacker can read back out of. The hole is a named, authenticated third party rather than a general exfiltration channel, which is a materially different thing from a wildcard or a CDN with attacker-writable paths.
+
+What this does mean is that the compensating control is now scoped rather than absolute, and the next widening should not get the same easy answer. A third-party origin that will echo content back, accept arbitrary paths, or store without authentication would break the argument rather than bend it.
+
+**One thing this amendment adds.** There was no test asserting any of this. A security header with no assertion is one careless edit from being gone, and that mattered less when every source was `'self'`. `next.config.test.ts` now pins the directives, so widening the policy takes a deliberate test change rather than a quiet one.
+
+Plaid did not force the nonce migration. Their non-nonce path wants `'unsafe-inline'` in `script-src`, which this policy already has, so the measurement and the fail-open trap described above are untouched.

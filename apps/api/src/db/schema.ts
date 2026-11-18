@@ -429,9 +429,14 @@ export const integrationConnections = pgTable(
       .references(() => orgs.id, { onDelete: 'cascade' }),
     provider: varchar({ length: 50 }).notNull(),
     providerTenantId: varchar('provider_tenant_id', { length: 255 }).notNull(),
-    encryptedRefreshToken: text('encrypted_refresh_token').notNull(),
+    // Nullable for Plaid, whose access token neither expires nor has a refresh
+    // token (DW-282). Every other connector still writes all three.
+    encryptedRefreshToken: text('encrypted_refresh_token'),
     encryptedAccessToken: text('encrypted_access_token').notNull(),
-    accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }).notNull(),
+    accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }),
+    // Plaid's /transactions/sync cursor. Null means never synced, which is what
+    // Plaid reads as "from the start of history".
+    syncCursor: text('sync_cursor'),
     scope: varchar({ length: 500 }),
     lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
     syncStatus: varchar('sync_status', { length: 20 }).notNull().default('idle'),
