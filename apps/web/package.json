@@ -29,6 +29,7 @@
     "radix-ui": "^1.8.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",
+    "react-plaid-link": "5.0.0",
     "recharts": "^3.9.2",
     "shared": "workspace:*",
     "sonner": "^2.0.8",

@@ -67,6 +67,7 @@ const EXPECTED_FAILURES = new Map<string, Set<number>>([
   ['/api/integrations/quickbooks/status', new Set([501])],
   ['/api/integrations/shopify/status', new Set([501])],
   ['/api/integrations/square/status', new Set([501])],
+  ['/api/integrations/plaid/status', new Set([501])],
 ]);
 
 const AUTHENTICATED_ROUTES = [

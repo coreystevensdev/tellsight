@@ -125,6 +125,28 @@ export default function Integrations() {
           onDisconnect={integrations.disconnectSquare}
           iconClassName="bg-slate-100 dark:bg-slate-800"
         />
+
+        {/* First card in the list whose connector is not the brand it talks to.
+            An owner connects their bank; Plaid is the plumbing and naming it
+            here would ask them to recognise a company they have no relationship
+            with. It is also the only source that sees both sides of the ledger
+            without any accounting software, which is what the description says
+            rather than listing the mechanism. */}
+        <IntegrationCard
+          connector="bank"
+          title="Bank account"
+          description={
+            integrations.plaid?.connected
+              ? `Connected to ${integrations.plaid.institutionName ?? 'your bank'}`
+              : 'Bring in money in and money out, straight from your bank.'
+          }
+          status={integrations.plaid}
+          action={integrations.plaidAction}
+          onConnect={integrations.connectPlaid}
+          onSync={integrations.syncPlaid}
+          onDisconnect={integrations.disconnectPlaid}
+          iconClassName="bg-slate-100 dark:bg-slate-800"
+        />
       </div>
     </div>
   );

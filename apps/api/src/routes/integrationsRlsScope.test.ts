@@ -34,13 +34,26 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-const CALLS = sourceFiles(ROOT).flatMap((file) =>
-  [...readFileSync(file, 'utf8').matchAll(/integrationConnectionsQueries\.(\w+)\(([\s\S]*?)\);/g)].map((m) => ({
-    file: file.slice(ROOT.length),
-    fn: m[1]!,
-    args: m[2]!,
-  })),
-);
+function callsTo(queryModule: string) {
+  const pattern = new RegExp(`${queryModule}\\.(\\w+)\\(([\\s\\S]*?)\\);`, 'g');
+  return sourceFiles(ROOT).flatMap((file) =>
+    [...readFileSync(file, 'utf8').matchAll(pattern)].map((m) => ({
+      file: file.slice(ROOT.length),
+      fn: m[1]!,
+      args: m[2]!,
+    })),
+  );
+}
+
+const CALLS = callsTo('integrationConnectionsQueries');
+
+// datasets carries the same tenant policy, and an unscoped read of it is worse
+// than an unscoped write: RLS returns no rows rather than raising, so the
+// symptom is a field that looks like missing data. A unit test cannot see this
+// at all, because it mocks the query module and a mock does not care which
+// client it was handed. All 36 call sites already pass one; this keeps it that
+// way.
+const DATASET_CALLS = callsTo('datasetsQueries');
 
 describe('integration_connections queries are always org-scoped', () => {
   it('finds the call sites at all, so a rename cannot empty this test', () => {
@@ -68,6 +81,12 @@ describe('integration_connections queries are always org-scoped', () => {
     for (const fn of ['getByIdAndProvider', 'getByOrgAndProvider', 'deleteByOrgAndProvider', 'upsert']) {
       expect(seen).toContain(fn);
     }
+  });
+
+  it('scopes every datasets query too, where an unscoped read returns nothing instead of failing', () => {
+    expect(DATASET_CALLS.length).toBeGreaterThanOrEqual(30);
+    const unscoped = DATASET_CALLS.filter((c) => !/\btx\b|\bdbAdmin\b|\bclient\b/.test(c.args));
+    expect(unscoped.map((c) => `${c.file} ${c.fn}`)).toEqual([]);
   });
 
   // The callbacks are public: the provider redirects the browser there with no

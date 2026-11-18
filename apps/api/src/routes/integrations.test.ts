@@ -43,6 +43,7 @@ class RoleGuardError extends Error {
 const mockGetByOrgAndProvider = vi.fn();
 const mockUpsert = vi.fn();
 const mockDeleteByOrgAndProvider = vi.fn();
+const mockGetDatasetsByOrg = vi.fn().mockResolvedValue([]);
 const mockGenerateAuthUrl = vi.fn();
 const mockExchangeCode = vi.fn();
 const mockRevokeToken = vi.fn();
@@ -121,6 +122,7 @@ vi.mock('../config.js', () => ({
   isQbConfigured: () => true,
   isShopifyConfigured: () => true,
   isSquareConfigured: () => true,
+  isPlaidConfigured: () => true,
 }));
 
 vi.mock('../db/queries/index.js', () => ({
@@ -128,6 +130,10 @@ vi.mock('../db/queries/index.js', () => ({
     getByOrgAndProvider: mockGetByOrgAndProvider,
     upsert: mockUpsert,
     deleteByOrgAndProvider: mockDeleteByOrgAndProvider,
+  },
+  datasetsQueries: {
+    getDatasetsByOrg: mockGetDatasetsByOrg,
+    createDataset: vi.fn(),
   },
 }));
 
@@ -346,6 +352,70 @@ describe('integrations routes', () => {
       await handler(req, res, vi.fn());
 
       expect(res.statusCode).toBe(404);
+    });
+  });
+
+  // The Plaid card reads this to show which bank is connected, and the item id
+  // in providerTenantId is not a name, so the institution comes from the dataset.
+  describe('GET /plaid/status', () => {
+    it('names the institution from the dataset rather than the Plaid item id', async () => {
+      mockGetByOrgAndProvider.mockResolvedValueOnce({
+        id: 9,
+        providerTenantId: 'item-abc123',
+        syncStatus: 'idle',
+        lastSyncedAt: new Date('2026-11-17T03:00:00Z'),
+        syncError: null,
+        createdAt: new Date('2026-11-16T14:00:00Z'),
+      });
+      mockGetDatasetsByOrg.mockResolvedValueOnce([
+        { id: 4, sourceType: 'plaid', name: 'Bank, Chase' },
+      ]);
+
+      const { integrationsRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsRouter, 'GET', '/plaid/status');
+
+      const res = createMockRes();
+      await handler(createMockReq(), res, vi.fn());
+
+      expect(res._json?.data?.connected).toBe(true);
+      expect(res._json?.data?.provider).toBe('plaid');
+      expect(res._json?.data?.institutionName).toBe('Chase');
+      // Never the raw item id, which is what the owner would otherwise be shown.
+      expect(JSON.stringify(res._json)).not.toContain('item-abc123');
+    });
+
+    it('reports a null institution when the dataset is gone rather than failing', async () => {
+      mockGetByOrgAndProvider.mockResolvedValueOnce({
+        id: 9,
+        providerTenantId: 'item-abc123',
+        syncStatus: 'idle',
+        lastSyncedAt: null,
+        syncError: null,
+        createdAt: new Date('2026-11-16T14:00:00Z'),
+      });
+      mockGetDatasetsByOrg.mockResolvedValueOnce([]);
+
+      const { integrationsRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsRouter, 'GET', '/plaid/status');
+
+      const res = createMockRes();
+      await handler(createMockReq(), res, vi.fn());
+
+      expect(res._json?.data?.connected).toBe(true);
+      expect(res._json?.data?.institutionName).toBeNull();
+    });
+
+    it('returns disconnected when no bank is connected', async () => {
+      mockGetByOrgAndProvider.mockResolvedValueOnce(null);
+      mockGetDatasetsByOrg.mockResolvedValueOnce([]);
+
+      const { integrationsRouter } = await import('./integrations.js');
+      const handler = getRouteHandler(integrationsRouter, 'GET', '/plaid/status');
+
+      const res = createMockRes();
+      await handler(createMockReq(), res, vi.fn());
+
+      expect(res._json?.data?.connected).toBe(false);
     });
   });
 

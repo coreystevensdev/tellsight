@@ -21,6 +21,48 @@ export function registerPlaidIntegrationRoutes(router: Router): void {
   // redirect and therefore no oauthState nonce: the exchange below arrives on
   // the caller's own authenticated session, which is what the CSRF round trip
   // was standing in for everywhere else.
+  // Read-only, so no roleGuard: a member needs to see whether a bank is
+  // connected, the same as the other three providers allow.
+  router.get('/plaid/status', async (req: Request, res: Response) => {
+    const user = requireUser(req);
+    // Both reads in one scoped block. datasets carries the same tenant policy,
+    // and an unscoped read of it does not raise: RLS just returns no rows, so
+    // the institution name would come back null and look like missing data.
+    const { connection, dataset } = await withRlsContext(
+      user.org_id,
+      user.isAdmin,
+      async (tx) => ({
+        connection: await integrationConnectionsQueries.getByOrgAndProvider(
+          user.org_id,
+          'plaid',
+          tx,
+        ),
+        // providerTenantId is the Plaid Item id, not a name worth showing, so
+        // the institution comes from the dataset this connection writes to.
+        dataset: (await datasetsQueries.getDatasetsByOrg(user.org_id, tx)).find(
+          (ds) => ds.sourceType === 'plaid',
+        ),
+      }),
+    );
+
+    if (!connection) {
+      res.json({ data: { connected: false } });
+      return;
+    }
+
+    res.json({
+      data: {
+        connected: true,
+        provider: 'plaid',
+        institutionName: dataset?.name.replace(/^Bank, /, '') ?? null,
+        syncStatus: connection.syncStatus,
+        lastSyncedAt: connection.lastSyncedAt,
+        syncError: connection.syncError,
+        connectedAt: connection.createdAt,
+      },
+    });
+  });
+
   router.post('/plaid/link-token', roleGuard('owner'), async (req: Request, res: Response) => {
     const user = requireUser(req);
 
