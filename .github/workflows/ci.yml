@@ -302,7 +302,12 @@ jobs:
     name: E2E Tests
     needs: seed-validation
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    # Sized to the step budgets below rather than to a healthy run, which takes
+    # about five minutes. apt and the browser download can claim 20 and 12 on a
+    # bad mirror, and the unbudgeted compose and test steps need about eight, so
+    # 25 was already under-committed by seven and would have killed a slow run
+    # that was going to pass.
+    timeout-minutes: 40
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -321,20 +326,51 @@ jobs:
           Acquire::Retries "3";
           Acquire::http::Timeout "30";
           Acquire::https::Timeout "30";
+          APT::Keep-Downloaded-Packages "true";
           EOF
 
-      # Keep apt and browser downloads separate so a slow runner says which
-      # phase failed. System package work is not safe to interrupt and retry
-      # mid-transaction, but it is bounded so it cannot hold CI indefinitely.
+      # Caches the .deb files so a healthy mirror is needed once per Playwright
+      # version rather than once per run. On a hit apt installs from local files
+      # and never contacts the mirror, which is the only thing that has actually
+      # broken this job.
       #
-      # 20 rather than 10 because the mirror degrades two different ways and the
-      # config above only covers one. On 2026-11-18 apt made steady progress for
-      # the whole ten minutes and was still fetching at package 62 of ~65 when
-      # the ceiling killed it, roughly fifteen times slower than the 31s a
-      # healthy run takes. Nothing was wrong except the budget.
+      # Keyed on the Playwright version, not the lockfile: the dependency list
+      # only moves when Playwright does, and a lockfile key would miss on nearly
+      # every run and cache nothing useful.
+      - name: Resolve Playwright version for the cache key
+        id: pw
+        run: |
+          echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Restore apt archives for Playwright deps
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/apt-playwright
+          key: apt-playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
+
+      # One attempt, deliberately. A retry here is not safe: killing
+      # install-deps leaves the apt-get it spawned holding
+      # /var/lib/dpkg/lock-frontend, so every later attempt dies on the lock
+      # instead of retrying. Measured on #374, where all three attempts failed
+      # that way after the first was killed at its deadline.
       - name: Install Playwright system dependencies
         timeout-minutes: 20
-        run: npx playwright install-deps chromium webkit
+        run: |
+          set -euo pipefail
+          sudo mkdir -p /var/cache/apt/archives
+          if compgen -G "$HOME/.cache/apt-playwright/*.deb" > /dev/null; then
+            echo "Seeding apt from $(ls "$HOME"/.cache/apt-playwright/*.deb | wc -l) cached packages"
+            sudo cp -n "$HOME"/.cache/apt-playwright/*.deb /var/cache/apt/archives/
+          fi
+
+          npx playwright install-deps chromium webkit
+
+          # Repopulate for the next run. cp -n so a partially warm cache is
+          # topped up rather than rewritten.
+          mkdir -p "$HOME/.cache/apt-playwright"
+          sudo cp -n /var/cache/apt/archives/*.deb "$HOME/.cache/apt-playwright/" 2>/dev/null || true
+          sudo chown -R "$(id -u):$(id -g)" "$HOME/.cache/apt-playwright"
+          echo "Cache now holds $(ls "$HOME"/.cache/apt-playwright/*.deb 2>/dev/null | wc -l) packages"
 
       - name: Restore Playwright browser cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
