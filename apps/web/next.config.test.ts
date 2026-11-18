@@ -46,9 +46,17 @@ describe('Content-Security-Policy', () => {
 
   it('pins the Plaid origins to Plaid', () => {
     expect(source).toContain("const PLAID_CDN = 'https://cdn.plaid.com'");
-    expect(source).toContain(
-      "const PLAID_API_ORIGINS = 'https://production.plaid.com https://sandbox.plaid.com'",
-    );
+    expect(source).toContain("'https://production.plaid.com'");
+    expect(source).toContain("'https://sandbox.plaid.com'");
+  });
+
+  // Naming both at once was the first version and is unnecessary breadth: a
+  // deployment talks to one of them. Defaults to sandbox so a missing variable
+  // cannot silently allow the production origin.
+  it('selects one Plaid API origin rather than allowing both', () => {
+    expect(source).toContain('const PLAID_API_ORIGIN =');
+    expect(source).toContain("NEXT_PUBLIC_PLAID_ENVIRONMENT === 'production'");
+    expect(source).not.toMatch(/'https:\/\/production\.plaid\.com https:\/\/sandbox/);
   });
 
   // The directive that compensates for 'unsafe-inline'. Plaid's API origins are
@@ -58,7 +66,7 @@ describe('Content-Security-Policy', () => {
     const line = directive('connect-src');
 
     expect(line).toContain("'self'");
-    expect(line).toContain('PLAID_API_ORIGINS');
+    expect(line).toContain('PLAID_API_ORIGIN');
     expect(line).toContain('sentry');
     expect(line).not.toMatch(/https:\/\/(?!production\.plaid\.com|sandbox\.plaid\.com)/);
   });

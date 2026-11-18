@@ -58,8 +58,10 @@ The policy now carries three Plaid origins:
 ```
 script-src  ... https://cdn.plaid.com/link/v2/stable/link-initialize.js
 frame-src   https://cdn.plaid.com
-connect-src 'self' https://production.plaid.com https://sandbox.plaid.com
+connect-src 'self' https://{production|sandbox}.plaid.com
 ```
+
+`connect-src` names exactly one Plaid origin, chosen at build time from `NEXT_PUBLIC_PLAID_ENVIRONMENT` and defaulting to sandbox. The first version of this change named both, to dodge the fact that `headers()` is evaluated at build time while `PLAID_ENVIRONMENT` is read at runtime. A public build-time variable solves that properly, and an origin the deployment never contacts is breadth with no purpose. Defaulting to sandbox means a forgotten variable cannot silently allow the production origin; it produces a CSP violation from Link instead.
 
 None of that was avoidable. Plaid Link is the only way to connect a bank account, since Plaid will not let a server collect bank credentials, and their documentation requires the SDK be "loaded directly from the CDN, not bundled or hosted". Self-hosting the script, which would have spared `script-src`, is explicitly unsupported. `frame-src` is new: Link renders in an iframe and without the directive it fell through to `default-src 'self'` and was blocked.
 
@@ -70,3 +72,5 @@ What this does mean is that the compensating control is now scoped rather than a
 **One thing this amendment adds.** There was no test asserting any of this. A security header with no assertion is one careless edit from being gone, and that mattered less when every source was `'self'`. `next.config.test.ts` now pins the directives, so widening the policy takes a deliberate test change rather than a quiet one.
 
 Plaid did not force the nonce migration. Their non-nonce path wants `'unsafe-inline'` in `script-src`, which this policy already has, so the measurement and the fail-open trap described above are untouched.
+
+Two alternatives were considered and rejected on evidence rather than preference. Dropping the API origin from `connect-src` on the theory that Link's iframe makes its own calls from Plaid's origin does not work: Plaid's documentation lists `connect-src https://production.plaid.com/` among the required directives for the parent page. And self-hosting `link-initialize.js` to spare `script-src` is explicitly unsupported, since their docs require the SDK be "loaded directly from the CDN, not bundled or hosted". The nonce migration remains available and remains rejected for the reasons measured above, which Plaid does not change.
