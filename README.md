@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://tellsight.coreystevens.dev"><img src="https://img.shields.io/badge/demo-live-2DD4BF.svg" alt="Live demo"></a>
   <a href="https://github.com/coreystevensdev/tellsight/actions/workflows/ci.yml"><img src="https://github.com/coreystevensdev/tellsight/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/tests-5%2C386-brightgreen.svg" alt="5,386 tests">
+  <img src="https://img.shields.io/badge/tests-5%2C388-brightgreen.svg" alt="5,388 tests">
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License">
   <img src="https://img.shields.io/badge/Next.js-16-black.svg" alt="Next.js 16">
   <img src="https://img.shields.io/badge/TypeScript-6.0-3178c6.svg" alt="TypeScript">
@@ -13,9 +13,15 @@
 
 ## Overview
 
-**Live:** [tellsight.coreystevens.dev](https://tellsight.coreystevens.dev), no signup needed, the dashboard loads with seed data and a real AI summary. Signing up gives you your own organization, seeded with the same twelve months so there is something to interpret straight away, and Stripe runs in test mode, so `4242 4242 4242 4242` with any future expiry reaches Pro and the full-length interpretation without a real charge. **Deploy:** AWS EC2 t3.micro + RDS PostgreSQL 18 + Redis 7 (Docker Compose, co-located). GitHub Actions OIDC deploys via SSM SendCommand; no SSH key stored. See [infra/README.md](infra/README.md) for the Terraform runbook.
+Most analytics tools show you numbers. This one tells you what they mean, and emails you the explanation every week.
 
-Most analytics tools show numbers. This one explains what they mean, and delivers the interpretation to your inbox every week. Connect QuickBooks, Shopify or Square, or upload a CSV (the four data sources supported today), get charts, then a plain-English explanation of what the trends actually mean for your business. Sign in with Google or email and password. Multi-tenant Postgres with row-level security, SSE streaming for AI summaries, BullMQ four-queue digest pipeline, Stripe billing. The AI only ever sees computed statistics, never raw rows. The badge above counts what the suites executed, not what they collected, which under vitest 5 are different numbers. The mobile layout spec runs under Chromium and WebKit both, so eleven of the Playwright tests are a second copy rather than new coverage, with the curation pipeline's financial math the most heavily covered.
+Connect QuickBooks, Shopify or Square, or upload a CSV. You get charts, and then a plain-English reading of what actually changed and what it implies for the business. The AI only ever sees computed statistics, never your raw transactions.
+
+**[Try it](https://tellsight.coreystevens.dev)**, no signup: the dashboard loads with sample data and a real AI summary. Signing up gives you your own organization seeded with the same twelve months, and Stripe runs in test mode, so `4242 4242 4242 4242` with any future expiry reaches Pro and the full-length interpretation without a real charge.
+
+Under the hood: multi-tenant Postgres with row-level security enforced in the database rather than the application, SSE streaming for AI summaries, a four-queue BullMQ digest pipeline, Stripe billing. Deployment topology is in [Architecture](#architecture); the Terraform runbook is in [infra/README.md](infra/README.md).
+
+<sub>The badge counts what the suites executed, not what they collected, which under vitest 5 are different numbers. The mobile layout spec runs under both Chromium and WebKit, so eleven of the Playwright tests are a second copy rather than new coverage. The curation pipeline's financial math is the most heavily covered.</sub>
 
 ## Problem
 
