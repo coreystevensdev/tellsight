@@ -86,6 +86,14 @@ export const envSchema = z
     SQUARE_REDIRECT_URI: z.string().url().optional(),
     SQUARE_ENVIRONMENT: z.enum(['sandbox', 'production']).default('sandbox'),
 
+    // No redirect URI: Plaid Link runs in the browser and hands the public
+    // token back on the user's own session, so there is no provider callback to
+    // register. Plaid retired the 'development' environment, so the enum is the
+    // two that remain.
+    PLAID_CLIENT_ID: z.string().min(1).optional(),
+    PLAID_SECRET: z.string().min(1).optional(),
+    PLAID_ENVIRONMENT: z.enum(['sandbox', 'production']).default('sandbox'),
+
     // Only for CI / E2E, set to 'true' to bypass rate limiters entirely.
     // Parallel Playwright workers blow the 60/min public limit otherwise.
     DISABLE_RATE_LIMIT: z.enum(['true', 'false']).default('false'),
@@ -213,6 +221,10 @@ export function isQbConfigured(cfg: Env): boolean {
     cfg.QUICKBOOKS_REDIRECT_URI &&
     cfg.ENCRYPTION_KEY
   );
+}
+
+export function isPlaidConfigured(cfg: Env): boolean {
+  return !!(cfg.PLAID_CLIENT_ID && cfg.PLAID_SECRET && cfg.ENCRYPTION_KEY);
 }
 
 export function isShopifyConfigured(cfg: Env): boolean {

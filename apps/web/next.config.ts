@@ -21,6 +21,34 @@ import { withSentryConfig } from '@sentry/nextjs/config';
 // every relative URL on the page. React escaping plus no dangerouslySetInnerHTML
 // anywhere is still the control that keeps injected script out in the first
 // place.
+// Plaid Link, the one third-party origin in this policy. Required because the
+// SDK must be loaded from Plaid's CDN (their docs: "must be loaded directly from
+// the CDN, not bundled or hosted"), Link renders in an iframe served from it,
+// and the parent page has to be allowed to reach Plaid's API.
+//
+// This is a real weakening and it is the directive the rest of this policy leans
+// on, so it is worth naming: connect-src 'self' is what makes an 'unsafe-inline'
+// script-src defensible, per ADR 0002. What limits the damage is that both
+// origins are Plaid's own authenticated API rather than somewhere an attacker
+// controls, so an injected script gains a destination it cannot read back out of
+// without the victim's Plaid credentials. See the amendment in ADR 0002.
+//
+// One origin, not both. An earlier version named production and sandbox
+// together to dodge the fact that headers() is evaluated at build time while
+// PLAID_ENVIRONMENT is read at runtime. NEXT_PUBLIC_PLAID_ENVIRONMENT is
+// available at build time and solves that properly, and naming an origin this
+// deployment never contacts is breadth with no purpose.
+//
+// Defaults to sandbox, so forgetting the variable cannot silently allow the
+// production origin. A production deployment that forgets it gets a CSP
+// violation from Link rather than a wider policy than it asked for.
+const PLAID_CDN = 'https://cdn.plaid.com';
+const PLAID_LINK_SCRIPT = `${PLAID_CDN}/link/v2/stable/link-initialize.js`;
+const PLAID_API_ORIGIN =
+  process.env.NEXT_PUBLIC_PLAID_ENVIRONMENT === 'production'
+    ? 'https://production.plaid.com'
+    : 'https://sandbox.plaid.com';
+
 function csp(): string {
   const dev = process.env.NODE_ENV !== 'production';
 
@@ -40,7 +68,7 @@ function csp(): string {
   const directives = [
     "default-src 'self'",
     // 'unsafe-eval' is the dev bundler's, and must not reach production.
-    `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ''}`,
+    `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ''} ${PLAID_LINK_SCRIPT}`,
     // Tailwind and html-to-image both write inline style attributes.
     "style-src 'self' 'unsafe-inline'",
     // html-to-image renders the share card to a data: URL and inlines what it
@@ -49,7 +77,10 @@ function csp(): string {
     // next/font/google self-hosts at build time, so no external font origin.
     "font-src 'self' data:",
     // ws: is the dev HMR socket.
-    `connect-src 'self'${sentry}${dev ? ' ws: wss:' : ''}`,
+    `connect-src 'self'${sentry} ${PLAID_API_ORIGIN}${dev ? ' ws: wss:' : ''}`,
+    // Only exists for Plaid Link. Without the directive its iframe falls through
+    // to default-src 'self' and is blocked.
+    `frame-src ${PLAID_CDN}`,
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'self'",

@@ -32,6 +32,40 @@ export interface RotatedTokens {
  * since we read it? If it has, somebody else rotated and their pair is the live
  * one. If it has not, the failure was real.
  */
+/**
+ * `integration_connections` allows a null refresh token and a null expiry so a
+ * Plaid connection can be stored at all: its access token does not expire and
+ * there is nothing to refresh it with (DW-282). Every redirect-OAuth provider
+ * writes both when it connects, so a null reaching either of these is a bug in
+ * that provider's connect path rather than a state to degrade into.
+ *
+ * Two functions rather than one returning both, because the refresh path needs
+ * the token and computes a fresh expiry from the response, while the staleness
+ * check needs the expiry and never the token. Asking for both would make each
+ * caller assert a field it does not use.
+ */
+export function requireRefreshToken(connection: {
+  id: number;
+  encryptedRefreshToken: string | null;
+}): string {
+  if (!connection.encryptedRefreshToken) {
+    throw new Error(`Connection ${connection.id} has no refresh token`);
+  }
+  return connection.encryptedRefreshToken;
+}
+
+// Defaulting this instead of throwing would read as 1970 and refresh on every
+// call, which looks like a slow integration rather than a bug.
+export function requireTokenExpiry(connection: {
+  id: number;
+  accessTokenExpiresAt: Date | null;
+}): Date {
+  if (!connection.accessTokenExpiresAt) {
+    throw new Error(`Connection ${connection.id} has no access token expiry`);
+  }
+  return connection.accessTokenExpiresAt;
+}
+
 export async function adoptRotatedTokens(
   connectionId: number,
   provider: string,
@@ -44,6 +78,10 @@ export async function adoptRotatedTokens(
   );
   if (!current) return null;
   if (current.encryptedRefreshToken === startedFrom) return null;
+  // Null means the provider has no refresh token at all (Plaid), so no rotation
+  // happened and there is nothing to adopt. Returning its nulls would hand the
+  // caller a pair it cannot use.
+  if (!current.encryptedRefreshToken || !current.accessTokenExpiresAt) return null;
 
   logger.info(
     { connectionId, provider },

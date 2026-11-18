@@ -74,9 +74,30 @@ describe('integration_connections queries are always org-scoped', () => {
   // session, so withRlsContext has no orgId to take and dbAdmin is the only
   // option. Asserting this keeps someone from "fixing" them to match the
   // authenticated routes and breaking the flow again.
+  //
+  // Split by file rather than counted. This asserted exactly three upserts, all
+  // dbAdmin, which was true while every provider connected through a redirect.
+  // Plaid does not: Link is client-side and its token exchange arrives on the
+  // owner's own session, so that one upsert has a context to scope by and must
+  // use it. A count would have forced the choice between bumping a number and
+  // making a session route write with dbAdmin, which is the wrong direction.
+  const isCallback = (file: string) => file.includes('integrationCallbacks');
+
   it('uses dbAdmin for the callback writes, which have no session to scope by', () => {
-    const upserts = CALLS.filter((c) => c.fn === 'upsert');
-    expect(upserts).toHaveLength(3);
+    const upserts = CALLS.filter((c) => c.fn === 'upsert' && isCallback(c.file));
+    expect(upserts.length).toBeGreaterThanOrEqual(3);
     for (const call of upserts) expect(call.args).toMatch(/dbAdmin/);
+  });
+
+  // The other direction, which only became possible once an upsert ran on a
+  // session: a write that could be scoped must not reach for dbAdmin and skip
+  // the tenant policy entirely.
+  it('scopes connection writes that do have a session, rather than using dbAdmin', () => {
+    const sessionUpserts = CALLS.filter((c) => c.fn === 'upsert' && !isCallback(c.file));
+    expect(sessionUpserts.length).toBeGreaterThan(0);
+    for (const call of sessionUpserts) {
+      expect(call.args).toMatch(/\btx\b/);
+      expect(call.args).not.toMatch(/dbAdmin/);
+    }
   });
 });

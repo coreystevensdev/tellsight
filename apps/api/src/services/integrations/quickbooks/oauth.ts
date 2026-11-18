@@ -7,6 +7,7 @@ import { ExternalServiceError } from '../../../lib/appError.js';
 import { encrypt, decrypt } from '../encryption.js';
 import { integrationConnectionsQueries } from '../../../db/queries/index.js';
 import { adoptRotatedTokens, commitRotatedTokens } from '../tokenRotation.js';
+import { requireRefreshToken } from '../tokenRotation.js';
 
 const INTUIT_AUTH_URL = 'https://appcenter.intuit.com/connect/oauth2';
 const INTUIT_TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
@@ -99,7 +100,7 @@ export async function refreshAccessToken(connectionId: number): Promise<{
   // Held so the write can compare against it. A refresh token is a version
   // stamp: a provider issues one new pair per token, so at most one writer can
   // match any given value (DW-283).
-  const startedFrom = connection.encryptedRefreshToken;
+  const startedFrom = requireRefreshToken(connection);
   const refreshToken = decrypt(startedFrom);
   const credentials = Buffer.from(
     `${env.QUICKBOOKS_CLIENT_ID}:${env.QUICKBOOKS_CLIENT_SECRET}`,
