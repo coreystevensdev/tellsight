@@ -57,6 +57,7 @@ env_pairs = [
     ("METRICS_TOKEN", os.environ['METRICS_TOKEN']),
     ("QUICKBOOKS_ENVIRONMENT", os.environ.get('QUICKBOOKS_ENVIRONMENT') or 'sandbox'),
     ("SQUARE_ENVIRONMENT", os.environ.get('SQUARE_ENVIRONMENT') or 'sandbox'),
+    ("PLAID_ENVIRONMENT", os.environ.get('PLAID_ENVIRONMENT') or 'sandbox'),
 ]
 
 # Every connector is fully optional (isQbConfigured / isShopifyConfigured
@@ -74,6 +75,9 @@ for key in (
     "QUICKBOOKS_CLIENT_ID", "QUICKBOOKS_CLIENT_SECRET", "QUICKBOOKS_REDIRECT_URI",
     "SHOPIFY_CLIENT_ID", "SHOPIFY_CLIENT_SECRET", "SHOPIFY_REDIRECT_URI",
     "SQUARE_CLIENT_ID", "SQUARE_CLIENT_SECRET", "SQUARE_REDIRECT_URI",
+    # Plaid has no redirect URI: Link runs in the browser and returns the public
+    # token on the owner's own session, so there is no provider callback.
+    "PLAID_CLIENT_ID", "PLAID_SECRET",
     "ENCRYPTION_KEY",
 ):
     value = os.environ.get(key, "")

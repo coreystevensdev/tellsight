@@ -141,6 +141,7 @@ jobs:
           build-args: |
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
             SENTRY_PROJECT=${{ vars.SENTRY_PROJECT }}
+            NEXT_PUBLIC_PLAID_ENVIRONMENT=${{ vars.NEXT_PUBLIC_PLAID_ENVIRONMENT }}
           # An empty `NAME=` entry is rejected by build-push-action. Return an
           # empty input instead so source-map upload stays optional until the
           # repository secret is configured.
@@ -189,6 +190,9 @@ jobs:
           SQUARE_CLIENT_SECRET: ${{ secrets.SQUARE_CLIENT_SECRET }}
           SQUARE_REDIRECT_URI: ${{ secrets.SQUARE_REDIRECT_URI }}
           SQUARE_ENVIRONMENT: ${{ secrets.SQUARE_ENVIRONMENT }}
+          PLAID_CLIENT_ID: ${{ secrets.PLAID_CLIENT_ID }}
+          PLAID_SECRET: ${{ secrets.PLAID_SECRET }}
+          PLAID_ENVIRONMENT: ${{ secrets.PLAID_ENVIRONMENT }}
           ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
           ECR_API_REPO: ${{ secrets.ECR_API_REPO }}
           ECR_WEB_REPO: ${{ secrets.ECR_WEB_REPO }}

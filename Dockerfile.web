@@ -22,6 +22,13 @@ ARG SENTRY_ORG
 ARG SENTRY_PROJECT
 ENV SENTRY_ORG=${SENTRY_ORG} \
     SENTRY_PROJECT=${SENTRY_PROJECT}
+
+# next.config.ts reads this to pick the one Plaid origin the CSP allows, and
+# headers() runs during `next build`, so a runtime value cannot reach it. The
+# default matches next.config.ts's own: sandbox, so an image built without it
+# cannot end up allowing the production origin.
+ARG NEXT_PUBLIC_PLAID_ENVIRONMENT=sandbox
+ENV NEXT_PUBLIC_PLAID_ENVIRONMENT=${NEXT_PUBLIC_PLAID_ENVIRONMENT}
 COPY . .
 RUN --mount=type=secret,id=SENTRY_AUTH_TOKEN \
   if [ -f /run/secrets/SENTRY_AUTH_TOKEN ]; then \

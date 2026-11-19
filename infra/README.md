@@ -184,13 +184,30 @@ In the repo Settings > Secrets > Actions, add:
 | `SQUARE_CLIENT_SECRET` | optional, same Square application |
 | `SQUARE_REDIRECT_URI` | optional, `https://<PRODUCTION_DOMAIN>/api/integrations/square/callback`, must match the Redirect URL registered in the Square app character for character |
 | `SQUARE_ENVIRONMENT` | optional, `production` once you have live Square keys, defaults to `sandbox` if unset |
+| `PLAID_CLIENT_ID` | optional, Plaid dashboard client ID, same value for Sandbox and Production |
+| `PLAID_SECRET` | optional, the secret for the environment you are pointing at, Sandbox and Production have different ones |
+| `PLAID_ENVIRONMENT` | optional, `production` once you have live Plaid access, defaults to `sandbox` if unset |
 | `ENCRYPTION_KEY` | optional, `openssl rand -hex 32`, encrypts every connector's OAuth tokens at rest |
 
 `DATABASE_URL` and `DATABASE_ADMIN_URL` must point at different roles (`app_user` vs `app_admin`), not the same connection string, otherwise every query bypasses RLS.
 
-Every connector is fully optional and gated independently (`isQbConfigured()`, `isShopifyConfigured()`, `isSquareConfigured()`), so the app boots and runs fine with none of them set. Set a provider's keys all together or not at all, a partial set (e.g. client ID without `ENCRYPTION_KEY`) leaves that connector disabled and looks identical to never having configured it.
+Every connector is fully optional and gated independently (`isQbConfigured()`, `isShopifyConfigured()`, `isSquareConfigured()`, `isPlaidConfigured()`), so the app boots and runs fine with none of them set. Set a provider's keys all together or not at all, a partial set (e.g. client ID without `ENCRYPTION_KEY`) leaves that connector disabled and looks identical to never having configured it.
 
-`ENCRYPTION_KEY` is shared by all three. See `docs/square-setup.md` for the Square walkthrough end to end.
+`ENCRYPTION_KEY` is shared by all four. See `docs/square-setup.md` for the Square walkthrough end to end.
+
+### Plaid needs one repository *variable* as well as its secrets
+
+Plaid is the only connector with a setting that cannot be a secret, because it is read at image build time rather than at runtime.
+
+| Repository variable | Value |
+| --- | --- |
+| `NEXT_PUBLIC_PLAID_ENVIRONMENT` | `sandbox` or `production`, must match `PLAID_ENVIRONMENT` |
+
+`next.config.ts` uses it to pick the single Plaid origin the CSP allows, and it does that inside `headers()`, which runs during `next build`. Putting it in the instance env file looks right and does nothing: the policy is already baked into the image. A mismatch fails as a CSP violation inside Plaid's own iframe, where it is close to undebuggable, so the two must move together.
+
+It defaults to `sandbox` in both `Dockerfile.web` and `next.config.ts`, so forgetting it cannot widen the policy; it can only leave a production deployment unable to open Link.
+
+Plaid also takes no redirect URI, unlike the other three. Link runs in the browser and hands the public token back on the owner's own session, so there is nothing to register in the Plaid dashboard and nothing for Caddy to route.
 
 ## Step 6: First deploy
 
