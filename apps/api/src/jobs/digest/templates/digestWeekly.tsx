@@ -31,6 +31,12 @@ export interface DigestWeeklyProps {
   // a broken-image icon in most clients, which is worse than the text-only
   // email this degrades to.
   chartContentId?: string;
+  // The org's sources when none of them can report costs. Renders a caveat
+  // naming what the digest could not compute, which is the thing DW-279 found
+  // missing: the scoring layer fills its eight insight slots from whatever
+  // exists, so a revenue-only org got a confident email of totals and averages
+  // with nothing saying the interesting half was never computable.
+  costBlindSources?: string[];
 }
 
 const colors = {
@@ -115,8 +121,10 @@ export function DigestWeekly({
   mailingAddress,
   companyName,
   openTrackingUrl,
+  costBlindSources,
 }: DigestWeeklyProps) {
   const recipientExplanation = buildRecipientExplanation(orgName);
+  const costBlindNote = buildCostBlindNote(costBlindSources);
 
   return (
     <html lang="en">
@@ -167,6 +175,9 @@ export function DigestWeekly({
                             </tr>
                           </tbody>
                         </table>
+                        {costBlindNote ? (
+                          <p style={styles.disclaimer}>{costBlindNote}</p>
+                        ) : null}
                         <p style={styles.disclaimer}>{AI_DISCLAIMER}</p>
                       </td>
                     </tr>
@@ -205,6 +216,36 @@ export function DigestWeekly({
 // Single source of truth for the explanation string. Both the template render
 // and the perSend handler's CAN-SPAM audit log call this so the rendered HTML
 // and the audit log can never drift.
+const SOURCE_LABELS: Record<string, string> = {
+  shopify: 'Shopify',
+  square: 'Square',
+};
+
+/**
+ * The caveat naming what this week's digest could not compute.
+ *
+ * Deterministic rather than asked of the model. The summary is generated from
+ * the stats that exist, so a prompt instruction to mention the absent ones is a
+ * request; this is the guarantee. It also sits outside the bullets on purpose,
+ * because it is not an insight and counting it as one would put the digest back
+ * at eight items with seven of substance.
+ *
+ * Returns null when there is nothing to say, so the paragraph is omitted rather
+ * than rendered empty.
+ */
+export function buildCostBlindNote(sources: string[] | undefined): string | null {
+  if (!sources || sources.length === 0) return null;
+
+  const names = sources.map((s) => SOURCE_LABELS[s] ?? s);
+  const named =
+    names.length <= 1
+      ? (names[0] ?? '')
+      : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  const verb = sources.length > 1 ? 'report' : 'reports';
+
+  return `Profit margin and break-even are missing from this digest: ${named} ${verb} money coming in, not what you spend, so there is nothing to measure revenue against. Connecting accounting software or a bank account fills in the other side.`;
+}
+
 export function buildRecipientExplanation(orgName: string): string {
   return `You're receiving this because you're a Pro subscriber at ${orgName}`;
 }

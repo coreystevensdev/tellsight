@@ -11,6 +11,11 @@ export interface DataRow {
   // number; counterparty is the groupable one, which is the whole reason the
   // column was separated (DW-280).
   counterparty?: string | null;
+  // Declared for the same reason, and it was always being read: both
+  // cost-visibility predicates below key on it, and reaching it through the
+  // index signature typed it `unknown` and made a weak-type parameter asking
+  // only for `sourceType` share no properties with this interface at all.
+  sourceType?: string | null;
   metadata?: unknown;
   [key: string]: unknown;
 }
@@ -63,6 +68,78 @@ export function hasCostVisibility(
     return SEES_OPERATING_COST[row.sourceType as SourceType] ?? true;
   });
 }
+
+/**
+ * Whether one named source is structurally incapable of reporting operating
+ * costs. False for anything unrecognised, which keeps every caller subtractive:
+ * a connector added without classifying it is never accused of blindness.
+ */
+export function isCostBlindSource(sourceType: string | null | undefined): boolean {
+  if (sourceType == null) return false;
+  return SEES_OPERATING_COST[sourceType as SourceType] === false;
+}
+
+/**
+ * The connectors feeding this dataset, when **every one of them** is
+ * revenue-only. Empty otherwise.
+ *
+ * Deliberately a different question from `hasCostVisibility`, which asks
+ * whether a usable expense row exists. That one is false for two unrelated
+ * reasons, and the owner needs them told apart:
+ *
+ *   - a cost-visible source that simply has no expenses in it yet, where the
+ *     answer is to add the data, and
+ *   - a source that structurally cannot report expenses, where no amount of
+ *     data fixes it and the answer is a different connector.
+ *
+ * Only the second is DW-279, and it is the one the product currently stays
+ * silent about: a Shopify-only org produced 41 stats, more than the CSV org it
+ * was measured against, and an eight-insight digest made entirely of totals and
+ * averages. Nothing said the interesting half was never computable.
+ *
+ * Returns the names rather than a boolean because the message has to be
+ * actionable: "Shopify only reports money coming in" is advice, "some insights
+ * are unavailable" is not.
+ */
+export function costBlindSources(
+  rows: readonly { sourceType?: string | null }[],
+): string[] {
+  const present = new Set<string>();
+  for (const row of rows) {
+    // An absent source reads as cost-visible for the same reason it does above,
+    // and bailing on the first one keeps this subtractive: one unrecognised row
+    // reports nothing rather than accusing a connector that may be fine.
+    if (row.sourceType == null) return [];
+    present.add(row.sourceType);
+  }
+
+  const blind = [...present].filter(isCostBlindSource);
+  // All of them, not any: one QuickBooks row alongside Shopify means the costs
+  // are visible and there is nothing to warn about.
+  return blind.length > 0 && blind.length === present.size ? blind.sort() : [];
+}
+
+/**
+ * The insights that need both sides of the ledger, so a revenue-only dataset
+ * cannot produce them.
+ *
+ * Hand-maintained, which is a liability, so `costBlindInsights.test.ts` runs
+ * `computeStats` over a revenue-only fixture and asserts that exactly these are
+ * absent and the commodity stats survive. Adding a stat type that needs costs
+ * without adding it here fails that test rather than quietly shipping a promise
+ * the dataset cannot keep.
+ *
+ * `cash_flow` is deliberately **not** here, and finding out why is what that
+ * test was worth writing for. DW-279 listed it alongside these two off a
+ * production probe, but that dataset was 48 rows and `cash_flow` was absent for
+ * want of months rather than want of costs. Given twelve months it computes
+ * perfectly happily for a Shopify-only org, netting sales against refunds and
+ * calling the result cash flow. So it is not unavailable, it is wrong, which is
+ * the DW-261 shape for a different stat and a bigger change than this one.
+ * Recorded as DW-295 rather than fixed here, because suppressing a stat that
+ * currently renders is a product call.
+ */
+export const COST_BLIND_INSIGHTS = ['margin_trend', 'break_even'] as const;
 
 // A contra entry reduces a side rather than adding to it: a vendor credit
 // shrinks what is owed, so it belongs against Expenses without being one. The

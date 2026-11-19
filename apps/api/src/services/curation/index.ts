@@ -9,6 +9,7 @@ import {
 } from '../../db/queries/index.js';
 import type { db, DbTransaction } from '../../lib/db.js';
 import { computeStats } from './computation.js';
+import { costBlindSources } from './computationPrimitives.js';
 import { rankInsights, scoringConfig } from './scoring.js';
 import { assemblePrompt } from './assembly.js';
 import { validateSummary, validateStatRefs, stripInvalidStatRefs, validateCiteRefs, stripInvalidCiteRefs } from './validator.js';
@@ -26,6 +27,15 @@ export interface CurationPipelineResult {
   // already-capped array can only shrink it, never backfill from a thicker
   // stat ranked just past the cut.
   scoredPool: ScoredInsight[];
+  // The connectors feeding this dataset when every one of them is revenue-only,
+  // empty otherwise. Returned rather than recomputed downstream because the
+  // rows are already here and nothing else has them: the digest and the
+  // dashboard would each need their own query to ask the same question.
+  //
+  // This is what stops a revenue-only org being told nothing. The pipeline
+  // happily produces eight insights for one, all of them totals and averages,
+  // and before this nothing distinguished that from a quiet week (DW-279).
+  costBlindSources: string[];
 }
 
 export async function runCurationPipeline(
@@ -42,7 +52,7 @@ export async function runCurationPipeline(
 
   if (rows.length === 0) {
     logger.warn({ orgId, datasetId }, 'curation pipeline got 0 rows, dataset may not exist');
-    return { insights: [], scoredPool: [] };
+    return { insights: [], scoredPool: [], costBlindSources: [] };
   }
 
   logger.info({ orgId, datasetId, rowCount: rows.length }, 'curation pipeline started');
@@ -76,7 +86,18 @@ export async function runCurationPipeline(
   const insights = scoredPool.slice(0, scoringConfig.topN);
   logger.info({ orgId, insightCount: insights.length }, 'curation layer 2 complete');
 
-  return { insights, scoredPool };
+  const blindSources = costBlindSources(rows);
+  if (blindSources.length > 0) {
+    // Logged at info rather than warn: the org is not broken, it connected
+    // something that cannot answer half the questions. An operator reading this
+    // is looking at a tier problem, not an incident.
+    logger.info(
+      { orgId, datasetId, sources: blindSources, insightCount: insights.length },
+      'dataset has no cost-visible source, margin and break-even are not computable',
+    );
+  }
+
+  return { insights, scoredPool, costBlindSources: blindSources };
 }
 
 export interface FullPipelineResult {

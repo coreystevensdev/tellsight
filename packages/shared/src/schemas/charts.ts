@@ -70,6 +70,12 @@ export const chartDataSchema = z.object({
   // decide whether to show the "Enable Break-Even" locked card without waiting
   // on the AI summary to stream.
   hasMarginSignal: z.boolean().optional(),
+  // The active dataset's source when it cannot report operating costs, empty
+  // otherwise. Distinct from `hasMarginSignal: false`, which is also false for
+  // an org that has plenty of cost data and under four months of it: that one
+  // prompts for a fixed-cost figure, this one says no figure will help because
+  // the connector does not carry costs at all (DW-279).
+  costBlindSources: z.array(z.string()).optional(),
   // When the weekly digest stops, because nothing new has arrived. Computed
   // server-side from the same constant the eligibility gate uses, so the
   // browser never carries a second copy of the rule.
