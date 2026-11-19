@@ -1551,7 +1551,7 @@ describe('cashFlowFromBuckets', () => {
       ['2026-02', { revenue: 10_000, expenses: 14_000 }],
       ['2026-03', { revenue: 10_000, expenses: 16_000 }],
     ]);
-    const result = cashFlowFromBuckets(map, 3);
+    const result = cashFlowFromBuckets(map, true, 3);
     expect(result).toHaveLength(1);
     expect(result[0]!.details.direction).toBe('burning');
   });
@@ -1562,7 +1562,7 @@ describe('cashFlowFromBuckets', () => {
       ['2026-02', { revenue: 0, expenses: 14_000 }], // gap
       ['2026-03', { revenue: 10_000, expenses: 16_000 }],
     ]);
-    expect(cashFlowFromBuckets(map, 3)).toEqual([]);
+    expect(cashFlowFromBuckets(map, true, 3)).toEqual([]);
   });
 
   it('suppresses when net is within the 5% break-even band', () => {
@@ -1572,7 +1572,7 @@ describe('cashFlowFromBuckets', () => {
       ['2026-02', { revenue: 10_000, expenses: 9_800 }],
       ['2026-03', { revenue: 10_000, expenses: 9_800 }],
     ]);
-    expect(cashFlowFromBuckets(map, 3)).toEqual([]);
+    expect(cashFlowFromBuckets(map, true, 3)).toEqual([]);
   });
 
   it('produces identical output as computeCashFlow(rows) for equivalent data', () => {
@@ -1581,13 +1581,14 @@ describe('cashFlowFromBuckets', () => {
       ...midMonth(2026, 2, 10_000, 14_000),
       ...midMonth(2026, 3, 10_000, 16_000),
     ];
-    const fromRows = cashFlowFromBuckets(bucketRowsByMonth(rows), 3);
+    const fromRows = cashFlowFromBuckets(bucketRowsByMonth(rows), true, 3);
     const fromBuckets = cashFlowFromBuckets(
       buckets([
         ['2026-01', { revenue: 10_000, expenses: 15_000 }],
         ['2026-02', { revenue: 10_000, expenses: 14_000 }],
         ['2026-03', { revenue: 10_000, expenses: 16_000 }],
       ]),
+      true,
       3,
     );
     expect(fromRows[0]!.details.monthlyNet).toBe(fromBuckets[0]!.details.monthlyNet);
@@ -1605,9 +1606,9 @@ describe('cashFlowForAlerting', () => {
       ['2026-03', { revenue: 10_000, expenses: 9_800 }],
     ]);
 
-    expect(cashFlowFromBuckets(map, 3)).toEqual([]);
+    expect(cashFlowFromBuckets(map, true, 3)).toEqual([]);
 
-    const result = cashFlowForAlerting(map, 3);
+    const result = cashFlowForAlerting(map, true, 3);
     expect(result).toHaveLength(1);
     expect(result[0]!.details.monthlyNet).toBe(200);
     expect(result[0]!.details.direction).toBe('surplus');
@@ -1619,7 +1620,7 @@ describe('cashFlowForAlerting', () => {
       ['2026-02', { revenue: 0, expenses: 14_000 }], // gap
       ['2026-03', { revenue: 10_000, expenses: 16_000 }],
     ]);
-    expect(cashFlowForAlerting(map, 3)).toEqual([]);
+    expect(cashFlowForAlerting(map, true, 3)).toEqual([]);
   });
 
   it('still suppresses when average revenue is non-positive', () => {
@@ -1628,7 +1629,7 @@ describe('cashFlowForAlerting', () => {
       ['2026-02', { revenue: -500, expenses: 4_000 }],
       ['2026-03', { revenue: -800, expenses: 6_000 }],
     ]);
-    expect(cashFlowForAlerting(map, 3)).toEqual([]);
+    expect(cashFlowForAlerting(map, true, 3)).toEqual([]);
   });
 
   it('still suppresses when fewer than trailingMonths buckets exist', () => {
@@ -1636,7 +1637,7 @@ describe('cashFlowForAlerting', () => {
       ['2026-01', { revenue: 10_000, expenses: 9_800 }],
       ['2026-02', { revenue: 10_000, expenses: 9_800 }],
     ]);
-    expect(cashFlowForAlerting(map, 3)).toEqual([]);
+    expect(cashFlowForAlerting(map, true, 3)).toEqual([]);
   });
 });
 

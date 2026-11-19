@@ -183,7 +183,13 @@ export async function handleEvaluateOrgJob(job: Job): Promise<void> {
   // extra getMonthlyBucketsByDataset query.
   const cashFlowForAlertingInsight = rules.some((r) => r.kind === 'cash_burn_spikes')
     ? (scoreInsights(
-        cashFlowForAlerting(await dataRowsQueries.getMonthlyBucketsByDataset(orgId, datasetId, dbAdmin)),
+        cashFlowForAlerting(
+          await dataRowsQueries.getMonthlyBucketsByDataset(orgId, datasetId, dbAdmin),
+          // A cost-blind burn spike is a false alarm, and an alert is a worse
+          // place for one than the dashboard: it arrives unprompted and carries
+          // its own AI paragraph (DW-295).
+          await dataRowsQueries.hasCostVisibleExpenses(orgId, datasetId, dbAdmin),
+        ),
         excludedStatIds,
         datasetId,
       )[0] ?? null)

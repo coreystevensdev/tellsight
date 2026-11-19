@@ -8,6 +8,7 @@ const mockGetCashBalanceHistory = vi.fn();
 const mockGetActiveDatasetId = vi.fn();
 const mockGetRowsByDataset = vi.fn();
 const mockGetMonthlyBucketsByDataset = vi.fn();
+const mockHasCostVisibleExpenses = vi.fn().mockResolvedValue(true);
 const mockTrackEvent = vi.fn();
 
 const mockAuditAuth = vi.fn();
@@ -33,6 +34,9 @@ vi.mock('../db/queries/index.js', () => ({
   dataRowsQueries: {
     getRowsByDataset: mockGetRowsByDataset,
     getMonthlyBucketsByDataset: mockGetMonthlyBucketsByDataset,
+    // Cost-visible by default here: these cases are about the forecast payload,
+    // not about DW-295's suppression, which cashFlowCostVisibility.test.ts owns.
+    hasCostVisibleExpenses: mockHasCostVisibleExpenses,
   },
   auditLogsQueries: {
     record: vi.fn().mockResolvedValue(undefined),

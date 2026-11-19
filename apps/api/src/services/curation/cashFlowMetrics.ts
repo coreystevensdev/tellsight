@@ -2,7 +2,13 @@ import { mean, median } from 'simple-statistics';
 
 import type { CashFlowStat } from './types.js';
 import { StatType } from './types.js';
-import { financialEffect, monthKey, parseAmount, type DataRow } from './computationPrimitives.js';
+import {
+  financialEffect,
+  hasCostVisibility,
+  monthKey,
+  parseAmount,
+  type DataRow,
+} from './computationPrimitives.js';
 
 /**
  * Monthly revenue/expenses, keyed by YYYY-MM. The privacy-preserving shape
@@ -42,9 +48,23 @@ export function bucketRowsByMonth(rows: DataRow[]): MonthlyBucketMap {
 
 function buildCashFlowStat(
   buckets: MonthlyBucketMap,
+  seesOperatingCost: boolean,
   trailingMonths: number,
   suppressNearZero: boolean,
 ): CashFlowStat[] {
+  // DW-295, and the same shape as DW-261 in marginMetrics.ts. A revenue-only
+  // connector writes an Expenses row for a refund and for nothing else, so
+  // revenue minus expenses is approximately revenue and the stat reports a
+  // comfortable surplus for a business paying rent it cannot see. That is worse
+  // than a missing stat: it is a confident wrong number.
+  //
+  // Placed first for the reader rather than for the outcome. Every guard here
+  // returns the same empty array, so moving this one below the others changes
+  // nothing observable, which a mutation run confirmed. It reads better up top
+  // because the rest reason about the figure and this one asks whether the
+  // figure means anything at all.
+  if (!seesOperatingCost) return [];
+
   const months = [...buckets.keys()].sort();
   if (months.length < trailingMonths) return [];
 
@@ -92,9 +112,10 @@ function buildCashFlowStat(
  */
 export function cashFlowFromBuckets(
   buckets: MonthlyBucketMap,
+  seesOperatingCost: boolean,
   trailingMonths = 3,
 ): CashFlowStat[] {
-  return buildCashFlowStat(buckets, trailingMonths, true);
+  return buildCashFlowStat(buckets, seesOperatingCost, trailingMonths, true);
 }
 
 /**
@@ -109,9 +130,10 @@ export function cashFlowFromBuckets(
  */
 export function cashFlowForAlerting(
   buckets: MonthlyBucketMap,
+  seesOperatingCost: boolean,
   trailingMonths = 3,
 ): CashFlowStat[] {
-  return buildCashFlowStat(buckets, trailingMonths, false);
+  return buildCashFlowStat(buckets, seesOperatingCost, trailingMonths, false);
 }
 
 /**
@@ -119,7 +141,11 @@ export function cashFlowForAlerting(
  * analysis, see cashFlowFromBuckets for the suppression contract.
  */
 export function computeCashFlow(rows: DataRow[], trailingMonths = 3): CashFlowStat[] {
-  return cashFlowFromBuckets(bucketRowsByMonth(rows), trailingMonths);
+  // The row path can answer the cost-visibility question itself. The two bucket
+  // entry points above cannot, because a bucket carries no sourceType, which is
+  // why they take it as a required argument rather than a defaulted one: a new
+  // caller should have to answer rather than inherit a silent yes.
+  return cashFlowFromBuckets(bucketRowsByMonth(rows), hasCostVisibility(rows), trailingMonths);
 }
 
 /**
