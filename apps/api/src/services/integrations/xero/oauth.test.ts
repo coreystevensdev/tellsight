@@ -83,6 +83,41 @@ describe('generateAuthUrl', () => {
     expect(generateAuthUrl().authUrl).toContain('accounting.settings.read');
   });
 
+  /**
+   * Xero answered `invalid_scope` on the live consent screen while every
+   * assertion above passed.
+   *
+   * `URLSearchParams` encodes a space as `+`, the form-urlencoded convention,
+   * and Xero percent-decodes this query string per RFC 3986 where `+` is a
+   * literal plus. The three scopes arrived as one nonsense token. Nothing here
+   * could see it, because the string we built was exactly the string we meant
+   * to build; only the provider disagreed about how to read it.
+   *
+   * Square builds its URL identically and is connected in production, so its
+   * server form-decodes and the `+` works. That difference is why this went
+   * unnoticed, and why asserting on the raw substring matters.
+   */
+  it('separates scopes with %20, not the + URLSearchParams emits', () => {
+    const raw = generateAuthUrl().authUrl.match(/[?&]scope=([^&]*)/)![1]!;
+
+    expect(raw).toContain('%20');
+    expect(raw).not.toContain('+');
+  });
+
+  // Deliberately paired with the raw check above rather than replacing it.
+  // `URL.searchParams` form-decodes, so it reads a `+` back as a space and
+  // reports three correct scopes against the broken URL. This asserts what the
+  // scopes are; only the raw substring can see how they were encoded.
+  it('asks for exactly the three scopes, once decoded', () => {
+    const scope = new URL(generateAuthUrl().authUrl).searchParams.get('scope');
+
+    expect(scope!.split(' ')).toEqual([
+      'offline_access',
+      'accounting.transactions.read',
+      'accounting.settings.read',
+    ]);
+  });
+
   it('mints a distinct state per call', () => {
     expect(generateAuthUrl().state).not.toBe(generateAuthUrl().state);
   });
