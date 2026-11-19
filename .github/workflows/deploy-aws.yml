@@ -41,6 +41,16 @@ env:
 
 jobs:
   deploy:
+    # The environment is a second gate the workflow condition cannot bypass:
+    # GitHub itself refuses to run this job for any ref but main, and the OIDC
+    # subject becomes environment:production, which is what lets the AWS trust
+    # policy stop accepting a bare repo wildcard.
+    #
+    # No required reviewers on purpose. Deploys are meant to follow a green main
+    # without a human in the path; the gate here is which ref may deploy, not who.
+    environment:
+      name: production
+      url: https://tellsight.coreystevens.dev
     name: Build, Push, Deploy
     runs-on: ubuntu-24.04
     # Bound a wedged build or network call without cutting off the guarded
