@@ -193,6 +193,9 @@ jobs:
           PLAID_CLIENT_ID: ${{ secrets.PLAID_CLIENT_ID }}
           PLAID_SECRET: ${{ secrets.PLAID_SECRET }}
           PLAID_ENVIRONMENT: ${{ secrets.PLAID_ENVIRONMENT }}
+          XERO_CLIENT_ID: ${{ secrets.XERO_CLIENT_ID }}
+          XERO_CLIENT_SECRET: ${{ secrets.XERO_CLIENT_SECRET }}
+          XERO_REDIRECT_URI: ${{ secrets.XERO_REDIRECT_URI }}
           ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
           ECR_API_REPO: ${{ secrets.ECR_API_REPO }}
           ECR_WEB_REPO: ${{ secrets.ECR_WEB_REPO }}
