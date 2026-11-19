@@ -168,9 +168,15 @@ export async function runSync(
     const accessToken = decrypt(connection.encryptedAccessToken);
     const dataset = await findOrCreatePlaidDataset(orgId, connection.providerTenantId);
 
+    // Plaid is cursor-based, so a backfill means discarding the stored cursor
+    // rather than widening a date window. Safe because every row is keyed by
+    // transaction_id and upserted, so a full replay converges rather than
+    // duplicating, which is the same property the cursor-rejected path relies on.
+    const from = trigger === 'backfill' ? null : connection.syncCursor;
+
     let page;
     try {
-      page = await fetchTransactionsSince(accessToken, connection.syncCursor);
+      page = await fetchTransactionsSince(accessToken, from);
     } catch (err) {
       if (!(err instanceof PlaidCursorInvalidError)) throw err;
       // Plaid's documented recovery is to start over rather than retry the same

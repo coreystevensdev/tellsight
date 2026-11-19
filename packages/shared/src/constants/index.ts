@@ -352,6 +352,7 @@ export const AUDIT_ACTIONS = {
   ADMIN_AGENT_TIER_ENABLED: 'admin.agent_tier_enabled',
   ADMIN_AGENT_TIER_DISABLED: 'admin.agent_tier_disabled',
   ADMIN_LOG_LEVEL_CHANGED: 'admin.log_level_changed',
+  ADMIN_CONNECTOR_BACKFILLED: 'admin.connector_backfilled',
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

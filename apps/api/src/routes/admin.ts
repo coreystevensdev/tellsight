@@ -16,6 +16,7 @@ import { resolveStatCorrectionSchema } from 'shared/schemas';
 import { AUDIT_ACTIONS, ANALYTICS_EVENTS } from 'shared/constants';
 import { trackEvent } from '../services/analytics/trackEvent.js';
 import { requireUser } from '../lib/requireUser.js';
+import { enqueueBackfill, isResyncProvider, RESYNC_PROVIDERS } from '../services/integrations/resync.js';
 import { ValidationError, NotFoundError, ConflictError } from '../lib/appError.js';
 import { audit, auditAuth } from '../services/audit/auditService.js';
 import { env } from '../config.js';
@@ -228,6 +229,7 @@ adminRouter.patch('/stat-corrections/:orgId/:id', async (req: Request, res: Resp
 });
 
 const agentTierSchema = z.object({ enabled: z.boolean() });
+const backfillSchema = z.object({ orgId: z.number().int().positive() });
 
 // Manual toggle rather than Stripe-driven: there is no Agent-tier checkout at
 // beta, so this is the only write path for subscriptions.agent_enabled.
@@ -271,6 +273,56 @@ adminRouter.patch('/orgs/:orgId/agent-tier', async (req: Request, res: Response)
 
   logger.info({ orgId, userId, enabled }, 'Agent tier entitlement toggled');
   res.json({ data: { orgId, agentEnabled: enabled } });
+});
+
+// Re-fetches everything a connector can see, without the owner reconnecting.
+// Admin rather than owner-facing on purpose: an owner has no way to know a
+// column was added, and this is the remedy for a deploy that added one
+// (DW-292). The sync itself is idempotent, keyed on (org_id, source_id), so the
+// worst a repeated press costs is provider rate limit.
+adminRouter.post('/integrations/:provider/backfill', async (req: Request, res: Response) => {
+  const user = requireUser(req);
+  const userId = parseInt(user.sub, 10);
+  const provider = req.params.provider as string;
+
+  if (!isResyncProvider(provider)) {
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: `Unknown provider. Expected one of: ${RESYNC_PROVIDERS.join(', ')}`,
+      },
+    });
+    return;
+  }
+
+  const parsed = backfillSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Invalid request body', details: parsed.error.flatten() },
+    });
+    return;
+  }
+  const { orgId } = parsed.data;
+
+  const result = await enqueueBackfill(orgId, provider);
+  if (!result) {
+    res.status(404).json({
+      error: { code: 'NOT_CONNECTED', message: `Org ${orgId} has no ${provider} connection` },
+    });
+    return;
+  }
+
+  audit(req, {
+    orgId,
+    userId,
+    action: AUDIT_ACTIONS.ADMIN_CONNECTOR_BACKFILLED,
+    targetType: 'integration',
+    targetId: provider,
+    metadata: { connectionId: result.connectionId },
+  });
+
+  logger.info({ orgId, userId, provider, connectionId: result.connectionId }, 'Connector backfill requested');
+  res.status(202).json({ data: { orgId, provider, connectionId: result.connectionId } });
 });
 
 adminRouter.get('/log-level', (_req: Request, res: Response) => {
