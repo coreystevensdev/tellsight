@@ -41,6 +41,9 @@ const BASE_ENV: NodeJS.ProcessEnv = {
   SQUARE_CLIENT_ID: '',
   SQUARE_CLIENT_SECRET: '',
   SQUARE_REDIRECT_URI: '',
+  PLAID_ENVIRONMENT: '',
+  PLAID_CLIENT_ID: '',
+  PLAID_SECRET: '',
   ENCRYPTION_KEY: '',
   ECR_API_REPO: '123456789012.dkr.ecr.us-east-1.amazonaws.com/tellsight-api',
   ECR_WEB_REPO: '123456789012.dkr.ecr.us-east-1.amazonaws.com/tellsight-web',
@@ -162,6 +165,7 @@ describe('production SSM deployment script', () => {
     expect(envFile).toContain("STRIPE_TEST_MODE_IN_PRODUCTION='false'\n");
     expect(envFile).toContain("QUICKBOOKS_ENVIRONMENT='sandbox'\n");
     expect(envFile).toContain("SQUARE_ENVIRONMENT='sandbox'\n");
+    expect(envFile).toContain("PLAID_ENVIRONMENT='sandbox'\n");
     expect(envFile).not.toContain('QUICKBOOKS_CLIENT_ID=');
     expect(envFile).not.toContain('ENCRYPTION_KEY=');
 
@@ -205,6 +209,38 @@ describe('production SSM deployment script', () => {
     expect(envFile).toContain("QUICKBOOKS_CLIENT_ID='qb-client'\n");
     expect(envFile).toContain("QUICKBOOKS_CLIENT_SECRET='qb-secret'\n");
     expect(envFile).toContain(`ENCRYPTION_KEY='${'a'.repeat(64)}'\n`);
+  });
+
+  // Shopify and Square shipped, deployed, and could never be turned on, because
+  // their secrets were absent from this script until 2026-09-15: the keys had
+  // nowhere to travel. Plaid was in exactly that state until this commit, so
+  // this asserts the thing the deploy quietly got wrong twice before.
+  it('carries the Plaid keys to the instance, which is the only path they have', () => {
+    const result = runDeploy({
+      PLAID_CLIENT_ID: 'plaid-client',
+      PLAID_SECRET: 'plaid-secret',
+      PLAID_ENVIRONMENT: 'production',
+      ENCRYPTION_KEY: 'a'.repeat(64),
+    });
+
+    expect(result.status).toBe(0);
+    const envFile = decodedWrite(commandsFrom(result.calls), '/opt/tellsight/.env');
+    expect(envFile).toContain("PLAID_CLIENT_ID='plaid-client'\n");
+    expect(envFile).toContain("PLAID_SECRET='plaid-secret'\n");
+    expect(envFile).toContain("PLAID_ENVIRONMENT='production'\n");
+  });
+
+  // isPlaidConfigured gates the connector off when a key is missing, and
+  // config.ts only skips validation when the key is absent entirely. A blank
+  // line from an unset secret would fail z.string().min(1) and take the API
+  // down rather than leaving the connector off.
+  it('omits the Plaid keys entirely rather than writing blanks', () => {
+    const result = runDeploy({});
+
+    expect(result.status).toBe(0);
+    const envFile = decodedWrite(commandsFrom(result.calls), '/opt/tellsight/.env');
+    expect(envFile).not.toContain('PLAID_CLIENT_ID=');
+    expect(envFile).not.toContain('PLAID_SECRET=');
   });
 
   it('refuses blank required values before contacting AWS', () => {
