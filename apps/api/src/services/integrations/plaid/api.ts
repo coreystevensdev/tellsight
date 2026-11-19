@@ -6,6 +6,7 @@ import {
   PlaidRetryableError,
 } from './errors.js';
 import type {
+  PlaidBalanceResponse,
   PlaidErrorBody,
   PlaidItemPublicTokenExchangeResponse,
   PlaidLinkTokenCreateResponse,
@@ -100,6 +101,17 @@ export function exchangePublicToken(
   return post<PlaidItemPublicTokenExchangeResponse>('/item/public_token/exchange', {
     public_token: publicToken,
   });
+}
+
+/**
+ * Live balances for every account on the Item.
+ *
+ * `/accounts/balance/get` is the only endpoint that fetches from the institution
+ * at request time; the balances on other endpoints may be cached. For a figure
+ * that anchors a runway projection, stale is worse than slow.
+ */
+export function fetchAccountBalances(accessToken: string): Promise<PlaidBalanceResponse> {
+  return post<PlaidBalanceResponse>('/accounts/balance/get', { access_token: accessToken });
 }
 
 export interface SyncPage {

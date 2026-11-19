@@ -9,11 +9,13 @@ import {
   syncJobsQueries,
   datasetsQueries,
   aiSummariesQueries,
+  orgFinancialsQueries,
   userOrgsQueries,
 } from '../../../db/queries/index.js';
 import { trackEvent } from '../../analytics/trackEvent.js';
 import { decrypt } from '../encryption.js';
-import { fetchTransactionsSince } from './api.js';
+import { fetchAccountBalances, fetchTransactionsSince } from './api.js';
+import { cashFromAccounts } from './balances.js';
 import { PlaidConnectionNotFoundError, PlaidCursorInvalidError } from './errors.js';
 import { normalizePlaidTransactions } from './normalize.js';
 import type { NormalizedPlaidRow } from './normalize.js';
@@ -146,6 +148,42 @@ export async function writeChanges(
   return { upserted: deduped.length, removed };
 }
 
+/**
+ * Records what the bank says is on hand, so `runway` and `cash_forecast` have a
+ * starting balance.
+ *
+ * Both stats read `financials.cashOnHand`, and until now the only way one got
+ * set was an owner typing it, which no org has ever done: both stats have never
+ * fired for anyone. `updateOrgFinancials` appends to `cash_balance_snapshots` in
+ * the same transaction, so a bank-sourced figure replacing an owner-typed one
+ * leaves the owner's value in the history rather than losing it.
+ *
+ * Deliberately non-fatal. Transactions are what the product is for, and a
+ * balance endpoint failing must not discard a sync's worth of rows: the owner
+ * would see a failed sync and no new data, for a number that is a bonus.
+ */
+async function recordCashOnHand(orgId: number, accessToken: string): Promise<void> {
+  try {
+    const { accounts } = await fetchAccountBalances(accessToken);
+    const cash = cashFromAccounts(accounts);
+    if (!cash) {
+      logger.info({ orgId }, 'No single-currency depository balance to record');
+      return;
+    }
+
+    await orgFinancialsQueries.updateOrgFinancials(orgId, {
+      cashOnHand: cash.balance,
+      cashAsOfDate: new Date().toISOString().slice(0, 10),
+    });
+    logger.info(
+      { orgId, accountCount: cash.accountCount, currency: cash.currency },
+      'Recorded cash on hand from bank balances',
+    );
+  } catch (err) {
+    logger.warn({ orgId, err }, 'Could not record cash on hand, leaving the sync successful');
+  }
+}
+
 export async function runSync(
   connectionId: number,
   trigger: PlaidSyncTrigger,
@@ -195,6 +233,8 @@ export async function runSync(
       page.removedIds,
       page.cursor,
     );
+
+    await recordCashOnHand(orgId, accessToken);
 
     // New rows invalidate the cached summary. Without this the dashboard keeps
     // serving an interpretation of data that has since changed.
