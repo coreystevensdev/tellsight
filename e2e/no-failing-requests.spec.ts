@@ -50,9 +50,9 @@ for (const route of PUBLIC_ROUTES) {
 // Signed-out was only ever half of it. A signed-in owner spends their time on
 // /upload, /billing and the settings pages, and none of those were covered.
 //
-// Four responses here are allowed, and the distinction is the whole point of
-// this file. A 401 on the public dashboard was a defect because the client knew
-// perfectly well nobody was signed in and asked anyway. These three are the
+// The responses listed here are allowed, and the distinction is the whole point
+// of this file. A 401 on the public dashboard was a defect because the client
+// knew perfectly well nobody was signed in and asked anyway. These are the
 // opposite: the response IS how the client learns the answer, because nothing
 // else tells it. The Agent entitlement is exposed nowhere in the API surface,
 // which is why useQaAnswer reads AGENT_TIER_REQUIRED off the 403 body, and the
@@ -62,12 +62,17 @@ for (const route of PUBLIC_ROUTES) {
 // The list is deliberately exact pairs rather than a rule. A new failing
 // request still fails, which is the only property that makes this gate worth
 // having, and adding a connector is the one thing that legitimately extends it.
+//
+// This comment used to count the entries ("four responses", "these three").
+// Plaid landed without the count moving and Xero would have made it wrong
+// twice, so it no longer carries a number the list can contradict.
 const EXPECTED_FAILURES = new Map<string, Set<number>>([
   ['/api/proposals', new Set([403])],
   ['/api/integrations/quickbooks/status', new Set([501])],
   ['/api/integrations/shopify/status', new Set([501])],
   ['/api/integrations/square/status', new Set([501])],
   ['/api/integrations/plaid/status', new Set([501])],
+  ['/api/integrations/xero/status', new Set([501])],
 ]);
 
 const AUTHENTICATED_ROUTES = [

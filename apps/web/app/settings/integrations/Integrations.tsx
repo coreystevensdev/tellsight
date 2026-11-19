@@ -57,6 +57,25 @@ export default function Integrations() {
           onDisconnect={integrations.disconnectQuickBooks}
         />
 
+        {/* Directly after QuickBooks, because they are alternatives rather than
+            additions: an owner keeps their books in one or the other, and the
+            two read the same both-sides-of-the-ledger data. */}
+        <IntegrationCard
+          connector="ledger"
+          title="Xero"
+          description={
+            integrations.xero?.connected
+              ? `Connected to ${integrations.xero.companyName ?? 'your organisation'}`
+              : 'Sync your accounting data for automated insights.'
+          }
+          status={integrations.xero}
+          action={integrations.xeroAction}
+          onConnect={integrations.connectXero}
+          onSync={integrations.syncXero}
+          onDisconnect={integrations.disconnectXero}
+          iconClassName="bg-sky-100 dark:bg-sky-900/30"
+        />
+
         <IntegrationCard
           connector="shopify"
           title="Shopify"

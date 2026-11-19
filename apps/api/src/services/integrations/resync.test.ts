@@ -5,6 +5,7 @@ const mockQuickBooks = vi.fn();
 const mockShopify = vi.fn();
 const mockSquare = vi.fn();
 const mockPlaid = vi.fn();
+const mockXero = vi.fn();
 
 vi.mock('../../db/queries/index.js', () => ({
   integrationConnectionsQueries: { getByOrgAndProvider: mockGetByOrgAndProvider },
@@ -15,6 +16,7 @@ vi.mock('./worker.js', () => ({ enqueueSyncJob: mockQuickBooks }));
 vi.mock('./shopify/worker.js', () => ({ enqueueSyncJob: mockShopify }));
 vi.mock('./square/worker.js', () => ({ enqueueSyncJob: mockSquare }));
 vi.mock('./plaid/worker.js', () => ({ enqueueSyncJob: mockPlaid }));
+vi.mock('./xero/worker.js', () => ({ enqueueSyncJob: mockXero }));
 
 const { enqueueBackfill, isResyncProvider, RESYNC_PROVIDERS } = await import('./resync.js');
 
@@ -32,6 +34,7 @@ describe('enqueueBackfill', () => {
     ['shopify', () => mockShopify],
     ['square', () => mockSquare],
     ['plaid', () => mockPlaid],
+    ['xero', () => mockXero],
   ] as const)('sends %s the backfill trigger', async (provider, getMock) => {
     await enqueueBackfill(2, provider);
 
@@ -42,7 +45,7 @@ describe('enqueueBackfill', () => {
     await enqueueBackfill(2, 'plaid');
 
     expect(mockPlaid).toHaveBeenCalledTimes(1);
-    for (const other of [mockQuickBooks, mockShopify, mockSquare]) {
+    for (const other of [mockQuickBooks, mockShopify, mockSquare, mockXero]) {
       expect(other).not.toHaveBeenCalled();
     }
   });
@@ -74,11 +77,17 @@ describe('isResyncProvider', () => {
 
   // csv is a real source type and has no connector to resync, so the guard must
   // not accept everything in sourceTypeSchema.
-  it.each(['csv', 'xero', 'stripe', '', 'PLAID', 'quickbooks '])('rejects %o', (p) => {
+  it.each(['csv', 'stripe', '', 'PLAID', 'quickbooks ', 'XERO'])('rejects %o', (p) => {
     expect(isResyncProvider(p)).toBe(false);
   });
 
   it('covers every connector that has a worker', () => {
-    expect([...RESYNC_PROVIDERS].sort()).toEqual(['plaid', 'quickbooks', 'shopify', 'square']);
+    expect([...RESYNC_PROVIDERS].sort()).toEqual([
+      'plaid',
+      'quickbooks',
+      'shopify',
+      'square',
+      'xero',
+    ]);
   });
 });

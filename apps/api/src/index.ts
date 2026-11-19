@@ -10,6 +10,7 @@ import {
   isQbConfigured,
   isShopifyConfigured,
   isSquareConfigured,
+  isXeroConfigured,
 } from './config.js';
 import { logger } from './lib/logger.js';
 import { correlationId } from './middleware/correlationId.js';
@@ -36,6 +37,8 @@ import { initSyncWorker as initSquareSyncWorker, shutdownWorker as shutdownSquar
 import { initScheduler as initSquareScheduler } from './services/integrations/square/scheduler.js';
 import { initSyncWorker as initPlaidSyncWorker, shutdownWorker as shutdownPlaidWorker } from './services/integrations/plaid/worker.js';
 import { initScheduler as initPlaidScheduler } from './services/integrations/plaid/scheduler.js';
+import { initSyncWorker as initXeroSyncWorker, shutdownWorker as shutdownXeroWorker } from './services/integrations/xero/worker.js';
+import { initScheduler as initXeroScheduler } from './services/integrations/xero/scheduler.js';
 import {
   initDigestCronJob,
   initDigestOrchestratorWorker,
@@ -214,6 +217,13 @@ async function start() {
     logger.info({}, 'Plaid integration not configured, sync worker disabled');
   }
 
+  if (isXeroConfigured(env)) {
+    initXeroSyncWorker();
+    await initXeroScheduler();
+  } else {
+    logger.info({}, 'Xero integration not configured, sync worker disabled');
+  }
+
   // Email digest pipeline: cron registration is unconditional once the email
   // provider is wired (validated at boot by config.ts refines). Four workers
   // bind to four queues (orchestrator, org, send, nudge) with their own
@@ -280,6 +290,7 @@ async function start() {
         await shutdownShopifyWorker();
         await shutdownSquareWorker();
         await shutdownPlaidWorker();
+        await shutdownXeroWorker();
         await redis.quit();
         await queryClient.end({ timeout: 5 });
         await adminClient.end({ timeout: 5 });

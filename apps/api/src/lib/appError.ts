@@ -68,7 +68,10 @@ export type ExternalService =
   | 'Intuit OAuth'
   | 'Intuit OAuth, token revoked'
   | 'Shopify OAuth'
-  | 'Square OAuth';
+  | 'Square OAuth'
+  | 'Xero OAuth'
+  | 'Xero OAuth, token revoked'
+  | 'Xero connections';
 
 export class ExternalServiceError extends AppError {
   readonly service: ExternalService;

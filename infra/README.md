@@ -187,13 +187,20 @@ In the repo Settings > Secrets > Actions, add:
 | `PLAID_CLIENT_ID` | optional, Plaid dashboard client ID, same value for Sandbox and Production |
 | `PLAID_SECRET` | optional, the secret for the environment you are pointing at, Sandbox and Production have different ones |
 | `PLAID_ENVIRONMENT` | optional, `production` once you have live Plaid access, defaults to `sandbox` if unset |
+| `XERO_CLIENT_ID` | optional, Xero app's client ID from the developer portal |
+| `XERO_CLIENT_SECRET` | optional, same Xero app |
+| `XERO_REDIRECT_URI` | optional, `https://<PRODUCTION_DOMAIN>/api/integrations/xero/callback`, must also be registered in the Xero app |
 | `ENCRYPTION_KEY` | optional, `openssl rand -hex 32`, encrypts every connector's OAuth tokens at rest |
 
 `DATABASE_URL` and `DATABASE_ADMIN_URL` must point at different roles (`app_user` vs `app_admin`), not the same connection string, otherwise every query bypasses RLS.
 
-Every connector is fully optional and gated independently (`isQbConfigured()`, `isShopifyConfigured()`, `isSquareConfigured()`, `isPlaidConfigured()`), so the app boots and runs fine with none of them set. Set a provider's keys all together or not at all, a partial set (e.g. client ID without `ENCRYPTION_KEY`) leaves that connector disabled and looks identical to never having configured it.
+Every connector is fully optional and gated independently (`isQbConfigured()`, `isShopifyConfigured()`, `isSquareConfigured()`, `isPlaidConfigured()`, `isXeroConfigured()`), so the app boots and runs fine with none of them set. Set a provider's keys all together or not at all, a partial set (e.g. client ID without `ENCRYPTION_KEY`) leaves that connector disabled and looks identical to never having configured it.
 
-`ENCRYPTION_KEY` is shared by all four. See `docs/square-setup.md` for the Square walkthrough end to end.
+`ENCRYPTION_KEY` is shared by all five. See `docs/square-setup.md` for the Square walkthrough end to end.
+
+Xero takes no environment flag, unlike QuickBooks and Square. It has one set of API hosts and offers a demo company inside the same tenant list, so there is no sandbox host to point at and a flag would only be able to lie. Test against the demo company by picking it on the consent screen.
+
+Two things about the Xero app registration are worth getting right the first time, because both fail in ways that do not name themselves. The redirect URI has to match character for character, the same as Square's. And the app's scopes have to include `offline_access`, or Xero issues no refresh token at all and the connection dies thirty minutes after it is made, which reads as a connector that worked once.
 
 ### Plaid needs one repository *variable* as well as its secrets
 

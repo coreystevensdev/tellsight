@@ -93,6 +93,12 @@ export const envSchema = z
     PLAID_CLIENT_ID: z.string().min(1).optional(),
     PLAID_SECRET: z.string().min(1).optional(),
     PLAID_ENVIRONMENT: z.enum(['sandbox', 'production']).default('sandbox'),
+    XERO_CLIENT_ID: z.string().min(1).optional(),
+    XERO_CLIENT_SECRET: z.string().min(1).optional(),
+    XERO_REDIRECT_URI: z.string().url().optional(),
+    // No environment enum, unlike the other three. Xero has one set of API
+    // hosts and offers a demo company inside the same tenant list, so there is
+    // no sandbox host to switch to and a flag here would only be able to lie.
 
     // Only for CI / E2E, set to 'true' to bypass rate limiters entirely.
     // Parallel Playwright workers blow the 60/min public limit otherwise.
@@ -225,6 +231,15 @@ export function isQbConfigured(cfg: Env): boolean {
 
 export function isPlaidConfigured(cfg: Env): boolean {
   return !!(cfg.PLAID_CLIENT_ID && cfg.PLAID_SECRET && cfg.ENCRYPTION_KEY);
+}
+
+export function isXeroConfigured(cfg: Env): boolean {
+  return !!(
+    cfg.XERO_CLIENT_ID &&
+    cfg.XERO_CLIENT_SECRET &&
+    cfg.XERO_REDIRECT_URI &&
+    cfg.ENCRYPTION_KEY
+  );
 }
 
 export function isShopifyConfigured(cfg: Env): boolean {
