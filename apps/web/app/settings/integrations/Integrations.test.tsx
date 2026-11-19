@@ -27,7 +27,7 @@ import Integrations from './Integrations';
 // Shopify's payload and the only symptom was a card showing the wrong thing.
 function status(path: string) {
   const p = String(path);
-  for (const name of ['quickbooks', 'square', 'shopify', 'plaid'] as const) {
+  for (const name of ['quickbooks', 'square', 'shopify', 'plaid', 'xero'] as const) {
     if (p.includes(name)) return name;
   }
   throw new Error(`status() does not know this provider: ${p}`);
@@ -40,8 +40,9 @@ function respondWith(
   then?: (path: string) => unknown,
   square: unknown = { connected: false },
   plaid: unknown = { connected: false },
+  xero: unknown = { connected: false },
 ) {
-  const byProvider = { quickbooks: qb, shopify, square, plaid };
+  const byProvider = { quickbooks: qb, shopify, square, plaid, xero };
   apiClient.mockImplementation(async (path: string) => {
     if (path.endsWith('/status')) return { data: byProvider[status(path)] };
     if (then) return then(path);
@@ -72,7 +73,7 @@ describe('Integrations loading', () => {
 
     render(<Integrations />);
 
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(4));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(5));
   });
 
   // Each status call has its own catch returning { connected: false }. Without
@@ -126,12 +127,56 @@ describe('Integrations actions', () => {
 
     const user = userEvent.setup({ delay: null });
     render(<Integrations />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(4));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(5));
     await user.click(within(section(/QuickBooks/)).getByRole('button', { name: 'Connect' }));
 
     await waitFor(() =>
       expect(window.location.href).toBe('https://appcenter.intuit.com/connect/oauth2?x=1'),
     );
+  });
+
+  // A connector nobody can click is not shipped. This is the whole chain for
+  // Xero in one assertion: the card renders, its own button is the one clicked,
+  // and the request goes to Xero's endpoint rather than the QuickBooks one
+  // directly above it in the list.
+  it('sends the Xero card to the Xero connect endpoint', async () => {
+    respondWith({ connected: false }, { connected: false }, () => ({
+      data: { authUrl: 'https://login.xero.com/identity/connect/authorize?x=1' },
+    }));
+
+    const user = userEvent.setup({ delay: null });
+    render(<Integrations />);
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(5));
+    await user.click(within(section(/^Xero$/)).getByRole('button', { name: 'Connect' }));
+
+    await waitFor(() => {
+      expect(apiClient.mock.calls.some(([p]) => String(p) === '/integrations/xero/connect')).toBe(
+        true,
+      );
+      expect(window.location.href).toBe('https://login.xero.com/identity/connect/authorize?x=1');
+    });
+  });
+
+  it('syncs and disconnects Xero through its own routes', async () => {
+    respondWith({ connected: false }, { connected: false }, () => ({ data: {} }), undefined, undefined, {
+      connected: true,
+      companyName: 'Maple Florist',
+    });
+
+    const user = userEvent.setup({ delay: null });
+    render(<Integrations />);
+    await waitFor(() => expect(section(/^Xero$/)).toBeTruthy());
+
+    await user.click(within(section(/^Xero$/)).getByRole('button', { name: /sync/i }));
+    await waitFor(() =>
+      expect(apiClient.mock.calls.some(([p]) => String(p) === '/integrations/xero/sync')).toBe(true),
+    );
+
+    await user.click(within(section(/^Xero$/)).getByRole('button', { name: /disconnect/i }));
+    await waitFor(() => {
+      const call = apiClient.mock.calls.find(([p]) => String(p) === '/integrations/xero');
+      expect(call?.[1]?.method).toBe('DELETE');
+    });
   });
 
   // The shop domain is user input and is trimmed before it goes upstream, since
@@ -143,7 +188,7 @@ describe('Integrations actions', () => {
 
     const user = userEvent.setup({ delay: null });
     render(<Integrations />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(4));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(5));
     await user.type(screen.getByPlaceholderText('your-store.myshopify.com'), '  my-store.myshopify.com  ');
     await user.click(within(section(/Shopify/)).getByRole('button', { name: 'Connect' }));
 
@@ -171,7 +216,7 @@ describe('Integrations actions', () => {
     render(<Integrations />);
 
     await waitFor(() =>
-      expect(screen.getAllByText(/not available in this deployment/i)).toHaveLength(4),
+      expect(screen.getAllByText(/not available in this deployment/i)).toHaveLength(5),
     );
     expect(screen.queryByRole('button', { name: 'Connect' })).toBeNull();
   });
@@ -189,7 +234,7 @@ describe('Integrations actions', () => {
 
     render(<Integrations />);
 
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(4));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(5));
     expect(screen.queryByText(/not available in this deployment/i)).toBeNull();
   });
 
@@ -234,7 +279,7 @@ describe('Integrations actions', () => {
 
     const user = userEvent.setup({ delay: null });
     render(<Integrations />);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(4));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(5));
     await user.click(within(section(/QuickBooks/)).getByRole('button', { name: 'Connect' }));
 
     expect(await screen.findByText('Intuit is unavailable')).toBeInTheDocument();
@@ -311,9 +356,12 @@ describe('each connector card shows its own mark', () => {
 
     const marks = [...document.querySelectorAll('[data-mark]')].map((n) => n.getAttribute('data-mark'));
 
-    expect(marks).toEqual(['quickbooks', 'shopify', 'square', 'bank']);
+    expect(marks).toEqual(['quickbooks', 'ledger', 'shopify', 'square', 'bank']);
     // 'bank' rather than a Plaid mark on purpose: the card is about the owner's
-    // bank, and there is no verified Plaid path to draw from.
+    // bank, and there is no verified Plaid path to draw from. 'ledger' on the
+    // Xero card for the same reason, and it costs more there because that card
+    // really is about the brand: a mark drawn from memory would be a wrong
+    // logo rather than a missing one.
     // Distinctness against the list's own length rather than a literal, which
     // is the assertion that actually matters and does not need editing when a
     // fifth connector lands.

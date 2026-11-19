@@ -24,6 +24,9 @@ import { enqueueSyncJob as enqueueShopifySyncJob } from '../services/integration
 import * as squareOAuth from '../services/integrations/square/oauth.js';
 import { registerDailySync as registerSquareDailySync } from '../services/integrations/square/scheduler.js';
 import { enqueueSyncJob as enqueueSquareSyncJob } from '../services/integrations/square/worker.js';
+import * as xeroOAuth from '../services/integrations/xero/oauth.js';
+import { registerDailySync as registerXeroDailySync } from '../services/integrations/xero/scheduler.js';
+import { enqueueSyncJob as enqueueXeroSyncJob } from '../services/integrations/xero/worker.js';
 
 // Callback routes are public: the provider redirects the browser here with no
 // session, so RLS has no app.current_org_id to match and every write is refused,
@@ -306,6 +309,105 @@ export function registerIntegrationCallbacks(router: Router): void {
     } catch (error) {
       logger.error({ err: error }, 'Square OAuth callback failed');
       res.redirect(`${dashboardUrl}?square=error`);
+    }
+  });
+
+  // Xero signs nothing on the callback either, so like Square the state binding
+  // and the nonce are the whole defence. Unlike every other provider here, the
+  // tenant is not in the callback: Xero hands back a code and the organisations
+  // it grants have to be read from /connections with the resulting token.
+  router.get('/xero/callback', async (req: Request, res: Response) => {
+    const { code, state, error } = req.query as Record<string, string | undefined>;
+    const dashboardUrl = `${env.APP_URL}/dashboard`;
+
+    if (error) {
+      logger.warn({ error }, 'Xero OAuth denied by user');
+      res.redirect(`${dashboardUrl}?xero=denied`);
+      return;
+    }
+
+    // The binding is the authorization check. state was minted by /connect against an
+    // authenticated session, so the org it resolves to is the org that started the flow.
+    // Reads are single-use, which also makes a replayed callback fail here.
+    const flow = await takeOAuthState('xero', state);
+    if (!flow) {
+      logger.warn({ hasState: !!state }, 'Xero OAuth state unknown, expired or already used');
+      res.redirect(`${dashboardUrl}?xero=error`);
+      return;
+    }
+
+    const nonceCookie = req.cookies?.[oauthNonceCookie('xero')] as string | undefined;
+    clearCookie(res, oauthNonceCookie('xero'));
+    if (!nonceMatches(nonceCookie, flow.nonce)) {
+      logger.warn({ hasNonce: !!nonceCookie }, 'xero OAuth nonce missing or mismatched');
+      res.redirect(`${dashboardUrl}?xero=error`);
+      return;
+    }
+
+    if (!code) {
+      logger.warn({}, 'Xero OAuth callback missing code');
+      res.redirect(`${dashboardUrl}?xero=error`);
+      return;
+    }
+
+    try {
+      const tokens = await xeroOAuth.exchangeCode(code);
+
+      // Throws when consent landed only on practice accounts, which is a dead
+      // connection rather than a working one, so it must fail before a row is
+      // written.
+      const tenants = await xeroOAuth.fetchTenants(tokens.accessToken);
+      const [tenant] = tenants;
+
+      // One row per (org, provider), so a consent covering several Xero
+      // organisations can only sync one of them. Taking the first keeps the
+      // common case (a business with one organisation) working rather than
+      // refusing it, and the count is logged so the multi-organisation case is
+      // visible to an operator instead of silently half-connected.
+      if (tenants.length > 1) {
+        logger.warn(
+          { orgId: flow.orgId, tenantCount: tenants.length, tenantId: tenant!.tenantId },
+          'Xero consent covered several organisations, syncing the first',
+        );
+      }
+
+      const { orgId, userId } = flow;
+
+      const connection = await integrationConnectionsQueries.upsert(
+        {
+          orgId,
+          provider: 'xero',
+          providerTenantId: tenant!.tenantId,
+          encryptedRefreshToken: encrypt(tokens.refreshToken),
+          encryptedAccessToken: encrypt(tokens.accessToken),
+          accessTokenExpiresAt: new Date(Date.now() + tokens.expiresIn * 1000),
+          scope: tokens.scope,
+        },
+        dbAdmin,
+      );
+
+      await enqueueXeroSyncJob(connection.id, 'initial');
+      await registerXeroDailySync(orgId, connection.id);
+
+      trackEvent(orgId, userId, ANALYTICS_EVENTS.INTEGRATION_CONNECTED, {
+        provider: 'xero',
+        tenantId: tenant!.tenantId,
+      });
+
+      audit(req, {
+        orgId,
+        userId,
+        action: AUDIT_ACTIONS.INTEGRATION_CONNECTED,
+        targetType: 'integration',
+        targetId: 'xero',
+        metadata: { tenantId: tenant!.tenantId },
+      });
+
+      logger.info({ orgId, tenantId: tenant!.tenantId }, 'Xero connected');
+      res.redirect(`${dashboardUrl}?xero=connected`);
+    } catch (error) {
+      logger.error({ err: error }, 'Xero OAuth callback failed');
+      res.redirect(`${dashboardUrl}?xero=error`);
     }
   });
 }

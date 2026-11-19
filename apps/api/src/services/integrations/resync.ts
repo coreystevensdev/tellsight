@@ -5,6 +5,7 @@ import { enqueueSyncJob as enqueuePlaid } from './plaid/worker.js';
 import { enqueueSyncJob as enqueueShopify } from './shopify/worker.js';
 import { enqueueSyncJob as enqueueSquare } from './square/worker.js';
 import { enqueueSyncJob as enqueueQuickBooks } from './worker.js';
+import { enqueueSyncJob as enqueueXero } from './xero/worker.js';
 
 /**
  * Re-fetches everything a connector can see, without the owner reconnecting.
@@ -29,9 +30,10 @@ const ENQUEUE_BACKFILL: Record<ResyncProvider, (connectionId: number) => Promise
   shopify: (id) => enqueueShopify(id, 'backfill'),
   square: (id) => enqueueSquare(id, 'backfill'),
   plaid: (id) => enqueuePlaid(id, 'backfill'),
+  xero: (id) => enqueueXero(id, 'backfill'),
 };
 
-export const RESYNC_PROVIDERS = ['quickbooks', 'shopify', 'square', 'plaid'] as const;
+export const RESYNC_PROVIDERS = ['quickbooks', 'shopify', 'square', 'plaid', 'xero'] as const;
 
 export type ResyncProvider = (typeof RESYNC_PROVIDERS)[number];
 

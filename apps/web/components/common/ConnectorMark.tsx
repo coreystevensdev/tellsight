@@ -25,6 +25,15 @@ const MARKS = {
   // is actually about: the owner connects their bank and Plaid is the plumbing,
   // which is why the heading says Bank account rather than Plaid.
   bank: { title: 'Bank account', d: 'M12 2L1 8v2h22V8L12 2Z M4 12h2.6v7H4Z M10.7 12h2.6v7h-2.6Z M17.4 12h2.6v7h-2.6Z M2 21h20v2H2Z' },
+  // Same call as `bank`, for the same reason, and it costs more here because
+  // this card really is about the brand. There is no verified simple-icons
+  // path for Xero to hand, and a mark drawn from memory would be a wrong logo
+  // rather than a missing one, which is worse on a card whose whole job is to
+  // tell an owner which service they are about to authorize. A ruled ledger
+  // page is what the connector reads, so that is what it draws. Subpaths are
+  // non-overlapping, like the bank mark: a cut-out would need winding rules
+  // these flat fills do not carry.
+  ledger: { title: 'Accounting ledger', d: 'M3 3h2.2v18H3Z M7.4 5.2h13.6v3H7.4Z M7.4 10.5h13.6v3H7.4Z M7.4 15.8h8.8v3H7.4Z' },
 } as const;
 
 export type ConnectorName = keyof typeof MARKS;

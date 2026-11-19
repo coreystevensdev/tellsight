@@ -32,7 +32,7 @@ import { redis } from '../../lib/redis.js';
 // browser finishing it is the browser that started it.
 const TTL_SECONDS = 10 * 60;
 
-type Provider = 'quickbooks' | 'shopify' | 'square';
+type Provider = 'quickbooks' | 'shopify' | 'square' | 'xero';
 
 export interface OAuthFlowBinding {
   orgId: number;
