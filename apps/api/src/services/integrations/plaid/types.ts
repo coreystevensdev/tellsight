@@ -44,6 +44,30 @@ export interface PlaidInstitution {
   name: string;
 }
 
+export interface PlaidAccountBalances {
+  available: number | null;
+  current: number | null;
+  limit: number | null;
+  iso_currency_code: string | null;
+  unofficial_currency_code: string | null;
+}
+
+export interface PlaidAccount {
+  account_id: string;
+  name: string;
+  mask: string | null;
+  // 'depository' | 'credit' | 'loan' | 'investment' and others. Left as a string
+  // rather than a union: Plaid adds types, and an unrecognised one must fall
+  // through the depository filter in balances.ts rather than fail to parse.
+  type: string;
+  subtype: string | null;
+  balances: PlaidAccountBalances;
+}
+
+export interface PlaidBalanceResponse {
+  accounts: PlaidAccount[];
+}
+
 export interface PlaidErrorBody {
   error_type?: string;
   error_code?: string;
