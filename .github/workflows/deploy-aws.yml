@@ -46,7 +46,21 @@ jobs:
     # Bound a wedged build or network call without cutting off the guarded
     # rollback path, which can itself need several minutes to pull old images.
     timeout-minutes: 30
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    # workflow_run fires for any CI run matching the filter, and CI runs on
+    # pull_request as well as push. A fork's default branch is also called main,
+    # so a fork PR produces a run whose head_branch is literally "main" and
+    # passes the branches filter above. A conclusion check alone would then
+    # check out the fork's sha and deploy it with this repo's OIDC credentials.
+    #
+    # The dispatch path is pinned to main for the same reason in miniature:
+    # workflow_dispatch can be aimed at any ref.
+    if: >-
+      ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+       || (github.event_name == 'workflow_run'
+           && github.event.workflow_run.conclusion == 'success'
+           && github.event.workflow_run.event == 'push'
+           && github.event.workflow_run.head_branch == 'main'
+           && github.event.workflow_run.head_repository.full_name == github.repository) }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -67,7 +81,7 @@ jobs:
         run: |
           set -euo pipefail
           conclusion=$(gh api \
-            "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$SHA&status=completed&per_page=1" \
+            "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$SHA&status=completed&branch=main&event=push&per_page=1" \
             --jq '.workflow_runs[0].conclusion // ""')
           echo "CI for ${SHA:0:7}: ${conclusion:-none}"
           if [ "$conclusion" != "success" ]; then
