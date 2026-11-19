@@ -84,6 +84,35 @@ describe('generateAuthUrl', () => {
   });
 
   /**
+   * Xero deprecated the broad `accounting.transactions.read` and assigned
+   * granular scopes to every Web and PKCE app in March 2026. An app created
+   * after that date does not have the broad scope at all, so requesting it
+   * fails authorize with `invalid_scope` before the consent screen ever
+   * renders. Pinned so nobody "simplifies" four scopes back into one.
+   */
+  it('asks for granular scopes, not the deprecated broad one', () => {
+    const authUrl = generateAuthUrl().authUrl;
+
+    expect(authUrl).not.toContain('accounting.transactions');
+    expect(authUrl).toContain('accounting.invoices.read');
+    expect(authUrl).toContain('accounting.banktransactions.read');
+  });
+
+  /**
+   * The other two quarters of the old broad scope, deliberately absent.
+   * `sync.ts` fetches neither: a Xero payment settles an invoice `Invoices`
+   * already reported, so reading Payments would double-count revenue, and
+   * ManualJournals is not fetched at all. Granular scopes made it possible to
+   * ask for less than the broad scope forced on us.
+   */
+  it('does not ask for payments or manual journals it never reads', () => {
+    const authUrl = generateAuthUrl().authUrl;
+
+    expect(authUrl).not.toContain('accounting.payments');
+    expect(authUrl).not.toContain('accounting.manualjournals');
+  });
+
+  /**
    * Xero answered `invalid_scope` on the live consent screen while every
    * assertion above passed.
    *
@@ -113,7 +142,8 @@ describe('generateAuthUrl', () => {
 
     expect(scope!.split(' ')).toEqual([
       'offline_access',
-      'accounting.transactions.read',
+      'accounting.invoices.read',
+      'accounting.banktransactions.read',
       'accounting.settings.read',
     ]);
   });
@@ -148,12 +178,18 @@ describe('exchangeCode', () => {
     });
   });
 
+  // Asserts against what generateAuthUrl actually asks for rather than a
+  // hardcoded copy. The copy went stale the moment Xero deprecated the broad
+  // scope, and a fallback that disagrees with the request is a stored `scope`
+  // column that lies about what was granted.
   it('falls back to the requested scope when Xero echoes none', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse({ access_token: 'a', refresh_token: 'r', expires_in: 1800, token_type: 'Bearer' }),
     );
 
-    expect((await exchangeCode('c')).scope).toContain('accounting.transactions.read');
+    const requested = new URL(generateAuthUrl().authUrl).searchParams.get('scope');
+
+    expect((await exchangeCode('c')).scope).toBe(requested);
   });
 
   it('raises an external service error on a rejected exchange', async () => {
