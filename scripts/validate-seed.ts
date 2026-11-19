@@ -193,6 +193,13 @@ function validate() {
     // would be the product choosing a rate, which is the one thing that stat
     // refuses to do. Its renderer is covered in assembly.test.ts instead.
     'tax_set_aside',
+    // customer_concentration needs counterparty values, and the seed writes
+    // none: every seed row is anonymous, which is the same state production was
+    // in until the 2026-11-19 backfill. Inventing seed customers would make the
+    // one thing this stat guards against, a confident share computed from thin
+    // attribution, the thing the seed demonstrates. Its renderer is covered in
+    // assembly.test.ts instead, including the prompt-injection cases.
+    'customer_concentration',
   ]);
   const uncovered = [...ALL_STAT_TYPES].filter((t) => !presentTypes.has(t)).sort();
   const declared = [...UNCOVERED_BY_PROMPT_HASH].sort();

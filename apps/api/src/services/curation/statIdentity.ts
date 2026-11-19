@@ -2,6 +2,28 @@ import type { ComputedStat, IdentifiedStat } from './types.js';
 import { StatType } from './types.js';
 import { MONTH_NAMES } from './computationPrimitives.js';
 
+// Characters that carry line or block structure wherever this text ends up: the
+// prompt the model reads, the `[cite: ...]` token a parser splits, the
+// <cite id="..."> attribute. One class, exported, because assembly.ts needs the
+// same set and two lists in two files is a differential that drifts. The first
+// version of this swapped \r \n \t and missed U+2028, which JavaScript's
+// split('\n') does not treat as a line break and a language model does.
+//
+// C1 (U+0080 to U+009F) is in range, which covers U+0085 NEL.
+export const STRUCTURE_CHARS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g;
+
+// Injective by construction: every distinct character maps to a distinct escape,
+// so two categories differing only by a control character cannot collapse onto
+// one id. The guillemets are not structural anywhere downstream, and a literal
+// "«U+000A»" in a category is a collision this accepts for the same reason the
+// quote and colon swaps below do.
+export function escapeStructure(value: string): string {
+  return value.replace(
+    STRUCTURE_CHARS,
+    (ch) => `«U+${ch.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}»`,
+  );
+}
+
 // Per-instance id for the audit drawer and NL Q&A citation system.
 // Different from allowedStatTypes (assembly.ts), which refers to stat *types*, not instances.
 export function statInstanceId(stat: ComputedStat, datasetId: number): string {
@@ -14,8 +36,23 @@ export function statInstanceId(stat: ComputedStat, datasetId: number): string {
   // splitting on ':' to read off the statType segment. Both swaps avoid
   // collapsing two categories that differ only by an escaped character onto
   // the same id, or an escaped-only category onto an empty segment.
+  // The newline and bracket swaps are the same idea as the two above, for a
+  // different downstream: this id is printed inside a `[cite: ...]` token in the
+  // prompt, so a category carrying a newline ends the line early and the
+  // remainder reads as a stat line of its own. Swapped rather than stripped for
+  // the reason stated above, which applies with more force here: stripping would
+  // collapse `A[B` and `AB` onto one id, and this id is how the audit drawer and
+  // Q&A citations find a specific stat instance.
   const category =
-    stat.category == null ? '_' : stat.category.replace(/"/g, '”').replace(/:/g, '：');
+    stat.category == null
+      ? '_'
+      : escapeStructure(
+          stat.category
+            .replace(/"/g, '”')
+            .replace(/:/g, '：')
+            .replace(/\[/g, '［')
+            .replace(/\]/g, '］'),
+        );
   return `${datasetId}:${stat.statType}:${category}:${statDiscriminator(stat)}`;
 }
 

@@ -76,6 +76,12 @@ function noveltyScore(stat: ComputedStat): number {
       // own profit and it moves every period. Mid-range because nothing else in
       // the product reports it, so it is new information without being news.
       return 0.5;
+    case StatType.CustomerConcentration:
+      // The highest novelty in the set, because nothing else in the product
+      // reports who the money came from: every other stat answers how much or
+      // when. Scored on the share, since one customer at 60% is a different
+      // finding from one at 25% rather than the same finding more so.
+      return stat.details.sharePercent >= 50 ? 0.9 : 0.7;
     case StatType.CategoryVariance:
       // A category landing on its plan is the expected outcome, so it is not
       // news. A miss is, and the size of the miss is already in the score below.
@@ -119,6 +125,12 @@ function actionabilityScore(stat: ComputedStat): number {
       // here while scoring mid on novelty. Deliberately not scored on size: a
       // bigger set-aside means a more profitable period, not a more urgent one.
       return 0.85;
+    case StatType.CustomerConcentration:
+      // Lower than it first looks, and lower than its novelty. A concentrated
+      // book is a structural fact the owner already knows and cannot change
+      // this month; the useful action is a quarter's worth of business
+      // development, not a decision. Worth saying, not worth leading with.
+      return 0.45;
     case StatType.CategoryVariance:
       // Overspending against a plan the owner set themselves is the most
       // actionable thing here: they chose the number, so the gap is theirs to

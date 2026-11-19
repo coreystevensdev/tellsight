@@ -15,6 +15,10 @@ interface DataRow {
   date: Date;
   amount: string;
   label: string | null;
+  // Declared for the same reason it is on computationPrimitives' DataRow: the
+  // concentration case below matches on it, and through the index signature
+  // alone it arrives as unknown.
+  counterparty?: string | null;
   [key: string]: unknown;
 }
 
@@ -93,5 +97,14 @@ export function resolveSourceRows(rows: DataRow[], stat: IdentifiedStat): DataRo
     // would not add up to the number it is explaining.
     case StatType.TaxSetAside:
       return rows.filter(isFinancialRow);
+
+    // Only the named customer's rows. The percentage is theirs, and showing
+    // every revenue row would make the reader find them. Matched on the same
+    // trimmed name the computation grouped on, so a row with trailing space
+    // cannot be counted in the figure and then missing from its own evidence.
+    case StatType.CustomerConcentration: {
+      const top = stat.details.topCustomer;
+      return rows.filter((row) => isFinancialRow(row) && row.counterparty?.trim() === top);
+    }
   }
 }

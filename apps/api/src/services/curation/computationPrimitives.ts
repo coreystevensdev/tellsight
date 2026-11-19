@@ -6,6 +6,11 @@ export interface DataRow {
   date: Date;
   amount: string;
   label?: string | null;
+  // Declared, rather than reached through the index signature, so the curation
+  // layer sees a string. label is free text that falls back to a memo or a doc
+  // number; counterparty is the groupable one, which is the whole reason the
+  // column was separated (DW-280).
+  counterparty?: string | null;
   metadata?: unknown;
   [key: string]: unknown;
 }
