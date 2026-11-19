@@ -132,7 +132,7 @@ orgFinancialsRouter.get('/financials/cash-forecast', rateLimitDashboardCompute, 
     return;
   }
 
-  const { financials, buckets } = await withRlsContext(user.org_id, user.isAdmin, async (tx) => {
+  const { financials, buckets, seesOperatingCost } = await withRlsContext(user.org_id, user.isAdmin, async (tx) => {
     const financials = await orgFinancialsQueries.getOrgFinancials(user.org_id, tx);
     const datasetId = await orgsQueries.getActiveDatasetId(user.org_id, tx);
     // SQL-aggregated bucket map instead of full row fetch, a 50k-row dataset
@@ -140,7 +140,13 @@ orgFinancialsRouter.get('/financials/cash-forecast', rateLimitDashboardCompute, 
     const buckets = datasetId != null
       ? await dataRowsQueries.getMonthlyBucketsByDataset(user.org_id, datasetId, tx)
       : new Map();
-    return { financials, buckets };
+    // Fetched inside the same RLS context as the buckets, not after it: a
+    // cost-visibility answer read outside the context would silently be the
+    // answer for zero rows, since RLS refuses reads rather than erroring.
+    const seesOperatingCost = datasetId != null
+      ? await dataRowsQueries.hasCostVisibleExpenses(user.org_id, datasetId, tx)
+      : false;
+    return { financials, buckets, seesOperatingCost };
   });
 
   if (buckets.size === 0) {
@@ -148,7 +154,7 @@ orgFinancialsRouter.get('/financials/cash-forecast', rateLimitDashboardCompute, 
     return;
   }
 
-  const cashFlow = cashFlowFromBuckets(buckets);
+  const cashFlow = cashFlowFromBuckets(buckets, seesOperatingCost);
   const monthlyNets = netsFromBuckets(buckets, 12);
   const forecast = computeCashForecast(cashFlow, financials ?? null, monthlyNets);
 

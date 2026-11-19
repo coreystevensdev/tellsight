@@ -9,6 +9,7 @@ const mockCreateIfUnderQuota = vi.fn();
 const mockGetDateRange = vi.fn();
 const mockCountDistinctDates = vi.fn();
 const mockGetMonthlyBuckets = vi.fn();
+const mockHasCostVisibleExpenses = vi.fn().mockResolvedValue(true);
 const mockGetOrgOwnerId = vi.fn();
 const mockFindUserById = vi.fn();
 const mockRecordEvent = vi.fn().mockResolvedValue({ id: 1 });
@@ -48,6 +49,9 @@ vi.mock('../../../db/queries/index.js', () => ({
     getDateRange: mockGetDateRange,
     countDistinctDates: mockCountDistinctDates,
     getMonthlyBucketsByDataset: mockGetMonthlyBuckets,
+    // Cost-visible by default: these cases are about alert firing, not about
+    // DW-295's suppression.
+    hasCostVisibleExpenses: mockHasCostVisibleExpenses,
   },
   userOrgsQueries: { getOrgOwnerId: mockGetOrgOwnerId },
   usersQueries: { findUserById: mockFindUserById },
@@ -465,7 +469,7 @@ describe('cron: fire decisions', () => {
 
     const { cashFlowForAlerting } = await import('../../../services/curation/computation.js');
     const { statInstanceId } = await import('../../../services/curation/computation.js');
-    const [cashFlowStat] = cashFlowForAlerting(buckets);
+    const [cashFlowStat] = cashFlowForAlerting(buckets, true);
     const correctionId = statInstanceId(cashFlowStat!, 100);
 
     mockGetActiveCorrections.mockResolvedValueOnce([correctionId]);

@@ -2,7 +2,10 @@ import { eq, and, between, inArray, asc, count, sql } from 'drizzle-orm';
 import { db, type DbTransaction } from '../../lib/db.js';
 import { dataRows } from '../schema.js';
 import type { MonthlyBucketMap } from '../../services/curation/computation.js';
-import { financialEffect } from '../../services/curation/computationPrimitives.js';
+import {
+  financialEffect,
+  hasCostVisibility,
+} from '../../services/curation/computationPrimitives.js';
 
 const BATCH_SIZE = 1_000;
 
@@ -174,4 +177,40 @@ export async function getMonthlyBucketsByDataset(
     buckets.set(r.bucket, bucket);
   }
   return buckets;
+}
+
+/**
+ * Whether this dataset holds an expense row from a source that can see
+ * operating costs.
+ *
+ * The bucket query above deliberately does not carry this. A bucket is a month
+ * of summed revenue and expenses with no `sourceType`, which is the privacy
+ * shape the curation layer wants, and adding the column would split every
+ * bucket per source for the benefit of one boolean.
+ *
+ * `cashFlowFromBuckets` needs the answer and cannot derive it (DW-295), so this
+ * is the SQL-path equivalent of the `hasCostVisibility(rows)` call the row path
+ * makes. `selectDistinct` keeps it to a handful of pairs no matter how large the
+ * dataset is.
+ *
+ * The decision itself is delegated rather than reimplemented in SQL. Putting
+ * `sourceType IN (...)` in a where clause would copy `SEES_OPERATING_COST` into
+ * a second place, and the comment on `getHasMarginSignal` records what happened
+ * last time two copies of this predicate existed: they drifted, and one of them
+ * was wrong for as long as that stood.
+ */
+export async function hasCostVisibleExpenses(
+  orgId: number,
+  datasetId: number,
+  client: typeof db | DbTransaction = db,
+): Promise<boolean> {
+  const pairs = await client
+    .selectDistinct({
+      parentCategory: dataRows.parentCategory,
+      sourceType: dataRows.sourceType,
+    })
+    .from(dataRows)
+    .where(and(eq(dataRows.orgId, orgId), eq(dataRows.datasetId, datasetId)));
+
+  return hasCostVisibility(pairs);
 }
