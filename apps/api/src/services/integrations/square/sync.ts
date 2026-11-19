@@ -26,7 +26,7 @@ const UPSERT_BATCH_SIZE = 500;
 // history behind them.
 const INITIAL_LOOKBACK_MONTHS = 24;
 
-export type SyncTrigger = 'initial' | 'scheduled' | 'manual';
+export type SyncTrigger = 'initial' | 'scheduled' | 'manual' | 'backfill';
 
 export interface SyncResult {
   rowsSynced: number;
@@ -53,11 +53,16 @@ export async function runSync(connectionId: number, trigger: SyncTrigger): Promi
   if (!connection) throw new ConnectionNotFoundError(connectionId);
 
   const orgId = connection.orgId;
+  // Deliberately two flags rather than one. A backfill needs the same wide fetch
+  // an initial sync does, and must not inherit the other thing isInitial means:
+  // setActiveDataset below repoints the org's dashboard, so an admin backfilling
+  // a connector would silently move an org off the dataset it was looking at.
   const isInitial = trigger === 'initial';
+  const wantsEverything = isInitial || trigger === 'backfill';
   const syncedAt = new Date();
 
   const since =
-    !isInitial && connection.lastSyncedAt
+    !wantsEverything && connection.lastSyncedAt
       ? connection.lastSyncedAt
       : new Date(
           Date.UTC(syncedAt.getUTCFullYear(), syncedAt.getUTCMonth() - INITIAL_LOOKBACK_MONTHS, 1),

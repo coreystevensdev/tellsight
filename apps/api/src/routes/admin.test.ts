@@ -19,6 +19,7 @@ const mockAudit = vi.fn();
 const mockAuditAuth = vi.fn();
 const mockSetLogLevel = vi.fn().mockReturnValue('info');
 const mockUpdateAgentEnabled = vi.fn();
+const mockEnqueueBackfill = vi.fn();
 const mockTrackEvent = vi.fn();
 
 vi.mock('../services/auth/tokens.js', () => ({
@@ -59,6 +60,12 @@ vi.mock('../db/queries/index.js', () => ({
 vi.mock('../services/audit/auditService.js', () => ({
   audit: (...args: unknown[]) => mockAudit(...args),
   auditAuth: (...args: unknown[]) => mockAuditAuth(...args),
+}));
+
+vi.mock('../services/integrations/resync.js', () => ({
+  enqueueBackfill: mockEnqueueBackfill,
+  isResyncProvider: (v: string) => ['quickbooks', 'shopify', 'square', 'plaid'].includes(v),
+  RESYNC_PROVIDERS: ['quickbooks', 'shopify', 'square', 'plaid'] as const,
 }));
 
 vi.mock('../services/analytics/trackEvent.js', () => ({
@@ -727,6 +734,78 @@ describe('PATCH /admin/stat-corrections/:orgId/:id', () => {
 
     expect(res.status).toBe(403);
     expect(mockResolveCorrection).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /admin/integrations/:provider/backfill', () => {
+  it('enqueues a backfill and records who asked for it', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
+    mockEnqueueBackfill.mockResolvedValueOnce({ connectionId: 5 });
+
+    const res = await fetch(`${baseUrl}/admin/integrations/quickbooks/backfill`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ orgId: 2 }),
+    });
+    const json = (await res.json()) as { data: { provider: string; connectionId: number } };
+
+    // 202 rather than 200: the sync runs on a worker, so the response only
+    // means the job was accepted.
+    expect(res.status).toBe(202);
+    expect(json.data).toMatchObject({ orgId: 2, provider: 'quickbooks', connectionId: 5 });
+    expect(mockEnqueueBackfill).toHaveBeenCalledWith(2, 'quickbooks');
+    // Re-fetching an org's data on an admin's say-so is exactly the kind of
+    // thing the audit log exists for.
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 2,
+        action: 'admin.connector_backfilled',
+        targetType: 'integration',
+        targetId: 'quickbooks',
+      }),
+    );
+  });
+
+  it('refuses a provider with no connector rather than enqueuing nothing', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
+
+    const res = await fetch(`${baseUrl}/admin/integrations/csv/backfill`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ orgId: 2 }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(mockEnqueueBackfill).not.toHaveBeenCalled();
+  });
+
+  it('reports 404 when the org never connected that provider', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
+    mockEnqueueBackfill.mockResolvedValueOnce(null);
+
+    const res = await fetch(`${baseUrl}/admin/integrations/plaid/backfill`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ orgId: 2 }),
+    });
+    const json = (await res.json()) as { error: { code: string } };
+
+    expect(res.status).toBe(404);
+    expect(json.error.code).toBe('NOT_CONNECTED');
+  });
+
+  it('rejects a body with no orgId', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce(adminPayload());
+
+    const res = await fetch(`${baseUrl}/admin/integrations/square/backfill`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({}),
+    });
+
+    expect(res.status).toBe(400);
+    expect(mockEnqueueBackfill).not.toHaveBeenCalled();
   });
 });
 

@@ -51,7 +51,7 @@ export interface PlaidErrorBody {
   display_message?: string | null;
 }
 
-export type PlaidSyncTrigger = 'manual' | 'scheduled';
+export type PlaidSyncTrigger = 'manual' | 'scheduled' | 'backfill';
 
 export interface PlaidSyncOutcome {
   rowsSynced: number;

@@ -306,6 +306,39 @@ describe('runSync', () => {
     expect(client.query).toHaveBeenCalledWith('Purchase', undefined);
   });
 
+  // The pair that matters for DW-292. A backfill has to fetch like an initial
+  // sync and must not inherit what else 'initial' means, because
+  // setActiveDataset repoints the org's dashboard: an admin backfilling a
+  // connector would silently move an org off the dataset it was looking at.
+  it('passes undefined since for a backfill, same as an initial sync', async () => {
+    mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection({ lastSyncedAt: new Date() }));
+    const client = mockQbClient();
+    mockCreateQbClient.mockResolvedValueOnce(client);
+    mockGetDatasetsByOrg.mockResolvedValueOnce([
+      { id: 400, sourceType: 'quickbooks', name: 'QuickBooks, Sunrise Cafe' },
+    ]);
+    mockNormalizeTransactions.mockReturnValue([]);
+
+    const { runSync } = await import('./sync.js');
+    await runSync(1, 'backfill');
+
+    expect(client.query).toHaveBeenCalledWith('Purchase', undefined);
+  });
+
+  it('does not repoint the active dataset on a backfill', async () => {
+    mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection({ lastSyncedAt: new Date() }));
+    mockCreateQbClient.mockResolvedValueOnce(mockQbClient());
+    mockGetDatasetsByOrg.mockResolvedValueOnce([
+      { id: 400, sourceType: 'quickbooks', name: 'QuickBooks, Sunrise Cafe' },
+    ]);
+    mockNormalizeTransactions.mockReturnValue([]);
+
+    const { runSync } = await import('./sync.js');
+    await runSync(1, 'backfill');
+
+    expect(mockSetActiveDataset).not.toHaveBeenCalled();
+  });
+
   it('fetches all 12 transaction types', async () => {
     mockGetByIdAndProvider.mockResolvedValueOnce(mockConnection());
     const client = mockQbClient();
