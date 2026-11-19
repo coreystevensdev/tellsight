@@ -67,11 +67,25 @@ export function generateAuthUrl(): AuthUrlResult {
     response_type: 'code',
     client_id: env.XERO_CLIENT_ID!,
     redirect_uri: env.XERO_REDIRECT_URI!,
-    scope: XERO_SCOPE,
     state,
   });
 
-  return { authUrl: `${XERO_AUTH_URL}?${params.toString()}`, state };
+  // scope is appended by hand because `URLSearchParams` encodes a space as `+`,
+  // the form-urlencoded convention, and Xero percent-decodes this query string
+  // per RFC 3986 where `+` is a literal plus. Three scopes joined by spaces
+  // therefore arrive as one nonsense token and Xero answers invalid_scope.
+  //
+  // Square builds its URL the same way and survives it, which is why nothing
+  // caught this earlier: its server form-decodes and reads the `+` as a space.
+  // QuickBooks and Shopify never had the problem at all, one scope and a
+  // comma-separated list respectively, so neither carries a space to mangle.
+  //
+  // Only the query string is affected. The token exchanges below pass
+  // `URLSearchParams` as a request *body* under
+  // application/x-www-form-urlencoded, where `+` for a space is correct.
+  const authUrl = `${XERO_AUTH_URL}?${params.toString()}&scope=${encodeURIComponent(XERO_SCOPE)}`;
+
+  return { authUrl, state };
 }
 
 export async function exchangeCode(code: string): Promise<TokenExchangeResult> {
