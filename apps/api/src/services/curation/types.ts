@@ -15,6 +15,7 @@ export const StatType = {
   CashForecast: 'cash_forecast',
   CategoryVariance: 'category_variance',
   TaxSetAside: 'tax_set_aside',
+  CustomerConcentration: 'customer_concentration',
 } as const;
 
 export type StatType = (typeof StatType)[keyof typeof StatType];
@@ -263,6 +264,28 @@ export interface BreakEvenStat extends BaseComputedStat {
   details: BreakEvenDetails;
 }
 
+// The share figure is a floor on the customer's real share, not an estimate:
+// the denominator is total revenue including rows that carry no counterparty, so
+// unattributed revenue can only move the true number up. attributedRevenue and
+// unattributedRevenue are both reported because the gap between them is what the
+// suppression rule turns on, and a reader asking "how sure is this" is really
+// asking about that gap.
+export interface CustomerConcentrationDetails {
+  topCustomer: string;
+  topCustomerRevenue: number;
+  sharePercent: number;
+  totalRevenue: number;
+  attributedRevenue: number;
+  unattributedRevenue: number;
+  customerCount: number;
+  monthsCovered: number;
+}
+
+export interface CustomerConcentrationStat extends BaseComputedStat {
+  statType: 'customer_concentration';
+  details: CustomerConcentrationDetails;
+}
+
 export interface TaxSetAsideStat extends BaseComputedStat {
   statType: 'tax_set_aside';
   details: TaxSetAsideDetails;
@@ -292,7 +315,8 @@ export type ComputedStat =
   | BreakEvenStat
   | CashForecastStat
   | CategoryVarianceStat
-  | TaxSetAsideStat;
+  | TaxSetAsideStat
+  | CustomerConcentrationStat;
 
 // Citation target for the audit drawer and NL Q&A: a ComputedStat with a stable instance id.
 // The id is derived (see statInstanceId in computation.ts), never stored on ComputedStat itself.

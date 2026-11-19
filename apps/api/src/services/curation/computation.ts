@@ -8,6 +8,7 @@ import { StatType } from './types.js';
 
 import type { DataRow } from './computationPrimitives.js';
 import { computeTaxSetAside } from './taxMetrics.js';
+import { computeCustomerConcentration } from './concentrationMetrics.js';
 import {
   computeBreakEven,
   computeCashFlow,
@@ -101,6 +102,9 @@ export function computeStats(
   );
 
   const taxStats = computeTaxSetAside(rows, opts?.financials?.taxSetAsidePercent);
+  // Takes raw rows rather than groups: it groups by counterparty, which is a
+  // different axis from the category grouping everything else above reuses.
+  const concentrationStats = computeCustomerConcentration(rows);
 
   return [
     ...computeTotals(groups, allAmounts),
@@ -110,6 +114,7 @@ export function computeStats(
     ...computeCategoryBreakdowns(groups),
     ...computeYearOverYear(rows),
     ...marginStats,
+    ...concentrationStats,
     ...computeSeasonalProjection(rows),
     ...cashFlowStats,
     ...runwayStats,

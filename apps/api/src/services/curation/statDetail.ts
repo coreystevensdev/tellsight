@@ -74,6 +74,26 @@ export function buildStatDetail(stat: IdentifiedStat): StatDetailView {
       };
     }
 
+    case StatType.CustomerConcentration: {
+      const d = stat.details;
+      const top = `$${usd.format(d.topCustomerRevenue)}`;
+      const total = `$${usd.format(d.totalRevenue)}`;
+      return {
+        kind: 'formula',
+        expression: `${top} / ${total} = ${d.sharePercent}%`,
+        terms: [
+          { label: 'Largest customer', value: d.topCustomer },
+          { label: 'Their revenue', value: top },
+          { label: 'Total revenue', value: total },
+          // Shown because it is what the figure's reliability turns on: the
+          // share is a floor, and this is the size of the gap under it.
+          { label: 'Not attributed to a customer', value: `$${usd.format(d.unattributedRevenue)}` },
+          { label: 'Customers', value: String(d.customerCount) },
+          { label: 'Months covered', value: String(d.monthsCovered) },
+        ],
+      };
+    }
+
     case StatType.TaxSetAside: {
       const profit = `$${usd.format(stat.details.netProfit)}`;
       const rate = `${stat.details.ratePercent}%`;

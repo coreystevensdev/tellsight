@@ -8,6 +8,7 @@ import { StatType } from './types.js';
 import type { BusinessProfile } from 'shared/types';
 import { getIndustryBenchmarks } from './config/industry-benchmarks.js';
 import { statInstanceId } from './computation.js';
+import { STRUCTURE_CHARS } from './statIdentity.js';
 import { isBelowFloor } from './sampleSizeFloors.js';
 import { scoringConfig } from './scoring.js';
 
@@ -93,9 +94,44 @@ function getTemplate(version: string): SplitTemplate {
 // worse arm by accident; the finding lives in the ledger and in 6c3e818.
 const MONTHLY_CASH_FLOW_VERSIONS = new Set(['v2.3', 'v2.4']);
 
+// The only owner-authored strings that reach this prompt: a category, which is
+// a CSV column header or an accounting category, and a customer name from a
+// customer record. Everything else assembled here is a number this codebase
+// computed.
+//
+// It matters more than it looks, because the line format below is
+// `- [Category] Stat: value`. A name carrying a newline and a bracket does not
+// merely read oddly, it forges a whole stat line: a category of
+// `Overall] Total: $9,999,999 (relevance: 1.00)` plus a newline and `- [X`
+// fabricates a figure the model has no way to distinguish from a real one.
+//
+// Removing the characters that carry structure rather than escaping them, since
+// escaping would need the model to understand the scheme. Capped as well, so a
+// very long name cannot push real stats toward the end of the context.
+const PROMPT_FIELD_MAX = 60;
+
+function promptSafe(value: string): string {
+  const flattened = value
+    // The same class statIdentity escapes, shared rather than restated: the two
+    // had different lists and the narrower one missed U+2028, which a language
+    // model reads as a line break. Replaced with a space rather than removed, so
+    // two words separated only by a control character do not fuse.
+    .replace(STRUCTURE_CHARS, ' ')
+    // The prompt's own delimiters. Backticks go too: the model reads fenced
+    // text as a block rather than as a value.
+    .replace(/[[\]`]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!flattened) return 'Unnamed';
+  return flattened.length > PROMPT_FIELD_MAX
+    ? `${flattened.slice(0, PROMPT_FIELD_MAX - 3)}...`
+    : flattened;
+}
+
 function formatStatBody(insight: ScoredInsight, promptVersion: string): string {
   const { stat, score } = insight;
-  const category = stat.category ?? 'Overall';
+  const category = promptSafe(stat.category ?? 'Overall');
 
   switch (stat.statType) {
     case StatType.Total:
@@ -185,6 +221,18 @@ function formatStatBody(insight: ScoredInsight, promptVersion: string): string {
     case StatType.TaxSetAside: {
       const d = stat.details;
       return `- [Overall] Tax set-aside at the rate this business recorded (${d.ratePercent}%): ${usdMinus(d.setAside)} of ${usdMinus(d.netProfit)} net profit over ${d.monthsCovered} months, from ${usdMinus(d.revenue)} revenue less ${usdMinus(d.expenses)} expenses (relevance: ${score.toFixed(2)})`;
+    }
+    // States the share and the gap, and stops. "Your largest client is 60% of
+    // revenue" is a fact; "you should diversify" is advice, and the product's
+    // standing rule is never "you should". The unattributed figure travels with
+    // it so the model can hedge honestly rather than inventing a caveat: the
+    // percentage is a floor, and that number is why.
+    case StatType.CustomerConcentration: {
+      const d = stat.details;
+      const gap = d.unattributedRevenue > 0
+        ? `, with ${usdMinus(d.unattributedRevenue)} of revenue not attributed to any customer`
+        : '';
+      return `- [Overall] Customer concentration: ${promptSafe(d.topCustomer)} accounts for ${d.sharePercent}% of revenue (${usdMinus(d.topCustomerRevenue)} of ${usdMinus(d.totalRevenue)}) across ${d.customerCount} customers over ${d.monthsCovered} months${gap} (relevance: ${score.toFixed(2)})`;
     }
     case StatType.CategoryVariance: {
       const word = stat.details.direction === 'over' ? 'over' : stat.details.direction === 'under' ? 'under' : 'on';
@@ -280,16 +328,24 @@ function renderUser(
     throw new AppError(`Prompt template contains unknown placeholder(s): ${unknown.join(', ')}`, 'CONFIG_ERROR', 500);
   }
 
+  // Every replacement is a function, not a string. With a string, replaceAll
+  // reads $& $` $' $1 $$ in the *replacement* as patterns, so a category or
+  // customer name containing `$\`` splices the template text before the match
+  // into the output: the system instructions, duplicated into the stat summary
+  // slot. promptSafe cannot help, because `$` is not structural and is perfectly
+  // legitimate in a business name. A function replacement disables the syntax
+  // outright, which fixes every placeholder at once rather than one sanitizer
+  // per field.
   return template
-    .replaceAll('{{statSummaries}}', vars.statSummaries)
-    .replaceAll('{{today}}', vars.today)
-    .replaceAll('{{businessContext}}', vars.businessContext)
-    .replaceAll('{{industryBenchmarks}}', vars.benchmarks)
-    .replaceAll('{{statTypeList}}', vars.statTypeList)
-    .replaceAll('{{allowedStatTypes}}', vars.allowedStatTypes)
-    .replaceAll('{{categoryCount}}', vars.categoryCount)
-    .replaceAll('{{insightCount}}', vars.insightCount)
-    .replaceAll('{{priorContext}}', vars.priorContext);
+    .replaceAll('{{statSummaries}}', () => vars.statSummaries)
+    .replaceAll('{{today}}', () => vars.today)
+    .replaceAll('{{businessContext}}', () => vars.businessContext)
+    .replaceAll('{{industryBenchmarks}}', () => vars.benchmarks)
+    .replaceAll('{{statTypeList}}', () => vars.statTypeList)
+    .replaceAll('{{allowedStatTypes}}', () => vars.allowedStatTypes)
+    .replaceAll('{{categoryCount}}', () => vars.categoryCount)
+    .replaceAll('{{insightCount}}', () => vars.insightCount)
+    .replaceAll('{{priorContext}}', () => vars.priorContext);
 }
 
 export function assemblePrompt(
