@@ -70,7 +70,14 @@ env_pairs = [
 # Shopify and Square were absent from this list until 2026-09-15, which
 # meant both connectors could ship, deploy and still never be turned on:
 # the secrets had nowhere to travel. ENCRYPTION_KEY is shared by all
-# three, since it encrypts the stored tokens.
+# of them, since it encrypts the stored tokens.
+#
+# Xero then did the identical thing on 2026-11-19, shipping with its config
+# schema, its guard, its routes and its UI card while this list went untouched.
+# A comment warning about a mistake does not prevent it, so
+# connectorEnvReachesDeploy.test.ts now derives the required names from the
+# is*Configured helpers in config.ts and fails when one cannot reach the
+# instance.
 for key in (
     "QUICKBOOKS_CLIENT_ID", "QUICKBOOKS_CLIENT_SECRET", "QUICKBOOKS_REDIRECT_URI",
     "SHOPIFY_CLIENT_ID", "SHOPIFY_CLIENT_SECRET", "SHOPIFY_REDIRECT_URI",
@@ -78,6 +85,9 @@ for key in (
     # Plaid has no redirect URI: Link runs in the browser and returns the public
     # token on the owner's own session, so there is no provider callback.
     "PLAID_CLIENT_ID", "PLAID_SECRET",
+    # Xero takes no environment flag: one set of API hosts, with the demo
+    # company sitting in the same tenant list.
+    "XERO_CLIENT_ID", "XERO_CLIENT_SECRET", "XERO_REDIRECT_URI",
     "ENCRYPTION_KEY",
 ):
     value = os.environ.get(key, "")
