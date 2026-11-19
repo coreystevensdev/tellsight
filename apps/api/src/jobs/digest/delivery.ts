@@ -31,6 +31,7 @@ interface EnqueueDigestSendsInput {
   subjectLine: string;
   agentBullets: string[];
   chartKind?: 'runway' | 'cash-flow' | 'margin' | null;
+  costBlindSources?: string[];
   correlationId: string;
 }
 
@@ -48,6 +49,7 @@ export async function enqueueDigestSends({
   subjectLine,
   agentBullets,
   chartKind,
+  costBlindSources,
   correlationId,
 }: EnqueueDigestSendsInput): Promise<DigestEnqueueResult> {
   const queue = getSendQueue();
@@ -65,6 +67,10 @@ export async function enqueueDigestSends({
       subjectLine,
       agentBullets,
       ...(chartKind ? { chartKind } : {}),
+      // Spread conditionally, matching chartKind: an empty array would ride in
+      // every payload for the overwhelmingly common cost-visible org and mean
+      // nothing.
+      ...(costBlindSources && costBlindSources.length > 0 ? { costBlindSources } : {}),
       correlationId,
     };
 

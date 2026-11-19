@@ -43,7 +43,7 @@ export async function handlePerSendJob(job: Job): Promise<void> {
     return;
   }
 
-  const { userId, orgId, summaryId, weekStart, userEmail, orgName, subjectLine, agentBullets, chartKind, correlationId } =
+  const { userId, orgId, summaryId, weekStart, userEmail, orgName, subjectLine, agentBullets, chartKind, costBlindSources, correlationId } =
     parsed.data;
   const start = Date.now();
   const weekStartIso = weekStart.toISOString();
@@ -161,6 +161,7 @@ export async function handlePerSendJob(job: Job): Promise<void> {
           companyName: env.EMAIL_FROM_NAME,
           openTrackingUrl,
           chartContentId,
+          costBlindSources,
         }),
         tags: {
           template: TEMPLATE_VERSION,

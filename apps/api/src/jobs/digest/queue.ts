@@ -92,6 +92,12 @@ export const sendJobDataSchema = z.object({
   // re-deriving it from bytes. .catch() for the same reason as agentBullets: a
   // shape mismatch should drop the picture, not the digest.
   chartKind: z.enum(['runway', 'cash-flow', 'margin']).optional().catch(undefined),
+  // The sources feeding this org's dataset when none of them can report costs,
+  // computed once by perOrg's pipeline run and baked in for the same reason
+  // agentBullets is: every recipient should read the identical caveat whenever
+  // their own send job happens to run. .catch() likewise, a shape mismatch
+  // should drop the caveat rather than the digest (DW-279).
+  costBlindSources: z.array(z.string()).optional().catch(undefined),
   correlationId: z.string().min(1),
 });
 export type SendJobData = z.infer<typeof sendJobDataSchema>;

@@ -18,6 +18,7 @@ const {
   parseSummaryToBullets,
   buildDashboardUrl,
   buildUnsubscribeUrl,
+  buildCostBlindNote,
 } = await import('./digestWeekly.js');
 
 const fixture: {
@@ -299,5 +300,64 @@ describe('chart (CAP-1, CAP-4)', () => {
     const html = await renderFixture({ chartContentId: 'c1' });
     const imgTag = html.slice(html.indexOf('cid:c1') - 200, html.indexOf('cid:c1') + 200);
     expect(imgTag).toMatch(/alt="[^"]+"/);
+  });
+});
+
+// DW-279: the scoring layer fills its eight insight slots from whatever exists,
+// so a revenue-only org received a confident digest of totals and averages with
+// nothing saying margin and break-even were never computable.
+describe('the cost-blind caveat', () => {
+  it('names what the digest could not compute, and why', async () => {
+    const html = await renderFixture({ costBlindSources: ['shopify'] });
+
+    expect(html).toMatch(/Profit margin and break-even are missing/i);
+    expect(html).toMatch(/Shopify reports money coming in/i);
+  });
+
+  // The common case. Every production org with data has a CSV dataset, so a
+  // caveat riding along in every digest would be noise.
+  it.each([[undefined], [[] as string[]]])('says nothing for %o', async (costBlindSources) => {
+    const html = await renderFixture({ costBlindSources });
+
+    expect(html).not.toMatch(/Profit margin and break-even are missing/i);
+  });
+
+  // Outside the bullets on purpose: it is a caveat rather than an insight, and
+  // counting it as one would put the digest back at eight items with seven of
+  // substance.
+  it('sits after the insights and before the disclaimer, not among the bullets', async () => {
+    const html = await renderFixture({
+      bullets: ['Revenue up 12%'],
+      costBlindSources: ['shopify'],
+    });
+
+    const caveat = html.indexOf('Profit margin and break-even are missing');
+    const disclaimer = html.search(/financial advice/i);
+
+    expect(caveat).toBeGreaterThan(html.indexOf('Revenue up 12%'));
+    expect(disclaimer).toBeGreaterThan(caveat);
+  });
+});
+
+describe('buildCostBlindNote', () => {
+  it('reports nothing when there is nothing to say', () => {
+    expect(buildCostBlindNote(undefined)).toBeNull();
+    expect(buildCostBlindNote([])).toBeNull();
+  });
+
+  it('conjugates for one source and for several', () => {
+    expect(buildCostBlindNote(['shopify'])).toMatch(/Shopify reports/);
+    expect(buildCostBlindNote(['shopify', 'square'])).toMatch(/Shopify and Square report/);
+  });
+
+  it('falls back to the raw name for a source it has no label for', () => {
+    expect(buildCostBlindNote(['paypal'])).toMatch(/paypal reports/);
+  });
+
+  // Deterministic rather than asked of the model: the summary is generated from
+  // the stats that exist, so a prompt instruction to mention the absent ones is
+  // a request where this is the guarantee.
+  it('names the remedy, not just the gap', () => {
+    expect(buildCostBlindNote(['shopify'])).toMatch(/accounting software or a bank account/i);
   });
 });

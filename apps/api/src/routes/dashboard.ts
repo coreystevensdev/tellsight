@@ -9,6 +9,7 @@ import { aiSummariesQueries, categoryPlansQueries, chartsQueries, dataRowsQuerie
 import { dbAdmin } from '../lib/db.js';
 import { DATASET_FRESHNESS_DAYS } from '../db/queries/digestEligibility.js';
 import { withRlsContext } from '../lib/rls.js';
+import { isCostBlindSource } from '../services/curation/computationPrimitives.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
 import { logger } from '../lib/logger.js';
 
@@ -117,6 +118,14 @@ dashboardRouter.get('/dashboard/charts', async (req: Request, res: Response) => 
       );
 
       const resolvedDataset = datasets.find((d) => d.id === activeDatasetId) ?? datasets[0] ?? null;
+      // Read off the dataset rather than its rows, which needs no extra query:
+      // a connector keeps one dataset per source type, so the dataset's own
+      // sourceType is the answer for the view being rendered. An org with both
+      // Shopify and QuickBooks sees the notice only while looking at the
+      // Shopify dataset, which is the correct answer for that view.
+      const blindSources = isCostBlindSource(resolvedDataset?.sourceType)
+        ? [resolvedDataset!.sourceType]
+        : [];
       const datasetId = resolvedDataset?.id ?? null;
       const datasetName = resolvedDataset?.name ?? null;
       // When the weekly digest stops, computed here rather than in the browser so
@@ -147,7 +156,7 @@ dashboardRouter.get('/dashboard/charts', async (req: Request, res: Response) => 
       logger.info({ orgId, isDemo: false, filtered: hasFilters(filters) }, 'Dashboard charts served');
 
       res.json({
-        data: { ...chartData, orgName, isDemo: false, demoState, datasetId, datasetName, datasetRowCount, hasMarginSignal, digestPausesAt, categoryVariance },
+        data: { ...chartData, orgName, isDemo: false, demoState, datasetId, datasetName, datasetRowCount, hasMarginSignal, digestPausesAt, categoryVariance, costBlindSources: blindSources },
       });
       return;
     } catch (err) {

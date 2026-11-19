@@ -25,6 +25,7 @@ import { DatasetChip } from '@/components/DatasetChip';
 import { ConnectorReturnToast } from './ConnectorReturnToast';
 import { LockedInsightCard } from './LockedInsightCard';
 import { CashBalanceStaleBanner } from './CashBalanceStaleBanner';
+import { CostBlindNotice } from './CostBlindNotice';
 import { DigestPausingBanner } from './DigestPausingBanner';
 import { DigestClickTracker } from './DigestClickTracker';
 import { AlertClickTracker } from './AlertClickTracker';
@@ -273,6 +274,13 @@ export function DashboardShell({
           {/* Signed-in only: the digest is a Pro feature and the seed dashboard
               has no org whose digest could pause. */}
           {hasAuth && <DigestPausingBanner digestPausesAt={data.digestPausesAt} className="mt-6" />}
+
+          {/* Above the locked cards on purpose. Those three ask for a number the
+              owner can supply; this one says no number will help, because the
+              connector does not carry costs. Reading them the other way round
+              invites typing a fixed-cost figure that still cannot produce a
+              margin (DW-279). */}
+          <CostBlindNotice sources={data.costBlindSources} className="mt-6" />
 
           {needsCashBalance && (
             <LockedInsightCard
