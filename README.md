@@ -225,6 +225,18 @@ The nudge queue is the one whose separation is not about throughput. It tells an
 
 **k6 load test SLOs.** `k6/load-test.js` enforces: p95 latency across all routes < 2s, p99 < 5s, error rate < 0.5%, health endpoint p95 < 300ms, datasets endpoint p95 < 800ms. Baseline (local docker-compose, 2026-07-05, 10-50 VUs): all-routes p50 ~25ms / p95 ~120ms / p99 ~280ms; /health p95 ~8ms; /api/datasets p95 ~180ms. All SLO thresholds pass. Run locally with `k6 run k6/load-test.js` (requires a running stack and a `K6_JWT_TOKEN` env var).
 
+## How this was built
+
+Written with heavy AI assistance, which is worth stating plainly because the interesting part is not that a model wrote code, it is what had to be built around the model to make its output safe to ship. Three of those are in this repo and all three came out of catching it being wrong.
+
+**A check I wrote that was wrong, and the narrow fix.** The legal-posture scanner flagged a cash-crunch summary for the phrase "you need to". Reading the sample, the sentence was "the gap between what you're earning and what you need to break even", which names a figure rather than telling anyone to do anything. A substring match cannot tell those apart. The fix in `packages/shared/src/agent/constants.ts` is a negative lookbehind on eleven descriptive markers (`what`, `than`, `when`, `if` and so on) applied to that one phrase only, so "you need to cut costs" still trips and every other banned phrase is untouched. The eval now calls the same matcher production calls rather than rebuilding the regex from the shared list, because the two had already drifted once.
+
+**Validation the model cannot talk its way past.** `validateStatRefs` checks every stat ID in a generated summary against the stats that were actually in the prompt, and `stripInvalidStatRefs` removes the ones that were not before anything is cached. The proposal schema goes further and rejects outright: `hasDirectiveLanguage` is a Zod `.refine()` on both the explanation and the recommendation fields, so a proposal with directive language never becomes an object. Asking the prompt for advisory language is a request; these are the guarantee.
+
+**A number I published three times before it was right.** The rate of summaries carrying no non-obvious insight was reported as 1 in 35, corrected to 1 in 16, briefly reported as 1 in 35 again, and settled at 1 in 22 with a 95% interval of 2.2% to 9.0% only after a pre-committed 50-sample arm came back worse than the three before it. The failure mode was the same every time: an early arm lands low and gets quoted as though the interval around it were narrow. Known limitations below keeps that history rather than the final number alone, because the history is the useful part.
+
+Where AI assistance is least visible is the eval harness itself, which exists because a model will produce a confident summary of nothing at all and the only way to know is to grade it against fixtures with known answers.
+
 ## Known limitations
 
 A few honest gaps:
