@@ -8,6 +8,12 @@ COPY apps/api/package.json apps/api/
 COPY packages/shared/package.json packages/shared/
 RUN pnpm install --frozen-lockfile
 
+FROM base AS prod-deps
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json apps/api/
+COPY packages/shared/package.json packages/shared/
+RUN pnpm install --frozen-lockfile --prod
+
 # used by docker-compose.override.yml
 FROM deps AS development
 COPY . .
@@ -28,14 +34,19 @@ RUN pnpm --filter shared build && pnpm --filter api build
 FROM base AS production
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
-COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
+# From prod-deps, not deps: the deps tree carries eslint, vitest and playwright,
+# and copying it put roughly 2.5GB of build-only packages in the running image.
+# Nothing in apps/ imports them, but they were still there to be scanned and
+# shipped. Consequence worth knowing: this image has no tsx, so migrate.yml runs
+# dist/db/migrate.js and not src/db/migrate.ts. Setting MIGRATE_ON_START=true
+# here would fail on `tsx: not found` rather than migrate.
+COPY --from=prod-deps /app/node_modules ./node_modules
+COPY --from=prod-deps /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=prod-deps /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY --from=build /app/packages/shared ./packages/shared
 COPY --from=build /app/apps/api/package.json ./apps/api/
 COPY --from=build /app/apps/api/drizzle ./apps/api/drizzle
-COPY --from=build /app/apps/api/src ./apps/api/src
 COPY apps/api/entrypoint.sh ./apps/api/
 RUN chmod +x ./apps/api/entrypoint.sh && chown -R node:node /app
 
@@ -46,6 +57,13 @@ RUN chmod +x ./apps/api/entrypoint.sh && chown -R node:node /app
 # itself onto ENCRYPTION_KEY and took production down. The dev stage leaves it
 # unset on purpose, so a plain `docker compose up` still migrates.
 ENV MIGRATE_ON_START=false
+
+# Declared because the image is built with --prod and is only coherent in
+# production mode: lib/logger.ts sends pino through pino-pretty whenever
+# NODE_ENV is not production, and pino-pretty is a devDependency that --prod
+# correctly drops. entrypoint.sh reads this too, to pick the compiled migration
+# over tsx.
+ENV NODE_ENV=production
 
 USER node
 EXPOSE 3001
