@@ -9,7 +9,7 @@ import {
 } from '../../db/queries/index.js';
 import type { db, DbTransaction } from '../../lib/db.js';
 import { computeStats } from './computation.js';
-import { costBlindSources } from './computationPrimitives.js';
+import { costBlindSources, counterpartyBlindSources } from './computationPrimitives.js';
 import { rankInsights, scoringConfig } from './scoring.js';
 import { assemblePrompt } from './assembly.js';
 import { validateSummary, validateStatRefs, stripInvalidStatRefs, validateCiteRefs, stripInvalidCiteRefs } from './validator.js';
@@ -36,6 +36,9 @@ export interface CurationPipelineResult {
   // happily produces eight insights for one, all of them totals and averages,
   // and before this nothing distinguished that from a quiet week (DW-279).
   costBlindSources: string[];
+  // Orthogonal to the above: a source can see both sides of the ledger and
+  // still name nobody, so customer concentration has its own blindness.
+  counterpartyBlindSources: string[];
 }
 
 export async function runCurationPipeline(
@@ -52,7 +55,7 @@ export async function runCurationPipeline(
 
   if (rows.length === 0) {
     logger.warn({ orgId, datasetId }, 'curation pipeline got 0 rows, dataset may not exist');
-    return { insights: [], scoredPool: [], costBlindSources: [] };
+    return { insights: [], scoredPool: [], costBlindSources: [], counterpartyBlindSources: [] };
   }
 
   logger.info({ orgId, datasetId, rowCount: rows.length }, 'curation pipeline started');
@@ -87,6 +90,7 @@ export async function runCurationPipeline(
   logger.info({ orgId, insightCount: insights.length }, 'curation layer 2 complete');
 
   const blindSources = costBlindSources(rows);
+  const anonymousSources = counterpartyBlindSources(rows);
   if (blindSources.length > 0) {
     // Logged at info rather than warn: the org is not broken, it connected
     // something that cannot answer half the questions. An operator reading this
@@ -97,7 +101,12 @@ export async function runCurationPipeline(
     );
   }
 
-  return { insights, scoredPool, costBlindSources: blindSources };
+  return {
+    insights,
+    scoredPool,
+    costBlindSources: blindSources,
+    counterpartyBlindSources: anonymousSources,
+  };
 }
 
 export interface FullPipelineResult {

@@ -90,3 +90,55 @@ describe('plural agreement', () => {
     expect(screen.getByText(/Shopify and Square report money coming in/)).toBeInTheDocument();
   });
 });
+
+/**
+ * DW-288. The second half of the notice, rendered from its own prop so a source
+ * that sees costs but names nobody gets the right paragraph instead of a
+ * heading about margin.
+ */
+describe('the customer-concentration half', () => {
+  it('explains the absence and names the source', () => {
+    render(<CostBlindNotice sources={[]} anonymousSources={['shopify']} />);
+
+    expect(screen.getByText(/Customer concentration needs a name/i)).toBeInTheDocument();
+    expect(screen.getByText(/Shopify does not share who bought/i)).toBeInTheDocument();
+  });
+
+  // The case that justifies two independent sections rather than one block.
+  // With only the anonymous list set, nothing about margin may appear.
+  it('does not mention margin when only the name is missing', () => {
+    render(<CostBlindNotice sources={[]} anonymousSources={['shopify']} />);
+
+    expect(screen.queryByText(/Profit margin and break-even/i)).not.toBeInTheDocument();
+  });
+
+  it('does not mention concentration when only costs are missing', () => {
+    render(<CostBlindNotice sources={['shopify']} anonymousSources={[]} />);
+
+    expect(screen.getByText(/Profit margin and break-even/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Customer concentration/i)).not.toBeInTheDocument();
+  });
+
+  // Today's real case: Shopify is both, so both sections render together.
+  it('shows both when the connector is blind in both ways', () => {
+    render(<CostBlindNotice sources={['shopify']} anonymousSources={['shopify']} />);
+
+    expect(screen.getByText(/Profit margin and break-even/i)).toBeInTheDocument();
+    expect(screen.getByText(/Customer concentration needs a name/i)).toBeInTheDocument();
+  });
+
+  it('renders nothing when neither applies', () => {
+    const { container } = render(<CostBlindNotice sources={[]} anonymousSources={[]} />);
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  // Omitting the new prop entirely has to behave exactly as before, since every
+  // existing caller and the demo path pass only `sources`.
+  it('behaves as it always did when the new prop is absent', () => {
+    render(<CostBlindNotice sources={['square']} />);
+
+    expect(screen.getByText(/Profit margin and break-even/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Customer concentration/i)).not.toBeInTheDocument();
+  });
+});

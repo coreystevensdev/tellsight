@@ -41,6 +41,68 @@ const SEES_OPERATING_COST: Record<SourceType, boolean> = {
 };
 
 /**
+ * Sources that can name who the money came from.
+ *
+ * A separate Record from `SEES_OPERATING_COST`, and identical to it today,
+ * which is the reason to write it down rather than reuse that one. The two ask
+ * different questions and only coincidentally agree: a source could see both
+ * sides of the ledger and still name nobody. Collapsing them would make the
+ * notice below say "reports money coming in, not what you spend" about a
+ * connector whose actual problem is anonymity.
+ *
+ * QuickBooks resolves CustomerRef, VendorRef or EntityRef (132 of 142 rows in
+ * production), Xero carries `Contact.Name` embedded in every transaction (141
+ * of 141), Plaid has `merchant_name`, and a CSV's columns are the owner's own
+ * choice.
+ *
+ * Shopify is false for a reason worth keeping: the name is not merely
+ * unrequested, it is **Level 2 protected customer data** under Shopify's own
+ * classification, alongside address, phone and email. Reaching it needs
+ * `read_customers` plus meeting Shopify's protected-customer-data
+ * requirements, and it would grant all four fields to display one. Declined
+ * 2026-11-19 (DW-288): the product's posture is that only computed stats reach
+ * the model, and buying a display name with an address book contradicts it.
+ * Square carries no counterparty in its payloads at all.
+ */
+const CARRIES_COUNTERPARTY: Record<SourceType, boolean> = {
+  csv: true,
+  quickbooks: true,
+  xero: true,
+  plaid: true,
+  shopify: false,
+  square: false,
+};
+
+/**
+ * The sources present that structurally cannot name a customer, when every
+ * source present is one of them.
+ *
+ * Same shape and same "all, not any" rule as `costBlindSources`: one QuickBooks
+ * row alongside Shopify means concentration can compute, and there is nothing
+ * to say. Returns names rather than a boolean for the same reason too, since
+ * "Shopify does not share customer names" is actionable and "an insight is
+ * unavailable" is not.
+ *
+ * Scoped to the structural case on purpose. A CSV with no counterparty column
+ * also produces no concentration, but the fix there is a column rather than a
+ * different connector, which is different advice and a different message.
+ */
+export function counterpartyBlindSources(
+  rows: readonly { sourceType?: string | null }[],
+): string[] {
+  const present = new Set<string>();
+  for (const row of rows) {
+    if (row.sourceType == null) return [];
+    present.add(row.sourceType);
+  }
+
+  const blind = [...present].filter(
+    (s) => CARRIES_COUNTERPARTY[s as SourceType] === false,
+  );
+  return blind.length > 0 && blind.length === present.size ? blind.sort() : [];
+}
+
+/**
  * True when at least one Expenses row came from a source that can see operating
  * costs. Refund-only expense data is an absence of cost data, and a margin
  * computed against it reads ~97% for a store whose real margin is a fifth of
@@ -77,6 +139,15 @@ export function hasCostVisibility(
 export function isCostBlindSource(sourceType: string | null | undefined): boolean {
   if (sourceType == null) return false;
   return SEES_OPERATING_COST[sourceType as SourceType] === false;
+}
+
+/**
+ * Whether one named source structurally cannot name a customer. Same
+ * subtractive default as above: anything unrecognised is never accused.
+ */
+export function isCounterpartyBlindSource(sourceType: string | null | undefined): boolean {
+  if (sourceType == null) return false;
+  return CARRIES_COUNTERPARTY[sourceType as SourceType] === false;
 }
 
 /**

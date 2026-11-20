@@ -9,7 +9,7 @@ import { aiSummariesQueries, categoryPlansQueries, chartsQueries, dataRowsQuerie
 import { dbAdmin } from '../lib/db.js';
 import { DATASET_FRESHNESS_DAYS } from '../db/queries/digestEligibility.js';
 import { withRlsContext } from '../lib/rls.js';
-import { isCostBlindSource } from '../services/curation/computationPrimitives.js';
+import { isCostBlindSource, isCounterpartyBlindSource } from '../services/curation/computationPrimitives.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
 import { logger } from '../lib/logger.js';
 
@@ -126,6 +126,13 @@ dashboardRouter.get('/dashboard/charts', async (req: Request, res: Response) => 
       const blindSources = isCostBlindSource(resolvedDataset?.sourceType)
         ? [resolvedDataset!.sourceType]
         : [];
+      // Asked separately rather than reusing the answer above. The two source
+      // lists are identical today and the questions are not, so one predicate
+      // would make the notice explain the wrong absence the first time they
+      // diverge (DW-288).
+      const anonymousSources = isCounterpartyBlindSource(resolvedDataset?.sourceType)
+        ? [resolvedDataset!.sourceType]
+        : [];
       const datasetId = resolvedDataset?.id ?? null;
       const datasetName = resolvedDataset?.name ?? null;
       // When the weekly digest stops, computed here rather than in the browser so
@@ -156,7 +163,7 @@ dashboardRouter.get('/dashboard/charts', async (req: Request, res: Response) => 
       logger.info({ orgId, isDemo: false, filtered: hasFilters(filters) }, 'Dashboard charts served');
 
       res.json({
-        data: { ...chartData, orgName, isDemo: false, demoState, datasetId, datasetName, datasetRowCount, hasMarginSignal, digestPausesAt, categoryVariance, costBlindSources: blindSources },
+        data: { ...chartData, orgName, isDemo: false, demoState, datasetId, datasetName, datasetRowCount, hasMarginSignal, digestPausesAt, categoryVariance, costBlindSources: blindSources, counterpartyBlindSources: anonymousSources },
       });
       return;
     } catch (err) {
