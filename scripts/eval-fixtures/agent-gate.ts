@@ -69,6 +69,22 @@ export function agentGate(
       );
       continue;
     }
+    if (r.errored > 0 || r.sampledCount !== samples || samples < 1) {
+      breaches.push(
+        `agent/${r.id}: inconclusive, scored ${r.sampledCount} of ${samples} samples (${r.errored} errored)`,
+      );
+      continue;
+    }
+    // Silence can miss a warranted risk even though it contains no prose.
+    if (
+      floors.riskCoverage !== null &&
+      r.riskCoverage !== null &&
+      r.riskCoverage.mean < floors.riskCoverage
+    ) {
+      breaches.push(
+        `agent/${r.id}: risk coverage ${r.riskCoverage.mean.toFixed(2)} < ${floors.riskCoverage}`,
+      );
+    }
     // Only faithfulness gates this. riskCoverage is null when the fixture
     // warranted no material risk, which says nothing about whether prose was
     // produced: folding it in here marked two prose-producing fixtures as all
@@ -80,20 +96,6 @@ export function agentGate(
     if (r.faithfulness.mean < floors.faithfulness) {
       breaches.push(
         `agent/${r.id}: faithfulness ${r.faithfulness.mean.toFixed(2)} < ${floors.faithfulness}`,
-      );
-    }
-    // Reported, not gated, until a run measures it. The summary arm's 0.8 was
-    // set against a judge scoring stat coverage, and this scores whether a named
-    // material risk got flagged; carrying the number across would be borrowing a
-    // floor from a different metric. Set it from the first measured run, and if
-    // that has not happened, this comment is the reason it is still ungated.
-    if (
-      floors.riskCoverage !== null &&
-      r.riskCoverage !== null &&
-      r.riskCoverage.mean < floors.riskCoverage
-    ) {
-      breaches.push(
-        `agent/${r.id}: risk coverage ${r.riskCoverage.mean.toFixed(2)} < ${floors.riskCoverage}`,
       );
     }
     if (!r.legalPosture.pass) {

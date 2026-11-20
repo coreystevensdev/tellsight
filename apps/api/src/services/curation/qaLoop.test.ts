@@ -350,6 +350,24 @@ describe('runQaLoop', () => {
     expect(finalCallArgs[2]).toEqual([]);
   });
 
+  it('keeps tools available when a turn fits the conversation baseline but exceeds the prose baseline', async () => {
+    mockConverseWithTools
+      .mockResolvedValueOnce(turn({ toolCalls: [toolCall()] }))
+      .mockResolvedValueOnce(turn({ text: 'Revenue is trending up.' }));
+    mockComputeCost.mockReturnValueOnce(0.03);
+    mockExceedsBudget.mockImplementationOnce((cost, _model, caller) => {
+      const median = caller === 'converseWithTools' ? 0.03 : 0.005;
+      return { exceeded: cost > median * 3, observed: cost, cap: median * 3, median };
+    });
+
+    const result = await runQaLoop(QUESTION, CTX);
+
+    expect(result.termination).toBe('answered');
+    expect(result.turnCount).toBe(2);
+    expect(mockExceedsBudget).toHaveBeenCalledWith(0.03, 'claude-sonnet-4-6', 'converseWithTools');
+    expect(mockConverseWithTools.mock.calls[1]![2].length).toBeGreaterThan(0);
+  });
+
   it('stops issuing tool-enabled turns once cumulative cost trips the budget, forcing a no-tools final turn', async () => {
     mockConverseWithTools
       .mockResolvedValueOnce(turn({ toolCalls: [toolCall()] }))

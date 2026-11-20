@@ -27,6 +27,7 @@ import { rankInsights } from '../apps/api/src/services/curation/scoring.js';
 import { assemblePrompt } from '../apps/api/src/services/curation/assembly.js';
 import { FIXTURES, FROZEN_NOW } from './eval-fixtures/fixtures.js';
 import { agentGate } from './eval-fixtures/agent-gate.js';
+import { EVAL_FLOORS as FLOORS } from './eval-fixtures/quality-floors.js';
 import { insightGate, INSIGHT_MISS_CEILING } from './eval-fixtures/insight-gate.js';
 import { scoreLegalPosture } from './eval-fixtures/legal-posture.js';
 import { formatGloss, scorePlainLanguage } from './eval-fixtures/plain-language.js';
@@ -84,18 +85,6 @@ const PINNED_PROMPT_VERSION = process.env.EVAL_PROMPT_VERSION || undefined;
 // assemblePrompt's metadata per fixture, so a default-version bump can't leave the
 // scorecard lying about which prompt was scored.
 const DEFAULT_PROMPT_VERSION = 'v1.6';
-
-// Floors apply to the mean (the number that lands in the README). Legal posture
-// still has to hold on every sample: a banned imperative is a defect, not a rate.
-//
-// riskCoverage is null, meaning measured and printed but not gated. completeness
-// 0.8 was set against a judge scoring how many answer-key stats a summary
-// covered; risk coverage asks whether the agent flagged a material risk the
-// prompt names by number, and reusing 0.8 would be borrowing a threshold from a
-// metric that measures something else. It gets a number once a run has measured
-// it. Revisit at the next agent-arm run; if this is still null after one, the
-// decision was never made rather than made deliberately.
-const FLOORS = { faithfulness: 0.85, completeness: 0.8, riskCoverage: null };
 
 function printScorecardTable(rows: FixtureScore[]): void {
   console.log(
@@ -292,8 +281,8 @@ async function scoreFixture(
   const shedState = freshShedState();
   let capRefused = 0;
   const capRefusedCostsUsd: number[] = [];
-  const { spentOn } = await import('../apps/api/src/lib/cost.js');
-  const spent = () => spentOn(SUBJECT_MODEL) + spentOn(JUDGE_MODEL);
+  const { spentOnModels } = await import('../apps/api/src/lib/cost.js');
+  const spent = () => spentOnModels([SUBJECT_MODEL, JUDGE_MODEL]);
   for (let i = 0; i < SAMPLES; i++) {
     const spentBefore = spent();
     try {
@@ -501,8 +490,8 @@ async function main(): Promise<void> {
     // Rule 9's second half, measured and not gated. A rising rate here is the
     // model drifting away from explaining its own terms, which is worth seeing
     // even though no healthy run has ever had this at zero.
-      unglossedSamples: results.reduce((n, r) => n + r.plainLanguage.unglossedSamples, 0),
-      unglossedTerms: [...new Set(results.flatMap((r) => r.plainLanguage.unglossedTerms))],
+    unglossedSamples: results.reduce((n, r) => n + r.plainLanguage.unglossedSamples, 0),
+    unglossedTerms: [...new Set(results.flatMap((r) => r.plainLanguage.unglossedTerms))],
     // A rate, not a boolean, and with its denominator: 1 miss reads very
     // differently at 9 samples than at 36, and the scorecard is the only place a
     // later reader can recover which one this was.
@@ -616,8 +605,7 @@ async function main(): Promise<void> {
     breaches.push(...agent.breaches);
     for (const line of agent.ungraded) console.log(`  ${line}`);
 
-    // Printed even though FLOORS.riskCoverage is null, because a number that
-    // only lands in the scorecard JSON is a number nobody reads. The silent
+    // Print coverage beside its threshold, not just in scorecard JSON. The silent
     // count is on the same line: coverage below 1 on a fixture that warrants a
     // risk is usually the agent saying nothing rather than citing the wrong stat.
     const graded = agentResults.filter((r) => r.riskCoverage !== null);

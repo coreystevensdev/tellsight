@@ -4,12 +4,7 @@ import { computeCost, exceedsBudget, recordCost, recordRefusedCost } from '../..
 import { logger } from '../../lib/logger.js';
 import { aiCostBudgetExceeded } from '../../lib/metrics.js';
 import type { BreakerRunner } from './anthropicBreakers.js';
-import {
-  MAX_OUTPUT_TOKENS,
-  firstText,
-  modelFor,
-  singleTurnPrompt,
-} from './anthropicRequest.js';
+import { MAX_OUTPUT_TOKENS, firstText, modelFor, singleTurnPrompt } from './anthropicRequest.js';
 import { AbortedByClient } from './anthropicRuntime.js';
 import type { LlmProvider } from './provider.js';
 
@@ -48,10 +43,10 @@ export function createAnthropicStream({
         // the floor below the workload forever.
         const cost = computeCost(finalMessage.usage, model);
         if (cost !== null) {
-          const budget = exceedsBudget(cost, model);
+          const budget = exceedsBudget(cost, model, 'stream');
           if (budget.exceeded) {
             aiCostBudgetExceeded.inc({ caller: 'stream' });
-            const recalibrated = recordRefusedCost(cost, model);
+            const recalibrated = recordRefusedCost(cost, model, 'stream');
             logger.warn(
               { cost, cap: budget.cap, median: budget.median, model, recalibrated },
               recalibrated
@@ -59,7 +54,7 @@ export function createAnthropicStream({
                 : 'Claude API stream cost budget exceeded, content delivered, anomaly logged',
             );
           } else {
-            recordCost(cost, model);
+            recordCost(cost, model, 'stream');
           }
         }
 

@@ -15,6 +15,7 @@ import {
   recordRefusedCost,
   resetHistoryForTests,
   spentOn,
+  spentOnModels,
 } from './cost.js';
 
 describe('computeCost', () => {
@@ -179,14 +180,16 @@ describe('recordRefusedCost', () => {
 
   it('once recalibrated, the next call is bounded only by the absolute ceiling', () => {
     seed(0.01);
-    for (let i = 0; i < ADAPT_AFTER_CONSECUTIVE_REFUSALS; i++) recordRefusedCost(0.05, 'claude-sonnet-4-6');
+    for (let i = 0; i < ADAPT_AFTER_CONSECUTIVE_REFUSALS; i++)
+      recordRefusedCost(0.05, 'claude-sonnet-4-6');
     // What the old floor refused outright now passes and reseeds the window.
     expect(exceedsBudget(0.05, 'claude-sonnet-4-6').exceeded).toBe(false);
   });
 
   it('still refuses above the absolute ceiling after recalibrating', () => {
     seed(0.01);
-    for (let i = 0; i < ADAPT_AFTER_CONSECUTIVE_REFUSALS; i++) recordRefusedCost(0.05, 'claude-sonnet-4-6');
+    for (let i = 0; i < ADAPT_AFTER_CONSECUTIVE_REFUSALS; i++)
+      recordRefusedCost(0.05, 'claude-sonnet-4-6');
     expect(exceedsBudget(ABSOLUTE_CEILING_USD + 1, 'claude-sonnet-4-6').exceeded).toBe(true);
   });
 
@@ -206,7 +209,7 @@ describe('per-model windows', () => {
   const SUBJECT = 'claude-sonnet-4-6';
   const JUDGE = 'claude-opus-5';
 
-  it('a cheap model does not drag down a dearer model\'s floor', () => {
+  it("a cheap model does not drag down a dearer model's floor", () => {
     // The 2026-11-03 eval shape: a cheap subject and a dear judge in one
     // process. Shared history refused 37 of ~300 judge calls, none anomalous.
     for (let i = 0; i < 20; i++) recordCost(0.005, SUBJECT);
@@ -247,6 +250,51 @@ describe('per-model windows', () => {
   });
 });
 
+describe('per-caller windows', () => {
+  beforeEach(resetHistoryForTests);
+  const model = 'claude-sonnet-5';
+  it('keeps short judges from rejecting normal tool and prose responses', () => {
+    for (let i = 0; i < 20; i++) recordCost(0.005, model, 'generateWithModel');
+    recordCost(0.03, model, 'generateTool');
+    expect(exceedsBudget(0.04, model, 'generateTool').exceeded).toBe(false);
+    expect(exceedsBudget(0.04, model, 'generate').exceeded).toBe(false);
+    expect(exceedsBudget(0.04, model, 'generateWithModel').exceeded).toBe(true);
+  });
+  it('recalibrates only the caller that overruns despite interleaved passing calls', () => {
+    recordCost(0.01, model, 'generateTool');
+    for (let i = 0; i < ADAPT_AFTER_CONSECUTIVE_REFUSALS; i++) {
+      recordCost(0.005, model, 'generateWithModel');
+      expect(recordRefusedCost(0.05, model, 'generateTool')).toBe(
+        i === ADAPT_AFTER_CONSECUTIVE_REFUSALS - 1,
+      );
+    }
+    expect(medianCost(model, 'generateTool')).toBeNull();
+    expect(medianCost(model, 'generateWithModel')).toBe(0.005);
+    expect(spentOn(model)).toBeCloseTo(0.56, 6);
+  });
+  it('retains the absolute ceiling for every unseeded caller', () => {
+    for (const caller of [
+      'generate',
+      'generateWithModel',
+      'generateTool',
+      'converseWithTools',
+      'stream',
+    ] as const) {
+      expect(exceedsBudget(ABSOLUTE_CEILING_USD + 0.01, model, caller)).toMatchObject({
+        exceeded: true,
+        cap: ABSOLUTE_CEILING_USD,
+      });
+    }
+  });
+  it('tracks delivered stream overruns as spend without raising their baseline', () => {
+    recordCost(0.01, model, 'stream');
+    recordRefusedCost(0.05, model, 'stream');
+    expect(spentOn(model)).toBeCloseTo(0.06, 6);
+    expect(medianCost(model, 'stream')).toBe(0.01);
+    expect(medianCost(model, 'generate')).toBeNull();
+  });
+});
+
 describe('spentOn', () => {
   beforeEach(() => resetHistoryForTests());
 
@@ -280,13 +328,21 @@ describe('spentOn', () => {
     expect(spentOn('claude-sonnet-5')).toBeCloseTo(0.01, 6);
   });
 
-  it('a refused cost is not spend, because the gate threw before recording it', () => {
-    // recordRefusedCost is the refusal path and deliberately does not add to
-    // spend: the request was refused, so nothing was generated for it. The real
-    // money on a cap refusal was already spent upstream and is reported by the
-    // error, not by this counter.
+  it('counts a paid response even when the post-call gate refuses it', () => {
     recordRefusedCost(0.5, 'claude-sonnet-5');
 
+    expect(spentOn('claude-sonnet-5')).toBe(0.5);
+    expect(medianCost('claude-sonnet-5')).toBeNull();
+  });
+  it('counts a shared subject/judge model once and distinct models separately', () => {
+    recordCost(0.02, 'claude-sonnet-5', 'generate');
+    recordRefusedCost(0.05, 'claude-sonnet-5', 'generateWithModel');
+    recordCost(0.03, 'claude-opus-5');
+    expect(spentOnModels(['claude-sonnet-5', 'claude-sonnet-5'])).toBeCloseTo(0.07, 6);
+    expect(spentOnModels(['claude-sonnet-5', 'claude-opus-5'])).toBeCloseTo(0.1, 6);
+  });
+  it('ignores invalid refused costs in cumulative spend', () => {
+    for (const cost of [NaN, Infinity, -1]) recordRefusedCost(cost, 'claude-sonnet-5');
     expect(spentOn('claude-sonnet-5')).toBe(0);
   });
 });

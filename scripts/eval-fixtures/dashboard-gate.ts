@@ -38,6 +38,12 @@ export function dashboardGate(
       );
       continue;
     }
+    if (r.errored > 0 || r.sampledCount !== samples || samples < 1) {
+      breaches.push(
+        `${r.id}: inconclusive, scored ${r.sampledCount} of ${samples} samples (${r.errored} errored)`,
+      );
+      continue;
+    }
     if (r.faithfulness.mean < floors.faithfulness) {
       breaches.push(
         `${r.id}: faithfulness ${r.faithfulness.mean.toFixed(2)} < ${floors.faithfulness}`,

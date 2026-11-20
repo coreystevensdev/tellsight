@@ -10,13 +10,9 @@
  *     Acceptable for an anomaly detector; not acceptable for a global quota.
  *     Move to Redis if/when this needs to be a real spending cap across
  *     replicas.
- *   - Per-model history. config.ts lets CLAUDE_MODEL_TOOLS differ from
- *     CLAUDE_MODEL, and the eval harness runs a subject and a judge at once, so
- *     one shared window would hold two price points at the same time. A median
- *     over a bimodal distribution describes neither mode: cheap calls hold it
- *     down and the dearer model's ordinary calls read as anomalies. Measured on
- *     2026-11-03 with sonnet-4-6 and opus-5 sharing a window: 37 of ~300 calls
- *     refused, none of them anomalous.
+ *   - History is scoped to model and caller. Judges, prose, streams, and tool
+ *     generations have different normal costs even when they use one model.
+ *     A short judge response must not set the baseline for a long tool call.
  *   - A refused cost does not seed the median, but ADAPT_AFTER_CONSECUTIVE_REFUSALS
  *     of them in a row clears the window so the floor can follow a real shift.
  *   - Post-call check. By the time we know the cost, the tokens are spent.
@@ -39,6 +35,13 @@ export const CAP_MULTIPLIER = 3;
 export const ABSOLUTE_CEILING_USD = 1.0;
 const HISTORY_CAP = 50;
 
+export type CostCaller =
+  'generate' | 'generateWithModel' | 'generateTool' | 'converseWithTools' | 'stream';
+
+function historyKey(model: string, caller: CostCaller): string {
+  return JSON.stringify([model, caller]);
+}
+
 export interface Usage {
   input_tokens: number;
   output_tokens: number;
@@ -53,16 +56,14 @@ export function computeCost(usage: Usage, model: string = env.CLAUDE_MODEL): num
   );
 }
 
-// Keyed by model. A missing key is an unseeded window, which exceedsBudget
-// treats as cold start, so a model's first call seeds its own level rather than
-// being judged against another model's.
+// A missing model/caller key is a cold start, still bounded by the absolute cap.
 const history = new Map<string, number[]>();
 
-function windowFor(model: string): number[] {
-  let w = history.get(model);
+function windowFor(key: string): number[] {
+  let w = history.get(key);
   if (!w) {
     w = [];
-    history.set(model, w);
+    history.set(key, w);
   }
   return w;
 }
@@ -94,11 +95,17 @@ export function spentOn(model: string): number {
   return spend.get(model) ?? 0;
 }
 
-export function recordCost(cost: number, model: string): void {
+// Subject and judge may share a model. Count each model's cumulative spend once.
+export function spentOnModels(models: readonly string[]): number {
+  return [...new Set(models)].reduce((total, model) => total + spentOn(model), 0);
+}
+
+export function recordCost(cost: number, model: string, caller: CostCaller = 'generate'): void {
   if (!Number.isFinite(cost) || cost < 0) return;
-  consecutiveRefusals.set(model, 0);
+  const key = historyKey(model, caller);
+  consecutiveRefusals.set(key, 0);
   spend.set(model, (spend.get(model) ?? 0) + cost);
-  const w = windowFor(model);
+  const w = windowFor(key);
   w.push(cost);
   if (w.length > HISTORY_CAP) w.shift();
 }
@@ -107,20 +114,27 @@ export function recordCost(cost: number, model: string): void {
 // to recalibrate, which the caller logs: a floor moving is worth a line.
 // ABSOLUTE_CEILING_USD still applies afterwards, so recalibration widens the
 // band the median sets and never removes the hard stop.
-export function recordRefusedCost(cost: number, model: string): boolean {
+export function recordRefusedCost(
+  cost: number,
+  model: string,
+  caller: CostCaller = 'generate',
+): boolean {
   if (!Number.isFinite(cost) || cost < 0) return false;
-  const run = (consecutiveRefusals.get(model) ?? 0) + 1;
+  // The response is already paid for even though it cannot seed the baseline.
+  spend.set(model, (spend.get(model) ?? 0) + cost);
+  const key = historyKey(model, caller);
+  const run = (consecutiveRefusals.get(key) ?? 0) + 1;
   if (run < ADAPT_AFTER_CONSECUTIVE_REFUSALS) {
-    consecutiveRefusals.set(model, run);
+    consecutiveRefusals.set(key, run);
     return false;
   }
-  consecutiveRefusals.set(model, 0);
-  windowFor(model).length = 0;
+  consecutiveRefusals.set(key, 0);
+  windowFor(key).length = 0;
   return true;
 }
 
-export function medianCost(model: string): number | null {
-  const w = history.get(model);
+export function medianCost(model: string, caller: CostCaller = 'generate'): number | null {
+  const w = history.get(historyKey(model, caller));
   if (!w || w.length === 0) return null;
   const sorted = [...w].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
@@ -139,8 +153,12 @@ export interface BudgetCheck {
   median: number | null;
 }
 
-export function exceedsBudget(current: number, model: string): BudgetCheck {
-  const median = medianCost(model);
+export function exceedsBudget(
+  current: number,
+  model: string,
+  caller: CostCaller = 'generate',
+): BudgetCheck {
+  const median = medianCost(model, caller);
 
   // Cold-start floor: the rolling median is unseeded for the first request,
   // so the absolute ceiling is the only thing that bounds a misconfigured

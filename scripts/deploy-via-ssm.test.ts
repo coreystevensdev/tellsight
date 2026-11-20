@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { connectorEnvByGuard } from './connector-env.js';
 
 const DEPLOY_SCRIPT = resolve(import.meta.dirname, 'deploy-via-ssm.py');
 
@@ -142,6 +143,39 @@ function decodedWrite(commands: string[], target: string): string {
 }
 
 describe('production SSM deployment script', () => {
+  // Execute the real allowlist and encoding; fakeAws captures the SSM payload.
+  describe.each([...connectorEnvByGuard()])('%s environment delivery', (_guard, names) => {
+    it('preserves every configured value in the submitted instance environment', () => {
+      const values = Object.fromEntries(
+        names.map((name) => [name, `test-${name} $literal; spaces & punctuation`]),
+      );
+      const result = runDeploy(values);
+      expect(result.status, result.stderr).toBe(0);
+      const lines = decodedWrite(commandsFrom(result.calls), '/opt/tellsight/.env').split('\n');
+      for (const [name, value] of Object.entries(values)) {
+        expect(lines.filter((line) => line.startsWith(`${name}=`))).toEqual([`${name}='${value}'`]);
+      }
+    });
+    it.each(['absent', 'blank'])('omits %s settings from the instance environment', (kind) => {
+      const values = Object.fromEntries(
+        names.map((name) => [name, kind === 'blank' ? '' : undefined]),
+      );
+      const result = runDeploy(values);
+      expect(result.status, result.stderr).toBe(0);
+      const lines = decodedWrite(commandsFrom(result.calls), '/opt/tellsight/.env').split('\n');
+      for (const name of names)
+        expect(lines.some((line) => line.startsWith(`${name}=`))).toBe(false);
+    });
+  });
+  it.each(['QUICKBOOKS_ENVIRONMENT', 'SQUARE_ENVIRONMENT', 'PLAID_ENVIRONMENT'])(
+    'delivers the configured %s instead of its sandbox default',
+    (name) => {
+      const result = runDeploy({ [name]: 'production' });
+      expect(result.status, result.stderr).toBe(0);
+      const lines = decodedWrite(commandsFrom(result.calls), '/opt/tellsight/.env').split('\n');
+      expect(lines.filter((line) => line.startsWith(`${name}=`))).toEqual([`${name}='production'`]);
+    },
+  );
   it('renders the production files and submits the guarded command sequence', () => {
     const result = runDeploy();
 

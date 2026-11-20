@@ -1,11 +1,9 @@
 import { describe, it, expect } from 'vitest';
 
 import { agentGate } from './agent-gate.js';
+import { EVAL_FLOORS as FLOORS } from './quality-floors.js';
 
-// riskCoverage carries a number here so the gate's behaviour is testable. The
-// value shipped in eval-summaries.ts is null until a run measures it; FLOORS_OPEN
-// below pins that state.
-const FLOORS = { faithfulness: 0.85, completeness: 0.8, riskCoverage: 0.8 };
+// Null remains supported for an explicitly report-only caller.
 const FLOORS_OPEN = { ...FLOORS, riskCoverage: null };
 
 function score(over: Partial<Parameters<typeof agentGate>[0][number]> = {}) {
@@ -23,6 +21,27 @@ function score(over: Partial<Parameters<typeof agentGate>[0][number]> = {}) {
 }
 
 describe('agentGate', () => {
+  it('fails silent samples that missed a warranted risk', () => {
+    const result = agentGate(
+      [score({ id: 'cash-crunch', faithfulness: null, riskCoverage: { mean: 0 } })],
+      [],
+      1,
+      10,
+      FLOORS,
+    );
+    expect(result.breaches).toEqual(['agent/cash-crunch: risk coverage 0.00 < 0.8']);
+    expect(result.ungraded).toHaveLength(1);
+  });
+  it.each([
+    { sampledCount: 7, errored: 3 },
+    { sampledCount: 9, errored: 0 },
+    { sampledCount: 11, errored: 0 },
+    { sampledCount: 10, errored: 1 },
+  ])('rejects an incomplete or inconsistent run: %j', (counts) => {
+    const result = agentGate([score(counts)], [], 1, 10, FLOORS);
+    expect(result.breaches).toHaveLength(1);
+    expect(result.breaches[0]).toContain('inconclusive');
+  });
   it('passes a clean arm', () => {
     const { breaches, ungraded } = agentGate([score()], [], 1, 10, FLOORS);
     expect(breaches).toEqual([]);
@@ -46,9 +65,7 @@ describe('agentGate', () => {
   });
 
   it('reports risk coverage without breaching when no floor is set', () => {
-    // The state eval-summaries.ts ships: measured and printed, ungated, because
-    // 0.8 was calibrated against a different metric. A floor of null must not
-    // read as a floor of 0.
+    // A deliberately disabled floor must not read as a floor of 0.
     const { breaches } = agentGate(
       [score({ id: 'cash-crunch', riskCoverage: { mean: 0.1 } })],
       [],

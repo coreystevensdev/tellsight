@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
+import { connectorEnvByGuard } from './connector-env.js';
 
 /**
  * Every environment variable a connector needs has to survive three hops, and
@@ -41,19 +42,6 @@ const DEPLOY_SCRIPT = read('scripts/deploy-via-ssm.py');
  * a guard is load-bearing by construction, because the guard is what decides
  * whether the connector exists at runtime.
  */
-function connectorEnvByGuard(): Map<string, string[]> {
-  const byGuard = new Map<string, string[]>();
-  const guardPattern = /export function (is\w+Configured)\(cfg: Env\): boolean \{([\s\S]*?)\n\}/g;
-
-  for (const match of CONFIG.matchAll(guardPattern)) {
-    const name = match[1]!;
-    const body = match[2]!;
-    const vars = [...body.matchAll(/cfg\.([A-Z][A-Z0-9_]*)/g)].map((m) => m[1]!);
-    byGuard.set(name, [...new Set(vars)]);
-  }
-  return byGuard;
-}
-
 const GUARDS = connectorEnvByGuard();
 
 // A regex that silently matched nothing would make every assertion below pass
