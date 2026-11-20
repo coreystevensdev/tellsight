@@ -171,15 +171,24 @@ async function recordCashOnHand(orgId: number, accessToken: string): Promise<voi
       return;
     }
 
-    await orgFinancialsQueries.updateOrgFinancials(orgId, {
-      cashOnHand: cash.balance,
-      // Full ISO, not the date alone. `cashAsOfDate` is `z.string().datetime()`,
-      // which rejects `YYYY-MM-DD`, so slicing it threw a ZodError inside the
-      // catch below and every sync logged the balance as unrecordable while
-      // reporting success. A bank balance is also a point in time rather than a
-      // day: two syncs in one afternoon are two different answers.
-      cashAsOfDate: new Date().toISOString(),
-    });
+    // dbAdmin, not the default. This runs in a BullMQ worker with no request
+    // context, so nothing has set app.current_org_id, and both tables it
+    // touches carry a tenant policy: the snapshot insert is refused outright
+    // with 42501 and the orgs update silently matches nothing. The whole write
+    // is one transaction, so the refusal rolled back the profile merge too and
+    // every sync logged the balance as unrecordable while reporting success.
+    await orgFinancialsQueries.updateOrgFinancials(
+      orgId,
+      {
+        cashOnHand: cash.balance,
+        // Full ISO, not the date alone. `cashAsOfDate` is
+        // `z.string().datetime()`, which rejects `YYYY-MM-DD`. A bank balance
+        // is also a point in time rather than a day: two syncs in one afternoon
+        // are two different answers.
+        cashAsOfDate: new Date().toISOString(),
+      },
+      dbAdmin,
+    );
     logger.info(
       { orgId, accountCount: cash.accountCount, currency: cash.currency },
       'Recorded cash on hand from bank balances',

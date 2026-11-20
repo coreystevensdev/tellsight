@@ -55,6 +55,16 @@ const CALLS = callsTo('integrationConnectionsQueries');
 // way.
 const DATASET_CALLS = callsTo('datasetsQueries');
 
+// orgs and cash_balance_snapshots carry the same policy, and this module is
+// written from a worker as well as a route. The Plaid sync called
+// updateOrgFinancials with no client, so it ran as app_user: the snapshot
+// insert was refused with 42501 and the whole transaction rolled back, which
+// the sync's non-fatal catch turned into a warning. Every sync reported success
+// while the balance it existed to record was never written. The unit test could
+// not see it, because it mocks the query module and a mock does not care which
+// client it was handed.
+const FINANCIALS_CALLS = callsTo('orgFinancialsQueries');
+
 describe('integration_connections queries are always org-scoped', () => {
   it('finds the call sites at all, so a rename cannot empty this test', () => {
     expect(CALLS.length).toBeGreaterThanOrEqual(40);
@@ -81,6 +91,20 @@ describe('integration_connections queries are always org-scoped', () => {
     for (const fn of ['getByIdAndProvider', 'getByOrgAndProvider', 'deleteByOrgAndProvider', 'upsert']) {
       expect(seen).toContain(fn);
     }
+  });
+
+  it('scopes every org financials query, which a worker writes as well as a route', () => {
+    expect(FINANCIALS_CALLS.length).toBeGreaterThanOrEqual(5);
+    // More than one file, or the scan narrowed to the routes and would miss the
+    // worker call that actually broke.
+    expect(new Set(FINANCIALS_CALLS.map((c) => c.file)).size).toBeGreaterThan(1);
+
+    const unscoped = FINANCIALS_CALLS.filter((c) => !/\btx\b|\bdbAdmin\b|\bclient\b/.test(c.args));
+    expect(unscoped.map((c) => `${c.file} ${c.fn}`)).toEqual([]);
+  });
+
+  it('sees the write that broke, so the scan cannot be vacuously green', () => {
+    expect(new Set(FINANCIALS_CALLS.map((c) => c.fn))).toContain('updateOrgFinancials');
   });
 
   it('scopes every datasets query too, where an unscoped read returns nothing instead of failing', () => {

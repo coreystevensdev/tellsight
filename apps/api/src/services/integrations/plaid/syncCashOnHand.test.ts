@@ -42,9 +42,8 @@ vi.mock('../../../db/queries/index.js', () => ({
   orgFinancialsQueries: { updateOrgFinancials: mockUpdateOrgFinancials },
   userOrgsQueries: { getOrgOwnerId: mockGetOrgOwnerId },
 }));
-vi.mock('../../../lib/db.js', () => ({
-  dbAdmin: { transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({}) },
-}));
+const mockDbAdmin = { transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({}) };
+vi.mock('../../../lib/db.js', () => ({ dbAdmin: mockDbAdmin }));
 const mockLogWarn = vi.fn();
 const mockLogInfo = vi.fn();
 vi.mock('../../../lib/logger.js', () => ({
@@ -95,9 +94,16 @@ describe('runSync recording cash on hand', () => {
   it('writes the bank balance so runway has a starting point', async () => {
     await runSync(5, 'scheduled');
 
+    // The third argument is the fix, not incidental. This runs in a worker with
+    // no request context, so the default client is app_user and both tables the
+    // write touches carry a tenant policy: the snapshot insert is refused with
+    // 42501 and the whole transaction rolls back. Asserted here as well as in
+    // integrationsRlsScope.test.ts, because that one reads source text and this
+    // one proves the value actually reaches the call.
     expect(mockUpdateOrgFinancials).toHaveBeenCalledWith(
       2,
       expect.objectContaining({ cashOnHand: 4200 }),
+      mockDbAdmin,
     );
   });
 
