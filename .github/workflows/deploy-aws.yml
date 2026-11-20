@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       force:
-        description: Deploy even though CI has not passed for this commit
+        description: Deploy even though CI has not passed, or the commit is older than what is running
         type: boolean
         default: false
 
@@ -104,6 +104,59 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+
+      # Second half of the 2026-09-14 problem the concurrency block above was
+      # added for. That block stopped the runs trampling each other, and its note
+      # says a burst "collapses to the one running plus the newest by itself",
+      # which is true of runs and not of commits. Deploys fire on CI completion,
+      # and CI completion order does not follow merge order.
+      #
+      # So it happened again on 2026-11-20: #401 merged first, #399 second, #399's
+      # CI finished first, and the deploy for the older commit therefore ran last
+      # and left production a commit behind main. Both runs reported success, and
+      # only reading /health against main's tip showed it.
+      #
+      # Serialising cannot fix an ordering problem and cancel-in-progress stays
+      # false for the reason given above, so the order gets checked instead.
+      #
+      # The compare API rather than git: checkout here is shallow, so merge-base
+      # would need history it does not have. "behind" means the commit being
+      # deployed is an ancestor of the one already running.
+      - name: Refuse to deploy a commit older than what is running
+        if: ${{ !inputs.force }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+          DEPLOYING: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          cid=$(aws ssm send-command \
+            --instance-ids "$EC2_INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --parameters 'commands=["grep -o sha-[0-9a-f]* /opt/tellsight/docker-compose.override.yml | sort -u | head -1"]' \
+            --query 'Command.CommandId' --output text)
+          aws ssm wait command-executed --command-id "$cid" --instance-id "$EC2_INSTANCE_ID" || true
+          running=$(aws ssm get-command-invocation --command-id "$cid" --instance-id "$EC2_INSTANCE_ID" \
+            --query 'StandardOutputContent' --output text | tr -d '[:space:]')
+          running=${running#sha-}
+          if [ -z "$running" ]; then
+            echo "No pinned sha on the instance; nothing to compare against. Continuing."
+            exit 0
+          fi
+          echo "running ${running}, deploying ${DEPLOYING:0:7}"
+          status=$(gh api "repos/${{ github.repository }}/compare/${running}...${DEPLOYING}" --jq '.status // ""')
+          case "$status" in
+            behind)
+              echo "::error::${DEPLOYING:0:7} is an ancestor of the running ${running}. Deploying it would move production backwards. Re-run with force checked if that is a deliberate rollback."
+              exit 1 ;;
+            identical|ahead)
+              echo "compare says ${status}, proceeding" ;;
+            "")
+              echo "::warning::Could not compare ${running} with ${DEPLOYING:0:7}. Proceeding rather than blocking on an API read."
+              ;;
+            *)
+              echo "::warning::compare says ${status}, which on main suggests a force-push. Proceeding." ;;
+          esac
 
       - name: Log in to Amazon ECR
         id: ecr-login
