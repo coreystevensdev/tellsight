@@ -99,8 +99,13 @@ jobs:
               #
               # migrate.ts only, not seed. This is a schema operation; seeding is
               # the deploy's business.
+              #
+              # The compiled migration, not tsx on the source. The production image
+              # installs with --prod and so has no tsx; dist/db/migrate.js is the same
+              # file through tsc. migrationsFolder is './drizzle/migrations', relative
+              # to the cd below, which is why that cd stays.
               'docker run --rm --entrypoint sh --env-file /opt/tellsight/.env --network tellsight_default '
-              f'"{repo}:$tag" -c \'cd /app/apps/api && npx tsx src/db/migrate.ts\'',
+              f'"{repo}:$tag" -c \'cd /app/apps/api && node dist/db/migrate.js\'',
               # Named explicitly because it is the point of this workflow.
               'echo "Running containers untouched:"',
               'docker ps --format "  {{.Names}} {{.Status}}"',
