@@ -173,7 +173,12 @@ async function recordCashOnHand(orgId: number, accessToken: string): Promise<voi
 
     await orgFinancialsQueries.updateOrgFinancials(orgId, {
       cashOnHand: cash.balance,
-      cashAsOfDate: new Date().toISOString().slice(0, 10),
+      // Full ISO, not the date alone. `cashAsOfDate` is `z.string().datetime()`,
+      // which rejects `YYYY-MM-DD`, so slicing it threw a ZodError inside the
+      // catch below and every sync logged the balance as unrecordable while
+      // reporting success. A bank balance is also a point in time rather than a
+      // day: two syncs in one afternoon are two different answers.
+      cashAsOfDate: new Date().toISOString(),
     });
     logger.info(
       { orgId, accountCount: cash.accountCount, currency: cash.currency },
