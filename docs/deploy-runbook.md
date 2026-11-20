@@ -135,7 +135,7 @@ it is about to start, **before** `docker compose up -d` replaces anything:
 
 ```bash
 docker compose run --rm --no-deps --entrypoint sh api \
-  -c 'cd /app/apps/api && npx tsx src/db/migrate.ts && npx tsx src/db/seed.ts'
+  -c 'cd /app/apps/api && node dist/db/migrate.js && node dist/db/seed.js'
 ```
 
 Production sets `MIGRATE_ON_START=false` in `/opt/tellsight/.env` so the

@@ -291,10 +291,18 @@ commands = [
     # without touching the database. check-migration-compat.ts is what
     # makes that safe, by refusing a migration the previous release
     # cannot survive.
-    # --entrypoint sh: the image entrypoint is the thing being bypassed.
+    # --entrypoint sh: the image entrypoint is the thing being bypassed. Which
+    # also means entrypoint.sh's choice of runner does not apply here, so this
+    # line picks the compiled one itself.
     # --no-deps: Postgres is RDS, there is nothing local to start.
+    #
+    # dist, not src. The image installs with --prod and carries no src/, so the
+    # tsx form of this broke the deploy once: `npx tsx` fetched tsx from the
+    # registry, then failed on ERR_MODULE_NOT_FOUND for src/db/migrate.ts. It
+    # failed before `compose up`, so production kept serving the old image, which
+    # is the whole reason schema runs as its own step.
     "cd /opt/tellsight && docker compose run --rm --no-deps --entrypoint sh api"
-    " -c 'cd /app/apps/api && npx tsx src/db/migrate.ts && npx tsx src/db/seed.ts'",
+    " -c 'cd /app/apps/api && node dist/db/migrate.js && node dist/db/seed.js'",
     "docker compose up -d --remove-orphans",
     # Prove the container is actually on the image we just pulled.
     # set -e catches a failed pull, but this catches the whole class:
