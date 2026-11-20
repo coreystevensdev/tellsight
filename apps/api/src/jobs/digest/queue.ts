@@ -98,6 +98,7 @@ export const sendJobDataSchema = z.object({
   // their own send job happens to run. .catch() likewise, a shape mismatch
   // should drop the caveat rather than the digest (DW-279).
   costBlindSources: z.array(z.string()).optional().catch(undefined),
+  anonymousSources: z.array(z.string()).optional().catch(undefined),
   correlationId: z.string().min(1),
 });
 export type SendJobData = z.infer<typeof sendJobDataSchema>;

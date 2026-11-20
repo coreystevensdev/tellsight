@@ -32,6 +32,7 @@ interface EnqueueDigestSendsInput {
   agentBullets: string[];
   chartKind?: 'runway' | 'cash-flow' | 'margin' | null;
   costBlindSources?: string[];
+  anonymousSources?: string[];
   correlationId: string;
 }
 
@@ -50,6 +51,7 @@ export async function enqueueDigestSends({
   agentBullets,
   chartKind,
   costBlindSources,
+  anonymousSources,
   correlationId,
 }: EnqueueDigestSendsInput): Promise<DigestEnqueueResult> {
   const queue = getSendQueue();
@@ -71,6 +73,7 @@ export async function enqueueDigestSends({
       // every payload for the overwhelmingly common cost-visible org and mean
       // nothing.
       ...(costBlindSources && costBlindSources.length > 0 ? { costBlindSources } : {}),
+      ...(anonymousSources && anonymousSources.length > 0 ? { anonymousSources } : {}),
       correlationId,
     };
 

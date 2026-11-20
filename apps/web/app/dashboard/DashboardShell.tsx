@@ -280,7 +280,11 @@ export function DashboardShell({
               connector does not carry costs. Reading them the other way round
               invites typing a fixed-cost figure that still cannot produce a
               margin (DW-279). */}
-          <CostBlindNotice sources={data.costBlindSources} className="mt-6" />
+          <CostBlindNotice
+            sources={data.costBlindSources}
+            anonymousSources={data.counterpartyBlindSources}
+            className="mt-6"
+          />
 
           {needsCashBalance && (
             <LockedInsightCard

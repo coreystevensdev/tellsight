@@ -37,6 +37,7 @@ export interface DigestWeeklyProps {
   // exists, so a revenue-only org got a confident email of totals and averages
   // with nothing saying the interesting half was never computable.
   costBlindSources?: string[];
+  anonymousSources?: string[];
 }
 
 const colors = {
@@ -122,9 +123,11 @@ export function DigestWeekly({
   companyName,
   openTrackingUrl,
   costBlindSources,
+  anonymousSources,
 }: DigestWeeklyProps) {
   const recipientExplanation = buildRecipientExplanation(orgName);
   const costBlindNote = buildCostBlindNote(costBlindSources);
+  const anonymousNote = buildAnonymousSourceNote(anonymousSources);
 
   return (
     <html lang="en">
@@ -177,6 +180,9 @@ export function DigestWeekly({
                         </table>
                         {costBlindNote ? (
                           <p style={styles.disclaimer}>{costBlindNote}</p>
+                        ) : null}
+                        {anonymousNote ? (
+                          <p style={styles.disclaimer}>{anonymousNote}</p>
                         ) : null}
                         <p style={styles.disclaimer}>{AI_DISCLAIMER}</p>
                       </td>
@@ -244,6 +250,27 @@ export function buildCostBlindNote(sources: string[] | undefined): string | null
   const verb = sources.length > 1 ? 'report' : 'reports';
 
   return `Profit margin and break-even are missing from this digest: ${named} ${verb} money coming in, not what you spend, so there is nothing to measure revenue against. Connecting accounting software or a bank account fills in the other side.`;
+}
+
+/**
+ * The digest's version of the concentration half of the dashboard notice.
+ *
+ * Separate from `buildCostBlindNote` rather than merged into it, for the reason
+ * the predicates are separate: the two source lists match today and the
+ * questions do not, so one note would eventually explain the wrong absence.
+ * Returns null when there is nothing to say.
+ */
+export function buildAnonymousSourceNote(sources: string[] | undefined): string | null {
+  if (!sources || sources.length === 0) return null;
+
+  const names = sources.map((s) => SOURCE_LABELS[s] ?? s);
+  const named =
+    names.length <= 1
+      ? (names[0] ?? '')
+      : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  const verb = sources.length > 1 ? 'do' : 'does';
+
+  return `Customer concentration is missing too: ${named} ${verb} not share who bought, so there is no way to tell whether one customer is most of your revenue.`;
 }
 
 export function buildRecipientExplanation(orgName: string): string {

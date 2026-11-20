@@ -19,6 +19,7 @@ const {
   buildDashboardUrl,
   buildUnsubscribeUrl,
   buildCostBlindNote,
+  buildAnonymousSourceNote,
 } = await import('./digestWeekly.js');
 
 const fixture: {
@@ -359,5 +360,46 @@ describe('buildCostBlindNote', () => {
   // a request where this is the guarantee.
   it('names the remedy, not just the gap', () => {
     expect(buildCostBlindNote(['shopify'])).toMatch(/accounting software or a bank account/i);
+  });
+});
+
+/**
+ * DW-288's half of the same honesty. Separate from buildCostBlindNote for the
+ * reason the predicates behind them are separate: the two source lists match
+ * today and the questions do not, so one note would eventually explain the
+ * wrong absence.
+ */
+describe('buildAnonymousSourceNote', () => {
+  it('names the source and what it costs the reader', () => {
+    const note = buildAnonymousSourceNote(['shopify'])!;
+
+    expect(note).toContain('Shopify');
+    expect(note).toContain('Customer concentration');
+    expect(note).toMatch(/does not share/);
+  });
+
+  it('conjugates for two sources', () => {
+    expect(buildAnonymousSourceNote(['shopify', 'square'])).toMatch(
+      /Shopify and Square do not share/,
+    );
+  });
+
+  // Null rather than an empty string, so the paragraph is omitted entirely
+  // instead of rendering a blank line in the email.
+  it('says nothing for an absent list', () => {
+    expect(buildAnonymousSourceNote(undefined)).toBeNull();
+  });
+
+  it('says nothing for an empty list', () => {
+    expect(buildAnonymousSourceNote([])).toBeNull();
+  });
+
+  // The product states limitations and never tells an owner what to do, which
+  // is assembly.ts's legal posture applied to a line assembled outside it.
+  it('states a limitation rather than giving advice', () => {
+    const note = buildAnonymousSourceNote(['shopify'])!;
+
+    expect(note).not.toMatch(/you should/i);
+    expect(note).not.toMatch(/\bmust\b/i);
   });
 });

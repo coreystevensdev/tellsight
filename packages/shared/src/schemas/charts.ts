@@ -76,6 +76,7 @@ export const chartDataSchema = z.object({
   // prompts for a fixed-cost figure, this one says no figure will help because
   // the connector does not carry costs at all (DW-279).
   costBlindSources: z.array(z.string()).optional(),
+  counterpartyBlindSources: z.array(z.string()).optional(),
   // When the weekly digest stops, because nothing new has arrived. Computed
   // server-side from the same constant the eligibility gate uses, so the
   // browser never carries a second copy of the rule.

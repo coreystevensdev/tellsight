@@ -6,6 +6,13 @@ import { cn } from '@/lib/utils';
 interface CostBlindNoticeProps {
   /** Source types from the API, empty when the dataset can see costs. */
   sources: string[] | undefined;
+  /**
+   * Sources that cannot name a customer, which is a different question from
+   * the one above even though the two lists happen to match today. Rendered as
+   * its own section so a source that sees costs but names nobody produces the
+   * right paragraph rather than a heading about margin (DW-288).
+   */
+  anonymousSources?: string[] | undefined;
   className?: string;
 }
 
@@ -43,11 +50,19 @@ export function joinSources(sources: string[]): string {
  * the visual language the product already uses for "this is available, under a
  * condition you have not met".
  */
-export function CostBlindNotice({ sources, className }: CostBlindNoticeProps) {
-  if (!sources || sources.length === 0) return null;
+export function CostBlindNotice({
+  sources,
+  anonymousSources,
+  className,
+}: CostBlindNoticeProps) {
+  const costBlind = sources ?? [];
+  const anonymous = anonymousSources ?? [];
+  if (costBlind.length === 0 && anonymous.length === 0) return null;
 
-  const named = joinSources(sources);
-  const plural = sources.length > 1;
+  const named = joinSources(costBlind);
+  const plural = costBlind.length > 1;
+  const anonNamed = joinSources(anonymous);
+  const anonPlural = anonymous.length > 1;
 
   return (
     <div
@@ -62,18 +77,40 @@ export function CostBlindNotice({ sources, className }: CostBlindNoticeProps) {
           <EyeOff className="h-4 w-4" />
         </div>
         <div className="flex-1">
-          <h3 className="text-base font-semibold text-foreground">
-            Profit margin and break-even need your costs
-          </h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {named} {plural ? 'report' : 'reports'} money coming in, not what you spend, so there is
-            nothing to measure revenue against. Everything else on this page is computed from the
-            sales {named} {plural ? 'send' : 'sends'}.
-          </p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Connecting accounting software or a bank account fills in the other side. So does a CSV
-            with expense rows in it.
-          </p>
+          {costBlind.length > 0 ? (
+            <>
+              <h3 className="text-base font-semibold text-foreground">
+                Profit margin and break-even need your costs
+              </h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {named} {plural ? 'report' : 'reports'} money coming in, not what you spend, so
+                there is nothing to measure revenue against. Everything else on this page is
+                computed from the sales {named} {plural ? 'send' : 'sends'}.
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Connecting accounting software or a bank account fills in the other side. So does a
+                CSV with expense rows in it.
+              </p>
+            </>
+          ) : null}
+          {anonymous.length > 0 ? (
+            <>
+              <h3
+                className={cn(
+                  'text-base font-semibold text-foreground',
+                  costBlind.length > 0 && 'mt-4',
+                )}
+              >
+                Customer concentration needs a name on each sale
+              </h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {anonNamed} {anonPlural ? 'do' : 'does'} not share who bought, so there is no way to
+                tell whether one customer is most of your revenue. Accounting software and bank
+                feeds name the other side of each transaction, and a CSV can carry a customer
+                column.
+              </p>
+            </>
+          ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
             <Link
               href="/settings/integrations"
