@@ -1,6 +1,24 @@
 {
+  // The emitting config. Until now this file existed but nothing referenced it;
+  // `build` ran bare `tsc`, which uses tsconfig.json and so compiled the 242 test
+  // files under src into 240 .js in dist, 5.5MB of a 9.4MB tree that then shipped
+  // in the API image. type-check still runs against tsconfig.json, so the tests
+  // are still type-checked, just not emitted.
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "rootDir": "src"
-  }
+    // Kept from the original file. tsconfig.json sets it too, but this is the
+    // config that emits, and per the note there TypeScript will not infer it when
+    // emitting while `tsc --noEmit` never asks, so only the Docker build fails.
+    "rootDir": "src",
+    // Its own buildinfo. Sharing tsconfig.json's would make each run invalidate
+    // the other's cache, since the two disagree on the file set.
+    "tsBuildInfoFile": "./node_modules/.cache/tsbuildinfo.build"
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.integration.test.ts"
+  ]
 }
