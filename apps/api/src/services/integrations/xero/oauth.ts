@@ -16,23 +16,43 @@ const XERO_REVOKE_URL = 'https://identity.xero.com/connect/revocation';
 const XERO_CONNECTIONS_URL = 'https://api.xero.com/connections';
 
 /**
- * Deliberately excludes `accounting.contacts.read`.
+ * Granular scopes, one per endpoint family this connector actually reads.
  *
- * The product needs one thing from a contact, the name, to report which
- * customer revenue came from. That name already arrives embedded in every
- * invoice and bank transaction as a `Contact` summary under
- * `accounting.transactions`. The contacts scope would additionally grant the
- * `/Contacts` endpoint: email addresses, phone numbers, postal addresses and
- * bank details, none of which this product has any use for. Asking for it to
- * get a field we already have is the kind of over-reach that makes a connector
- * harder to consent to and puts PII in reach of a bug.
+ * `accounting.transactions.read` was the original and is **deprecated**. Xero
+ * assigned granular scopes to every Web and PKCE app in March 2026, and an app
+ * created after that date does not have the broad one at all: requesting it
+ * fails the authorize call outright with `invalid_scope`, before the consent
+ * screen. Nothing in this repo could have predicted that, and nothing in it can
+ * detect the next such change either; the live probe is what found it.
  *
- * `accounting.settings.read` is in, and earns it: a line item carries
- * `AccountCode` ("445") and not the account name, so without it every category
- * on the dashboard would read as a number. That is chart-of-accounts metadata,
- * not customer data.
+ * The migration turned out to be a privacy improvement rather than a rename.
+ * The broad scope granted Payments, ManualJournals, Quotes, PurchaseOrders,
+ * Receipts, ExpenseClaims and Overpayments along with what we wanted. These
+ * three grant only what `sync.ts` fetches:
+ *
+ *   - `accounting.invoices.read`         Invoices and CreditNotes
+ *   - `accounting.banktransactions.read` BankTransactions
+ *   - `accounting.settings.read`         Accounts and Organisation
+ *
+ * `accounting.payments.read` and `accounting.manualjournals.read` are the other
+ * two halves of the old broad scope and are deliberately absent: the connector
+ * does not fetch Payments (a Xero payment settles an invoice `Invoices` already
+ * reported, so reading them would double-count) and does not fetch
+ * ManualJournals at all.
+ *
+ * `accounting.contacts.read` stays out for the reason it always did. The
+ * product wants one field from a contact, the name, and that arrives embedded
+ * in every invoice and bank transaction already. The contacts scope would add
+ * the `/Contacts` endpoint: emails, phone numbers, postal addresses and bank
+ * details, none of which this product has a use for.
+ *
+ * `offline_access` is what makes a refresh token exist. Note it cannot be
+ * requested on its own: it grants access to nothing by itself and Xero rejects
+ * a request carrying only it, which reads as the scope being unavailable when
+ * it is simply incomplete.
  */
-const XERO_SCOPE = 'offline_access accounting.transactions.read accounting.settings.read';
+const XERO_SCOPE =
+  'offline_access accounting.invoices.read accounting.banktransactions.read accounting.settings.read';
 
 const TOKEN_TIMEOUT_MS = 10_000;
 
