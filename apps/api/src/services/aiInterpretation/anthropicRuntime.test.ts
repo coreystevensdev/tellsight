@@ -51,7 +51,8 @@ describe('Anthropic runtime policy', () => {
   it('records and returns an allowed request cost', () => {
     expect(applyCostGate(usage, 'generate', 'claude-test')).toBe(0.02);
     expect(mocks.computeCost).toHaveBeenCalledWith(usage, 'claude-test');
-    expect(mocks.recordCost).toHaveBeenCalledWith(0.02, 'claude-test');
+    expect(mocks.exceedsBudget).toHaveBeenCalledWith(0.02, 'claude-test', 'generate');
+    expect(mocks.recordCost).toHaveBeenCalledWith(0.02, 'claude-test', 'generate');
     expect(mocks.budgetInc).not.toHaveBeenCalled();
   });
 
@@ -78,6 +79,8 @@ describe('Anthropic runtime policy', () => {
     // The refusal still has to be counted, or a sustained shift never
     // recalibrates and the floor stays pinned below the workload forever.
     expect(mocks.recordRefusedCost).toHaveBeenCalledTimes(1);
+    expect(mocks.exceedsBudget).toHaveBeenCalledWith(0.02, 'claude-test', 'generateTool');
+    expect(mocks.recordRefusedCost).toHaveBeenCalledWith(0.02, 'claude-test', 'generateTool');
   });
 
   it('preserves cost-budget errors unchanged', () => {

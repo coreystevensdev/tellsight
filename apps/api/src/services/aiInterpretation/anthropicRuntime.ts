@@ -7,6 +7,7 @@ import {
   recordCost,
   recordRefusedCost,
   type Usage,
+  type CostCaller,
 } from '../../lib/cost.js';
 import { logger } from '../../lib/logger.js';
 import { aiCostBudgetExceeded } from '../../lib/metrics.js';
@@ -21,26 +22,26 @@ export class AbortedByClient extends Error {
 // tokens are spent. A refused cost stays out of median history so one runaway
 // cannot raise the floor, but a sustained run of them clears it instead, see
 // recordRefusedCost in lib/cost.ts.
-export function applyCostGate(usage: Usage, caller: string, model: string): number | null {
+export function applyCostGate(usage: Usage, caller: CostCaller, model: string): number | null {
   const cost = computeCost(usage, model);
   if (cost === null) {
     logger.error({ model, caller }, 'No pricing for model, cost gate skipped');
     return null;
   }
 
-  const budget = exceedsBudget(cost, model);
+  const budget = exceedsBudget(cost, model, caller);
   if (budget.exceeded) {
     aiCostBudgetExceeded.inc({ caller });
-    const recalibrated = recordRefusedCost(cost, model);
+    const recalibrated = recordRefusedCost(cost, model, caller);
     logger.warn(
-      { cost, cap: budget.cap, median: budget.median, model, recalibrated },
+      { cost, cap: budget.cap, median: budget.median, model, caller, recalibrated },
       recalibrated
         ? 'Claude API cost budget exceeded, request refused, cost floor cleared to follow the new level'
         : 'Claude API cost budget exceeded, request refused',
     );
     throw new CostBudgetExceededError(cost, budget.cap);
   }
-  recordCost(cost, model);
+  recordCost(cost, model, caller);
   return cost;
 }
 

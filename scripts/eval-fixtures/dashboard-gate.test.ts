@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { dashboardGate } from './dashboard-gate.js';
-
-const FLOORS = { faithfulness: 0.85, completeness: 0.8 };
+import { EVAL_FLOORS as FLOORS } from './quality-floors.js';
 
 function score(over: Partial<Parameters<typeof dashboardGate>[0][number]> = {}) {
   return {
@@ -19,6 +18,16 @@ function score(over: Partial<Parameters<typeof dashboardGate>[0][number]> = {}) 
 }
 
 describe('dashboardGate', () => {
+  it.each([
+    { sampledCount: 33, errored: 3 },
+    { sampledCount: 35, errored: 0 },
+    { sampledCount: 37, errored: 0 },
+    { sampledCount: 36, errored: 1 },
+  ])('rejects excluded or inconsistently counted samples: %j', (counts) => {
+    const breaches = dashboardGate([score(counts)], 36, FLOORS);
+    expect(breaches).toHaveLength(1);
+    expect(breaches[0]).toContain('inconclusive');
+  });
   it('passes a clean arm', () => {
     expect(dashboardGate([score()], 36, FLOORS)).toEqual([]);
   });
