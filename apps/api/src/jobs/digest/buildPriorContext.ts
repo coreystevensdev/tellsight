@@ -44,7 +44,7 @@ const usdSigned = (n: number) => `${n >= 0 ? '+' : '-'}$${usd.format(Math.abs(n)
 // snapshot. Pure: no I/O, reads only its two array parameters. `key_stats` only
 // ever holds the top-N scored stats, so "present last week, absent this week"
 // can't distinguish a genuinely gone signal from one that scored below the
-// cutoff — the 2026-06-27 "honest v1" resolution suppresses that disappear line
+// cutoff, the 2026-06-27 "honest v1" resolution suppresses that disappear line
 // entirely rather than print an unprovable claim. The appear case stays, since a
 // stat's first appearance is provable even under top-N truncation.
 // Detail fields are assumed finite, same as valence.ts: computation.ts only ever

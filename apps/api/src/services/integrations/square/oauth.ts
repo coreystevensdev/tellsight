@@ -151,7 +151,7 @@ export function refreshTokens(refreshToken: string): Promise<TokenSet> {
 }
 
 // Best effort, matching the other connectors: the local row is deleted either
-// way. The header is `Client <secret>`, not `Bearer` — revoking authenticates
+// way. The header is `Client <secret>`, not `Bearer`, revoking authenticates
 // as the application rather than as the seller.
 export async function revokeToken(accessToken: string): Promise<void> {
   try {
