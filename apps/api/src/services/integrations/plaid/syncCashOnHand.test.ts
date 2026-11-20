@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { orgFinancialsSchema } from 'shared/schemas';
 
 // runSync records cash on hand so runway and cash_forecast have a starting
 // balance, and the decision worth pinning is that it cannot cost a sync. A
@@ -100,11 +101,38 @@ describe('runSync recording cash on hand', () => {
     );
   });
 
-  it('dates the balance, since the snapshot history is keyed on it', async () => {
+  /**
+   * Validated through the real schema rather than a regex, because the regex
+   * is what went wrong.
+   *
+   * This test used to assert `/^\d{4}-\d{2}-\d{2}$/` and passed, while
+   * production logged "Could not record cash on hand" on every sync for a day.
+   * `cashAsOfDate` is `z.string().datetime()`, which rejects a bare date, and
+   * `updateOrgFinancials` is mocked here, so the mock took the payload the real
+   * function would have thrown on. The assertion did not merely miss the bug,
+   * it encoded the bug as the expected shape.
+   *
+   * Parsing through `orgFinancialsSchema` is the only version that cannot drift
+   * from what the database layer will accept, since it is the same validator.
+   */
+  it('sends a payload the real schema accepts', async () => {
     await runSync(5, 'scheduled');
 
     const [, updates] = mockUpdateOrgFinancials.mock.calls[0]!;
-    expect(updates.cashAsOfDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const parsed = orgFinancialsSchema.partial().safeParse(updates);
+
+    expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
+  });
+
+  it('dates the balance to an instant, not a day', async () => {
+    await runSync(5, 'scheduled');
+
+    const [, updates] = mockUpdateOrgFinancials.mock.calls[0]!;
+
+    // Two syncs in one afternoon are two different answers, so the time
+    // component is the point rather than incidental precision.
+    expect(updates.cashAsOfDate).toMatch(/T\d{2}:\d{2}:\d{2}/);
+    expect(new Date(updates.cashAsOfDate).getTime()).not.toBeNaN();
   });
 
   // The decision this file exists for.
