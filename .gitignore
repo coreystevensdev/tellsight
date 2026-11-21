@@ -77,6 +77,8 @@ infra/terraform/tfplan
 _bmad/
 _bmad-output/
 CLAUDE.md
+# session scratch from the remember hook: dated logs of what was worked on
+.remember/
 AGENTS.md
 .claude/
 
