@@ -241,7 +241,7 @@ The nudge queue is the one whose separation is not about throughput. It tells an
 
 ## How this was built
 
-Written with heavy AI assistance, which is worth stating plainly because the interesting part is not that a model wrote code, it is what had to be built around the model to make its output safe to ship. Three of those are in this repo and all three came out of catching it being wrong.
+AI assistance was used, which is worth stating plainly because the interesting part is not that a model wrote code, it is what had to be built around the model to make its output safe to ship. Three of those are in this repo and all three came out of catching it being wrong.
 
 **A check I wrote that was wrong, and the narrow fix.** The legal-posture scanner flagged a cash-crunch summary for the phrase "you need to". Reading the sample, the sentence was "the gap between what you're earning and what you need to break even", which names a figure rather than telling anyone to do anything. A substring match cannot tell those apart. The fix in `packages/shared/src/agent/constants.ts` is a negative lookbehind on eleven descriptive markers (`what`, `than`, `when`, `if` and so on) applied to that one phrase only, so "you need to cut costs" still trips and every other banned phrase is untouched. The eval now calls the same matcher production calls rather than rebuilding the regex from the shared list, because the two had already drifted once.
 
