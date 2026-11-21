@@ -4,6 +4,8 @@ export interface CashOnHand {
   balance: number;
   currency: string;
   accountCount: number;
+  /** Depository subtypes present but excluded as unspendable, for the log. */
+  skippedSubtypes: string[];
 }
 
 /**
@@ -30,9 +32,48 @@ export interface CashOnHand {
  *     suppresses rather than guessing, which matches how every other stat here
  *     handles data it cannot honestly combine.
  */
+/**
+ * Depository subtypes the business cannot actually spend.
+ *
+ * The type filter below already removes the dangerous cases, credit and loans
+ * and investments. These are the ones that survive it and still are not cash a
+ * business can reach to make payroll: a `cd` is locked until maturity, an `hsa`
+ * is restricted to qualified medical expenses under tax penalty, `ebt` is
+ * government benefits, and `limited purpose checking` is restricted by
+ * definition (Plaid's own description, and it is opt-in only so it should never
+ * arrive here at all).
+ *
+ * A **denylist**, not an allowlist, and the choice matters. An allowlist is the
+ * more conservative shape and would be right if the only risk were overstating,
+ * but `subtype` is nullable and some institutions do not report one. An
+ * allowlist would silently drop a plain checking account from such an
+ * institution and report a fraction of the real balance, which is a worse
+ * failure than counting a CD: it is large, silent, and hits ordinary accounts
+ * rather than unusual ones.
+ *
+ * The residual risk is named rather than hidden: a restricted subtype Plaid
+ * adds later counts as cash until this list is updated. That is bounded, since
+ * the type filter catches every large category, and the skip is logged so a
+ * figure that looks wrong can be explained.
+ */
+const NOT_SPENDABLE_SUBTYPES = new Set([
+  'cd',
+  'hsa',
+  'ebt',
+  'limited purpose checking',
+]);
+
+function isSpendable(a: PlaidAccount): boolean {
+  if (a.type !== 'depository') return false;
+  // A null subtype counts. See the denylist comment above: dropping it would
+  // zero out an ordinary account at an institution that reports no subtype.
+  const subtype = a.subtype?.toLowerCase().trim();
+  return !subtype || !NOT_SPENDABLE_SUBTYPES.has(subtype);
+}
+
 export function cashFromAccounts(accounts: PlaidAccount[]): CashOnHand | null {
   const spendable = accounts.filter(
-    (a) => a.type === 'depository' && (a.balances.available ?? a.balances.current) !== null,
+    (a) => isSpendable(a) && (a.balances.available ?? a.balances.current) !== null,
   );
   if (spendable.length === 0) return null;
 
@@ -53,5 +94,15 @@ export function cashFromAccounts(accounts: PlaidAccount[]): CashOnHand | null {
     balance: Math.round(balance * 100) / 100,
     currency: currency!,
     accountCount: spendable.length,
+    // Named so the caller can say which accounts were left out and why, rather
+    // than an owner seeing a figure lower than their bank app and having no way
+    // to reconcile it.
+    skippedSubtypes: [
+      ...new Set(
+        accounts
+          .filter((a) => a.type === 'depository' && !isSpendable(a))
+          .map((a) => a.subtype!.toLowerCase().trim()),
+      ),
+    ].sort(),
   };
 }

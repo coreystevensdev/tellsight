@@ -29,7 +29,7 @@ describe('cashFromAccounts', () => {
         account({ account_id: 'a', available: 1000 }),
         account({ account_id: 'b', available: 2500, subtype: 'savings' }),
       ]),
-    ).toEqual({ balance: 3500, currency: 'USD', accountCount: 2 });
+    ).toEqual({ balance: 3500, currency: 'USD', accountCount: 2, skippedSubtypes: [] });
   });
 
   // The one that is wrong in the worst direction. Plaid reports a credit
@@ -47,7 +47,7 @@ describe('cashFromAccounts', () => {
       }),
     ]);
 
-    expect(cash).toEqual({ balance: 1000, currency: 'USD', accountCount: 1 });
+    expect(cash).toEqual({ balance: 1000, currency: 'USD', accountCount: 1, skippedSubtypes: [] });
   });
 
   it.each([
@@ -80,7 +80,7 @@ describe('cashFromAccounts', () => {
       account({ account_id: 'b', available: null, current: null }),
     ]);
 
-    expect(cash).toEqual({ balance: 500, currency: 'USD', accountCount: 1 });
+    expect(cash).toEqual({ balance: 500, currency: 'USD', accountCount: 1, skippedSubtypes: [] });
   });
 
   // Summing GBP into USD produces a number wrong by an exchange rate nobody
@@ -98,7 +98,7 @@ describe('cashFromAccounts', () => {
     a.balances.iso_currency_code = 'CAD';
     b.balances.iso_currency_code = 'CAD';
 
-    expect(cashFromAccounts([a, b])).toEqual({ balance: 1500, currency: 'CAD', accountCount: 2 });
+    expect(cashFromAccounts([a, b])).toEqual({ balance: 1500, currency: 'CAD', accountCount: 2, skippedSubtypes: [] });
   });
 
   it('reports nothing when the currency is unstated', () => {
@@ -141,5 +141,94 @@ describe('cashFromAccounts', () => {
     expect(
       cashFromAccounts([account({ type: 'crypto_exchange', available: 50_000 })]),
     ).toBeNull();
+  });
+});
+
+/**
+ * Within `depository`, some subtypes are money the business owns and cannot
+ * reach. Runway answers "how long can I keep paying", so counting them
+ * overstates it, which is the dangerous direction: it tells an owner they have
+ * more time than they do.
+ *
+ * Found by connecting a Plaid sandbox item with a CD selected on purpose. The
+ * balance came back as 1300, which was Checking 100 plus Saving 200 plus a
+ * 1000 certificate of deposit locked until maturity.
+ */
+describe('cashFromAccounts excludes depository accounts that are not spendable', () => {
+  function depository(subtype: string, available: number, id = subtype) {
+    return account({ account_id: id, subtype, available, current: available });
+  }
+
+  it.each([
+    ['cd', 'locked until maturity'],
+    ['hsa', 'restricted to qualified medical expenses'],
+    ['ebt', 'government benefits, not business cash'],
+    ['limited purpose checking', 'restricted by definition'],
+  ])('leaves out a %s account, %s', (subtype) => {
+    const cash = cashFromAccounts([
+      depository('checking', 100, 'c'),
+      depository(subtype, 50_000),
+    ])!;
+
+    expect(cash.balance).toBe(100);
+    expect(cash.accountCount).toBe(1);
+  });
+
+  it.each(['checking', 'savings', 'money market', 'cash management', 'paypal', 'prepaid'])(
+    'still counts a %s account',
+    (subtype) => {
+      expect(cashFromAccounts([depository(subtype, 250)])!.balance).toBe(250);
+    },
+  );
+
+  // The reason this is a denylist rather than an allowlist. `subtype` is
+  // nullable and some institutions report none; an allowlist would drop an
+  // ordinary checking account and report a fraction of the real balance, which
+  // is a larger and quieter error than counting a CD.
+  it('counts a depository account whose subtype is missing', () => {
+    const cash = cashFromAccounts([account({ subtype: null, available: 900 })]);
+
+    expect(cash!.balance).toBe(900);
+  });
+
+  it('counts a subtype it has never heard of, which is the denylist trade-off', () => {
+    expect(cashFromAccounts([depository('some-new-subtype', 400)])!.balance).toBe(400);
+  });
+
+  it('matches the subtype regardless of case or stray whitespace', () => {
+    const cash = cashFromAccounts([
+      depository('checking', 100, 'c'),
+      depository('  CD  ', 9_000),
+    ])!;
+
+    expect(cash.balance).toBe(100);
+  });
+
+  // Reported rather than silently dropped, so an owner seeing a figure lower
+  // than their banking app can be told which accounts were left out.
+  it('names what it skipped', () => {
+    const cash = cashFromAccounts([
+      depository('checking', 100, 'c'),
+      depository('cd', 1_000),
+      depository('hsa', 500),
+    ])!;
+
+    expect(cash.skippedSubtypes).toEqual(['cd', 'hsa']);
+  });
+
+  it('reports nothing when every depository account is unspendable', () => {
+    expect(cashFromAccounts([depository('cd', 1_000), depository('hsa', 500)])).toBeNull();
+  });
+
+  // The exact sandbox shape that exposed this, as a regression.
+  it('reports 300 for the sandbox item that used to report 1300', () => {
+    const cash = cashFromAccounts([
+      depository('checking', 100, 'chk'),
+      depository('savings', 200, 'sav'),
+      depository('cd', 1_000, 'cd'),
+    ])!;
+
+    expect(cash.balance).toBe(300);
+    expect(cash.skippedSubtypes).toEqual(['cd']);
   });
 });
