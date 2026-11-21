@@ -1,5 +1,7 @@
 import { defineConfig } from 'vitest/config';
 
+import { vitestCachePath } from '../../packages/shared/src/test/vitestCachePath.js';
+
 // Separate project so the real-Postgres suite never runs under the default
 // `pnpm test` (see vitest.config.ts's exclude), keeping the DB-less test-api
 // CI job green with no service container.
@@ -14,6 +16,19 @@ export default defineConfig({
     // import graph before any hook body runs, which left beforeAll/afterAll
     // timing out on the first run after a cache clear.
     hookTimeout: 30_000,
+    // 18 tests timed out at vitest's 5000ms default on 2026-11-21 and did not
+    // reproduce in three attempts after. Nominal cost is nowhere near it: the
+    // slowest test measures 1591ms warm and 448ms cold, so this is the same
+    // load variance #413 covered for the unit suite, not a slow test. Cold
+    // cache and a freshly migrated DB were both tested as causes and neither
+    // reproduces it.
+    testTimeout: 15_000,
+    // This config was the one #407 missed. Without a key it wrote into
+    // node_modules/.vitest-cache itself, the parent of the four keyed
+    // directories, where 379 bare entries had collected and nothing
+    // invalidated them on a dependency change. Its own package name, not
+    // 'api', so the two api configs never race on cleanup.
+    fsModuleCachePath: vitestCachePath('api-integration'),
     pool: 'forks',
     // vitest 4 removed poolOptions; the pool settings are top-level now.
     execArgv: ['--max-old-space-size=4096'],
