@@ -28,6 +28,17 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  // Without this, Next resolves the generated opengraph-image against
+  // http://localhost:3000, and production served exactly that:
+  //   <meta property="og:image" content="http://localhost:3000/opengraph-image?...">
+  // So every share of the live demo on LinkedIn, Slack or iMessage produced no
+  // preview card at all.
+  //
+  // Defaulted to the real domain rather than read only from the environment,
+  // because this is evaluated when the page is prerendered and the image build
+  // has no APP_URL. The deploy does write APP_URL into the instance's .env, so
+  // the override still works wherever the value is present at build time.
+  metadataBase: new URL(process.env.APP_URL ?? 'https://tellsight.coreystevens.dev'),
   title: 'Tellsight',
   description: 'Analytics that explains your business data in plain English. Built on Claude.',
   openGraph: {
