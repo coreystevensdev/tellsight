@@ -234,10 +234,12 @@ export default function LandingPage() {
                 offline eval harness runs three labeled fixtures (healthy
                 growth, cash crunch, seasonal anomaly) through the real
                 pipeline and scores faithfulness and completeness. Last
-                measured run: 0.99 faithfulness, 1.00 completeness. It has
-                caught a real slip, one sampled summary generated the literal
-                banned phrase &quot;you need to,&quot; which the legal-posture
-                checker flagged.
+                measured run: 0.943 faithfulness across 87 samples and 1.00
+                completeness, graded by a third model so neither candidate
+                grades itself. It once flagged a summary for the banned phrase
+                &quot;you need to&quot;, which turned out to be a false positive
+                on &quot;what you need to break even&quot;; the fix went into
+                the matcher production uses, not a second copy living in the eval.
               </p>
             </div>
           </details>
