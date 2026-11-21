@@ -399,7 +399,10 @@ describe('integrations routes', () => {
       // needs to look the connection up.
       expect(mockPlaidRegisterDailySync).toHaveBeenCalledWith(10, 77);
       // And the first sync is immediate rather than waiting for 6am.
-      expect(mockPlaidEnqueueSyncJob).toHaveBeenCalledWith(77, 'manual');
+      // 'initial', not 'manual': the exchange is a first connect, and the sync
+      // has to tell it from the manual button to decide whether this org's
+      // first real source claims the dashboard (DW-296).
+      expect(mockPlaidEnqueueSyncJob).toHaveBeenCalledWith(77, 'initial');
     });
 
     // A schedule outliving its connection fires daily and fails every time on

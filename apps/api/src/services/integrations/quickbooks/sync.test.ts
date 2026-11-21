@@ -10,7 +10,9 @@ const mockGetDatasetsByOrg = vi.fn();
 const mockCreateDataset = vi.fn();
 const mockUpdateDatasetName = vi.fn();
 const mockTouchDataRefreshed = vi.fn().mockResolvedValue(undefined);
-const mockSetActiveDataset = vi.fn();
+// The claim rule moved behind a shared helper. Its decision logic is tested
+// in activeDataset.test.ts; these assert only that an initial sync asks.
+const mockClaimDashboard = vi.fn();
 const mockMarkStale = vi.fn();
 const mockGetOrgOwnerId = vi.fn();
 const mockCreateQbClient = vi.fn();
@@ -25,6 +27,9 @@ const mockReturning = vi.fn() as Mock & { _result: Promise<unknown[]> };
 const mockDeleteReturning = vi.fn() as Mock & { _result: Promise<unknown[]> };
 const mockLoggerWarn = vi.fn();
 
+vi.mock('../activeDataset.js', () => ({
+  claimDashboardForFirstRealSource: mockClaimDashboard,
+}));
 vi.mock('../../../lib/db.js', () => {
   // Shared by dbAdmin itself and by the client a .transaction() callback
   // receives, so a test can call either path and land on the same mocks.
@@ -110,7 +115,6 @@ vi.mock('../../../db/queries/index.js', () => ({
     touchDataRefreshed: mockTouchDataRefreshed,
   },
   orgsQueries: {
-    setActiveDataset: mockSetActiveDataset,
   },
   aiSummariesQueries: {
     markStale: mockMarkStale,
@@ -259,7 +263,7 @@ describe('runSync', () => {
     const { runSync } = await import('./sync.js');
     await runSync(1, 'initial');
 
-    expect(mockSetActiveDataset).toHaveBeenCalledWith(10, 500, expect.anything());
+    expect(mockClaimDashboard).toHaveBeenCalledWith(10, 500);
   });
 
   it('does not set activeDatasetId on scheduled sync', async () => {
@@ -273,7 +277,7 @@ describe('runSync', () => {
     const { runSync } = await import('./sync.js');
     await runSync(1, 'scheduled');
 
-    expect(mockSetActiveDataset).not.toHaveBeenCalled();
+    expect(mockClaimDashboard).not.toHaveBeenCalled();
   });
 
   it('passes lastSyncedAt to incremental queries', async () => {
@@ -336,7 +340,7 @@ describe('runSync', () => {
     const { runSync } = await import('./sync.js');
     await runSync(1, 'backfill');
 
-    expect(mockSetActiveDataset).not.toHaveBeenCalled();
+    expect(mockClaimDashboard).not.toHaveBeenCalled();
   });
 
   it('fetches all 12 transaction types', async () => {

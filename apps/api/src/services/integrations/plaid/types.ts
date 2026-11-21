@@ -75,7 +75,12 @@ export interface PlaidErrorBody {
   display_message?: string | null;
 }
 
-export type PlaidSyncTrigger = 'manual' | 'scheduled' | 'backfill';
+// 'initial' is the token exchange's first sync, distinct from the manual button
+// even though both used to enqueue 'manual'. Conflating them meant the connector
+// had no way to tell a first connect from a re-sync, which is why Plaid was the
+// only one that never claimed the dashboard for an org's first real source
+// (DW-296).
+export type PlaidSyncTrigger = 'initial' | 'manual' | 'scheduled' | 'backfill';
 
 export interface PlaidSyncOutcome {
   rowsSynced: number;

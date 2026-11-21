@@ -8,11 +8,11 @@ import {
   integrationConnectionsQueries,
   syncJobsQueries,
   datasetsQueries,
-  orgsQueries,
   aiSummariesQueries,
   userOrgsQueries,
 } from '../../../db/queries/index.js';
 import { trackEvent } from '../../analytics/trackEvent.js';
+import { claimDashboardForFirstRealSource } from '../activeDataset.js';
 import { createSquareClient } from './api.js';
 import { ConnectionNotFoundError } from './errors.js';
 import { normalizeOrders } from './normalize.js';
@@ -104,9 +104,13 @@ export async function runSync(connectionId: number, trigger: SyncTrigger): Promi
     // protect, and without this an org whose initial sync failed can never
     // display the data it now holds: only an initial run sets this, and only
     // reconnecting produces another one.
-    const org = await orgsQueries.findOrgById(orgId, dbAdmin);
-    if (isInitial || !org?.activeDatasetId) {
-      await orgsQueries.setActiveDataset(orgId, dataset.id, dbAdmin);
+    // The null-pointer half of this condition moved into the helper, which
+    // applies it to every connector rather than only this one.
+    // Gated on isInitial so a backfill provably cannot repoint the dashboard.
+    // That invariant is DW-292's lesson and is worth keeping structural rather
+    // than relying on the helper to decline.
+    if (isInitial) {
+      await claimDashboardForFirstRealSource(orgId, dataset.id);
     }
 
     // The rows just changed, so the dataset is fresher than its created_at says.

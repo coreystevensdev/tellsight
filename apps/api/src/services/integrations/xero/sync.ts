@@ -5,7 +5,6 @@ import {
   aiSummariesQueries,
   datasetsQueries,
   integrationConnectionsQueries,
-  orgsQueries,
   syncJobsQueries,
   userOrgsQueries,
 } from '../../../db/queries/index.js';
@@ -13,6 +12,7 @@ import { dataRows } from '../../../db/schema.js';
 import { dbAdmin } from '../../../lib/db.js';
 import { logger } from '../../../lib/logger.js';
 import { trackEvent } from '../../analytics/trackEvent.js';
+import { claimDashboardForFirstRealSource } from '../activeDataset.js';
 import { createXeroClient } from './api.js';
 import { XeroConnectionNotFoundError } from './errors.js';
 import { normalizeTransactions } from './normalize.js';
@@ -131,8 +131,11 @@ export async function runSync(connectionId: number, trigger: SyncTrigger): Promi
       );
     }
 
+    // Gated on isInitial so a backfill provably cannot repoint the dashboard.
+    // That invariant is DW-292's lesson and is worth keeping structural rather
+    // than relying on the helper to decline.
     if (isInitial) {
-      await orgsQueries.setActiveDataset(orgId, dataset.id, dbAdmin);
+      await claimDashboardForFirstRealSource(orgId, dataset.id);
     }
 
     await datasetsQueries.touchDataRefreshed(orgId, dataset.id, dbAdmin);

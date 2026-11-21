@@ -10,7 +10,9 @@ const mockCreateDataset = vi.fn();
 const mockUpdateDatasetName = vi.fn();
 const mockTouchDataRefreshed = vi.fn();
 const mockMarkStale = vi.fn();
-const mockSetActiveDataset = vi.fn();
+// The claim rule moved behind a shared helper. Its decision logic is tested
+// in activeDataset.test.ts; these assert only that an initial sync asks.
+const mockClaimDashboard = vi.fn();
 const mockGetOrgOwnerId = vi.fn();
 const mockTrackEvent = vi.fn();
 const mockCreateXeroClient = vi.fn();
@@ -32,8 +34,11 @@ vi.mock('../../../db/queries/index.js', () => ({
     touchDataRefreshed: mockTouchDataRefreshed,
   },
   aiSummariesQueries: { markStale: mockMarkStale },
-  orgsQueries: { setActiveDataset: mockSetActiveDataset },
+  orgsQueries: { setActiveDataset: mockClaimDashboard },
   userOrgsQueries: { getOrgOwnerId: mockGetOrgOwnerId },
+}));
+vi.mock('../activeDataset.js', () => ({
+  claimDashboardForFirstRealSource: mockClaimDashboard,
 }));
 vi.mock('../../../lib/db.js', () => ({
   dbAdmin: { transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({}) },
@@ -116,7 +121,7 @@ describe('incremental versus wide', () => {
   it('repoints the active dataset on an initial sync', async () => {
     await runSync(5, 'initial');
 
-    expect(mockSetActiveDataset).toHaveBeenCalledWith(2, 7, expect.anything());
+    expect(mockClaimDashboard).toHaveBeenCalledWith(2, 7);
   });
 
   // The other half of why trigger is two flags rather than one. A backfill
@@ -126,7 +131,7 @@ describe('incremental versus wide', () => {
   it('leaves the active dataset alone on a backfill', async () => {
     await runSync(5, 'backfill');
 
-    expect(mockSetActiveDataset).not.toHaveBeenCalled();
+    expect(mockClaimDashboard).not.toHaveBeenCalled();
   });
 });
 
