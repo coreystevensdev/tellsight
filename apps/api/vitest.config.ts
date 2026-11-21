@@ -28,6 +28,13 @@ export default defineConfig({
         lines: 89,
       },
     },
+    // vitest's 5000ms default is too tight for this suite under load.
+    // integrations.test.ts costs 1211ms in a quiet run and failed twice on
+    // 2026-11-20 at 9343ms and 5013ms, a spread that never reproduced. Three
+    // files had already hit the same thing and bought room per-file (20s, 30s,
+    // 45s); this covers the ones that have not. Nothing without an override
+    // runs past 1.3s here, so 15s masks no slow test.
+    testTimeout: 15_000,
     pool: 'forks',
     // vitest 4 removed poolOptions; the pool settings are top-level now.
     execArgv: ['--max-old-space-size=4096'],
