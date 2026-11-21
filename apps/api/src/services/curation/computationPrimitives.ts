@@ -23,10 +23,10 @@ export interface DataRow {
 export type FinancialSide = 'Income' | 'Expenses';
 
 // Sources that can only ever report money coming in. Shopify pulls orders,
-// refunds and products; Square pulls orders across locations; Stripe pulls
-// payments. None can see an operating cost, so the only Expenses rows they write
-// are refunds. QuickBooks, Xero and Plaid see both sides, and a CSV's columns are
-// the owner's own choice, so none of those are listed.
+// refunds and products; Square pulls orders across locations. Neither can see an
+// operating cost, so the only Expenses rows they write are refunds. QuickBooks,
+// Xero and Plaid see both sides, and a CSV's columns are the owner's own choice,
+// so none of those are listed.
 // A Record rather than a set of the blind ones, so adding a source to
 // sourceTypeSchema without classifying it is a type error rather than a silent
 // default to "can see costs". Same reason ACTION_MUTATES is a Record in

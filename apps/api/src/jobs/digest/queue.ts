@@ -4,13 +4,13 @@ import { z } from 'zod';
 
 import { env } from '../../config.js';
 
-// Three queues, not one. A single shared queue with multiple workers fails
-// under BullMQ OSS: there is no native job-name routing, workers compete for
-// jobs randomly, and a processor that early-returns marks the job complete
-// (hiding it from other workers). Three named queues give independent
+// One queue per job type, not one shared queue. A single shared queue with
+// multiple workers fails under BullMQ OSS: there is no native job-name routing,
+// workers compete for jobs randomly, and a processor that early-returns marks
+// the job complete (hiding it from other workers). Named queues give independent
 // concurrency per job type plus a per-send rate limiter.
 //
-// Trade-off: three sets of Redis keys, three Worker connections. Cost is
+// Trade-off: a set of Redis keys and a Worker connection per queue. Cost is
 // negligible; benefit is correctness under BullMQ semantics.
 
 export const QUEUE_ORCHESTRATOR = 'digest-orchestrator';
