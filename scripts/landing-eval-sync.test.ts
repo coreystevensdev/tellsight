@@ -23,9 +23,10 @@ function latestRecordedRun(history: string): { score: string; row: string } {
   const rows = [...history.matchAll(/^\| (\d{4}-\d{2}-\d{2}) \| [^|]+\| ([^|]+)\|/gm)];
   const last = rows.at(-1);
   if (!last) throw new Error('no dated rows in the eval-history table; update this parser');
-  const score = last[2].match(/\b(0\.\d{2,3})\b/)?.[1];
-  if (!score) throw new Error(`last history row states no score: "${last[2].trim()}"`);
-  return { score: Number(score).toFixed(3), row: last[0] };
+  const result = last[2] ?? '';
+  const score = result.match(/\b(0\.\d{2,3})\b/)?.[1];
+  if (!score) throw new Error(`last history row states no score: "${result.trim()}"`);
+  return { score: Number(score).toFixed(3), row: last[0] ?? '' };
 }
 
 describe('landing page eval claims', () => {
