@@ -190,7 +190,15 @@ async function recordCashOnHand(orgId: number, accessToken: string): Promise<voi
       dbAdmin,
     );
     logger.info(
-      { orgId, accountCount: cash.accountCount, currency: cash.currency },
+      {
+        orgId,
+        accountCount: cash.accountCount,
+        currency: cash.currency,
+        // Empty for most orgs. Present when a CD or similar was left out, which
+        // is the difference between the figure here and what the owner sees in
+        // their banking app.
+        skippedSubtypes: cash.skippedSubtypes,
+      },
       'Recorded cash on hand from bank balances',
     );
   } catch (err) {
