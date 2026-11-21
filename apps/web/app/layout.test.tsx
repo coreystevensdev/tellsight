@@ -19,7 +19,7 @@ vi.mock('@/components/common/ResponsiveToaster', () => ({
   ResponsiveToaster: () => null,
 }));
 
-import RootLayout from './layout';
+import RootLayout, { metadata } from './layout';
 
 const FONT_VARIABLES = ['--font-inter', '--font-newsreader', '--font-jetbrains-mono'];
 
@@ -50,5 +50,21 @@ describe('RootLayout', () => {
     for (const variable of FONT_VARIABLES) {
       expect(body.props.className ?? '').not.toContain(variable);
     }
+  });
+});
+
+describe('metadataBase', () => {
+  it('resolves the generated og:image against the public origin, not localhost', () => {
+    // Production served og:image and twitter:image as
+    // http://localhost:3000/opengraph-image, because Next falls back to that
+    // when metadataBase is unset. Every share of the live demo produced a card
+    // with no image.
+    expect(metadata.metadataBase).toBeInstanceOf(URL);
+    const base = metadata.metadataBase as URL;
+    expect(base.protocol).toBe('https:');
+    expect(base.hostname).not.toBe('localhost');
+    expect(new URL('/opengraph-image', base).href).toBe(
+      'https://tellsight.coreystevens.dev/opengraph-image',
+    );
   });
 });
