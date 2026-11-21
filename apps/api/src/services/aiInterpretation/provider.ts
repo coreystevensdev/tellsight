@@ -57,8 +57,9 @@ export interface ConversationTurn {
   usage: { inputTokens: number; outputTokens: number };
 }
 
-// Pluggable LLM contract. One active provider at a time, selected via config.
-// Each provider owns its own SDK, retries, circuit breaker, and error mapping.
+// Pluggable LLM contract. One active provider at a time, fixed by which provider
+// module is imported rather than by config: anthropicProvider.ts self-registers
+// at load. Each provider owns its own SDK, retries, circuit breaker, and error mapping.
 // Callers work with this interface, never with Anthropic (or any other) SDK directly.
 export interface LlmProvider {
   name: string;
