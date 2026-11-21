@@ -223,7 +223,7 @@ The weekly digest pipeline illustrates several patterns that come up in high-thr
 
 The nudge queue is the one whose separation is not about throughput. It tells an org once when its weekly digest stops arriving, so it fires at most once per org per staleness episode and is never the hot path. It gets its own queue because the send worker carries a rate limiter, and a burst of nudges sharing that budget would delay the digests themselves.
 
-**Job-name idempotency.** Org jobs are named `digest-org-{orgId}-{weekStartMs}` and send jobs are named `digest-send-{userId}-{weekStartMs}`. BullMQ deduplicates by job name within a queue, so a BullMQ retry or a cron double-fire never produces duplicate sends. This is defense-in-depth alongside the DB-level cache check.
+**Deterministic job IDs.** Org jobs use the id `digest-org-{orgId}-{weekStartMs}` and send jobs `digest-send-{userId}-{weekStartMs}`, passed as the `jobId` option rather than only as the job name. That distinction is the whole mechanism: BullMQ dedupes on `jobId`, and `name` is just a label, so naming jobs without setting `jobId` looks like a dedup key and is not one. A retried orchestrator attempt would have re-enqueued every org. With the id set, a retry or a cron double-fire never produces duplicate sends. This is defense-in-depth alongside the DB-level cache check.
 
 **Cache-first per-org handler.** Before invoking the curation pipeline or Claude, the per-org handler checks `aiSummariesQueries.getCachedDigest(orgId, datasetId, weekStart)`. If a summary row already exists (from a prior run, a manual trigger, or a retry), the LLM call is skipped entirely. The cost gate and the duplicate-send prevention both collapse to this single DB read.
 
