@@ -4,9 +4,9 @@ import { logger } from '../../lib/logger.js';
 import { validateSummary } from './validator.js';
 import type { ComputedStat } from './types.js';
 
-// A stat's declared direction, where it has one. Three of the twelve detail
-// shapes do, each with its own vocabulary, so this reads the field rather than
-// mapping it onto anything shared. See ADR 0003.
+// A stat's declared direction, where it has one. The detail shapes that carry
+// one each use their own vocabulary, so this reads the field rather than mapping
+// it onto anything shared. See ADR 0003.
 function declaredDirection(stat: ComputedStat): string | undefined {
   const d = (stat.details as { direction?: unknown }).direction;
   return typeof d === 'string' ? d : undefined;
