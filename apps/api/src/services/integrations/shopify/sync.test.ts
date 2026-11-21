@@ -10,7 +10,9 @@ const mockGetDatasetsByOrg = vi.fn();
 const mockCreateDataset = vi.fn();
 const mockUpdateDatasetName = vi.fn();
 const mockTouchDataRefreshed = vi.fn().mockResolvedValue(undefined);
-const mockSetActiveDataset = vi.fn();
+// The claim rule moved behind a shared helper. Its decision logic is tested
+// in activeDataset.test.ts; these assert only that an initial sync asks.
+const mockClaimDashboard = vi.fn();
 const mockMarkStale = vi.fn();
 const mockGetOrgOwnerId = vi.fn();
 const mockCreateShopifyClient = vi.fn();
@@ -24,6 +26,9 @@ const mockOnConflict = vi.fn();
 // not callable without narrowing, so name the signature.
 const mockReturning = vi.fn() as Mock & { _result: Promise<unknown[]> };
 
+vi.mock('../activeDataset.js', () => ({
+  claimDashboardForFirstRealSource: mockClaimDashboard,
+}));
 vi.mock('../../../lib/db.js', () => ({
   dbAdmin: {
     insert: () => ({
@@ -77,7 +82,6 @@ vi.mock('../../../db/queries/index.js', () => ({
     touchDataRefreshed: mockTouchDataRefreshed,
   },
   orgsQueries: {
-    setActiveDataset: mockSetActiveDataset,
   },
   aiSummariesQueries: {
     markStale: mockMarkStale,
@@ -155,7 +159,7 @@ describe('runSync', () => {
       { name: 'Shopify, My Store', sourceType: 'shopify' },
       expect.anything(),
     );
-    expect(mockSetActiveDataset).toHaveBeenCalledWith(10, 500, expect.anything());
+    expect(mockClaimDashboard).toHaveBeenCalledWith(10, 500);
   });
 
   // DW-281. Without this call the column that the eligibility gate, the stale
@@ -183,7 +187,7 @@ describe('runSync', () => {
     await runSync(1, 'manual');
 
     expect(mockCreateDataset).not.toHaveBeenCalled();
-    expect(mockSetActiveDataset).not.toHaveBeenCalled();
+    expect(mockClaimDashboard).not.toHaveBeenCalled();
   });
 
   it('does not set the active dataset on a scheduled or manual sync', async () => {
@@ -195,7 +199,7 @@ describe('runSync', () => {
     const { runSync } = await import('./sync.js');
     await runSync(1, 'scheduled');
 
-    expect(mockSetActiveDataset).not.toHaveBeenCalled();
+    expect(mockClaimDashboard).not.toHaveBeenCalled();
   });
 
   it('passes an updated_at filter derived from lastSyncedAt on an incremental sync, and none on initial', async () => {

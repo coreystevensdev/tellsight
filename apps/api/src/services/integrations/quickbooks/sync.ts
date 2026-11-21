@@ -8,11 +8,11 @@ import {
   integrationConnectionsQueries,
   syncJobsQueries,
   datasetsQueries,
-  orgsQueries,
   aiSummariesQueries,
   userOrgsQueries,
 } from '../../../db/queries/index.js';
 import { trackEvent } from '../../analytics/trackEvent.js';
+import { claimDashboardForFirstRealSource } from '../activeDataset.js';
 import { createQbClient } from './api.js';
 import { ConnectionNotFoundError } from './errors.js';
 import { normalizeTransactions } from './normalize.js';
@@ -143,8 +143,11 @@ export async function runSync(connectionId: number, trigger: SyncTrigger): Promi
       );
     }
 
+    // Gated on isInitial so a backfill provably cannot repoint the dashboard.
+    // That invariant is DW-292's lesson and is worth keeping structural rather
+    // than relying on the helper to decline.
     if (isInitial) {
-      await orgsQueries.setActiveDataset(orgId, dataset.id, dbAdmin);
+      await claimDashboardForFirstRealSource(orgId, dataset.id);
     }
 
     // The rows just changed, so the dataset is fresher than its created_at says.

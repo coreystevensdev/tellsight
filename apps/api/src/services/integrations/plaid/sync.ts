@@ -13,6 +13,7 @@ import {
   userOrgsQueries,
 } from '../../../db/queries/index.js';
 import { trackEvent } from '../../analytics/trackEvent.js';
+import { claimDashboardForFirstRealSource } from '../activeDataset.js';
 import { decrypt } from '../encryption.js';
 import { fetchAccountBalances, fetchTransactionsSince } from './api.js';
 import { cashFromAccounts } from './balances.js';
@@ -258,6 +259,14 @@ export async function runSync(
 
     await recordCashOnHand(orgId, accessToken);
 
+    // Plaid was the only connector that never claimed the dashboard, with no
+    // Plaid was the only connector that never claimed the dashboard, with no
+    // comment anywhere saying why, so an org whose first real source was a bank
+    // feed kept receiving a digest about the seeded sample (DW-296). Gated on
+    // the trigger like the other four, so a backfill cannot repoint anything.
+    if (trigger === 'initial') {
+      await claimDashboardForFirstRealSource(orgId, dataset.id);
+    }
     // New rows invalidate the cached summary. Without this the dashboard keeps
     // serving an interpretation of data that has since changed.
     await aiSummariesQueries.markStale(orgId, dbAdmin);

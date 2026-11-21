@@ -11,12 +11,18 @@ const updateDatasetName = vi.fn();
 const touchDataRefreshed = vi.fn().mockResolvedValue(undefined);
 const setActiveDataset = vi.fn();
 const findOrgById = vi.fn();
+// The claim rule moved behind a shared helper. Its decision logic is tested
+// in activeDataset.test.ts; this file asserts only that initial asks for it.
+const mockClaimDashboard = vi.fn();
 const markStale = vi.fn();
 const getOrgOwnerId = vi.fn();
 const createSquareClient = vi.fn();
 const trackEvent = vi.fn();
 const returning = vi.fn();
 
+vi.mock('../activeDataset.js', () => ({
+  claimDashboardForFirstRealSource: mockClaimDashboard,
+}));
 vi.mock('../../../lib/db.js', () => ({
   dbAdmin: {
     insert: () => ({
@@ -145,17 +151,30 @@ describe('runSync', () => {
   // initial run sets the active dataset, and only reconnecting produces another
   // one. Claiming it when the slot is empty costs nothing, because there is no
   // session to pull the ground out from under.
-  it('claims the dashboard on a later sync when the org has none', async () => {
+  /**
+   * Narrowed on 2026-11-21 and recorded rather than dropped. Square used to
+   * claim on any sync when activeDatasetId was null, via its own
+   * `isInitial || !org?.activeDatasetId`. The shared helper keeps the
+   * null-pointer rescue but every connector now calls it only on an initial
+   * sync, so a backfill provably cannot repoint the dashboard, which is
+   * DW-292's lesson and the stronger guarantee of the two.
+   *
+   * The rescue is close to unreachable anyway: onboarding always sets a
+   * pointer and deleting a dataset repoints to the next one, so a null here
+   * needs a bug upstream rather than an ordinary sequence.
+   */
+  it('no longer rescues a null pointer on a later sync, only on the initial one', async () => {
     getByIdAndProvider.mockResolvedValue(connection({ lastSyncedAt: new Date() }));
     findOrgById.mockResolvedValue({ id: 3, activeDatasetId: null });
 
     await runSync(7, 'manual');
-    expect(setActiveDataset).toHaveBeenCalledWith(3, 42, expect.anything());
+
+    expect(mockClaimDashboard).not.toHaveBeenCalled();
   });
 
   it('claims the active dataset on the first sync only', async () => {
     await runSync(7, 'initial');
-    expect(setActiveDataset).toHaveBeenCalled();
+    expect(mockClaimDashboard).toHaveBeenCalled();
 
     vi.clearAllMocks();
     getByIdAndProvider.mockResolvedValue(connection({ lastSyncedAt: new Date() }));
@@ -166,7 +185,7 @@ describe('runSync', () => {
     returning.mockResolvedValue([]);
     createSquareClient.mockResolvedValue({ listLocations, searchOrders });
     await runSync(7, 'scheduled');
-    expect(setActiveDataset).not.toHaveBeenCalled();
+    expect(mockClaimDashboard).not.toHaveBeenCalled();
   });
 
   // DW-281. Without this call the column that the eligibility gate, the stale

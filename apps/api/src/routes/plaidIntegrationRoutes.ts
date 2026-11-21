@@ -143,8 +143,10 @@ export function registerPlaidIntegrationRoutes(router: Router): void {
     });
 
     // The first sync now, the daily one from here on. Registered after the
-    // connection row exists, because the scheduler stores its id.
-    await enqueueSyncJob(connection.id, 'manual');
+    // connection row exists, because the scheduler stores its id. 'initial'
+    // rather than 'manual': this is a first connect, and the sync has to tell
+    // it from the manual button to decide whether to claim the dashboard.
+    await enqueueSyncJob(connection.id, 'initial');
     await registerDailySync(orgId, connection.id);
 
     auditAuth(req, AUDIT_ACTIONS.INTEGRATION_CONNECTED, {
