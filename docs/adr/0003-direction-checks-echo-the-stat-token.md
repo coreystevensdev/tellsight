@@ -3,6 +3,7 @@
 - Status: Accepted, implemented 2026-10-18. Partly superseded 2026-11-12 by [ADR 0004](0004-movement-present-when-absent-clears-the-field.md), which takes the present-when-absent rule to field level after the baseline this document asked for measured 0 declared contradictions in 67 calls. The echo mechanism and the contradiction rule stand.
 - Date: 2026-10-18
 - Deciders: Corey Stevens
+- Counts refreshed 2026-11-21: three of twelve detail shapes became four of fifteen as stat types were added, and `CategoryVarianceDetails` brought a fourth vocabulary. The decision and the reasoning are unchanged; a fourth vocabulary only makes the mapping argument stronger.
 
 ## Context
 
@@ -10,13 +11,14 @@
 
 The obvious shape for a direction check is a `direction: 'up' | 'down' | 'flat'` field on the proposal, validated against the sign of the cited stat. It does not survive contact with the stat types.
 
-**Direction is not one thing in this codebase.** Three of the twelve detail shapes in `types.ts` declare a direction, and no two of them use the same vocabulary:
+**Direction is not one thing in this codebase.** Four of the fifteen detail shapes in `types.ts` declare a direction, and no two of them use the same vocabulary:
 
 - `AnomalyDetails.direction: 'above' | 'below'`
+- `CategoryVarianceDetails.direction: 'over' | 'under' | 'on_plan'`
 - `MarginTrendDetails.direction: 'expanding' | 'shrinking' | 'stable'`
 - `CashFlowDetails.direction: 'burning' | 'surplus'`
 
-The other nine have no direction field at all. `TrendDetails` carries the sign implicitly in `growthPercent` and `slope`; `TotalDetails`, `AverageDetails`, `CategoryBreakdownDetails`, `RunwayDetails`, `BreakEvenDetails`, `SeasonalProjectionDetails`, `YearOverYearDetails` and `CashForecastDetails` carry none.
+The other eleven have no direction field at all. `TrendDetails` carries the sign implicitly in `growthPercent` and `slope`; `TotalDetails`, `AverageDetails`, `CategoryBreakdownDetails`, `RunwayDetails`, `BreakEvenDetails`, `SeasonalProjectionDetails`, `YearOverYearDetails`, `CashForecastDetails`, `TaxSetAsideDetails` and `CustomerConcentrationDetails` carry none.
 
 So a shared up/down field needs a mapping from each of those onto two or three buckets, and the mapping is a judgment call rather than a translation. An expense anomaly `'above'` its bound is directionally up and semantically bad. A revenue trend up is up and good. Whether `'burning'` is "down" depends on whether the axis is cash or cash burn. Picking a convention does not make the ambiguity go away, it hides it in a lookup table that later readers will have to reverse-engineer.
 

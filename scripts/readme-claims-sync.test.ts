@@ -72,6 +72,57 @@ describe('README claims that a file owns', () => {
     ).toBe(true);
   });
 
+  it('direction-carrying stat counts match types.ts, in the README and the ADR', () => {
+    const types = read('apps', 'api', 'src', 'services', 'curation', 'types.ts');
+    const shapes = types.match(/^export interface \w+Details\b/gm) ?? [];
+    expect(shapes.length, 'no *Details interfaces found in types.ts').toBeGreaterThan(0);
+
+    let current = '';
+    const carrying = new Set<string>();
+    for (const line of types.split('\n')) {
+      const declared = line.match(/^export interface (\w+Details)\b/);
+      if (declared?.[1]) current = declared[1];
+      if (/^\s*direction\??:/.test(line) && current) carrying.add(current);
+    }
+
+    const words: Record<string, number> = {
+      three: 3, four: 4, five: 5, six: 6, nine: 9, ten: 10,
+      eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15,
+    };
+    // the ADR opens the sentence with the number, so it arrives capitalised
+    const n = (w: string | undefined) => words[(w ?? '').toLowerCase()];
+    const without = shapes.length - carrying.size;
+
+    const claim = readme.match(
+      /modelled (\w+) different ways[\s\S]*?and (\w+) of the (\w+) carry no direction field/,
+    );
+    expect(claim, 'README no longer states the direction vocabulary counts').not.toBeNull();
+    expect(
+      n(claim?.[1]),
+      `README says ${claim?.[1]} vocabularies, ${carrying.size} shapes carry one`,
+    ).toBe(carrying.size);
+    expect(
+      n(claim?.[2]),
+      `README says ${claim?.[2]} carry none, types.ts has ${without}`,
+    ).toBe(without);
+    expect(
+      n(claim?.[3]),
+      `README says ${claim?.[3]} shapes, types.ts has ${shapes.length}`,
+    ).toBe(shapes.length);
+
+    const adr = read('docs', 'adr', '0003-direction-checks-echo-the-stat-token.md');
+    const adrClaim = adr.match(/(\w+) of the (\w+) detail shapes in `types\.ts` declare a direction/);
+    expect(adrClaim, 'ADR 0003 no longer states the detail-shape counts').not.toBeNull();
+    expect(
+      n(adrClaim?.[1]),
+      `ADR says ${adrClaim?.[1]} declare one, ${carrying.size} do`,
+    ).toBe(carrying.size);
+    expect(
+      n(adrClaim?.[2]),
+      `ADR says ${adrClaim?.[2]} shapes, types.ts has ${shapes.length}`,
+    ).toBe(shapes.length);
+  });
+
   it('availability target matches docs/slo.md', () => {
     const slo = read('docs', 'slo.md');
     const owned = slo.match(/API availability\s*\|\s*([\d.]+)%/)?.[1];
