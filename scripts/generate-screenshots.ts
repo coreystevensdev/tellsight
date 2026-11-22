@@ -89,10 +89,10 @@ function heroBannerHtml(): string {
     display:flex; align-items:center; gap:14px; margin-bottom:18px; position:relative;
   ">
     <svg width="44" height="44" viewBox="0 0 40 40" fill="none">
-      <rect width="40" height="40" rx="10" fill="#0D948826"/>
-      <rect x="6" y="21" width="6" height="11" rx="1.8" fill="#0D9488" opacity="0.55"/>
-      <rect x="15" y="14" width="6" height="18" rx="1.8" fill="#0D9488" opacity="0.85"/>
-      <path d="M23 22L28.5 27.5L38 15" stroke="#0D9488" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <rect width="40" height="40" rx="10" fill="#0A6F6626"/>
+      <rect x="6" y="21" width="6" height="11" rx="1.8" fill="#0A6F66" opacity="0.55"/>
+      <rect x="15" y="14" width="6" height="18" rx="1.8" fill="#0A6F66" opacity="0.85"/>
+      <path d="M23 22L28.5 27.5L38 15" stroke="#0A6F66" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
     </svg>
     <span style="font-family:'Newsreader',serif; font-size:40px; font-weight:500; color:#24211D; letter-spacing:-0.5px;">
       Tellsight
@@ -112,12 +112,12 @@ function heroBannerHtml(): string {
     display:flex; gap:8px; margin-top:28px; flex-wrap:wrap;
     justify-content:center; position:relative;
   ">
-    <span style="background:#0D948814; color:#0D7A6F; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:500; border:1px solid #0D948833;">Next.js 16</span>
-    <span style="background:#0D948814; color:#0D7A6F; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:500; border:1px solid #0D948833;">Express 5</span>
-    <span style="background:#0D948814; color:#0D7A6F; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:500; border:1px solid #0D948833;">PostgreSQL 18</span>
-    <span style="background:#0D948814; color:#0D7A6F; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:500; border:1px solid #0D948833;">Claude API</span>
-    <span style="background:#0D948814; color:#0D7A6F; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:500; border:1px solid #0D948833;">Stripe</span>
-    <span style="background:#0D948814; color:#0D7A6F; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:500; border:1px solid #0D948833;">SSE Streaming</span>
+    <span style="background:#0A6F6614; color:#0D7A6F; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:500; border:1px solid #0A6F6633;">Next.js 16</span>
+    <span style="background:#0A6F6614; color:#0D7A6F; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:500; border:1px solid #0A6F6633;">Express 5</span>
+    <span style="background:#0A6F6614; color:#0D7A6F; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:500; border:1px solid #0A6F6633;">PostgreSQL 18</span>
+    <span style="background:#0A6F6614; color:#0D7A6F; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:500; border:1px solid #0A6F6633;">Claude API</span>
+    <span style="background:#0A6F6614; color:#0D7A6F; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:500; border:1px solid #0A6F6633;">Stripe</span>
+    <span style="background:#0A6F6614; color:#0D7A6F; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:500; border:1px solid #0A6F6633;">SSE Streaming</span>
   </div>
 </div>
 </body>
