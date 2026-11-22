@@ -6,6 +6,12 @@ import { aiCostBudgetExceeded } from '../../lib/metrics.js';
 import type { BreakerRunner } from './anthropicBreakers.js';
 import { MAX_OUTPUT_TOKENS, firstText, modelFor, singleTurnPrompt } from './anthropicRequest.js';
 import { AbortedByClient } from './anthropicRuntime.js';
+import {
+  isCreditExhausted,
+  observedDown,
+  observedUp,
+  recordObservedClaudeHealth,
+} from './claudeObservedHealth.js';
 import type { LlmProvider } from './provider.js';
 
 interface AnthropicStreamDependencies {
@@ -41,6 +47,7 @@ export function createAnthropicStream({
         // Anomalous spend stays out of median history so the floor remains
         // useful, but a sustained run of overruns clears it rather than pinning
         // the floor below the workload forever.
+        recordObservedClaudeHealth(observedUp);
         const cost = computeCost(finalMessage.usage, model);
         if (cost !== null) {
           const budget = exceedsBudget(cost, model, 'stream');
@@ -78,6 +85,11 @@ export function createAnthropicStream({
           err instanceof Anthropic.BadRequestError
         ) {
           logger.error({ err: (err as Error).message }, 'Claude API stream non-retryable error');
+          // The stream path does its own classification rather than going
+          // through mapAnthropicError, so it needs this too. Missing it would
+          // leave the summary, which is the feature most people actually hit,
+          // as the one that cannot report a dry account.
+          if (isCreditExhausted(err)) recordObservedClaudeHealth(observedDown);
         } else {
           logger.warn(
             { err: (err as Error).message },

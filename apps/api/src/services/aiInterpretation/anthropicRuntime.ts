@@ -10,6 +10,12 @@ import {
   type CostCaller,
 } from '../../lib/cost.js';
 import { logger } from '../../lib/logger.js';
+import {
+  isCreditExhausted,
+  observedDown,
+  observedUp,
+  recordObservedClaudeHealth,
+} from './claudeObservedHealth.js';
 import { aiCostBudgetExceeded } from '../../lib/metrics.js';
 
 export class AbortedByClient extends Error {
@@ -23,6 +29,11 @@ export class AbortedByClient extends Error {
 // cannot raise the floor, but a sustained run of them clears it instead, see
 // recordRefusedCost in lib/cost.ts.
 export function applyCostGate(usage: Usage, caller: CostCaller, model: string): number | null {
+  // Reached only with usage from a completed call, so Anthropic served this one
+  // and the account could pay for it. /health never refreshes on its own, so
+  // this is where a live answer gets in.
+  recordObservedClaudeHealth(observedUp);
+
   const cost = computeCost(usage, model);
   if (cost === null) {
     logger.error({ model, caller }, 'No pricing for model, cost gate skipped');
@@ -59,6 +70,7 @@ export function mapAnthropicError(err: unknown): never {
 
   if (permanent) {
     logger.error({ err: (err as Error).message }, 'Claude API non-retryable error');
+    if (isCreditExhausted(err)) recordObservedClaudeHealth(observedDown);
   } else {
     logger.warn({ err: (err as Error).message }, 'Claude API retryable error exhausted');
   }
