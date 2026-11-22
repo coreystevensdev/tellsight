@@ -212,6 +212,9 @@ export async function handlePerOrgJob(job: Job): Promise<void> {
     });
   } catch (err) {
     logger.warn({ correlationId, orgId, err }, 'Digest chart render threw, sending text-only');
+    // renderDigestChart records its own outcomes; reaching here means it threw
+    // past all of them, so this is the only path that would otherwise be silent.
+    trackEventOrg(orgId, ANALYTICS_EVENTS.DIGEST_CHART_DEGRADED, { reason: 'render_threw' });
   }
 
   const recipients = await digestEligibilityQueries.findOrgRecipients(orgId);

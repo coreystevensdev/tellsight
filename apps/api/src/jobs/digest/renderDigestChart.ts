@@ -1,5 +1,7 @@
+import { ANALYTICS_EVENTS } from 'shared/constants';
 import { logger } from '../../lib/logger.js';
 import { redis } from '../../lib/redis.js';
+import { trackEventOrg } from '../../services/analytics/trackEvent.js';
 import { getChartKindForPool, type ChartKind } from '../../services/charting/chartKind.js';
 import { renderChart } from '../../services/charting/renderChart.js';
 import type { ChartRenderInput } from '../../services/charting/renderChart.js';
@@ -88,18 +90,29 @@ export async function renderDigestChart({
   correlationId,
 }: RenderDigestChartInput): Promise<ChartKind | null> {
   const kind = getChartKindForPool(scoredPool);
-  if (!kind) return null;
+  if (!kind) {
+    // The only outcome that used to leave no trace at all, which made "no
+    // chartable stat this week" and "the render broke" indistinguishable after
+    // the fact.
+    trackEventOrg(orgId, ANALYTICS_EVENTS.DIGEST_CHART_DEGRADED, { reason: 'no_chartable_stat' });
+    return null;
+  }
 
   const input = buildChartInput(scoredPool, kind);
   if (!input) {
     // The selector found the kind, so the stat is in the pool. Reaching here
     // means the two disagree, which is a bug rather than a quiet week.
     logger.warn({ correlationId, orgId, chartKind: kind }, 'Chart kind selected but its stat was not found');
+    trackEventOrg(orgId, ANALYTICS_EVENTS.DIGEST_CHART_DEGRADED, { chartKind: kind, reason: 'stat_not_found' });
     return null;
   }
 
-  const png = await renderChart(input, { correlationId, orgId });
-  if (!png) return null;
+  const rendered = await renderChart(input, { correlationId, orgId });
+  if (!rendered) {
+    trackEventOrg(orgId, ANALYTICS_EVENTS.DIGEST_CHART_DEGRADED, { chartKind: kind, reason: 'render_failed' });
+    return null;
+  }
+  const { png, queueWaitMs, renderMs } = rendered;
 
   try {
     await redis.set(chartCacheKey(orgId, datasetId, weekStart), png, 'EX', CHART_TTL_SECONDS);
@@ -107,10 +120,17 @@ export async function renderDigestChart({
     // enableOfflineQueue is false, so this throws rather than queuing when
     // Redis is down. A picture is not worth failing the week's digest over.
     logger.warn({ correlationId, orgId, chartKind: kind, err }, 'Could not cache the digest chart, sending text-only');
+    trackEventOrg(orgId, ANALYTICS_EVENTS.DIGEST_CHART_DEGRADED, { chartKind: kind, reason: 'cache_write_failed' });
     return null;
   }
 
   logger.info({ correlationId, orgId, datasetId, chartKind: kind, bytes: png.length }, 'Digest chart cached');
+  trackEventOrg(orgId, ANALYTICS_EVENTS.DIGEST_CHART_RENDERED, {
+    chartKind: kind,
+    queueWaitMs,
+    renderMs,
+    bytes: png.length,
+  });
   return kind;
 }
 

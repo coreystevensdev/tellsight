@@ -134,6 +134,12 @@ export const ANALYTICS_EVENTS = {
   DIGEST_SENT: 'digest.sent',
   DIGEST_FAILED: 'digest.failed',
   DIGEST_SKIPPED: 'digest.skipped',
+  // The render outcome had no durable record: it lived only in a container log
+  // line, and the 2026-11-22 run's logs were gone 13 minutes later when a deploy
+  // replaced the container. That left the first real render unmeasurable after
+  // waiting a week for it, which is why the outcome is an event now.
+  DIGEST_CHART_RENDERED: 'digest.chart_rendered',
+  DIGEST_CHART_DEGRADED: 'digest.chart_degraded',
   // The one-time notice that an org's digest has stopped on stale data. Distinct
   // from digest.skipped, which fires on every tick a send is passed over.
   DIGEST_PAUSED_NOTICE_SENT: 'digest.paused_notice_sent',

@@ -136,9 +136,10 @@ export async function handleSendJob(job: Job): Promise<void> {
 
     const renderStart = Date.now();
     const chartInput = buildChartInput(ruleKind, data.firedInsight, { correlationId, orgId, ruleId });
-    const chartPng = chartInput
+    const chartRender = chartInput
       ? await renderChart(chartInput, { correlationId, orgId, ruleId })
       : null;
+    const chartPng = chartRender?.png ?? null;
     const renderingDurationMs = Date.now() - renderStart;
 
     const paragraph = await resolveAlertParagraph(data);
