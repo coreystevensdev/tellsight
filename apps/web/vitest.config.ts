@@ -9,6 +9,17 @@ export default defineConfig({
   test: {
     fsModuleCachePath: vitestCachePath('web'),
     environment: 'jsdom',
+    // Vitest defaults to 5000ms and the slowest test here measured 3390ms quiet,
+    // 3849ms with a second copy of this suite running. Files run in parallel (no
+    // fileParallelism: false, unlike the api config), so that contention is the
+    // normal case rather than an accident.
+    //
+    // The specific trap: UploadDropzone.test.tsx:502 waits on a redirect with
+    // `waitFor(..., { timeout: 5000 })`, the same budget as the test itself. At the
+    // default the test is killed before that waitFor can report what it was waiting
+    // for, so a slow run looks like a bare timeout rather than a failed redirect.
+    // 15s matches both api configs and leaves the inner wait room to fail usefully.
+    testTimeout: 15_000,
     setupFiles: ['../../packages/shared/src/test/blockExternalNetwork.ts', './test/setup.ts'],
     include: ['**/*.test.{ts,tsx}'],
     exclude: ['node_modules', '.next'],
