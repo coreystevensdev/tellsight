@@ -17,7 +17,9 @@ const ALL_KNOWN_COLUMNS = [...CSV_REQUIRED_COLUMNS, ...CSV_OPTIONAL_COLUMNS];
 // Common column names from other tools' exports (QuickBooks, Square, Shopify,
 // generic e-commerce dumps) that map onto our canonical schema. Checked only
 // when the canonical name itself isn't present.
-const COLUMN_ALIASES: Record<string, readonly string[]> = {
+// Exported for the derived coverage test: enumerating these in a test file
+// would go stale the first time an alias is added here and nowhere else.
+export const COLUMN_ALIASES: Record<string, readonly string[]> = {
   date: ['invoice_date', 'order_date', 'transaction_date', 'txn_date', 'posted_date'],
   // A Square export carries four money columns at once, so the order here is
   // what picks one. Net sales is revenue after discounts and refunds but before
