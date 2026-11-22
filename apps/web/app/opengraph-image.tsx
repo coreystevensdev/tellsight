@@ -20,12 +20,12 @@ export default function OpengraphImage() {
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
           <svg width={72} height={72} viewBox="0 0 40 40" fill="none">
-            <rect width="40" height="40" rx="10" fill="#0D948826" />
-            <rect x="6" y="21" width="6" height="11" rx="1.8" fill="#0D9488" opacity="0.55" />
-            <rect x="15" y="14" width="6" height="18" rx="1.8" fill="#0D9488" opacity="0.85" />
+            <rect width="40" height="40" rx="10" fill="#0A6F6626" />
+            <rect x="6" y="21" width="6" height="11" rx="1.8" fill="#0A6F66" opacity="0.55" />
+            <rect x="15" y="14" width="6" height="18" rx="1.8" fill="#0A6F66" opacity="0.85" />
             <path
               d="M23 22L28.5 27.5L38 15"
-              stroke="#0D9488"
+              stroke="#0A6F66"
               strokeWidth="4"
               strokeLinecap="round"
               strokeLinejoin="round"
