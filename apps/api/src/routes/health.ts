@@ -11,6 +11,7 @@ import { checkRedisHealth } from '../lib/redis.js';
 import { getEmailProvider } from '../services/email/index.js';
 import { checkStripeHealth } from '../services/subscription/stripeHealth.js';
 import { peekClaudeHealth } from '../services/aiInterpretation/claudeClient.js';
+import { peekObservedClaudeHealth } from '../services/aiInterpretation/claudeObservedHealth.js';
 import type { ProviderHealth } from '../services/aiInterpretation/provider.js';
 
 const router = Router();
@@ -41,19 +42,32 @@ function reportDatabase({ missing, ...rest }: DbHealth) {
 // have returned the cached number anyway for most of that window. Boot and the
 // admin panel still probe for real, so nothing loses its freshness where a
 // person is actually looking.
-// Carries checkedAt because a peeked answer has no upper bound on its age.
-// Nothing here refreshes the cache, and the only writer that does is the admin
-// panel while somebody has it open, so a boot-time result can stand for the
-// life of the container: credit exhausted at 14:00 on a 09:00 boot still reads
-// 'ok', and a transient 'Anthropic unreachable' at boot sticks after Anthropic
-// recovers. The value cannot be made fresh without buying a completion on
-// every poll, which is the cost #295 removed on purpose, so the honest move is
-// to publish the age and let the reader judge rather than imply a freshness
-// this does not have.
+// Carries checkedAt because a peeked answer still has no upper bound on its age.
+// Nothing on this path refreshes the cache, because refreshing buys a
+// completion and that is the cost #295 removed on purpose.
+//
+// What used to make that dangerous was that the only other writer was the admin
+// panel while somebody had it open, so a boot-time result could stand for the
+// life of the container: credit exhausted at 14:00 on a 09:00 boot still read
+// 'ok'. Live AI requests now write what they learn, in both directions, so a
+// dry account shows up on the first summary somebody asks for and clears again
+// on the first one that works. checkedAt stays, because none of that is a
+// guarantee of freshness: an instance serving no AI traffic still reports
+// whatever it last saw.
 function lastKnownClaudeHealth(): ProviderHealth & { checkedAt: string | null } {
-  const peeked = peekClaudeHealth();
-  if (peeked) {
-    return { ...peeked.value, checkedAt: new Date(peeked.cachedAt).toISOString() };
+  const probed = peekClaudeHealth();
+  const observed = peekObservedClaudeHealth();
+
+  // Whichever is more recent. A probe is a better measurement, carrying real
+  // latency, but a six hour old 'ok' loses to a request that failed a minute
+  // ago, which is the whole point of recording them.
+  const probedAt = probed?.cachedAt ?? -1;
+  const observedAt = observed?.at ?? -1;
+  const newest = observedAt > probedAt ? observed : probed;
+
+  if (newest) {
+    const at = 'at' in newest ? newest.at : newest.cachedAt;
+    return { ...newest.value, checkedAt: new Date(at).toISOString() };
   }
 
   return {

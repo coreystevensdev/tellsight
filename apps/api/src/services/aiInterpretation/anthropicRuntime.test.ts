@@ -1,6 +1,13 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  observedDown,
+  peekObservedClaudeHealth,
+  recordObservedClaudeHealth,
+  resetObservedClaudeHealth,
+} from './claudeObservedHealth.js';
+
 const mocks = vi.hoisted(() => ({
   computeCost: vi.fn(),
   exceedsBudget: vi.fn(),
@@ -44,6 +51,9 @@ const AnthropicErrors = Anthropic as unknown as {
 describe('Anthropic runtime policy', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Module-level state, so a test that records an outage would otherwise
+    // decide what the next one sees.
+    resetObservedClaudeHealth();
     mocks.computeCost.mockReturnValue(0.02);
     mocks.exceedsBudget.mockReturnValue({ exceeded: false, cap: null, median: null });
   });
@@ -110,5 +120,46 @@ describe('Anthropic runtime policy', () => {
       { err: 'overloaded' },
       'Claude API retryable error exhausted',
     );
+  });
+
+  it('reports a dry account from a real request, so /health stops saying ok', () => {
+    const error = Object.assign(
+      new AnthropicErrors.BadRequestError(
+        'Your credit balance is too low to access the Anthropic API.',
+      ),
+      { status: 400 },
+    );
+
+    expect(() => mapAnthropicError(error)).toThrow(ExternalServiceError);
+    expect(peekObservedClaudeHealth()?.value.status).toBe('error');
+    expect(peekObservedClaudeHealth()?.value.detail).toContain('no credit');
+  });
+
+  it('does not call every bad request a billing problem', () => {
+    const error = Object.assign(new AnthropicErrors.BadRequestError('max_tokens must be >= 1'), {
+      status: 400,
+    });
+
+    expect(() => mapAnthropicError(error)).toThrow(ExternalServiceError);
+    expect(peekObservedClaudeHealth()).toBeNull();
+  });
+
+  it('reports a working account from a completed call', () => {
+    mocks.computeCost.mockReturnValue(0.01);
+    mocks.exceedsBudget.mockReturnValue({ exceeded: false });
+
+    applyCostGate({ input_tokens: 10, output_tokens: 5 } as never, 'generate', 'model');
+
+    expect(peekObservedClaudeHealth()?.value.status).toBe('ok');
+  });
+
+  it('clears a recorded outage once a call works again', () => {
+    recordObservedClaudeHealth(observedDown);
+    mocks.computeCost.mockReturnValue(0.01);
+    mocks.exceedsBudget.mockReturnValue({ exceeded: false });
+
+    applyCostGate({ input_tokens: 10, output_tokens: 5 } as never, 'generate', 'model');
+
+    expect(peekObservedClaudeHealth()?.value.status).toBe('ok');
   });
 });

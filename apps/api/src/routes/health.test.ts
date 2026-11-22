@@ -47,6 +47,12 @@ vi.mock('../services/subscription/stripeHealth.js', () => ({
   checkStripeHealth: mockCheckStripeHealth,
 }));
 
+import {
+  observedDown,
+  recordObservedClaudeHealth,
+  resetObservedClaudeHealth,
+} from '../services/aiInterpretation/claudeObservedHealth.js';
+
 vi.mock('../services/aiInterpretation/claudeClient.js', () => ({
   checkClaudeHealth: mockCheckClaudeHealth,
   // The health routes read the cache rather than probing, so this is the one
@@ -76,6 +82,7 @@ afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
 
 beforeEach(() => {
   resetEmailProvider();
+  resetObservedClaudeHealth();
   mockCheckDatabaseHealth.mockReset();
   mockCheckDatabaseHealth.mockResolvedValue({ status: 'ok', latencyMs: 1 });
   mockCheckRedisHealth.mockReset();
@@ -245,6 +252,37 @@ describe('health endpoints do not buy Claude calls', () => {
 
     expect(body.services.claude.status).toBe('ok');
     expect(body.services.claude.checkedAt).toBe(new Date(takenAt).toISOString());
+  });
+
+  // The 2026-11-22 outage in one test: a boot probe said ok, credits ran out
+  // hours later, and nothing on this path refreshes.
+  it('lets a recent outage beat a stale ok from the boot probe', async () => {
+    mockPeekClaudeHealth.mockReturnValue({
+      value: { status: 'ok', latencyMs: 3 },
+      cachedAt: Date.now() - 6 * 60 * 60 * 1000,
+    });
+    recordObservedClaudeHealth(observedDown);
+
+    const res = await fetch(`${baseUrl}/health`);
+    const body = (await res.json()) as {
+      services: { claude: { status: string; detail?: string } };
+    };
+
+    expect(body.services.claude.status).toBe('error');
+    expect(body.services.claude.detail).toContain('no credit');
+  });
+
+  it('keeps a fresh probe over an older observation', async () => {
+    recordObservedClaudeHealth(observedDown);
+    mockPeekClaudeHealth.mockReturnValue({
+      value: { status: 'ok', latencyMs: 3 },
+      cachedAt: Date.now() + 1000,
+    });
+
+    const res = await fetch(`${baseUrl}/health`);
+    const body = (await res.json()) as { services: { claude: { status: string } } };
+
+    expect(body.services.claude.status).toBe('ok');
   });
 
   it('reports a null checkedAt when nothing has been probed, rather than omitting it', async () => {

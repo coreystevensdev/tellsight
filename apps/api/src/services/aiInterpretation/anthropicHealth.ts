@@ -2,6 +2,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 
 import { logger } from '../../lib/logger.js';
 import { modelFor } from './anthropicRequest.js';
+import { isCreditExhausted, NO_CREDIT_DETAIL } from './claudeObservedHealth.js';
 import type { ProviderHealth } from './provider.js';
 
 export function createAnthropicHealthProbe(client: Anthropic): () => Promise<ProviderHealth> {
@@ -29,15 +30,9 @@ export function createAnthropicHealthProbe(client: Anthropic): () => Promise<Pro
         return { status: 'error', latencyMs, detail: 'Anthropic rejected the configured API key' };
       }
 
-      // Anthropic reports an empty balance as a 400 invalid_request_error, so
-      // the message is the only way to distinguish it from a rejected key.
-      if (status === 400 && /credit balance/i.test(message)) {
+      if (isCreditExhausted(err)) {
         logger.error({ err: message, source: 'health_probe' }, 'Claude API non-retryable error');
-        return {
-          status: 'error',
-          latencyMs,
-          detail: 'Anthropic account has no credit, every AI feature is down',
-        };
+        return { status: 'error', latencyMs, detail: NO_CREDIT_DETAIL };
       }
 
       logger.warn({ err: message }, 'Could not verify the Claude key');
