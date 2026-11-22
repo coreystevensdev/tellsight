@@ -75,7 +75,11 @@ import {
 } from './jobs/statCorrections/index.js';
 import { initEmailProvider } from './services/email/index.js';
 import { logStripeKeyStatus } from './services/subscription/stripeHealth.js';
-import { logClaudeKeyStatus } from './services/aiInterpretation/claudeClient.js';
+import {
+  logClaudeKeyStatus,
+  startClaudeHealthRefresh,
+  stopClaudeHealthRefresh,
+} from './services/aiInterpretation/claudeClient.js';
 import { redis } from './lib/redis.js';
 import { queryClient, adminClient } from './lib/db.js';
 import { assertRlsEnforced } from './lib/rlsPreflight.js';
@@ -189,6 +193,10 @@ async function start() {
     logger.error({ err }, 'Claude boot probe failed');
   });
 
+  // The boot probe answers once. Without this, an instance serving no AI
+  // traffic reports that one answer for the life of the container.
+  startClaudeHealthRefresh();
+
   if (isQbConfigured(env)) {
     initSyncWorker();
     await initScheduler();
@@ -274,6 +282,7 @@ async function start() {
         // brief pause for aborted streams to flush final SSE events
         if (aborted > 0) await new Promise((r) => setTimeout(r, 500));
         await Sentry.flush(2000);
+        stopClaudeHealthRefresh();
         await shutdownDigestCron();
         await shutdownDigestWorkers();
         await closeDigestQueues();
