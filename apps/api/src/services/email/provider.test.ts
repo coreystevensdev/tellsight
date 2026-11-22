@@ -22,12 +22,10 @@ vi.hoisted(() => {
 import type { EmailProvider } from './provider.js';
 import {
   EmailSendError,
-  createPostmarkProvider,
   getEmailProvider,
   registerEmailProvider,
   resetEmailProvider,
 } from './provider.js';
-import { env } from '../../config.js';
 
 function fakeProvider(name: string): EmailProvider {
   return {
@@ -112,29 +110,5 @@ describe('EmailSendError', () => {
     expect(err.retryable).toBe(false);
     expect(err.providerStatusCode).toBe(422);
     expect(err.cause).toBeUndefined();
-  });
-});
-
-describe('createPostmarkProvider stub', () => {
-  it('compiles the factory pattern without installing the postmark package', () => {
-    const provider = createPostmarkProvider(env);
-
-    expect(provider.name).toBe('postmark');
-    expect(typeof provider.send).toBe('function');
-    expect(typeof provider.checkHealth).toBe('function');
-  });
-
-  it('throws "not implemented" when asked to send', async () => {
-    const provider = createPostmarkProvider(env);
-
-    await expect(
-      provider.send({ to: 'a@b.com', subject: 's', react: { type: 'div' } as never }),
-    ).rejects.toThrow(/not implemented/);
-  });
-
-  it('reports health as ok so a misconfigured stub does not page oncall', async () => {
-    const health = await createPostmarkProvider(env).checkHealth();
-    expect(health.status).toBe('ok');
-    expect(health.latencyMs).toBe(0);
   });
 });

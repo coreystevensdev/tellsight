@@ -1,7 +1,5 @@
 import type { ReactElement } from 'react';
 
-import type { Env } from '../../config.js';
-
 // One active provider at a time, selected via config at boot.
 // Each provider owns its own SDK, retry classification, and PII redaction.
 // Callers work with this interface, never with Resend (or any vendor) SDK directly.
@@ -77,16 +75,4 @@ export function registerEmailProvider(provider: EmailProvider): void {
 // Test-only, lets a test reset module state between runs.
 export function resetEmailProvider(): void {
   activeProvider = null;
-}
-
-// Factory stub. Proves the provider-switch pattern compiles without pulling
-// the `postmark` SDK into the tree. Swap the body in a future story.
-export function createPostmarkProvider(_env: Env): EmailProvider {
-  return {
-    name: 'postmark',
-    send: async () => {
-      throw new Error('Postmark provider not implemented, future story');
-    },
-    checkHealth: async () => ({ status: 'ok', latencyMs: 0 }),
-  };
 }
