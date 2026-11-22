@@ -1,4 +1,4 @@
-import { sql, and, eq, lt, isNotNull, gte, exists, or, isNull, ne, desc, count } from 'drizzle-orm';
+import { sql, and, eq, lt, isNotNull, exists, or, isNull, ne, desc, count } from 'drizzle-orm';
 
 import { dbAdmin } from '../../lib/db.js';
 import { orgs, subscriptions, datasets, userOrgs, digestPreferences, users } from '../schema.js';
@@ -30,6 +30,21 @@ export const DATASET_FRESHNESS_DAYS = 30;
 // that actually pauses it. sql.raw is safe here: the input is this module's own
 // integer, never anything a request supplies. The emitted SQL is unchanged.
 const RECENT_DATASET_INTERVAL = sql`now() - ${sql.raw(`interval '${DATASET_FRESHNESS_DAYS} days'`)}`;
+
+// FR58 measures staleness from "the last time the org received data at all", and
+// until #410 the active dataset was that, because an org had one. #410 leaves the
+// active pointer alone once an org owns a real dataset, so a second connector's
+// rows live in a dataset that is never active. Reading the active dataset alone
+// then silences an org that is receiving data daily through the other connector.
+//
+// Correlated max rather than a wider join: the join still has to be the active
+// dataset, since that is the row the digest narrates and where activeDatasetId
+// is read from. Seed datasets are deliberately not excluded here, which keeps a
+// demo org's eligibility exactly what it was; whether a seed dataset should
+// count as data the org received is a separate product question.
+const LATEST_ORG_REFRESH = sql`(
+    select max(d.data_refreshed_at) from datasets d where d.org_id = ${orgs.id}
+  )`;
 
 type DrizzleClient = typeof dbAdmin;
 
@@ -70,7 +85,7 @@ export function buildEligibilityQuery(
     or(eq(subscriptions.status, 'active'), canceledWithGracePeriod(asOf)),
     eq(subscriptions.plan, 'pro'),
     isNotNull(orgs.activeDatasetId),
-    gte(datasets.dataRefreshedAt, RECENT_DATASET_INTERVAL),
+    sql`${LATEST_ORG_REFRESH} >= ${RECENT_DATASET_INTERVAL}`,
     memberOptedIn,
   ];
 
@@ -101,7 +116,9 @@ export function buildEligibilityQuery(
  *     stays a bare status check, unlike getAgentEnabled's, since no ticket
  *     has asked for that nuance here yet)
  *   - subscription.plan='pro'
- *   - org has an activeDataset that was created within the last 30 days
+ *   - org has a non-null activeDataset, and at least one of its datasets was
+ *     refreshed within the last 30 days (any dataset, not just the active one,
+ *     per FR58)
  *   - at least one org member has digest_preferences.cadence != 'off' (NULL
  *     defaults to 'weekly', so a user with no row counts as opted-in)
  *
@@ -127,7 +144,8 @@ export async function findEligibleOrgs(
 
 /**
  * Counts orgs that clear every eligibility gate except data freshness: paying,
- * active dataset, at least one opted-in member, but nothing new in 30 days.
+ * active dataset, at least one opted-in member, but nothing new in 30 days on
+ * any of their datasets.
  * These are customers whose weekly digest has silently stopped. They are
  * invisible to findEligibleOrgs by construction, since they simply never appear
  * in its results, so the only way to see them was a hand-written join against
@@ -150,7 +168,7 @@ function pausedForStaleData(client: DrizzleClient, asOf: Date) {
     or(eq(subscriptions.status, 'active'), canceledWithGracePeriod(asOf)),
     eq(subscriptions.plan, 'pro'),
     isNotNull(orgs.activeDatasetId),
-    lt(datasets.dataRefreshedAt, RECENT_DATASET_INTERVAL),
+    sql`${LATEST_ORG_REFRESH} < ${RECENT_DATASET_INTERVAL}`,
     optedInMemberExists(client),
   );
 }
@@ -182,14 +200,21 @@ export function buildPausedForStaleDataQuery(client: DrizzleClient, asOf: Date =
  */
 export function buildStaleNudgeQuery(client: DrizzleClient, asOf: Date = new Date(), limit = 500) {
   return client
-    .select({ id: orgs.id, name: orgs.name, dataRefreshedAt: datasets.dataRefreshedAt })
+    .select({
+      id: orgs.id,
+      name: orgs.name,
+      dataRefreshedAt: sql<Date>`${LATEST_ORG_REFRESH}`.mapWith(datasets.dataRefreshedAt),
+    })
     .from(orgs)
     .innerJoin(subscriptions, eq(subscriptions.orgId, orgs.id))
     .innerJoin(datasets, eq(datasets.id, orgs.activeDatasetId))
     .where(
       and(
         pausedForStaleData(client, asOf),
-        or(isNull(orgs.staleNudgeSentAt), lt(orgs.staleNudgeSentAt, datasets.dataRefreshedAt)),
+        or(
+          isNull(orgs.staleNudgeSentAt),
+          sql`${orgs.staleNudgeSentAt} < ${LATEST_ORG_REFRESH}`,
+        ),
       ),
     )
     .orderBy(desc(orgs.id))

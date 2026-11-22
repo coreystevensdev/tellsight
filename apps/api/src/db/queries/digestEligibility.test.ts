@@ -63,6 +63,13 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+// FR58 measures freshness from the org's newest dataset, not the active one, so
+// every assertion below pins the correlated subquery rather than a column. The
+// correlation is the whole fix: an uncorrelated max would read the newest dataset
+// in the table and make every org eligible forever.
+const LATEST = String.raw`\(\s*select max\(d\.data_refreshed_at\)\s+from datasets d\s+where d\.org_id = "orgs"\."id"\s*\)`;
+const THIRTY_DAYS = String.raw`now\(\)\s*-\s*interval\s*'30 days'`;
+
 describe('buildStaleNudgeQuery: SQL shape', () => {
   // This and buildPausedForStaleDataQuery have to describe the same population
   // or the number reported and the orgs emailed drift apart, which is why the
@@ -73,7 +80,7 @@ describe('buildStaleNudgeQuery: SQL shape', () => {
 
     expect(sql).toMatch(/"subscriptions"\."plan"\s*=/);
     expect(sql).toMatch(/"orgs"\."active_dataset_id"\s+is\s+not\s+null/i);
-    expect(sql).toMatch(/"datasets"\."data_refreshed_at"\s*<\s*now\(\)\s*-\s*interval\s*'30 days'/);
+    expect(sql).toMatch(new RegExp(`${LATEST}\\s*<\\s*${THIRTY_DAYS}`));
     expect(sql).toMatch(/exists/i);
   });
 
@@ -81,18 +88,19 @@ describe('buildStaleNudgeQuery: SQL shape', () => {
   // the dataset's created_at rather than treating it as a boolean is what lets
   // an org that recovers and goes stale again months later be told a second
   // time, with nothing having to clear the column in between.
-  it('re-nudges once the active dataset is newer than the last notice', () => {
+  it('re-nudges once any dataset of the org is newer than the last notice', () => {
     const { sql } = buildStaleNudgeQuery(inertDb as never).toSQL();
 
     expect(sql).toMatch(/"orgs"\."stale_nudge_sent_at"\s+is\s+null/i);
-    expect(sql).toMatch(/"orgs"\."stale_nudge_sent_at"\s*<\s*"datasets"\."data_refreshed_at"/);
+    expect(sql).toMatch(new RegExp(String.raw`"orgs"\."stale_nudge_sent_at"\s*<\s*` + LATEST));
   });
 
   // lt, not gte. Backwards here selects the orgs whose digest is working and
   // emails them to say it has stopped.
   it('selects stale datasets, not fresh ones', () => {
     const { sql } = buildStaleNudgeQuery(inertDb as never).toSQL();
-    expect(sql).not.toMatch(/"datasets"\."data_refreshed_at"\s*>=/);
+    expect(sql).not.toMatch(new RegExp(`${LATEST}\\s*>=`));
+    expect(sql).toMatch(new RegExp(`${LATEST}\\s*<\\s*${THIRTY_DAYS}`));
   });
 });
 
@@ -117,7 +125,7 @@ describe('buildEligibilityQuery: SQL shape (AC #2, AC #14b)', () => {
     expect(sql).toMatch(/"subscriptions"\."status"\s*=\s*\$/);
     expect(sql).toMatch(/"subscriptions"\."plan"\s*=\s*\$/);
     expect(sql).toMatch(/"orgs"\."active_dataset_id"\s+is not null/i);
-    expect(sql).toMatch(/"datasets"\."data_refreshed_at"\s*>=\s*now\(\)\s*-\s*interval\s*'30 days'/);
+    expect(sql).toMatch(new RegExp(`${LATEST}\\s*>=\\s*${THIRTY_DAYS}`));
     // Member-opted-in EXISTS subquery checks digest_preferences.cadence
     expect(sql.toLowerCase()).toContain('exists');
     expect(sql).toMatch(/"digest_preferences"\."cadence"/);
@@ -285,8 +293,8 @@ describe('buildPausedForStaleDataQuery: the complement of eligibility', () => {
 
     // The whole point of the query. gte here counts fresh orgs instead, which
     // still returns a plausible-looking number nobody would question.
-    expect(sql).toContain('"data_refreshed_at" <');
-    expect(sql).not.toContain('"data_refreshed_at" >=');
+    expect(sql).toMatch(new RegExp(`${LATEST}\\s*<\\s*${THIRTY_DAYS}`));
+    expect(sql).not.toMatch(new RegExp(`${LATEST}\\s*>=`));
 
     expect(sql).toContain('"plan"');
     expect(sql).toContain('"active_dataset_id" is not null');
