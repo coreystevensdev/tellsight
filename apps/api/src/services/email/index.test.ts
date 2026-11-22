@@ -94,17 +94,4 @@ describe('email service, barrel integration', () => {
     expect(getEmailProvider()).toBe(custom);
   });
 
-  it('initEmailProvider with EMAIL_PROVIDER=postmark registers the stub', async () => {
-    initEmailProvider({ ...env, EMAIL_PROVIDER: 'postmark' } as typeof env);
-
-    const provider = getEmailProvider();
-    expect(provider.name).toBe('postmark');
-    await expect(
-      provider.send({
-        to: 'a@b.com',
-        subject: 's',
-        react: React.createElement('p', null, 'x'),
-      }),
-    ).rejects.toThrow(/not implemented/);
-  });
 });

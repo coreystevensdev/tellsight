@@ -59,7 +59,7 @@ export const envSchema = z
     RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
 
     // Email provider abstraction, console default outside production.
-    EMAIL_PROVIDER: z.enum(['resend', 'console', 'postmark']).default('console'),
+    EMAIL_PROVIDER: z.enum(['resend', 'console']).default('console'),
     // FROM address + mailing address are REQUIRED (no defaults). A placeholder default
     // would let a deployer forget these and ship from example.com / with a fake physical
     // address, the latter is a CAN-SPAM violation. Fail fast at boot instead.
