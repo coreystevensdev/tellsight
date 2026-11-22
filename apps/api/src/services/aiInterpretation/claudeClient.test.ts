@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Mock } from 'vitest';
 
 vi.mock('../../config.js', () => ({
@@ -1892,5 +1892,81 @@ describe('logClaudeKeyStatus warms the cache', () => {
       expect.objectContaining({ detail: expect.stringMatching(/credit/i) }),
       'Claude unusable at boot',
     );
+  });
+});
+
+describe('scheduled Claude health refresh', () => {
+  // Live traffic reports what it learns, but only where there is traffic. An
+  // instance nobody asks for a summary on sat on a boot-time 'ok' through both
+  // 2026-11-22 outages, which is what this covers.
+  //
+  // Driven through a setInterval spy rather than by spying on
+  // checkClaudeHealth: startClaudeHealthRefresh holds a direct reference to it,
+  // and an ESM namespace spy cannot intercept that, which is how the first
+  // version of these passed against a timer that never fired.
+  let intervals: Array<{ fn: () => void; ms: number; unref: ReturnType<typeof vi.fn> }>;
+  let spy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    intervals = [];
+    spy = vi.spyOn(globalThis, 'setInterval').mockImplementation(((fn: () => void, ms: number) => {
+      const unref = vi.fn();
+      intervals.push({ fn, ms, unref });
+      return { unref } as unknown as NodeJS.Timeout;
+    }) as typeof setInterval);
+  });
+
+  afterEach(async () => {
+    const { stopClaudeHealthRefresh } = await import('./claudeClient.js');
+    spy.mockRestore();
+    stopClaudeHealthRefresh();
+  });
+
+  it('schedules a refresh every fifteen minutes', async () => {
+    const mod = await import('./claudeClient.js');
+    mod.startClaudeHealthRefresh();
+
+    expect(intervals).toHaveLength(1);
+    expect(intervals[0]!.ms).toBe(15 * 60 * 1000);
+  });
+
+  it('unrefs the timer, so it cannot hold the process open', async () => {
+    const mod = await import('./claudeClient.js');
+    mod.startClaudeHealthRefresh();
+
+    expect(intervals[0]!.unref).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not stack a second timer when started twice', async () => {
+    const mod = await import('./claudeClient.js');
+    mod.startClaudeHealthRefresh();
+    mod.startClaudeHealthRefresh();
+
+    expect(intervals).toHaveLength(1);
+  });
+
+  it('actually probes when the interval fires', async () => {
+    // A fresh module, so the cache starts empty. The first version of this
+    // asserted peek() was non-null against a cache an earlier test had already
+    // warmed, so a callback that did nothing passed it. That exact mutation is
+    // what this now fails on.
+    vi.resetModules();
+    const mod = await import('./claudeClient.js');
+    expect(mod.peekClaudeHealth()).toBeNull();
+
+    mod.startClaudeHealthRefresh();
+    intervals.at(-1)!.fn();
+
+    await vi.waitFor(() => expect(mod.peekClaudeHealth()).not.toBeNull());
+    mod.stopClaudeHealthRefresh();
+  });
+
+  it('stops scheduling after shutdown, so a restart can schedule again', async () => {
+    const mod = await import('./claudeClient.js');
+    mod.startClaudeHealthRefresh();
+    mod.stopClaudeHealthRefresh();
+    mod.startClaudeHealthRefresh();
+
+    expect(intervals).toHaveLength(2);
   });
 });

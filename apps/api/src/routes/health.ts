@@ -43,17 +43,21 @@ function reportDatabase({ missing, ...rest }: DbHealth) {
 // admin panel still probe for real, so nothing loses its freshness where a
 // person is actually looking.
 // Carries checkedAt because a peeked answer still has no upper bound on its age.
-// Nothing on this path refreshes the cache, because refreshing buys a
-// completion and that is the cost #295 removed on purpose.
+// Nothing on this path refreshes the cache: refreshing buys a completion, and
+// serving that from an endpoint polled every thirty seconds is the cost #295
+// removed on purpose.
 //
-// What used to make that dangerous was that the only other writer was the admin
-// panel while somebody had it open, so a boot-time result could stand for the
-// life of the container: credit exhausted at 14:00 on a 09:00 boot still read
-// 'ok'. Live AI requests now write what they learn, in both directions, so a
-// dry account shows up on the first summary somebody asks for and clears again
-// on the first one that works. checkedAt stays, because none of that is a
-// guarantee of freshness: an instance serving no AI traffic still reports
-// whatever it last saw.
+// What made that dangerous was that a boot-time result could then stand for the
+// life of the container, so credit exhausted at 14:00 on a 09:00 boot still
+// read 'ok'. Two writers close that now. Live AI requests record what they
+// learn in both directions, so a dry account shows on the first summary
+// somebody asks for and clears on the first one that works; and a fifteen
+// minute refresh covers the instance nobody is asking, which traffic alone
+// cannot.
+//
+// checkedAt stays anyway. Fifteen minutes is an upper bound on staleness only
+// while the process is up and the refresh is running, and the value says how
+// old it is either way.
 function lastKnownClaudeHealth(): ProviderHealth & { checkedAt: string | null } {
   const probed = peekClaudeHealth();
   const observed = peekObservedClaudeHealth();

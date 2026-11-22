@@ -72,6 +72,46 @@ export async function converseWithTools(
   return getProvider().converseWithTools(state, input, tools, toolResults, signal);
 }
 
+// Fifteen minutes. The probe buys a completion, which is why /health peeks
+// instead of probing, but #295 removed a poll running every thirty seconds from
+// two separate health checks: about 86,000 completions a month. One every
+// fifteen is 2,880, around $0.15 a month at the one-token shape this sends, so
+// the cost that justified dropping the per-poll probe does not reach this far.
+//
+// The gap it closes is an idle instance. Live traffic reports what it learns,
+// but only when there is traffic, so an instance nobody is asking for summaries
+// on could sit on a boot-time 'ok' through an outage. That happened on
+// 2026-11-22: the account ran dry twice and this service reported ok both
+// times, correctly and uselessly.
+const HEALTH_REFRESH_MS = 15 * 60 * 1000;
+
+let refreshTimer: NodeJS.Timeout | null = null;
+
+/**
+ * Keep the probe cache from going stale on an instance with no AI traffic.
+ *
+ * In-process on purpose: the cache is per-process, so a worker or a cron
+ * refreshing it would warm its own copy and leave the one /health reads
+ * untouched.
+ */
+export function startClaudeHealthRefresh(): void {
+  if (refreshTimer) return;
+  refreshTimer = setInterval(() => {
+    // The probe resolves rather than throwing, so this catch is for the
+    // unregistered-provider case that boot already reports.
+    void checkClaudeHealth().catch(() => {});
+  }, HEALTH_REFRESH_MS);
+  // Otherwise this alone keeps the process alive through a shutdown.
+  refreshTimer.unref();
+}
+
+export function stopClaudeHealthRefresh(): void {
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+}
+
 /**
  * Runs once at boot so a rejected key is visible before someone asks for a
  * summary, and so /health has an answer to report: it peeks at this cache
