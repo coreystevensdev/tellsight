@@ -86,6 +86,7 @@ export async function converseWithTools(
 const HEALTH_REFRESH_MS = 15 * 60 * 1000;
 
 let refreshTimer: NodeJS.Timeout | null = null;
+let refreshFailureReported = false;
 
 /**
  * Keep the probe cache from going stale on an instance with no AI traffic.
@@ -96,10 +97,19 @@ let refreshTimer: NodeJS.Timeout | null = null;
  */
 export function startClaudeHealthRefresh(): void {
   if (refreshTimer) return;
+  refreshFailureReported = false;
   refreshTimer = setInterval(() => {
-    // The probe resolves rather than throwing, so this catch is for the
-    // unregistered-provider case that boot already reports.
-    void checkClaudeHealth().catch(() => {});
+    // The probe resolves rather than throwing, so reaching this means the
+    // provider is unregistered, which boot already reports. Said once anyway:
+    // silence here is indistinguishable from a refresh that is working, and
+    // the consequence is that /health quietly goes back to serving whatever it
+    // last saw. Once rather than every fifteen minutes forever, because a
+    // line that repeats on a timer is one people filter out.
+    void checkClaudeHealth().catch((err: unknown) => {
+      if (refreshFailureReported) return;
+      refreshFailureReported = true;
+      logger.warn({ err }, 'Claude health refresh failed, /health will go stale');
+    });
   }, HEALTH_REFRESH_MS);
   // Otherwise this alone keeps the process alive through a shutdown.
   refreshTimer.unref();

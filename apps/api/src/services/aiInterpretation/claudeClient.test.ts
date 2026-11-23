@@ -1961,6 +1961,54 @@ describe('scheduled Claude health refresh', () => {
     mod.stopClaudeHealthRefresh();
   });
 
+  it('says so once when the refresh cannot probe, and not every fifteen minutes', async () => {
+    // Unregistering makes getProvider throw, which is the real shape of this:
+    // the probe itself resolves rather than throwing, so reaching the catch
+    // means there is no provider. Silence there looks exactly like a refresh
+    // that is working, while /health quietly serves its last answer.
+    // The logger is imported inside the reset scope on purpose: after
+    // resetModules the fresh claudeClient binds a new mock, and the instance
+    // imported at the top of this file would never see its calls.
+    vi.resetModules();
+    const { resetProvider } = await import('./provider.js');
+    const { logger: freshLogger } = await import('../../lib/logger.js');
+    const mod = await import('./claudeClient.js');
+    resetProvider();
+
+    mod.startClaudeHealthRefresh();
+    const fire = intervals.at(-1)!.fn;
+
+    fire();
+    await vi.waitFor(() => expect(freshLogger.warn).toHaveBeenCalledTimes(1));
+    expect((freshLogger.warn as Mock).mock.calls[0]![1]).toMatch(/go stale/);
+
+    fire();
+    fire();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(freshLogger.warn).toHaveBeenCalledTimes(1);
+
+    mod.stopClaudeHealthRefresh();
+  });
+
+  it('re-arms the warning after a restart', async () => {
+    vi.resetModules();
+    const { resetProvider } = await import('./provider.js');
+    const { logger: freshLogger } = await import('../../lib/logger.js');
+    const mod = await import('./claudeClient.js');
+    resetProvider();
+
+    mod.startClaudeHealthRefresh();
+    intervals.at(-1)!.fn();
+    await vi.waitFor(() => expect(freshLogger.warn).toHaveBeenCalledTimes(1));
+
+    mod.stopClaudeHealthRefresh();
+    mod.startClaudeHealthRefresh();
+    intervals.at(-1)!.fn();
+    await vi.waitFor(() => expect(freshLogger.warn).toHaveBeenCalledTimes(2));
+
+    mod.stopClaudeHealthRefresh();
+  });
+
   it('stops scheduling after shutdown, so a restart can schedule again', async () => {
     const mod = await import('./claudeClient.js');
     mod.startClaudeHealthRefresh();
