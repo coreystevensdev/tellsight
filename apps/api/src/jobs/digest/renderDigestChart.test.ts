@@ -6,9 +6,11 @@ import { StatType } from '../../services/curation/types.js';
 const mockRenderChart = vi.fn();
 const mockRedisSet = vi.fn();
 const mockRedisGetBuffer = vi.fn();
+const mockTrackEventOrg = vi.fn();
 
 vi.mock('../../services/charting/renderChart.js', () => ({ renderChart: mockRenderChart }));
 vi.mock('../../lib/redis.js', () => ({ redis: { set: mockRedisSet, getBuffer: mockRedisGetBuffer } }));
+vi.mock('../../services/analytics/trackEvent.js', () => ({ trackEventOrg: mockTrackEventOrg }));
 vi.mock('../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
@@ -67,7 +69,11 @@ const base = { orgId: 42, datasetId: 100, weekStart, correlationId: 'corr-1' };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockRenderChart.mockResolvedValue(Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]));
+  mockRenderChart.mockResolvedValue({
+    png: Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]),
+    queueWaitMs: 12,
+    renderMs: 340,
+  });
   mockRedisSet.mockResolvedValue('OK');
   mockRedisGetBuffer.mockResolvedValue(null);
 });
@@ -177,5 +183,68 @@ describe('readDigestChart', () => {
   it('returns null rather than throwing when Redis is down', async () => {
     mockRedisGetBuffer.mockRejectedValueOnce(new Error('Redis is down'));
     await expect(readDigestChart(42, 100, weekStart)).resolves.toBeNull();
+  });
+});
+
+// The 2026-11-22 run is why these exist. The digest sent text-only and the only
+// record of why was a container log line, which a deploy destroyed 13 minutes
+// later. Every outcome now leaves a row, so the next one is a query.
+describe('renderDigestChart records the outcome', () => {
+  const only = () => {
+    expect(mockTrackEventOrg).toHaveBeenCalledTimes(1);
+    return mockTrackEventOrg.mock.calls[0]!;
+  };
+
+  it('reports a success with the kind, both timings and the size', async () => {
+    await renderDigestChart({ ...base, scoredPool: [scored(runway, 0.9)] });
+
+    const [orgId, eventName, metadata] = only();
+    expect(orgId).toBe(42);
+    expect(eventName).toBe('digest.chart_rendered');
+    // Both numbers, separately. One combined duration cannot tell a contended
+    // lane from a slow render, which is the whole reason renderChart returns two.
+    expect(metadata).toEqual({ chartKind: 'runway', queueWaitMs: 12, renderMs: 340, bytes: 7 });
+  });
+
+  it('reports no_chartable_stat for a week with nothing to draw', async () => {
+    await renderDigestChart({ ...base, scoredPool: [] });
+
+    const [, eventName, metadata] = only();
+    expect(eventName).toBe('digest.chart_degraded');
+    expect(metadata).toEqual({ reason: 'no_chartable_stat' });
+  });
+
+  it('reports render_failed when the render degrades', async () => {
+    mockRenderChart.mockResolvedValueOnce(null);
+
+    await renderDigestChart({ ...base, scoredPool: [scored(runway, 0.9)] });
+
+    const [, eventName, metadata] = only();
+    expect(eventName).toBe('digest.chart_degraded');
+    expect(metadata).toEqual({ chartKind: 'runway', reason: 'render_failed' });
+  });
+
+  it('reports cache_write_failed when Redis refuses the write', async () => {
+    mockRedisSet.mockRejectedValueOnce(new Error('Redis is down'));
+
+    await renderDigestChart({ ...base, scoredPool: [scored(runway, 0.9)] });
+
+    const [, eventName, metadata] = only();
+    expect(eventName).toBe('digest.chart_degraded');
+    expect(metadata).toEqual({ chartKind: 'runway', reason: 'cache_write_failed' });
+  });
+
+  // The distinction that was missing on 2026-11-22: a quiet week and a broken
+  // render both ended as a text-only email with nothing to tell them apart.
+  it('tells a quiet week apart from a failed render', async () => {
+    await renderDigestChart({ ...base, scoredPool: [] });
+    const quiet = mockTrackEventOrg.mock.calls[0]![2];
+
+    mockTrackEventOrg.mockClear();
+    mockRenderChart.mockResolvedValueOnce(null);
+    await renderDigestChart({ ...base, scoredPool: [scored(runway, 0.9)] });
+    const broken = mockTrackEventOrg.mock.calls[0]![2];
+
+    expect(quiet).not.toEqual(broken);
   });
 });

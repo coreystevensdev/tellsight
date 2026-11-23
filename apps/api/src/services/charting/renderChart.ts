@@ -162,10 +162,23 @@ export function runInWorker(
  * within the size/parse constraints. Never throws: every failure mode here
  * degrades the alert email to text-only rather than failing the send job.
  */
+export interface ChartRenderSuccess {
+  png: Buffer;
+  queueWaitMs: number;
+  renderMs: number;
+}
+
+/**
+ * The two timings ride out with the png because this is the only place that can
+ * separate them: `queueWaitMs` is measured before `serialize()` and `renderMs`
+ * after it. A caller timing the call itself gets the sum, which is the exact
+ * conflation the split was introduced to end. Null still means "no chart", so
+ * every caller's null check is unchanged.
+ */
 export async function renderChart(
   params: ChartRenderInput & { width?: number; height?: number },
   context: RenderChartContext,
-): Promise<Buffer | null> {
+): Promise<ChartRenderSuccess | null> {
   const enqueuedAt = Date.now();
   const logFields = { ...context, chartKind: params.chartKind };
 
@@ -186,7 +199,7 @@ export async function renderChart(
       }
 
       logger.info({ ...logFields, ...timings(), bytes: outcome.png.length }, 'Chart rendered');
-      return outcome.png;
+      return { png: outcome.png, ...timings() };
     } finally {
       // Never reached when the render hangs, which is exactly when the
       // watchdog should be left to fire.

@@ -32,7 +32,7 @@ describe('renderChart (real pipeline, per the compatibility spike)', () => {
   // it's slow enough here to need headroom over vitest's 5s default.
   it('renders a runway chart to a PNG under the size budget', async () => {
     const { renderChart } = await import('./renderChart.js');
-    const png = await renderChart({ chartKind: 'runway', data: runwayData }, context);
+    const png = (await renderChart({ chartKind: 'runway', data: runwayData }, context))?.png ?? null;
 
     expect(png).not.toBeNull();
     expect(png!.subarray(0, 4)).toEqual(PNG_MAGIC);
@@ -41,7 +41,7 @@ describe('renderChart (real pipeline, per the compatibility spike)', () => {
 
   it('renders a cash-flow chart to a PNG under the size budget', async () => {
     const { renderChart } = await import('./renderChart.js');
-    const png = await renderChart({ chartKind: 'cash-flow', data: cashFlowData }, context);
+    const png = (await renderChart({ chartKind: 'cash-flow', data: cashFlowData }, context))?.png ?? null;
 
     expect(png).not.toBeNull();
     expect(png!.subarray(0, 4)).toEqual(PNG_MAGIC);
@@ -50,7 +50,7 @@ describe('renderChart (real pipeline, per the compatibility spike)', () => {
 
   it('renders a margin chart to a PNG under the size budget', async () => {
     const { renderChart } = await import('./renderChart.js');
-    const png = await renderChart({ chartKind: 'margin', data: marginData }, context);
+    const png = (await renderChart({ chartKind: 'margin', data: marginData }, context))?.png ?? null;
 
     expect(png).not.toBeNull();
     expect(png!.subarray(0, 4)).toEqual(PNG_MAGIC);
@@ -84,7 +84,7 @@ describe('axis text actually renders', () => {
 
   it('draws axis labels below the plot area', async () => {
     const { renderChart } = await import('./renderChart.js');
-    const png = await renderChart({ chartKind: 'cash-flow', data: cashFlowData }, context);
+    const png = (await renderChart({ chartKind: 'cash-flow', data: cashFlowData }, context))?.png ?? null;
     expect(png).not.toBeNull();
 
     // Measured at ~700 on a correct render. A chart with no resolvable font
@@ -97,7 +97,7 @@ describe('axis text actually renders', () => {
   it('renders the chart surface, not a legend icon', async () => {
     const { renderChart } = await import('./renderChart.js');
     const sharp = (await import('sharp')).default;
-    const png = await renderChart({ chartKind: 'cash-flow', data: cashFlowData }, context);
+    const png = (await renderChart({ chartKind: 'cash-flow', data: cashFlowData }, context))?.png ?? null;
     expect(png).not.toBeNull();
 
     // cash-flow is the only chart carrying a <Legend>, and its icons are
@@ -111,7 +111,7 @@ describe('axis text actually renders', () => {
   it('names each line at its own end, inside the surface', async () => {
     const { renderChart } = await import('./renderChart.js');
     const sharp = (await import('sharp')).default;
-    const png = await renderChart({ chartKind: 'cash-flow', data: cashFlowData }, context);
+    const png = (await renderChart({ chartKind: 'cash-flow', data: cashFlowData }, context))?.png ?? null;
     expect(png).not.toBeNull();
 
     // Nothing but the two end labels draws in the right margin: the plot area
@@ -286,7 +286,7 @@ describe('renderChart degrade paths (I/O matrix)', () => {
     const { renderChart } = await import('./renderChart.js');
     const { logger } = await import('../../lib/logger.js');
 
-    const png = await renderChart({ chartKind: 'runway', data: runwayData }, context);
+    const png = (await renderChart({ chartKind: 'runway', data: runwayData }, context))?.png ?? null;
     expect(png).not.toBeNull();
 
     expect(logger.info).toHaveBeenCalledWith(
@@ -309,10 +309,12 @@ describe('renderChart degrade paths (I/O matrix)', () => {
     const { renderChart } = await import('./renderChart.js');
     const { logger } = await import('../../lib/logger.js');
 
-    const png = await renderChart(
+    const png = (
+      await renderChart(
       { chartKind: 'margin', data: marginData },
       { correlationId: 'corr-2', orgId: 42 },
-    );
+      )
+    )?.png ?? null;
 
     expect(png).not.toBeNull();
     expect(logger.info).toHaveBeenCalledWith(
@@ -389,7 +391,7 @@ describe('worker recovery', () => {
       stage: 'timeout',
     });
 
-    const png = await renderChart({ chartKind: 'runway', data: runwayData }, context);
+    const png = (await renderChart({ chartKind: 'runway', data: runwayData }, context))?.png ?? null;
     expect(png).not.toBeNull();
     expect(png!.subarray(0, 4)).toEqual(PNG_MAGIC);
   }, 30_000);
@@ -423,8 +425,27 @@ describe('worker recovery', () => {
   it('hands back a Buffer, not the Uint8Array the thread boundary produces', async () => {
     const { renderChart } = await import('./renderChart.js');
 
-    const png = await renderChart({ chartKind: 'runway', data: runwayData }, context);
+    const png = (await renderChart({ chartKind: 'runway', data: runwayData }, context))?.png ?? null;
 
     expect(Buffer.isBuffer(png)).toBe(true);
   }, 30_000);
+});
+
+// The timings used to exist only in the log line. The digest now persists them
+// as an analytics event, so they have to survive the return rather than being
+// readable only on a container nobody kept.
+describe('renderChart returns the timings it measured', () => {
+  it('carries queueWaitMs and renderMs beside the png', async () => {
+    const { renderChart } = await import('./renderChart.js');
+    const result = await renderChart({ chartKind: 'runway', data: runwayData }, context);
+
+    expect(result).not.toBeNull();
+    expect(result!.png).toBeInstanceOf(Buffer);
+    expect(typeof result!.queueWaitMs).toBe('number');
+    expect(typeof result!.renderMs).toBe('number');
+    // Separate numbers, not one duration split after the fact: only this
+    // function sits on both sides of the serialized lane.
+    expect(result!.renderMs).toBeGreaterThan(0);
+    expect(result!.queueWaitMs).toBeGreaterThanOrEqual(0);
+  });
 });

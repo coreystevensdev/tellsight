@@ -1939,3 +1939,27 @@ describe('org scoping of the queries this handler issues', () => {
     expect(mockCountExpiredUnfoldedProposals.mock.calls[0]![0]).toBe(42);
   });
 });
+
+describe('a chart render that throws past renderDigestChart', () => {
+  // renderDigestChart records its own five outcomes. A throw escapes all of
+  // them, so without this the week would send text-only with nothing saying why.
+  it('records render_threw and still sends the digest', async () => {
+    mockGetActiveDatasetId.mockResolvedValueOnce(100);
+    mockFindOrgById.mockResolvedValueOnce(baseOrg);
+    mockRunCurationPipeline.mockResolvedValueOnce({
+      insights: [{ stat: { statType: 'Total' } }],
+      scoredPool: [{ stat: { statType: 'runway' }, score: 0.9 }],
+    });
+    mockGetCachedDigest.mockResolvedValueOnce({ id: 555, content: '', transparencyMetadata: {} });
+    mockFindOrgRecipients.mockResolvedValueOnce([{ userId: 1, email: 'a@x.com', name: 'A' }]);
+    mockRenderDigestChart.mockRejectedValueOnce(new Error('sharp exploded'));
+
+    await handlePerOrgJob({ id: 'org-chart-threw', data: baseJobData } as never);
+
+    expect(mockTrackEventOrg).toHaveBeenCalledWith(42, 'digest.chart_degraded', {
+      reason: 'render_threw',
+    });
+    // CAP-4: a failed chart costs the picture, not the digest.
+    expect(mockSendQueueAdd).toHaveBeenCalled();
+  });
+});

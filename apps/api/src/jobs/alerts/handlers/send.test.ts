@@ -160,7 +160,11 @@ beforeEach(() => {
   mockGetCachedAlertSummary.mockResolvedValue(undefined);
   mockFindOrgById.mockResolvedValue({ businessProfile: null });
   mockGenerateInterpretation.mockResolvedValue('Your runway is now 2.0 months. Worth a look at burn rate.');
-  mockRenderChart.mockResolvedValue(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  mockRenderChart.mockResolvedValue({
+    png: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+    queueWaitMs: 0,
+    renderMs: 5,
+  });
 });
 
 describe('handleSendJob: chart-mapped rule kind (I/O matrix row 1)', () => {
