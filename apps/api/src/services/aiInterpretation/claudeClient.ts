@@ -74,15 +74,9 @@ export async function converseWithTools(
 
 // Fifteen minutes. The probe buys a completion, which is why /health peeks
 // instead of probing, but #295 removed a poll running every thirty seconds from
-// two separate health checks: about 86,000 completions a month. One every
-// fifteen is 2,880, around $0.15 a month at the one-token shape this sends, so
-// the cost that justified dropping the per-poll probe does not reach this far.
-//
-// The gap it closes is an idle instance. Live traffic reports what it learns,
-// but only when there is traffic, so an instance nobody is asking for summaries
-// on could sit on a boot-time 'ok' through an outage. That happened on
-// 2026-11-22: the account ran dry twice and this service reported ok both
-// times, correctly and uselessly.
+// two health checks: about 86,000 completions a month against 2,880 here,
+// roughly $0.15. The cost that justified dropping that poll does not reach
+// this far.
 const HEALTH_REFRESH_MS = 15 * 60 * 1000;
 
 let refreshTimer: NodeJS.Timeout | null = null;
