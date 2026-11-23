@@ -587,3 +587,78 @@ describe('ToolCallCache', () => {
     expect(mockGetRowsByDataset).not.toHaveBeenCalled();
   });
 });
+
+// FR49: the Q&A tools answer through computed statistics only. That is the
+// product's central privacy claim and until now nothing tested it on this path.
+// It was true by type signature alone: the tools return IdentifiedStat, and
+// computation.ts never reads `label`. A signature is not a test, and every
+// fixture above sets `label: null`, so a widening would have passed silently.
+//
+// fetchToolContext loads whole rows (interpretationTools.ts:101), labels and
+// counterparties included, so the rows genuinely are in scope here. What follows
+// asserts nothing row-level survives into what the model is handed.
+describe('the privacy boundary on the Q&A tool path', () => {
+  // Free text of the kind a real export writes into a memo column, plus the
+  // counterparty beside it, since both are row-level identity.
+  const LABELS = ['Acme Corp invoice #4218', 'Gusto payroll batch #JK2', 'Main St landlord wire'];
+  const COUNTERPARTIES = ['Acme Corporation', 'Gusto Inc', 'Main Street Holdings'];
+
+  function identifiableSalesRows() {
+    return salesRows.map((r, i) => ({
+      ...r,
+      label: LABELS[i % LABELS.length]!,
+      counterparty: COUNTERPARTIES[i % COUNTERPARTIES.length]!,
+    }));
+  }
+
+  // The result is serialized to JSON on its way to the model, so the serialized
+  // form is the honest thing to search: a field nested in `details` would be
+  // missed by checking top-level keys.
+  const everythingTheModelSees = (result: unknown) => JSON.stringify(result);
+
+  it('withholds every row label from get_metric_with_trend', async () => {
+    mockGetRowsByDataset.mockResolvedValue(identifiableSalesRows());
+
+    const result = await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
+
+    // A not-found result would pass the assertions below vacuously.
+    expect(result.found).toBe(true);
+    const seen = everythingTheModelSees(result);
+    for (const label of LABELS) expect(seen).not.toContain(label);
+  });
+
+  it('withholds them from compare_to_prior_periods too', async () => {
+    mockGetRowsByDataset.mockResolvedValue(identifiableSalesRows());
+
+    const result = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
+
+    const seen = everythingTheModelSees(result);
+    expect(seen).toContain('Sales');
+    for (const label of LABELS) expect(seen).not.toContain(label);
+  });
+
+  it('withholds the counterparty as well, on both tools', async () => {
+    mockGetRowsByDataset.mockResolvedValue(identifiableSalesRows());
+
+    const metric = await getMetricWithTrend({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
+    const compared = await compareToPriorPeriods({ statType: StatType.Trend, category: 'Sales' }, ctx, cache);
+
+    const seen = everythingTheModelSees(metric) + everythingTheModelSees(compared);
+    for (const name of COUNTERPARTIES) expect(seen).not.toContain(name);
+  });
+
+  // This one is the reason the counterparty assertion above holds, and it is a
+  // decision rather than a consequence. CustomerConcentrationDetails carries
+  // `topCustomer`, a real customer name, on purpose. It stays out of the model's
+  // reach only because the tool enum excludes the stat that holds it. Adding
+  // customer_concentration to TREND_CARRYING_STAT_TYPES would start routing
+  // customer names to Claude, which may well be wanted one day and should be
+  // chosen rather than inherited.
+  it('keeps customer_concentration out of the tool enum, which is what withholds customer names', () => {
+    expect(TREND_CARRYING_STAT_TYPES).not.toContain(StatType.CustomerConcentration);
+    const enumValues = (
+      GET_METRIC_WITH_TREND_TOOL.inputSchema.properties as Record<string, { enum?: string[] }>
+    ).statType!.enum;
+    expect(enumValues).not.toContain(StatType.CustomerConcentration);
+  });
+});
