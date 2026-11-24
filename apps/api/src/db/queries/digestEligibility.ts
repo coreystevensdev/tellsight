@@ -51,6 +51,11 @@ const RECENT_DATASET_INTERVAL = sql`now() - ${sql.raw(`interval '${DATASET_FRESH
 // NULL as a value, and the one inside or(isNull(staleNudgeSentAt), ...) is
 // short-circuited for a never-nudged org, which is the whole population at
 // issue. Do not read those two as extra gates.
+//
+// `not d.is_seed_data` is NULL-safe only because that column is .notNull(). Make
+// it nullable and `not NULL` is NULL, every row drops out of the max, and every
+// org reads as seed-only: total digest silence. It fails closed, which is the
+// right direction, and is still worth knowing before editing the column.
 const LATEST_ORG_REFRESH = sql`(
     select max(d.data_refreshed_at) from datasets d
     where d.org_id = ${orgs.id} and not d.is_seed_data
@@ -222,6 +227,12 @@ export function buildStaleNudgeQuery(client: DrizzleClient, asOf: Date = new Dat
       // LATEST_ORG_REFRESH. The expression itself is NULL for an org whose only
       // datasets are seed rows, and orchestrator.ts builds a job id from
       // .getTime() on it, so loosening that WHERE turns this into a TypeError.
+      // A TypeError rather than a wrong job id, which is the better failure:
+      // drizzle short-circuits NULL ahead of the decoder (utils.cjs:63), so
+      // mapWith never runs and this is null, not new Date(null), whose getTime()
+      // is 0 and would collapse every such org onto one job id and dedupe them
+      // silently. The nudge timestamp test calls .getTime() on this too, so it
+      // throws before the orchestrator ever would.
       dataRefreshedAt: sql<Date>`${LATEST_ORG_REFRESH}`.mapWith(datasets.dataRefreshedAt),
     })
     .from(orgs)
