@@ -126,6 +126,29 @@ describe('QaAskBox', () => {
     expect(screen.queryByText('Try again')).toBeNull();
   });
 
+  // Every paying Pro org in production had agent_enabled false on 2026-11-24,
+  // because the flag is admin-granted and the Stripe webhook never sets it. So
+  // the locked state told three Pro customers to "Upgrade to Pro" at the Pro
+  // price, for a feature Pro does not include and that has no purchase path.
+  it('does not upsell Pro to an org that is already on Pro', () => {
+    mockUseQaAnswer.mockReturnValue(defaultHookReturn({ status: 'locked' }));
+
+    render(<QaAskBox datasetId={7} hasAuth tier="pro" />);
+
+    expect(screen.queryByText('Unlock full analysis')).toBeNull();
+    expect(screen.queryByRole('button', { name: /upgrade to pro/i })).toBeNull();
+    // Says what is actually true instead: the gate is the Agent tier, not Pro.
+    expect(screen.getByText(/agent tier/i)).toBeTruthy();
+  });
+
+  it('still upsells Pro to a free org, which is the case the CTA is for', () => {
+    mockUseQaAnswer.mockReturnValue(defaultHookReturn({ status: 'locked' }));
+
+    render(<QaAskBox datasetId={7} hasAuth tier="free" />);
+
+    expect(screen.getByText('Unlock full analysis')).toBeTruthy();
+  });
+
   it('navigates to /billing when the locked UpgradeCta is clicked', () => {
     mockUseQaAnswer.mockReturnValue(defaultHookReturn({ status: 'locked' }));
 

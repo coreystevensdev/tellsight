@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-import type { TransparencyMetadata } from 'shared/types';
+import type { SubscriptionTier, TransparencyMetadata } from 'shared/types';
 import { cn } from '@/lib/utils';
 import { useQaAnswer, type QaAnswerState } from '@/lib/hooks/useQaAnswer';
 import { UpgradeCta } from '@/components/common/UpgradeCta';
@@ -23,6 +23,9 @@ interface QaAskBoxProps {
   // Defaults to false: /qa is on protectedRouter, so a caller that forgets
   // this should offer nothing rather than a control that 401s.
   hasAuth?: boolean;
+  // Only used to decide what the locked state says. Undefined behaves as free,
+  // which keeps the Pro upsell for the caller that does not know the tier.
+  tier?: SubscriptionTier;
 }
 
 // Second copy of this shape; AiSummaryCard has the other. Both fall through to
@@ -46,6 +49,7 @@ export function QaAskBox({
   className,
   askFromChart,
   hasAuth = false,
+  tier,
 }: QaAskBoxProps) {
   const [question, setQuestion] = useState('');
   const [openCiteId, setOpenCiteId] = useState<string | null>(null);
@@ -214,9 +218,26 @@ export function QaAskBox({
         </div>
       )}
 
+      {/* The Agent tier is admin-granted and has no Stripe product, so a Pro org
+          cannot buy its way past this gate. Showing it the Pro upsell told three
+          paying customers on 2026-11-24 to upgrade to the plan they were already
+          on. Free orgs still get the upsell, which is the case it is written for. */}
       {status === 'locked' && (
         <div className="mt-4">
-          <UpgradeCta variant="inline" onUpgrade={goToBilling} />
+          {tier === 'pro' ? (
+            <div
+              role="status"
+              className="w-full rounded-lg border border-border border-l-4 border-l-muted-foreground/40 bg-card p-6"
+            >
+              <h3 className="text-sm font-semibold text-foreground">Not part of your plan</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Ask a question runs on the Agent tier, which is separate from Pro and is not
+                enabled for this workspace.
+              </p>
+            </div>
+          ) : (
+            <UpgradeCta variant="inline" onUpgrade={goToBilling} />
+          )}
         </div>
       )}
 
