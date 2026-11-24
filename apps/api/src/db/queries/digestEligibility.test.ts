@@ -67,7 +67,12 @@ beforeEach(() => {
 // every assertion below pins the correlated subquery rather than a column. The
 // correlation is the whole fix: an uncorrelated max would read the newest dataset
 // in the table and make every org eligible forever.
-const LATEST = String.raw`\(\s*select max\(d\.data_refreshed_at\)\s+from datasets d\s+where d\.org_id = "orgs"\."id"\s*\)`;
+//
+// The seed predicate is pinned here too, in one place, because all five shape
+// assertions share this constant. Dropping it from the query fails every one of
+// them, which is the point: seed rows satisfying a freshness gate is how a
+// paying org with no real data would be emailed a digest about invented revenue.
+const LATEST = String.raw`\(\s*select max\(d\.data_refreshed_at\)\s+from datasets d\s+where d\.org_id = "orgs"\."id"\s+and not d\.is_seed_data\s*\)`;
 const THIRTY_DAYS = String.raw`now\(\)\s*-\s*interval\s*'30 days'`;
 
 describe('buildStaleNudgeQuery: SQL shape', () => {

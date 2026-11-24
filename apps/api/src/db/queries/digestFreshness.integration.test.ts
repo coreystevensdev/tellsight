@@ -29,13 +29,17 @@ function daysAgo(n: number): Date {
 
 const uniq = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+/** A bare Date is a real dataset; seedAt marks one as seed rows. */
+type Refresh = Date | { at: Date; seed: true };
+const seedAt = (at: Date): Refresh => ({ at, seed: true });
+
 /**
  * A paying org with one opted-in member, which is every eligibility gate except
  * freshness. `refreshes` becomes one dataset per entry; the first is the active
  * one, matching what an org looks like after its first connector claims the
  * dashboard and later ones keep their own datasets.
  */
-async function payingOrg(label: string, refreshes: Date[]): Promise<number> {
+async function payingOrg(label: string, refreshes: Refresh[]): Promise<number> {
   const [org] = await dbAdmin
     .insert(orgs)
     .values({ name: `freshness ${label}`, slug: `freshness-${label}-${uniq()}` })
@@ -54,10 +58,16 @@ async function payingOrg(label: string, refreshes: Date[]): Promise<number> {
   await dbAdmin.insert(userOrgs).values({ orgId, userId: user!.id, role: 'owner' });
 
   const ids: number[] = [];
-  for (const [i, at] of refreshes.entries()) {
+  for (const [i, r] of refreshes.entries()) {
+    const at = r instanceof Date ? r : r.at;
     const [ds] = await dbAdmin
       .insert(datasets)
-      .values({ orgId, name: `${label}-ds-${i}`, dataRefreshedAt: at })
+      .values({
+        orgId,
+        name: `${label}-ds-${i}`,
+        dataRefreshedAt: at,
+        isSeedData: !(r instanceof Date),
+      })
       .returning({ id: datasets.id });
     ids.push(ds!.id);
   }
@@ -152,5 +162,59 @@ describe('the paused count and the nudge sweep agree with eligibility', () => {
     // The newest is +2 past the window; the active one is +40 past it. A query
     // reading the active dataset reports the latter and fails this.
     expect(age).toBeLessThan(DATASET_FRESHNESS_DAYS + 10);
+  });
+});
+
+// seedDemoData gives every new org a seed dataset and points activeDatasetId at
+// it, so "paying, active dataset, something fresh" is satisfiable with nothing
+// but rows we generated ourselves. Production org 7 was in that state for the
+// 30 days after sign-up: active pro, zero real datasets, all four gates passing.
+//
+// Only an org with no real dataset is affected. Nothing backdates
+// data_refreshed_at (touchDataRefreshed is its only writer and the five
+// connector syncs its only callers, and db/seed.ts skips an org that already has
+// seed rows), so a seed timestamp can never be the newest once a real dataset
+// exists. All five production seed datasets have data_refreshed_at equal to
+// created_at exactly.
+//
+// Two mutations, because they catch different things. Dropping the predicate
+// fails the first four: seed rows get counted again. Inverting it to
+// `and d.is_seed_data` fails the last one: real rows stop counting, its 60-day
+// seed dataset becomes the max, and the org drops out. Neither mutation fails
+// both ends, which is why the pair is here.
+describe('seed rows are not data the org received', () => {
+  it('does not make a paying org with nothing but seed rows eligible', async () => {
+    const seedOnly = await payingOrg('seedonly', [seedAt(daysAgo(1))]);
+    const ids = (await findEligibleOrgs(undefined, 500)).map((o) => o.id);
+    expect(ids).not.toContain(seedOnly);
+  });
+
+  it('does not count that org as paused, since its digest never started', async () => {
+    const before = await countOrgsPausedForStaleData();
+    await payingOrg('seedpaused', [seedAt(daysAgo(DATASET_FRESHNESS_DAYS + 5))]);
+    // Stale on purpose: counting the old way this org is paused and the number moves.
+    const after = await countOrgsPausedForStaleData();
+    expect(after).toBe(before);
+  });
+
+  it('does not nudge that org either, which would claim a digest had stopped', async () => {
+    const seedOnly = await payingOrg('seednudge', [seedAt(daysAgo(DATASET_FRESHNESS_DAYS + 5))]);
+    const ids = (await findOrgsNeedingStaleNudge()).map((o) => o.id);
+    expect(ids).not.toContain(seedOnly);
+  });
+
+  it('does not let a fresh seed dataset rescue an org whose real data went stale', async () => {
+    const masked = await payingOrg('masked', [
+      daysAgo(DATASET_FRESHNESS_DAYS + 5),
+      seedAt(daysAgo(1)),
+    ]);
+    const ids = (await findEligibleOrgs(undefined, 500)).map((o) => o.id);
+    expect(ids).not.toContain(masked);
+  });
+
+  it('leaves an org with fresh real data eligible when it also holds seed rows', async () => {
+    const both = await payingOrg('realplusseed', [daysAgo(1), seedAt(daysAgo(60))]);
+    const ids = (await findEligibleOrgs(undefined, 500)).map((o) => o.id);
+    expect(ids).toContain(both);
   });
 });

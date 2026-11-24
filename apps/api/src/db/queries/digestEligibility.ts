@@ -38,12 +38,22 @@ const RECENT_DATASET_INTERVAL = sql`now() - ${sql.raw(`interval '${DATASET_FRESH
 // then silences an org that is receiving data daily through the other connector.
 //
 // Correlated max rather than a wider join: the join still has to be the active
-// dataset, since that is the row the digest narrates and where activeDatasetId
-// is read from. Seed datasets are deliberately not excluded here, which keeps a
-// demo org's eligibility exactly what it was; whether a seed dataset should
-// count as data the org received is a separate product question.
+// dataset, since that is the row the digest narrates. Seed rows are excluded
+// because the org never received them; seedDemoData generates them at sign-up
+// and points activeDatasetId at them, so counting them emails a paying org a
+// digest interpreting invented revenue as its own. Production org 7 sat in that
+// state for its first 30 days.
+//
+// An org with no real dataset yields NULL here, and exactly two comparisons do
+// all the excluding: the >= in buildEligibilityQuery, and the < in
+// pausedForStaleData, which the paused count and the nudge sweep share. The
+// other two usages exclude nothing. The projection at the nudge select returns
+// NULL as a value, and the one inside or(isNull(staleNudgeSentAt), ...) is
+// short-circuited for a never-nudged org, which is the whole population at
+// issue. Do not read those two as extra gates.
 const LATEST_ORG_REFRESH = sql`(
-    select max(d.data_refreshed_at) from datasets d where d.org_id = ${orgs.id}
+    select max(d.data_refreshed_at) from datasets d
+    where d.org_id = ${orgs.id} and not d.is_seed_data
   )`;
 
 type DrizzleClient = typeof dbAdmin;
@@ -116,9 +126,9 @@ export function buildEligibilityQuery(
  *     stays a bare status check, unlike getAgentEnabled's, since no ticket
  *     has asked for that nuance here yet)
  *   - subscription.plan='pro'
- *   - org has a non-null activeDataset, and at least one of its datasets was
- *     refreshed within the last 30 days (any dataset, not just the active one,
- *     per FR58)
+ *   - org has a non-null activeDataset, and at least one of its non-seed
+ *     datasets was refreshed within the last 30 days (any dataset, not just the
+ *     active one, per FR58; seed rows do not count as data the org received)
  *   - at least one org member has digest_preferences.cadence != 'off' (NULL
  *     defaults to 'weekly', so a user with no row counts as opted-in)
  *
@@ -145,11 +155,16 @@ export async function findEligibleOrgs(
 /**
  * Counts orgs that clear every eligibility gate except data freshness: paying,
  * active dataset, at least one opted-in member, but nothing new in 30 days on
- * any of their datasets.
+ * any of their non-seed datasets.
  * These are customers whose weekly digest has silently stopped. They are
  * invisible to findEligibleOrgs by construction, since they simply never appear
  * in its results, so the only way to see them was a hand-written join against
  * production. Logged once per sweep to make that a number instead.
+ *
+ * An org holding only seed rows is deliberately not counted here: its digest
+ * never started, so telling it the digest stopped would be false, and org 7 was
+ * told exactly that on 2026-11-15. The cost is that such an org is now in none
+ * of the three populations, which is an onboarding gap nobody surfaces yet.
  *
  * Bypasses RLS via dbAdmin, same as findEligibleOrgs: platform operation.
  */
@@ -203,6 +218,10 @@ export function buildStaleNudgeQuery(client: DrizzleClient, asOf: Date = new Dat
     .select({
       id: orgs.id,
       name: orgs.name,
+      // Non-null only because pausedForStaleData gates this same query on
+      // LATEST_ORG_REFRESH. The expression itself is NULL for an org whose only
+      // datasets are seed rows, and orchestrator.ts builds a job id from
+      // .getTime() on it, so loosening that WHERE turns this into a TypeError.
       dataRefreshedAt: sql<Date>`${LATEST_ORG_REFRESH}`.mapWith(datasets.dataRefreshedAt),
     })
     .from(orgs)
