@@ -431,11 +431,21 @@ jobs:
           echo "::error title=Playwright system dependencies failed::Three bounded attempts failed"
           exit 1
 
+      # Version key, same as the apt cache above and for the reason already given
+      # there: the browsers move only when Playwright does, so keying on the lockfile
+      # minted a fresh ~387MB entry for every unrelated dependency bump. That left 9
+      # distinct keys holding 5.66GB for the 2 Playwright versions CI has ever run.
+      #
+      # restore-keys is safe here specifically because "Install Playwright browsers"
+      # below has no `if:` and runs on a cache hit too. A prefix restore is a head
+      # start that install completes, never a wrong-version tree it would trust.
       - name: Restore Playwright browser cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
+          restore-keys: |
+            playwright-${{ runner.os }}-${{ runner.arch }}-
 
       # Browser downloads are idempotent and safe to retry. Each attempt has
       # its own deadline, while the step deadline guards the retry plumbing.
