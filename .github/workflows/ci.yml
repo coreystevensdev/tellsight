@@ -329,10 +329,10 @@ jobs:
           APT::Keep-Downloaded-Packages "true";
           EOF
 
-      # Caches the .deb files so a healthy mirror is needed once per Playwright
-      # version rather than once per run. On a hit apt installs from local files
-      # and never contacts the mirror, which is the only thing that has actually
-      # broken this job.
+      # Caches the .deb files so a healthy mirror is needed when the dependency
+      # list actually changes rather than once per run, or once per Playwright
+      # version. On a hit apt installs from local files and never contacts the
+      # mirror, which is the only thing that has actually broken this job.
       #
       # Keyed on the Playwright version, not the lockfile: the dependency list
       # only moves when Playwright does, and a lockfile key would miss on nearly
@@ -342,11 +342,25 @@ jobs:
         run: |
           echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
 
+      # restore-keys is what makes the bump itself survivable, and it is not
+      # decoration. A cache keyed on the thing being upgraded cannot protect the
+      # commit that upgrades it: the only run that can write main's entry for a new
+      # Playwright version is the post-merge run, which is the run that needs it.
+      # GitHub shares a default-branch cache down to every branch and never up from
+      # a PR ref, so on 2026-11-24 both dependabot PRs cached 1.65.1 against their
+      # own refs, main still owned only 1.65.0, and main took the cold path twice
+      # and went red twice on a slow mirror while the deploy skipped.
+      #
+      # The exact key stays, so each version still gets its own entry. The prefix
+      # fallback means a bump seeds from the previous version's .debs and apt fetches
+      # only the delta, which for a patch bump is usually nothing at all.
       - name: Restore apt archives for Playwright deps
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/apt-playwright
           key: apt-playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.version }}
+          restore-keys: |
+            apt-playwright-${{ runner.os }}-${{ runner.arch }}-
 
       # Retries only matter on a cache miss, which is once per Playwright
       # version. A hit installs from the seeded .debs and never touches a mirror.
