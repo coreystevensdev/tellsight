@@ -150,6 +150,7 @@ export function DashboardInsights({
             metadata={metadata}
             askFromChart={chartAsk}
             hasAuth={hasAuth}
+            tier={tier}
           />
         </div>
         <IndustryBenchmark businessType={businessType} teamSize={teamSize} className="mt-6" />
