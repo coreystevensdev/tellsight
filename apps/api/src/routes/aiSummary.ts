@@ -13,7 +13,7 @@ import { dbAdmin } from '../lib/db.js';
 import { trackEvent } from '../services/analytics/trackEvent.js';
 import { streamToSSE } from '../services/aiInterpretation/streamHandler.js';
 import { withRlsContext } from '../lib/rls.js';
-import { ValidationError, QuotaExceededError } from '../lib/appError.js';
+import { NotFoundError, ValidationError, QuotaExceededError } from '../lib/appError.js';
 import { logger } from '../lib/logger.js';
 import { aiSummaryTotal, aiTokensUsed, statCitationTotal } from '../lib/metrics.js';
 import { buildStatDetail } from '../services/curation/statDetail.js';
@@ -200,6 +200,15 @@ aiSummaryRouter.get('/:datasetId', subscriptionGate, async (req, res: Response) 
     return;
   }
 
+  // Nothing to summarise, and the model will write a paragraph about that
+  // anyway. A dataset the org does not own counts zero here too, so this is
+  // also what a stale or borrowed id gets, before it costs quota or a call.
+  const datasetSize = await dataRowsQueries.getRowCount(orgId, rawId, dbAdmin);
+  if (datasetSize === 0) {
+    logger.warn({ orgId, datasetId: rawId }, 'AI summary refused, dataset has no rows');
+    throw new NotFoundError('No data to summarize for this dataset');
+  }
+
   // quota gate, cache hits don't count, so this runs after the cache check
   const quota = AI_MONTHLY_QUOTA[tier] ?? AI_MONTHLY_QUOTA.free;
   const usageCount = await analyticsEventsQueries.getMonthlyAiUsageCount(orgId);
@@ -248,11 +257,8 @@ aiSummaryRouter.get('/:datasetId', subscriptionGate, async (req, res: Response) 
 
   // streaming runs outside the RLS transaction (holding a tx for 3-15s would starve the pool).
   // dbAdmin bypasses RLS, safe because the route is auth-gated and orgId comes from the JWT.
-  const [streamStart, datasetSize, profile] = await Promise.all([
-    Promise.resolve(Date.now()),
-    dataRowsQueries.getRowCount(orgId, rawId, dbAdmin),
-    orgsQueries.getBusinessProfile(orgId),
-  ]);
+  const streamStart = Date.now();
+  const profile = await orgsQueries.getBusinessProfile(orgId);
   const outcome = await streamToSSE(res, orgId, rawId, userId, tier, dbAdmin, profile);
 
   aiSummaryTotal.inc({
