@@ -75,11 +75,29 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     return;
   }
 
+  // Pro includes the Agent tier. The column is notNull default false and Stripe
+  // never wrote it, so before this every org that paid started with Ask a
+  // question locked behind an "Upgrade to Pro" button for the plan it had just
+  // bought. All three paying orgs were in that state on 2026-11-24.
+  //
+  // Granted here and nowhere else on purpose. Renewals arrive as
+  // customer.subscription.updated, so an admin who switches the agent off for a
+  // paying org (cost, abuse) is not overruled next month. Only a fresh checkout
+  // re-grants, which is the same purchase happening again. It also sits below the
+  // replay guard above, so a redelivered webhook does not re-grant what an admin
+  // has since revoked.
+  await subscriptionsQueries.updateAgentEnabled(orgId, true, dbAdmin);
+
   trackEvent(orgId, userId, ANALYTICS_EVENTS.SUBSCRIPTION_UPGRADED, {
     stripeSessionId: session.id,
   });
 
-  logger.info({ orgId, userId, sessionId: session.id }, 'Checkout completed, org upgraded to Pro');
+  trackEvent(orgId, userId, ANALYTICS_EVENTS.SUBSCRIPTION_AGENT_TIER_ENABLED, {
+    enabled: true,
+    grantedBy: 'pro_checkout',
+  });
+
+  logger.info({ orgId, userId, sessionId: session.id }, 'Checkout completed, org upgraded to Pro with the Agent tier');
 }
 
 // Stripe puts Checkout Session metadata on the session, not on the subscription
