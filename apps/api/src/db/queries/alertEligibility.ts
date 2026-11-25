@@ -1,7 +1,7 @@
 import { sql, and, eq, lt, isNotNull, exists, isNull, lte, or, desc } from 'drizzle-orm';
 
 import { dbAdmin } from '../../lib/db.js';
-import { orgs, subscriptions, alertRules } from '../schema.js';
+import { orgs, subscriptions, alertRules, datasets } from '../schema.js';
 import { canceledWithGracePeriod } from './subscriptionEligibility.js';
 
 export interface EligibleOrg {
@@ -38,10 +38,14 @@ export function buildEligibilityQuery(
       ),
   );
 
+  // evaluateOrg reads the active dataset, so a seed dataset means every threshold
+  // is measured against rows we generated at signup. Excluded here rather than in
+  // the evaluator, so fixture data cannot fire an alert about the owner's business.
   const conditions = [
     or(eq(subscriptions.status, 'active'), canceledWithGracePeriod(asOf)),
     eq(subscriptions.plan, 'pro'),
     isNotNull(orgs.activeDatasetId),
+    eq(datasets.isSeedData, false),
     hasEnabledRule,
   ];
 
@@ -54,6 +58,7 @@ export function buildEligibilityQuery(
     })
     .from(orgs)
     .innerJoin(subscriptions, eq(subscriptions.orgId, orgs.id))
+    .innerJoin(datasets, eq(datasets.id, orgs.activeDatasetId))
     .where(and(...conditions))
     .orderBy(desc(orgs.id))
     .limit(pageSize);
@@ -72,7 +77,7 @@ export function buildEligibilityQuery(
  *     stays a bare status check, unlike getAgentEnabled's, since no ticket
  *     has asked for that nuance here yet)
  *   - subscription.plan='pro'
- *   - org has a non-null activeDatasetId
+ *   - org has a non-null activeDatasetId, and that dataset is not seed data
  *   - at least one enabled, non-deleted, non-muted alert_rules row
  *
  * Pagination is keyset on orgs.id DESC, same shape as findEligibleOrgs in
