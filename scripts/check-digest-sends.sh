@@ -46,24 +46,24 @@ try {
   `;
   console.log('TOTALS ' + JSON.stringify(totals));
 
-  // Counting each predicate separately answers the wrong question: five counts
-  // can all be non-zero while no single org satisfies all five. This is the
-  // same join findEligibleOrgs runs. A missing digest_preferences row means
-  // eligible, not opted out, which is why the LEFT JOIN allows a NULL cadence.
-  const [eligibility] = await sql`
-    SELECT count(*)::int AS eligible_orgs
-    FROM orgs o
-    JOIN subscriptions s ON s.org_id = o.id
-    JOIN datasets d ON d.id = o.active_dataset_id
-    WHERE s.status = 'active' AND s.plan = 'pro'
-      AND o.active_dataset_id IS NOT NULL
-      AND d.created_at >= now() - interval '30 days'
-      AND EXISTS (
-        SELECT 1 FROM user_orgs uo
-        LEFT JOIN digest_preferences dp ON dp.user_id = uo.user_id
-        WHERE uo.org_id = o.id AND (dp.cadence IS NULL OR dp.cadence <> 'off'))
-  `;
-  console.log('ELIGIBILITY ' + JSON.stringify(eligibility));
+  // Calls the shipped gate instead of restating it. The hand-written join that
+  // used to live here drifted: it read datasets.created_at and only the active
+  // dataset, while the gate moved to max(data_refreshed_at) across the non-seed
+  // datasets of an org (DW-281, then PRs 432 and 435). On 2026-11-25 it
+  // answered 0 for an org that had been sent a digest three days earlier, which
+  // is a failure mode a census has no business having.
+  //
+  // Neither a single quote nor a hash is safe in this heredoc. It sits inside a
+  // command substitution, and that parser still reads both while hunting the
+  // closing paren, so either one swallows it and bash reports EOF at line 30.
+  const queries = await import('/app/apps/api/dist/db/queries/index.js');
+  const eligible = await queries.digestEligibilityQueries.findEligibleOrgs();
+  const paused = await queries.digestEligibilityQueries.countOrgsPausedForStaleData();
+  console.log('ELIGIBILITY ' + JSON.stringify({
+    eligible_orgs: eligible.length,
+    eligible_org_ids: eligible.map((o) => o.id),
+    paused_for_stale_data: paused,
+  }));
 
   const recent = await sql`
     SELECT week_start::date AS week,
@@ -88,16 +88,23 @@ SCRIPT_B64=$(printf '%s' "$NODE_SCRIPT" | base64)
 
 # set -e first, otherwise a failing step in the middle still leaves SSM
 # reporting Success because the last command exited 0.
-# The script has to land in /app, not /tmp: node resolves bare imports relative
-# to the file, and node_modules only exists at the container's workdir.
+# The script has to land in the api workspace, not /app and not /tmp: node
+# resolves bare imports relative to the file, and pnpm leaves `postgres` in
+# apps/api/node_modules rather than hoisting it to the workdir root. At /app it
+# dies with ERR_MODULE_NOT_FOUND before reaching the database.
+#
+# The node exit code is captured rather than left to abort the script, so both
+# rm steps still run when a query throws. Without it, set -e skips them and
+# leaves the temp file inside the running container.
 CMDS=$(jq -nc --arg b64 "$SCRIPT_B64" --arg since "$SINCE" '[
   "set -e",
   "cd /opt/tellsight",
   "printf %s \($b64) | base64 -d > /tmp/digest-check.mjs",
-  "docker compose cp /tmp/digest-check.mjs api:/app/digest-check.mjs",
-  "docker compose exec -T api node /app/digest-check.mjs \($since)",
-  "docker compose exec -T api rm -f /app/digest-check.mjs",
-  "rm -f /tmp/digest-check.mjs"
+  "docker compose cp /tmp/digest-check.mjs api:/app/apps/api/digest-check.mjs",
+  "docker compose exec -T api node /app/apps/api/digest-check.mjs \($since) || rc=$?",
+  "docker compose exec -T api rm -f /app/apps/api/digest-check.mjs",
+  "rm -f /tmp/digest-check.mjs",
+  "exit ${rc:-0}"
 ]')
 
 CMD_ID=$(aws ssm send-command \
