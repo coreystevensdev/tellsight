@@ -201,6 +201,23 @@ describe('DashboardPage chart failures', () => {
     expect(props.initialData).toMatchObject({ datasetId: null });
   });
 
+  // The API answers 401 when a refresh cookie is all that is left and the proxy
+  // could not mint from it, a revoked token or a lost rotation race. The page is
+  // public, so that visitor gets the demo, not an empty shell.
+  it('asks again as a visitor when the charts call is refused as signed out', async () => {
+    cookieJar.entries = [{ name: 'refresh_token', value: 'revoked' }];
+    apiServer.mockImplementation(async (path: string, opts?: { cookies?: string }) => {
+      if (!String(path).includes('/dashboard/charts')) throw new ApiServerError('NOT_FOUND', 'no route', 404);
+      if (opts?.cookies) throw new ApiServerError('AUTHENTICATION_REQUIRED', 'Session expired', 401);
+      return { data: { ...CHARTS, datasetId: null, isDemo: true } };
+    });
+
+    const props = await renderPage();
+
+    expect(props.initialData).toMatchObject({ isDemo: true });
+    expect(props.chartsUnavailable).toBe(false);
+  });
+
   // Anything that is not an ApiServerError is a bug rather than an upstream
   // failure, and swallowing it would hide it behind an empty dashboard.
   it('rethrows a non-API error rather than blanking the page', async () => {
