@@ -6,6 +6,7 @@ const mockUpdateSubscriptionPeriod = vi.fn();
 const mockUpdateSubscriptionStatus = vi.fn();
 const mockGetSubscriptionByStripeId = vi.fn();
 const mockGetSubscriptionByOrgId = vi.fn();
+const mockUpdateAgentEnabled = vi.fn();
 const mockGetOrgOwnerId = vi.fn();
 const mockTrackEvent = vi.fn();
 const mockAuditRecord = vi.fn().mockResolvedValue(undefined);
@@ -17,6 +18,7 @@ vi.mock('../../db/queries/index.js', () => ({
     updateSubscriptionStatus: mockUpdateSubscriptionStatus,
     getSubscriptionByStripeId: mockGetSubscriptionByStripeId,
     getSubscriptionByOrgId: mockGetSubscriptionByOrgId,
+    updateAgentEnabled: mockUpdateAgentEnabled,
   },
   userOrgsQueries: {
     getOrgOwnerId: mockGetOrgOwnerId,
@@ -116,6 +118,12 @@ describe('webhookHandler', () => {
   });
 
   describe('checkout.session.completed', () => {
+    // Checkout fires two events since Pro began granting the Agent tier, so a
+    // bare call count no longer means "one upgrade". These assertions mean the
+    // upgrade specifically, which is what they were always checking.
+    const upgradesCounted = () =>
+      mockTrackEvent.mock.calls.filter((call) => call[2] === 'subscription.upgraded').length;
+
     it('upserts subscription and fires analytics event', async () => {
       mockUpsertSubscription.mockResolvedValueOnce({ id: 1 });
 
@@ -138,6 +146,36 @@ describe('webhookHandler', () => {
       );
     });
 
+    // Pro grants the Agent tier as of 2026-11-24. Before this, agent_enabled was
+    // notNull default false and Stripe never touched it, so every org that paid
+    // started with Ask a question locked behind an "Upgrade to Pro" button it had
+    // already bought. Granted here rather than in the upsert so the replay guard
+    // above still decides whether this is a genuine first activation.
+    it('grants the Agent tier when an org completes checkout', async () => {
+      mockUpsertSubscription.mockResolvedValueOnce({ id: 1 });
+
+      await handleWebhookEvent(fakeCheckoutEvent());
+
+      expect(mockUpdateAgentEnabled).toHaveBeenCalledWith(10, true, expect.anything());
+      expect(mockTrackEvent).toHaveBeenCalledWith(
+        10,
+        1,
+        'subscription.agent_tier_enabled',
+        { enabled: true, grantedBy: 'pro_checkout' },
+      );
+    });
+
+    // Renewals arrive as customer.subscription.updated, not checkout, so an admin
+    // who switches the agent off for a paying org keeps it off. Only a fresh
+    // checkout re-grants, which is the same thing happening again.
+    it('does not re-grant the Agent tier on a redelivered checkout', async () => {
+      mockUpsertSubscription.mockResolvedValueOnce(null);
+
+      await handleWebhookEvent(fakeCheckoutEvent());
+
+      expect(mockUpdateAgentEnabled).not.toHaveBeenCalled();
+    });
+
     it('is idempotent, calling twice does not error', async () => {
       mockUpsertSubscription.mockResolvedValue({ id: 1 });
 
@@ -152,13 +190,13 @@ describe('webhookHandler', () => {
       // already holding these exact values, writes nothing, and returns null.
       mockUpsertSubscription.mockResolvedValueOnce({ id: 1 });
       await handleWebhookEvent(fakeCheckoutEvent());
-      expect(mockTrackEvent).toHaveBeenCalledTimes(1);
+      expect(upgradesCounted()).toBe(1);
 
       mockUpsertSubscription.mockResolvedValueOnce(null);
       await handleWebhookEvent(fakeCheckoutEvent());
 
       expect(mockUpsertSubscription).toHaveBeenCalledTimes(2);
-      expect(mockTrackEvent).toHaveBeenCalledTimes(1);
+      expect(upgradesCounted()).toBe(1);
     });
 
     // The reason this moved into the upsert: the old guard read the row, compared,
@@ -177,7 +215,9 @@ describe('webhookHandler', () => {
       ]);
 
       expect(mockUpsertSubscription).toHaveBeenCalledTimes(3);
-      expect(mockTrackEvent).toHaveBeenCalledTimes(1);
+      expect(upgradesCounted()).toBe(1);
+      // And the grant is subject to the same guard, not fired per delivery.
+      expect(mockUpdateAgentEnabled).toHaveBeenCalledTimes(1);
     });
 
     it('skips processing when metadata is missing orgId', async () => {
