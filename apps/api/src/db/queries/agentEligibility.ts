@@ -1,7 +1,7 @@
 import { and, desc, eq, isNotNull, lt, or } from 'drizzle-orm';
 
 import { dbAdmin } from '../../lib/db.js';
-import { orgs, subscriptions } from '../schema.js';
+import { orgs, subscriptions, datasets } from '../schema.js';
 import { canceledWithGracePeriod } from './subscriptionEligibility.js';
 
 export interface EligibleOrg {
@@ -24,11 +24,15 @@ export function buildEligibilityQuery(
   pageSize = 500,
   asOf: Date = new Date(),
 ) {
+  // The agent proposes against the active dataset, so a seed dataset means it
+  // would reason about rows we generated at signup and surface them as the
+  // owner's own numbers.
   const conditions = [
     or(eq(subscriptions.status, 'active'), canceledWithGracePeriod(asOf)),
     eq(subscriptions.plan, 'pro'),
     eq(subscriptions.agentEnabled, true),
     isNotNull(orgs.activeDatasetId),
+    eq(datasets.isSeedData, false),
   ];
 
   if (cursor !== undefined) conditions.push(lt(orgs.id, cursor));
@@ -40,6 +44,7 @@ export function buildEligibilityQuery(
     })
     .from(orgs)
     .innerJoin(subscriptions, eq(subscriptions.orgId, orgs.id))
+    .innerJoin(datasets, eq(datasets.id, orgs.activeDatasetId))
     .where(and(...conditions))
     .orderBy(desc(orgs.id))
     .limit(pageSize);
@@ -55,7 +60,7 @@ export function buildEligibilityQuery(
  *     subscriptions.ts checks -- the active branch here stays a bare status
  *     check, unlike getAgentEnabled's, since no ticket has asked for that yet)
  *   - subscription.plan='pro' AND agent_enabled=true
- *   - org has a non-null activeDatasetId
+ *   - org has a non-null activeDatasetId, and that dataset is not seed data
  *
  * Pagination is keyset on orgs.id DESC, same shape as findEligibleOrgs in
  * alertEligibility.ts.

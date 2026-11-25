@@ -17,7 +17,13 @@ const inertDb = drizzle(inertClient, { schema });
 const mockLimit = vi.fn<(n: number) => Promise<unknown[]>>();
 const mockOrderBy = vi.fn(() => ({ limit: mockLimit }));
 const mockWhere = vi.fn(() => ({ orderBy: mockOrderBy }));
-const mockInnerJoin = vi.fn(() => ({ where: mockWhere }));
+// Two joins now: subscriptions, then the active dataset for the seed check.
+// Declared as a function so it can name mockInnerJoin before it exists; the
+// reference only resolves when the chain is walked.
+function joinResult() {
+  return { innerJoin: mockInnerJoin, where: mockWhere };
+}
+const mockInnerJoin = vi.fn(joinResult);
 const mockFrom = vi.fn(() => ({ innerJoin: mockInnerJoin }));
 
 vi.mock('../../lib/db.js', () => ({
@@ -44,6 +50,7 @@ describe('buildEligibilityQuery: SQL shape', () => {
     expect(sql).toMatch(/"subscriptions"\."status"\s*=\s*\$/);
     expect(sql).toMatch(/"subscriptions"\."plan"\s*=\s*\$/);
     expect(sql).toMatch(/"orgs"\."active_dataset_id"\s+is not null/i);
+    expect(sql).toMatch(/"datasets"\."is_seed_data"\s*=\s*\$/);
     expect(sql.toLowerCase()).toContain('exists');
     expect(sql).toMatch(/"alert_rules"\."enabled"\s*=\s*\$/);
     expect(sql).toMatch(/"alert_rules"\."deleted_at"\s+is\s+null/i);

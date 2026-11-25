@@ -20,7 +20,7 @@ const seeded: Seed[] = [];
 async function seedOrg(
   label: string,
   sub: { status: string; plan?: string; agentEnabled?: boolean; currentPeriodEnd?: Date | null },
-  opts: { withDataset?: boolean } = {},
+  opts: { withDataset?: boolean; activeIsSeed?: boolean; alsoSeedDataset?: boolean } = {},
 ): Promise<number> {
   const [org] = await dbAdmin
     .insert(orgs)
@@ -29,9 +29,16 @@ async function seedOrg(
   const orgId = org!.id;
 
   if (opts.withDataset ?? true) {
+    // alsoSeedDataset gives the org a seed dataset it is NOT pointed at, which is
+    // what separates "the active dataset is seed" from "the org owns a seed
+    // dataset". An exists-over-all-datasets predicate passes the first case and
+    // wrongly fails this one.
+    if (opts.alsoSeedDataset) {
+      await dbAdmin.insert(datasets).values({ orgId, name: 'Demo Data', isSeedData: true });
+    }
     const [dataset] = await dbAdmin
       .insert(datasets)
-      .values({ orgId, name: 'Test Dataset' })
+      .values({ orgId, name: 'Test Dataset', isSeedData: opts.activeIsSeed ?? false })
       .returning({ id: datasets.id });
     await dbAdmin.update(orgs).set({ activeDatasetId: dataset!.id }).where(eq(orgs.id, orgId));
   }
@@ -60,6 +67,8 @@ beforeAll(async () => {
   await seedOrg('active-not-pro', { status: 'active', plan: 'free' });
   await seedOrg('active-agent-disabled', { status: 'active', agentEnabled: false });
   await seedOrg('active-no-dataset', { status: 'active' }, { withDataset: false });
+  await seedOrg('active-seed-active-dataset', { status: 'active' }, { activeIsSeed: true });
+  await seedOrg('active-real-plus-seed-dataset', { status: 'active' }, { alsoSeedDataset: true });
 });
 
 afterAll(async () => {
@@ -97,6 +106,8 @@ describe('findEligibleOrgs against real Postgres (DW-194 row-level coverage)', (
     expect(matchedLabels).not.toContain('active-not-pro');
     expect(matchedLabels).not.toContain('active-agent-disabled');
     expect(matchedLabels).not.toContain('active-no-dataset');
+    expect(matchedLabels).not.toContain('active-seed-active-dataset');
+    expect(matchedLabels).toContain('active-real-plus-seed-dataset');
   });
 
   it('excludes a canceled org once asOf is pinned past its grace period', async () => {
