@@ -298,6 +298,39 @@ describe('auth routes', () => {
       expect(body.error.code).toBe('AUTHENTICATION_REQUIRED');
       expect(body.error.message).toBe('Refresh token required');
     });
+
+    // Revoked by a password reset, burned by reuse detection, or pointing at a
+    // membership that is gone. Nothing else removes the cookie for seven days,
+    // and the charts route reads its presence as a session worth refreshing.
+    it('clears both cookies when the token can no longer mint', async () => {
+      const { AuthenticationError } = await import('../lib/appError.js');
+      mockRotateRefreshToken.mockRejectedValueOnce(new AuthenticationError('Invalid refresh token'));
+
+      const res = await fetch(`${baseUrl}/auth/refresh`, {
+        method: 'POST',
+        headers: { Cookie: 'refresh_token=dead' },
+      });
+
+      expect(res.status).toBe(401);
+      const cookies = parseCookies(res);
+      expect(cookies.refresh_token).toBe('');
+      expect(cookies.access_token).toBe('');
+    });
+
+    // The winner of the race already set a fresh pair on its own response.
+    // Clearing here would land after it and sign the user out.
+    it('leaves the cookies alone when the rotation lost a race', async () => {
+      const { RefreshRaceError } = await import('../lib/appError.js');
+      mockRotateRefreshToken.mockRejectedValueOnce(new RefreshRaceError());
+
+      const res = await fetch(`${baseUrl}/auth/refresh`, {
+        method: 'POST',
+        headers: { Cookie: 'refresh_token=raced' },
+      });
+
+      expect(res.status).toBe(409);
+      expect(res.headers.getSetCookie()).toHaveLength(0);
+    });
   });
 
   describe('POST /auth/logout', () => {

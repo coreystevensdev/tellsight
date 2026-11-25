@@ -182,7 +182,17 @@ router.post('/auth/refresh', rateLimitAuth, async (req: Request, res: Response) 
     throw new AuthenticationError('Refresh token required');
   }
 
-  const { accessToken, refreshToken } = await rotateRefreshToken(rawToken);
+  // Revoked, reused or orphaned from its membership: such a token will never
+  // mint, and left alone it sits in the jar for seven days telling the charts
+  // route there is a session to refresh. A lost race is a different error and
+  // keeps its cookies, the winner's pair is already on the way.
+  const { accessToken, refreshToken } = await rotateRefreshToken(rawToken).catch((err: unknown) => {
+    if (err instanceof AuthenticationError) {
+      clearCookie(res, AUTH.COOKIE_NAMES.ACCESS_TOKEN);
+      clearCookie(res, AUTH.COOKIE_NAMES.REFRESH_TOKEN);
+    }
+    throw err;
+  });
 
   setCookie(res, AUTH.COOKIE_NAMES.ACCESS_TOKEN, accessToken, 15 * 60);
   setCookie(res, AUTH.COOKIE_NAMES.REFRESH_TOKEN, refreshToken, 7 * 24 * 60 * 60);

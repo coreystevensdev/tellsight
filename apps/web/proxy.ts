@@ -108,7 +108,11 @@ async function mintSession(request: NextRequest): Promise<string[] | null> {
     // tempting is not: this request still holds the token the winner revoked,
     // so presenting it again is reuse and takes every session down. The browser
     // has the winner's cookie by the next navigation.
-    if (!res.ok) return null;
+    //
+    // 401 is the one failure that comes back with cookies: the API clears a
+    // refresh token that can never mint. This call is server to server, so
+    // those lines reach the browser only if they are returned from here.
+    if (!res.ok && res.status !== 401) return null;
     const cookies = res.headers.getSetCookie();
     return cookies.length > 0 ? cookies : null;
   } catch {
@@ -130,7 +134,11 @@ export async function proxy(request: NextRequest) {
     if (minted) {
       for (const line of minted) {
         const pair = nameValue(line);
-        if (pair) request.cookies.set(pair[0], pair[1]);
+        if (!pair) continue;
+        // An empty value is the API clearing a dead cookie. Setting it would
+        // leave the name in the jar and the render reads presence as signed in.
+        if (pair[1]) request.cookies.set(pair[0], pair[1]);
+        else request.cookies.delete(pair[0]);
       }
       token = request.cookies.get(ACCESS_TOKEN)?.value;
     }
