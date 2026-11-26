@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
 import { SWRConfig } from 'swr';
 import type { ChartData } from 'shared/types';
 
 import { apiClient } from '@/lib/api-client';
 import { useDashboardData } from './useDashboardData';
+import { EMPTY_FILTERS } from './filterParams';
 
 vi.mock('@/lib/api-client', () => ({
   apiClient: vi.fn(),
@@ -84,11 +85,12 @@ describe('useDashboardData', () => {
     expect(result.current.hasData).toBe(true);
   });
 
-  // keepPreviousData is the point: a failed revalidation must not blank a chart
-  // that was already on screen. The hook also drops SWR's error, so this is the
-  // only observable either way, and anything added to surface that error has to
-  // come back here rather than slip past.
-  it('keeps the payload it already had when the call throws', async () => {
+  // Not keepPreviousData: the key never changes here, so SWR has no previous
+  // data to keep. Two things guarantee what this asserts, fallbackData and the
+  // `data = initialData` destructuring default, and removing either one alone
+  // leaves it green, so it pins the guarantee rather than a mechanism. The hook
+  // also drops SWR's error, so this is the only observable either way.
+  it('falls back to the initial payload when the first call throws', async () => {
     mockApiClient.mockRejectedValue(new Error('refresh failed'));
 
     const { result } = renderHook(() => useDashboardData(DEMO), { wrapper });
@@ -96,5 +98,29 @@ describe('useDashboardData', () => {
     await waitFor(() => expect(mockApiClient).toHaveBeenCalled());
 
     expect(result.current.data).toEqual(DEMO);
+  });
+
+  // keepPreviousData only substitutes on a key change, so the test above cannot
+  // reach it however it is worded. A filter switch is the real case: the chart
+  // on screen has to survive the new key failing, rather than snapping back to
+  // the server's payload from before the org had loaded anything.
+  it('keeps the resolved payload when a filter switch then fails', async () => {
+    mockApiClient.mockResolvedValueOnce({ data: OWN });
+
+    const { result } = renderHook(() => useDashboardData(DEMO), { wrapper });
+
+    await waitFor(() => expect(result.current.data.datasetId).toBe(7));
+
+    mockApiClient.mockRejectedValue(new Error('revalidation failed'));
+    act(() => {
+      result.current.applyFilters({ ...EMPTY_FILTERS, category: 'Payroll' });
+    });
+
+    await waitFor(() => expect(mockApiClient).toHaveBeenCalledTimes(2));
+    expect(mockApiClient.mock.calls[1]?.[0]).toBe('/dashboard/charts?categories=Payroll');
+    // OWN, not DEMO: falling back to initialData here would replace the chart
+    // the reader is looking at with the pre-session one.
+    expect(result.current.data.datasetId).toBe(7);
+    expect(result.current.data.isDemo).toBe(false);
   });
 });
