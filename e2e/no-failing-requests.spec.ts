@@ -59,12 +59,16 @@ for (const route of PUBLIC_ROUTES) {
 // connector gate answers 501 precisely so a caller can tell a switched-off
 // integration from a broken one.
 //
-// The dashboard sentence above holds only for a visitor carrying no cookies,
-// which is the only kind the fixture below builds. The charts route now answers
-// 401 when a refresh cookie is present and the proxy could not mint from it, so
-// the client refreshes rather than being handed the demo. Give this fixture a
-// real login or a refresh cookie and it fails on that, which is the route
-// working.
+// The dashboard sentence above is now conditional, and neither fixture here can
+// show it. The charts route answers 401 when a refresh cookie is present and the
+// proxy could not mint from it, so the client can refresh rather than be handed
+// the demo. Reaching that needs an unusable access token AND an unmintable
+// refresh cookie together. authenticateAs mints a live 15-minute access token
+// and sets no refresh cookie at all, so the signed-in run below takes the 200
+// path, and the signed-out run carries nothing and takes it too. A refresh
+// cookie alone would not do it either: a mintable one mints, and the render
+// never sees a 401. So this file does not cover the new path, rather than
+// covering it and tolerating it.
 //
 // The list is deliberately exact pairs rather than a rule. A new failing
 // request still fails, which is the only property that makes this gate worth

@@ -53,13 +53,30 @@ try {
   // answered 0 for an org that had been sent a digest three days earlier, which
   // is a failure mode a census has no business having.
   //
-  // Neither a single quote nor a hash is safe in this heredoc. It sits inside a
-  // command substitution, and that parser still reads both while hunting the
-  // closing paren, so either one swallows it and bash reports EOF at line 30.
+  // Two things to avoid in this heredoc, both narrower than they sound. It sits
+  // inside a command substitution and that parser still tracks quotes and
+  // comments while hunting the closing paren, so a lone apostrophe opens a
+  // quote that never closes, and a hash comments out the rest of its line
+  // including any paren that line was relying on. Balanced quotes are fine, as
+  // the import below shows, and so is a hash with no open paren ahead of it.
+  // Either failure reports EOF at line 30, nowhere near the real line.
   const queries = await import('/app/apps/api/dist/db/queries/index.js');
-  const eligible = await queries.digestEligibilityQueries.findEligibleOrgs();
-  const paused = await queries.digestEligibilityQueries.countOrgsPausedForStaleData();
+  const q = queries.digestEligibilityQueries;
+  // One asOf for both numbers, which is what the function doc asks for: a
+  // second new Date() lets a grace period flip between the two reads. And the
+  // cursor is walked rather than ignored, because findEligibleOrgs pages at 500
+  // and reporting one page as eligible_orgs would read as a census.
+  const asOf = new Date();
+  const eligible = [];
+  for (let cursor; ; ) {
+    const page = await q.findEligibleOrgs(cursor, 500, asOf);
+    eligible.push(...page);
+    if (page.length < 500) break;
+    cursor = Math.min(...page.map((o) => o.id));
+  }
+  const paused = await q.countOrgsPausedForStaleData(asOf);
   console.log('ELIGIBILITY ' + JSON.stringify({
+    as_of: asOf.toISOString(),
     eligible_orgs: eligible.length,
     eligible_org_ids: eligible.map((o) => o.id),
     paused_for_stale_data: paused,
