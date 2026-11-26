@@ -89,3 +89,9 @@ docs/pro-web-search-plan.md
 docs/quickbooks-implementation-plan.md
 docs/deployment-roadmap_explained.md
 .bmad-loop/
+
+# Browser captures land in the repo root, which is nobody's output directory:
+# generate-screenshots.ts writes to docs/screenshots and those are tracked on
+# purpose, as is apps/web/public/dashboard-preview.png. Anchored so it only
+# catches the root.
+/*.png
