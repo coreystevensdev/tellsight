@@ -85,6 +85,54 @@ describe('DashboardPage summary source', () => {
     expect(paths.some((p) => p.includes('/latest'))).toBe(false);
   });
 
+  // A 401 means the API refused these cookies, so the fallback answer is the
+  // seed org's and its datasetId is too. Asking the protected /latest for it
+  // spends a refused cookie on another org's dataset and renders nothing.
+  it('reads the public cached summary after the charts call falls back', async () => {
+    signedIn();
+    apiServer.mockImplementation(async (path: string, opts?: { cookies?: string }) => {
+      const p = String(path);
+      if (p.includes('/dashboard/charts')) {
+        if (opts?.cookies) throw new ApiServerError('AUTHENTICATION_REQUIRED', 'Session expired', 401);
+        return { data: { ...CHARTS, isDemo: true, orgName: 'Sunrise Cafe' } };
+      }
+      if (p.includes('/cached')) return { data: { content: 'seed summary', metadata: null } };
+      throw new ApiServerError('NOT_FOUND', 'no route', 404);
+    });
+
+    const props = await renderPage();
+
+    expect(props.cachedSummary).toBe('seed summary');
+    const paths = apiServer.mock.calls.map(([p]) => String(p));
+    expect(paths.some((p) => p.includes('/latest'))).toBe(false);
+  });
+
+  // The whole fan-out, because the summary route is only one of three calls the
+  // cookie used to reach. tier catches to 'free', so a Pro org got free-tier
+  // gating beside demo charts, which is the defect #434 fixed by another route.
+  it('asks for neither tier nor profile after the charts call falls back', async () => {
+    signedIn();
+    apiServer.mockImplementation(async (path: string, opts?: { cookies?: string }) => {
+      const p = String(path);
+      if (p.includes('/dashboard/charts')) {
+        if (opts?.cookies) throw new ApiServerError('AUTHENTICATION_REQUIRED', 'Session expired', 401);
+        return { data: { ...CHARTS, isDemo: true } };
+      }
+      if (p.includes('/cached')) return { data: { content: 'seed', metadata: null } };
+      throw new ApiServerError('NOT_FOUND', 'no route', 404);
+    });
+
+    const props = await renderPage();
+
+    expect(apiServer.mock.calls.map(([p]) => String(p))).toEqual([
+      '/dashboard/charts',
+      '/dashboard/charts',
+      '/ai-summaries/7/cached',
+    ]);
+    expect(props.tier).toBeUndefined();
+    expect(props.needsOnboarding).toBe(false);
+  });
+
   it('reads the protected latest summary for a signed-in user', async () => {
     signedIn();
     respond({

@@ -76,12 +76,15 @@ async function fetchTier(cookieHeader: string): Promise<SubscriptionTier> {
 
 async function fetchCharts(cookieHeader: string) {
   try {
-    return await apiServer<ChartData>('/dashboard/charts', { cookies: cookieHeader });
+    const res = await apiServer<ChartData>('/dashboard/charts', { cookies: cookieHeader });
+    return { data: res.data, servedAnonymously: false };
   } catch (err) {
-    // 401 means a refresh cookie the proxy could not mint from, revoked or
-    // beaten in a rotation race. This page is public, so ask as a visitor.
+    // 401 means a refresh cookie the proxy could not mint from: revoked, beaten
+    // in a rotation race, or a prefetch, which skips minting on purpose. This
+    // page is public, so ask as a visitor and say that is what happened.
     if (err instanceof ApiServerError && err.statusCode === 401) {
-      return apiServer<ChartData>('/dashboard/charts');
+      const res = await apiServer<ChartData>('/dashboard/charts');
+      return { data: res.data, servedAnonymously: true };
     }
     throw err;
   }
@@ -94,16 +97,17 @@ export default async function DashboardPage() {
     .map((c) => `${c.name}=${c.value}`)
     .join('; ');
 
-  const hasAuth = cookieStore.has(AUTH.COOKIE_NAMES.ACCESS_TOKEN);
-
   let chartData: ChartData;
   // "I could not ask" and "there is nothing there" are different facts and this
   // catch used to report the second for both. EMPTY_CHART_DATA carries
   // demoState 'empty', so a 429 or a 502 rendered "No data yet, upload a CSV"
   // at a reader whose data was fine, with a 200 and no error anywhere.
   let chartsUnavailable = false;
+  let servedAnonymously = false;
   try {
-    chartData = (await fetchCharts(cookieHeader)).data;
+    const charts = await fetchCharts(cookieHeader);
+    chartData = charts.data;
+    servedAnonymously = charts.servedAnonymously;
   } catch (err) {
     if (err instanceof ApiServerError) {
       chartData = EMPTY_CHART_DATA;
@@ -112,6 +116,13 @@ export default async function DashboardPage() {
       throw err;
     }
   }
+
+  // Cookie presence alone said signed in, which stopped being true the moment
+  // the charts answer came from asking as a visitor: that datasetId belongs to
+  // the seed org, and the three calls below would spend a cookie the API has
+  // already refused on it. A 429 or a 502 is different and keeps the cookie,
+  // since nothing there says the session is bad.
+  const hasAuth = cookieStore.has(AUTH.COOKIE_NAMES.ACCESS_TOKEN) && !servedAnonymously;
 
   // Cached summary flows through the same props whether the user is anonymous
   // (seed org, public /cached) or authenticated (own org, protected /latest).
