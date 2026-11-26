@@ -91,6 +91,7 @@ vi.mock('../middleware/rateLimiter.js', () => ({
 }));
 
 const { AuthenticationError } = await import('../lib/appError.js');
+const { logger } = await import('../lib/logger.js');
 const { createTestApp } = await import('../test/helpers/testApp.js');
 const { default: dashboardRouter } = await import('./dashboard.js');
 
@@ -197,6 +198,14 @@ describe('GET /dashboard/charts', () => {
 
     expect(res.status).toBe(401);
     expect(mockGetSeedOrgId).not.toHaveBeenCalled();
+    // The route's two observable effects, asserted because a refactor that
+    // moved the throw below them would still answer 401 while recording a
+    // dashboard view and a served line for a request that served nothing.
+    expect(mockTrackEvent).not.toHaveBeenCalled();
+    expect(logger.info).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'Dashboard charts served',
+    );
   });
 
   it('answers 401 when the access token is dead and a refresh cookie can replace it', async () => {

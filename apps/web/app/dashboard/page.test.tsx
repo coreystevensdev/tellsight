@@ -206,16 +206,25 @@ describe('DashboardPage chart failures', () => {
   // public, so that visitor gets the demo, not an empty shell.
   it('asks again as a visitor when the charts call is refused as signed out', async () => {
     cookieJar.entries = [{ name: 'refresh_token', value: 'revoked' }];
+    const chartCalls: (string | undefined)[] = [];
     apiServer.mockImplementation(async (path: string, opts?: { cookies?: string }) => {
       if (!String(path).includes('/dashboard/charts')) throw new ApiServerError('NOT_FOUND', 'no route', 404);
+      chartCalls.push(opts?.cookies);
       if (opts?.cookies) throw new ApiServerError('AUTHENTICATION_REQUIRED', 'Session expired', 401);
-      return { data: { ...CHARTS, datasetId: null, isDemo: true } };
+      // orgName is the discriminator, not isDemo: EMPTY_CHART_DATA carries
+      // isDemo true as well, so asserting it passes just as happily on the
+      // catch path this test exists to rule out.
+      return { data: { ...CHARTS, datasetId: null, isDemo: true, orgName: 'Sunrise Cafe' } };
     });
 
     const props = await renderPage();
 
-    expect(props.initialData).toMatchObject({ isDemo: true });
+    expect(props.initialData).toMatchObject({ isDemo: true, orgName: 'Sunrise Cafe' });
     expect(props.chartsUnavailable).toBe(false);
+    // Two calls, and the retry carries no cookies. The fan-out suite below pins
+    // an exact count for every other render and skipped this path, so the one
+    // render that spends two points of the public budget was the unpinned one.
+    expect(chartCalls).toEqual(['refresh_token=revoked', undefined]);
   });
 
   // Anything that is not an ApiServerError is a bug rather than an upstream
