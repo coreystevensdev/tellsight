@@ -42,6 +42,7 @@ const mockGetLatestSummary = vi.fn();
 const mockGetMonthlyAiUsageCount = vi.fn().mockResolvedValue(0);
 const mockGetRowsByDataset = vi.fn().mockResolvedValue([]);
 const mockGetBusinessProfile = vi.fn().mockResolvedValue(null);
+const mockGetRowCount = vi.fn().mockResolvedValue(100);
 vi.mock('../db/queries/index.js', () => ({
   aiSummariesQueries: {
     getCachedSummary: (...args: unknown[]) => mockGetCachedSummary(...args),
@@ -51,7 +52,7 @@ vi.mock('../db/queries/index.js', () => ({
     getMonthlyAiUsageCount: (...args: unknown[]) => mockGetMonthlyAiUsageCount(...args),
   },
   dataRowsQueries: {
-    getRowCount: vi.fn().mockResolvedValue(100),
+    getRowCount: (...args: unknown[]) => mockGetRowCount(...args),
     getRowsByDataset: (...args: unknown[]) => mockGetRowsByDataset(...args),
   },
   orgsQueries: {
@@ -221,6 +222,22 @@ describe('GET /ai-summaries/:datasetId', () => {
     expect(args[2]).toBe(42);    // datasetId
     expect(typeof args[3]).toBe('number'); // userId from JWT
     expect(args[4]).toBe('free'); // tier
+  });
+
+  // Production, 2026-11-24: a dashboard showing the demo asked for the demo's
+  // dataset as a paying org. No rows came back, Claude wrote 156 tokens about
+  // nothing, and the result was cached against that org.
+  it('answers 404 for a dataset with no rows instead of generating a summary', async () => {
+    mockGetCachedSummary.mockResolvedValue(null);
+    mockGetRowCount.mockResolvedValueOnce(0);
+
+    const res = await fetch(`${baseUrl}/ai-summaries/42`);
+    const body = await res.json() as { error: { code: string } };
+
+    expect(res.status).toBe(404);
+    expect(body.error.code).toBe('NOT_FOUND');
+    expect(mockStreamToSSE).not.toHaveBeenCalled();
+    expect(mockGetMonthlyAiUsageCount).not.toHaveBeenCalled();
   });
 
   it('rejects invalid datasetId', async () => {
