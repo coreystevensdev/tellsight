@@ -124,6 +124,33 @@ describe('AiSummaryCard', () => {
 
   // -- error state --
 
+  // PR 439 made the summary route refuse a dataset with no rows rather than pay
+  // Claude to write a paragraph about having nothing. That refusal arrives as a
+  // 404, and routing it through the error state painted an absence destructive,
+  // announced it assertively, and told the reader their data was unaffected.
+  it('treats a dataset with no rows as an absence, not a failure', () => {
+    const mockRetry = vi.fn();
+    mockUseAiStream.mockReturnValue(
+      defaultHookReturn({
+        status: 'error',
+        error: 'No data to summarize for this dataset',
+        code: 'NOT_FOUND',
+        retryable: false,
+        retry: mockRetry,
+      }),
+    );
+
+    const { container } = render(<AiSummaryCard datasetId={42} />);
+
+    expect(screen.getByText(/Nothing to interpret yet/)).toBeTruthy();
+    // Retrying cannot create rows, so no affordance offers it.
+    expect(screen.queryByText('Try again')).toBeNull();
+    // And the contradiction is gone: nothing claims the data is unaffected.
+    expect(screen.queryByText(/data and charts are unaffected/)).toBeNull();
+    expect(container.querySelector('.border-destructive')).toBeNull();
+    expect(container.querySelector('[aria-live="assertive"]')).toBeNull();
+  });
+
   it('shows error state with Try again button when retryable', () => {
     const mockRetry = vi.fn();
     mockUseAiStream.mockReturnValue(

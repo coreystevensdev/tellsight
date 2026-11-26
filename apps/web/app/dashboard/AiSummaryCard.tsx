@@ -12,6 +12,7 @@ import { FreePreviewOverlay, PostCompletionFooter } from './AiSummaryCompletion'
 import {
   AiSummaryConnecting,
   AiSummaryError,
+  AiSummaryNoData,
   StaleSummaryBanner,
   StreamingCursor,
 } from './AiSummaryStates';
@@ -266,6 +267,12 @@ export function AiSummaryCard({
         {detailSheets}
       </div>
     );
+  }
+
+  // Ahead of the error branch on purpose: NOT_FOUND from the summary route means
+  // the dataset holds no rows, which the route refuses instead of summarizing.
+  if (status === 'error' && code === 'NOT_FOUND') {
+    return <AiSummaryNoData className={className} />;
   }
 
   if (status === 'error') {
