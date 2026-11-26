@@ -59,6 +59,13 @@ for (const route of PUBLIC_ROUTES) {
 // connector gate answers 501 precisely so a caller can tell a switched-off
 // integration from a broken one.
 //
+// The dashboard sentence above holds only for a visitor carrying no cookies,
+// which is the only kind the fixture below builds. The charts route now answers
+// 401 when a refresh cookie is present and the proxy could not mint from it, so
+// the client refreshes rather than being handed the demo. Give this fixture a
+// real login or a refresh cookie and it fails on that, which is the route
+// working.
+//
 // The list is deliberately exact pairs rather than a rule. A new failing
 // request still fails, which is the only property that makes this gate worth
 // having, and adding a connector is the one thing that legitimately extends it.

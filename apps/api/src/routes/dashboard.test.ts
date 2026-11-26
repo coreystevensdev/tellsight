@@ -91,6 +91,7 @@ vi.mock('../middleware/rateLimiter.js', () => ({
 }));
 
 const { AuthenticationError } = await import('../lib/appError.js');
+const { logger } = await import('../lib/logger.js');
 const { createTestApp } = await import('../test/helpers/testApp.js');
 const { default: dashboardRouter } = await import('./dashboard.js');
 
@@ -184,6 +185,53 @@ describe('GET /dashboard/charts', () => {
     expect(body.data.orgName).toBe('Sunrise Cafe');
     expect(body.data.demoState).toBe('seed_only');
     expect(mockGetSeedOrgId).toHaveBeenCalledOnce();
+  });
+
+  // The browser drops the 15-minute access cookie by itself, so a tab left open
+  // arrives holding only the refresh cookie. The demo is a 200, and the client
+  // refreshes on a 401, so a paying org's dashboard turned into Sunrise Cafe on
+  // the next focus revalidation and the summary card streamed the seed dataset.
+  it('answers 401 rather than the demo when only the refresh cookie is left', async () => {
+    const res = await fetch(`${baseUrl}/dashboard/charts`, {
+      headers: { Cookie: 'refresh_token=still-good' },
+    });
+
+    expect(res.status).toBe(401);
+    expect(mockGetSeedOrgId).not.toHaveBeenCalled();
+    // The route's two observable effects, asserted because a refactor that
+    // moved the throw below them would still answer 401 while recording a
+    // dashboard view and a served line for a request that served nothing.
+    expect(mockTrackEvent).not.toHaveBeenCalled();
+    expect(logger.info).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'Dashboard charts served',
+    );
+  });
+
+  it('answers 401 when the access token is dead and a refresh cookie can replace it', async () => {
+    mockVerifyAccessToken.mockRejectedValueOnce(new AuthenticationError('expired'));
+
+    const res = await fetch(`${baseUrl}/dashboard/charts`, {
+      headers: { Cookie: 'access_token=expired-jwt; refresh_token=still-good' },
+    });
+
+    expect(res.status).toBe(401);
+    expect(mockGetSeedOrgId).not.toHaveBeenCalled();
+  });
+
+  // Refreshing mints a token for the same membership, so it cannot bring back
+  // one that is gone. Asking for it would only loop the client into an error.
+  it('still serves the demo for a lapsed membership that holds a refresh cookie', async () => {
+    mockVerifyAccessToken.mockResolvedValueOnce({ sub: '7', org_id: 10, role: 'owner', isAdmin: false });
+    mockFindCallerContext.mockResolvedValueOnce(null);
+
+    const res = await fetch(`${baseUrl}/dashboard/charts`, {
+      headers: { Cookie: 'access_token=valid-but-stale; refresh_token=still-good' },
+    });
+    const body = (await res.json()) as { data: { isDemo: boolean } };
+
+    expect(res.status).toBe(200);
+    expect(body.data.isDemo).toBe(true);
   });
 
   it('fires trackEvent for authenticated users only', async () => {

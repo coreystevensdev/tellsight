@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { AUTH, ANALYTICS_EVENTS } from 'shared/constants';
 import { chartFiltersSchema } from 'shared/schemas';
-import type { DemoModeState } from 'shared/types';
+import type { DemoModeState, JwtPayload } from 'shared/types';
 import { verifyAccessToken } from '../services/auth/tokens.js';
 import { AuthenticationError } from '../lib/appError.js';
 import { aiSummariesQueries, categoryPlansQueries, chartsQueries, dataRowsQueries, datasetsQueries, orgsQueries, userOrgsQueries } from '../db/queries/index.js';
@@ -46,9 +46,25 @@ dashboardRouter.get('/dashboard/charts', async (req: Request, res: Response) => 
   const filterArg = hasFilters(filters) ? filters : undefined;
   const token = req.cookies?.[AUTH.COOKIE_NAMES.ACCESS_TOKEN];
 
+  let payload: JwtPayload | null = null;
   if (token) {
     try {
-      const payload = await verifyAccessToken(token);
+      payload = await verifyAccessToken(token);
+    } catch (err) {
+      if (!(err instanceof AuthenticationError)) throw err;
+    }
+  }
+
+  // The access cookie lives 15 minutes and the browser drops it unprompted, so
+  // a signed-in tab turns up here with only the refresh cookie. The demo is a
+  // 200 and the client refreshes on a 401, which is how a paying org's
+  // dashboard became Sunrise Cafe on the next focus revalidation.
+  if (!payload && req.cookies?.[AUTH.COOKIE_NAMES.REFRESH_TOKEN]) {
+    throw new AuthenticationError('Session expired');
+  }
+
+  if (payload) {
+    try {
       const orgId = payload.org_id;
       const userId = Number(payload.sub);
 
@@ -168,7 +184,7 @@ dashboardRouter.get('/dashboard/charts', async (req: Request, res: Response) => 
       return;
     } catch (err) {
       if (!(err instanceof AuthenticationError)) throw err;
-      // expired or invalid token, fall through to seed org
+      // membership gone, fall through to seed org
     }
   }
 

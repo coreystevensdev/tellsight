@@ -317,6 +317,56 @@ describe('proxy session refresh', () => {
     expect(new Headers(init.headers).get('cookie')).toContain('refresh_token=r1');
   });
 
+  // What the API sends back for a refresh token that can never mint: a 401
+  // carrying the two Set-Cookie lines that clear the pair.
+  function mockDeadRefresh() {
+    const headers = new Headers();
+    headers.append('set-cookie', 'access_token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax');
+    headers.append('set-cookie', 'refresh_token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401, headers }));
+  }
+
+  // This fetch is server to server, so the API's clearing cookies stop here
+  // unless they are passed on. Dropped, the browser keeps a dead refresh token
+  // and the next client fetch spends an auth rate-limit point finding that out.
+  it('passes the cleared cookies on when the API says the refresh token is dead', async () => {
+    mockDeadRefresh();
+
+    const res = await proxy(request('/dashboard', 'refresh_token=dead'));
+
+    expect(redirectTarget(res)).toBeNull();
+    expect(res.headers.getSetCookie().join(' ')).toContain('refresh_token=;');
+  });
+
+  it('renders that request as a visitor, without the dead cookie', async () => {
+    mockDeadRefresh();
+
+    const res = await proxy(request('/dashboard', 'refresh_token=dead'));
+
+    expect(res.headers.get('x-middleware-override-headers')).toContain('cookie');
+    expect(res.headers.get('x-middleware-request-cookie') ?? '').not.toContain('refresh_token');
+  });
+
+  it('still sends a dead session on a protected route to login', async () => {
+    mockDeadRefresh();
+
+    const res = await proxy(request('/settings', 'refresh_token=dead'));
+
+    expect(redirectTarget(res)?.pathname).toBe('/login');
+    expect(res.headers.getSetCookie().join(' ')).toContain('refresh_token=;');
+  });
+
+  // 409 is a lost rotation race. The sibling request's fresh cookies are already
+  // on their way to the browser and nothing here may overwrite them.
+  it('sets nothing when the refresh lost a race', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 409, headers: new Headers() }));
+
+    const res = await proxy(request('/dashboard', 'refresh_token=raced'));
+
+    expect(redirectTarget(res)).toBeNull();
+    expect(res.headers.getSetCookie()).toHaveLength(0);
+  });
+
   it('leaves /dashboard public when the refresh fails', async () => {
     mockRefresh(null);
 

@@ -74,6 +74,19 @@ async function fetchTier(cookieHeader: string): Promise<SubscriptionTier> {
   }
 }
 
+async function fetchCharts(cookieHeader: string) {
+  try {
+    return await apiServer<ChartData>('/dashboard/charts', { cookies: cookieHeader });
+  } catch (err) {
+    // 401 means a refresh cookie the proxy could not mint from, revoked or
+    // beaten in a rotation race. This page is public, so ask as a visitor.
+    if (err instanceof ApiServerError && err.statusCode === 401) {
+      return apiServer<ChartData>('/dashboard/charts');
+    }
+    throw err;
+  }
+}
+
 export default async function DashboardPage() {
   const cookieStore = await cookies();
   const cookieHeader = cookieStore
@@ -90,10 +103,7 @@ export default async function DashboardPage() {
   // at a reader whose data was fine, with a 200 and no error anywhere.
   let chartsUnavailable = false;
   try {
-    const res = await apiServer<ChartData>('/dashboard/charts', {
-      cookies: cookieHeader,
-    });
-    chartData = res.data;
+    chartData = (await fetchCharts(cookieHeader)).data;
   } catch (err) {
     if (err instanceof ApiServerError) {
       chartData = EMPTY_CHART_DATA;
