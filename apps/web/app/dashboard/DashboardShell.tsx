@@ -80,6 +80,15 @@ export function DashboardShell({
     hasAnyData,
     hasActiveFilters,
   } = useDashboardData(initialData);
+
+  // The cached summary came back for whichever dataset the server render saw.
+  // A render that fell back to the demo and then recovered its session on the
+  // client lands on a different one, and the text would then describe numbers
+  // that are no longer on screen: the org's real revenue under the seed org's
+  // interpretation, with the sidebar already corrected to the real name. Only
+  // the session can move this id, since neither the SWR key nor either server
+  // fetch carries a dataset, so both sides otherwise resolve the same one.
+  const cachedIsForThisView = data.datasetId === initialData.datasetId;
   // A chart click composes a question and hands it to the ask box. The nonce
   // rises every time so clicking the same bar twice asks twice; the box keys off
   // it rather than off the text.
@@ -247,9 +256,9 @@ export function DashboardShell({
           <div id="dashboard-interpretation" className="scroll-mt-4">
           <DashboardInsights
             datasetId={data.datasetId}
-            cachedSummary={cachedSummary}
-            cachedMetadata={cachedMetadata}
-            cachedStaleAt={cachedStaleAt}
+            cachedSummary={cachedIsForThisView ? cachedSummary : undefined}
+            cachedMetadata={cachedIsForThisView ? cachedMetadata : undefined}
+            cachedStaleAt={cachedIsForThisView ? cachedStaleAt : undefined}
             hasAuth={hasAuth}
             tier={tier}
             cashHistory={cashHistory}
