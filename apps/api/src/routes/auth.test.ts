@@ -315,6 +315,16 @@ describe('auth routes', () => {
       const cookies = parseCookies(res);
       expect(cookies.refresh_token).toBe('');
       expect(cookies.access_token).toBe('');
+      // An empty value is not the same as a gone cookie. Setting name='' with a
+      // seven-day Max-Age satisfies the two assertions above and leaves exactly
+      // the jar entry this clearing exists to remove, since proxy.ts and
+      // page.tsx both read presence rather than value. The epoch expiry is the
+      // part that does the work, asserted the way the logout tests below do.
+      const cleared = (res.headers.getSetCookie?.() ?? [])
+        .filter((c) => c.includes('Expires=Thu, 01 Jan 1970'))
+        .map((c) => c.split('=')[0]);
+      expect(cleared).toContain('access_token');
+      expect(cleared).toContain('refresh_token');
     });
 
     // The winner of the race already set a fresh pair on its own response.
