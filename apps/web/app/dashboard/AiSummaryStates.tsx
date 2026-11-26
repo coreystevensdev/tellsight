@@ -78,6 +78,28 @@ interface AiSummaryErrorProps {
   className?: string;
 }
 
+// A dataset with no rows is an absence, not a failure. It reaches the card as a
+// 404 from the summary route, which refuses rather than paying Claude to write a
+// paragraph about having nothing (PR 439). Routing it through AiSummaryError
+// painted it destructive, announced it assertively, and followed it with "Your
+// data and charts are unaffected", which is incoherent when the absent data is
+// the whole point. No retry affordance either: retrying cannot create rows.
+export function AiSummaryNoData({ className }: { className?: string }) {
+  return (
+    <div
+      className={cn('min-w-0 border-t border-border p-5 md:p-8', className)}
+      role="region"
+      aria-label="AI business summary"
+    >
+      <p className="text-sm text-muted-foreground">
+        Nothing to interpret yet. This dataset has no rows, so there is no revenue or
+        expense activity to read. Upload a CSV or connect a source and the summary
+        appears with it.
+      </p>
+    </div>
+  );
+}
+
 export function AiSummaryError({
   code,
   error,
