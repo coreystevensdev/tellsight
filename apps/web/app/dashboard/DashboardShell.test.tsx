@@ -257,6 +257,45 @@ describe('DashboardShell', () => {
     expect(screen.getByRole('heading', { name: 'Acme Corp' })).toBeInTheDocument();
   });
 
+  // The server render that falls back to the demo fetches its summary for the
+  // seed dataset. If the session then recovers on the client, the charts and
+  // the sidebar name become the org's while that text stays the seed org's, so
+  // the reader gets their own revenue under somebody else's interpretation.
+  it('withholds a cached summary fetched for a different dataset', () => {
+    mockSwrReturn = { data: { ...fullData, datasetId: 42 }, isLoading: false, mutate: mockMutate };
+
+    render(
+      <DashboardShell
+        initialData={{ ...fullData, datasetId: 1, orgName: 'Sunrise Cafe', isDemo: true }}
+        cachedSummary="Sunrise Cafe had a strong month."
+        cachedStaleAt="2026-11-26T00:00:00.000Z"
+      />,
+    );
+
+    const card = screen.getByTestId('ai-summary-card');
+    expect(card).toHaveAttribute('data-dataset-id', '42');
+    expect(card).not.toHaveTextContent('Sunrise Cafe had a strong month.');
+    expect(card).toHaveAttribute('data-cached-stale-at', '');
+  });
+
+  // The guard has to stay narrow: both ids agree on every ordinary render, and
+  // suppressing the cache there would stream a summary that was already paid for.
+  it('passes the cached summary through when both datasets agree', () => {
+    mockSwrReturn = { data: { ...fullData, datasetId: 42 }, isLoading: false, mutate: mockMutate };
+
+    render(
+      <DashboardShell
+        initialData={fullData}
+        cachedSummary="Acme Corp had a strong month."
+        cachedStaleAt="2026-11-26T00:00:00.000Z"
+      />,
+    );
+
+    const card = screen.getByTestId('ai-summary-card');
+    expect(card).toHaveTextContent('Acme Corp had a strong month.');
+    expect(card).toHaveAttribute('data-cached-stale-at', '2026-11-26T00:00:00.000Z');
+  });
+
   it('passes demoState to DemoModeBanner', () => {
     render(<DashboardShell initialData={{ ...fullData, demoState: 'seed_only' }} />);
 
