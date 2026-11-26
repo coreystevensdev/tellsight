@@ -39,6 +39,13 @@ function matches(pathname: string, routes: string[]) {
 // response the router can discard, and two prefetches in flight at once present
 // the same token twice, which the API reads as reuse and answers by revoking
 // every session the user has.
+//
+// The cost is paid on /dashboard, which is public: an unminted prefetch draws
+// the charts route's 401 and page.tsx answers it as a visitor, so the payload
+// is the seed org's. Not reachable by clicking the link, since page segments
+// are not reused from the client cache for a Link navigation, only for browser
+// back and forward. Minting here instead would trade that for the reuse
+// revocation above, which is the worse of the two.
 function isPrefetch(request: NextRequest) {
   return (
     request.headers.get('next-router-prefetch') === '1' ||
