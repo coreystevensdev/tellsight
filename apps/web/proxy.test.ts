@@ -358,8 +358,17 @@ describe('proxy session refresh', () => {
 
   // 409 is a lost rotation race. The sibling request's fresh cookies are already
   // on their way to the browser and nothing here may overwrite them.
+  //
+  // The stub carries cookies on purpose, which a real 409 would not, because
+  // that is the only way the status check is the thing under test. With empty
+  // headers the `cookies.length > 0 ? cookies : null` below already returns
+  // null, so the whole `res.status !== 401` gate could be deleted with this
+  // green, which is how it sat until a review mutated it.
   it('sets nothing when the refresh lost a race', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 409, headers: new Headers() }));
+    const headers = new Headers();
+    headers.append('set-cookie', 'access_token=someone-elses; Path=/; HttpOnly');
+    headers.append('set-cookie', 'refresh_token=someone-elses; Path=/; HttpOnly');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 409, headers }));
 
     const res = await proxy(request('/dashboard', 'refresh_token=raced'));
 

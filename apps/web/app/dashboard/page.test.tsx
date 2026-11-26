@@ -133,6 +133,30 @@ describe('DashboardPage summary source', () => {
     expect(props.needsOnboarding).toBe(false);
   });
 
+  // The retry is for a 401 and nothing else. Widened to any ApiServerError it
+  // doubles every failed render's spend against the public rate-limit budget,
+  // and a 502-then-success render would come back marked servedAnonymously,
+  // which silently shows a signed-in reader the demo. The it.each cases below
+  // fail every charts call, so the retry failing lands on the same assertion
+  // they already make and cannot tell the two apart.
+  it('does not retry a 502, which is an upstream failure rather than a session', async () => {
+    signedIn();
+    const calls: (string | undefined)[] = [];
+    apiServer.mockImplementation(async (path: string, opts?: { cookies?: string }) => {
+      const p = String(path);
+      if (!p.includes('/dashboard/charts')) throw new ApiServerError('NOT_FOUND', 'no route', 404);
+      calls.push(opts?.cookies);
+      if (calls.length === 1) throw new ApiServerError('UPSTREAM', 'bad gateway', 502);
+      return { data: { ...CHARTS, isDemo: true } };
+    });
+
+    const props = await renderPage();
+
+    expect(calls).toHaveLength(1);
+    expect(props.chartsUnavailable).toBe(true);
+    expect(props.initialData).toMatchObject({ demoState: 'empty' });
+  });
+
   it('reads the protected latest summary for a signed-in user', async () => {
     signedIn();
     respond({
