@@ -151,6 +151,13 @@ export async function getMonthlyAiUsageCount(
         eq(analyticsEvents.orgId, orgId),
         eq(analyticsEvents.eventName, ANALYTICS_EVENTS.AI_SUMMARY_COMPLETED),
         gte(analyticsEvents.createdAt, monthStart),
+        // A cache hit records the same completion event, so counting every row
+        // charged a reader for looking twice. On free, quota 3, that is one
+        // generated summary and two views before a genuine new-data summary is
+        // refused for the rest of the month. IS DISTINCT FROM rather than <>
+        // because the oldest rows predate the cacheHit key and a NULL there is
+        // a generation, which should still count.
+        sql`${analyticsEvents.metadata}->>'cacheHit' IS DISTINCT FROM 'true'`,
       ),
     );
 

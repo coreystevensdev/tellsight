@@ -209,7 +209,10 @@ aiSummaryRouter.get('/:datasetId', subscriptionGate, async (req, res: Response) 
     throw new NotFoundError('No data to summarize for this dataset');
   }
 
-  // quota gate, cache hits don't count, so this runs after the cache check
+  // Quota gate. Two things keep a cache hit off the meter and both are needed:
+  // this runs after the cache check so a cached read is never refused, and the
+  // count itself excludes rows tagged cacheHit, since the hit above still
+  // records a completion event.
   const quota = AI_MONTHLY_QUOTA[tier] ?? AI_MONTHLY_QUOTA.free;
   const usageCount = await analyticsEventsQueries.getMonthlyAiUsageCount(orgId);
   if (usageCount >= quota) {
